@@ -1,0 +1,1722 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>سیستم مدیریت کمپین دیجیتال مارکتینگ</title>
+<style>
+  :root {
+    --ink: #1a1a2e;
+    --paper: #f8f9fa;
+    --accent: #0d6efd;
+    --accent-light: #e8f0fe;
+    --accent-hover: #0b5ed7;
+    --border: #dee2e6;
+    --text: #212529;
+    --text-muted: #6c757d;
+    --success: #198754;
+    --warning: #ffc107;
+    --danger: #dc3545;
+    --danger-light: #f8d7da;
+    --tag-ld: #0d6efd;
+    --tag-cs: #198754;
+    --row-hover: #f1f3f5;
+    --shadow: 0 2px 8px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+    --radius: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', Tahoma, system-ui, sans-serif;
+    background: var(--paper);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* --- Header --- */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    background: white;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .header h1 { font-size: 18px; font-weight: 600; color: var(--ink); }
+
+  .header-actions { display: flex; gap: 8px; }
+
+  /* --- Main Content --- */
+  .content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+  /* --- Tabs --- */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 24px;
+    background: white;
+    border-radius: var(--radius);
+    padding: 4px;
+    border: 1px solid var(--border);
+    width: fit-content;
+  }
+
+  .tab {
+    padding: 8px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+    border: none;
+    background: transparent;
+    transition: all 0.15s;
+  }
+
+  .tab.active { background: var(--accent); color: white; }
+  .tab:hover:not(.active) { background: var(--accent-light); color: var(--accent); }
+
+  .sheet { display: none; }
+  .sheet.active { display: block; }
+
+  /* --- Toolbar --- */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .search-box {
+    flex: 1;
+    max-width: 320px;
+    padding: 9px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s;
+    font-family: inherit;
+  }
+
+  .search-box:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(13,110,253,0.1);
+  }
+
+  /* --- Buttons --- */
+  .btn {
+    padding: 9px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: white;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+
+  .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn:hover:not(.btn-primary) { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+
+  .btn-danger { background: var(--danger); color: white; border-color: var(--danger); }
+  .btn-danger:hover { background: #bb2d3b; }
+
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+  .btn-icon {
+    width: 32px; height: 32px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 6px; border: 1px solid var(--border); background: white;
+    cursor: pointer; transition: all 0.15s; font-size: 14px;
+  }
+  .btn-icon:hover { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+
+  /* --- Stats --- */
+  .stats { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+
+  .stat-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 20px;
+    min-width: 130px;
+    flex: 1;
+  }
+
+  .stat-card .label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .stat-card .value {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-top: 2px;
+  }
+
+  /* --- Table --- */
+  .table-wrapper {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+
+  thead th {
+    background: #f8f9fa;
+    padding: 11px 14px;
+    text-align: right;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  thead th:hover { background: #e9ecef; }
+
+  tbody tr { border-bottom: 1px solid #f1f3f5; transition: background 0.1s; }
+  tbody tr:hover { background: var(--row-hover); }
+  tbody td { padding: 11px 14px; vertical-align: middle; }
+
+  /* --- Badges --- */
+  .id-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: 'SF Mono', Consolas, monospace;
+  }
+
+  .id-ld { background: #e8f0fe; color: var(--tag-ld); }
+  .id-cs { background: #d1e7dd; color: var(--tag-cs); }
+
+  .followup-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .followup-none { background: #e9ecef; color: var(--text-muted); }
+  .followup-low { background: #fff3cd; color: #664d03; }
+  .followup-mid { background: #cce5ff; color: #084298; }
+  .followup-high { background: #d1e7dd; color: #0f5132; }
+
+  .platform-icon { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+  .platform-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .platform-ig { background: #E1306C; }
+  .platform-tg { background: #0088cc; }
+  .platform-wa { background: #25D366; }
+
+  .status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+  .status-new { background: #e9ecef; color: var(--text-muted); }
+  .status-contacted { background: #cce5ff; color: #084298; }
+  .status-chatting { background: #d0bfff; color: #581c87; }
+  .status-interested { background: #fff3cd; color: #664d03; }
+  .status-sent { background: #d1e7dd; color: #0f5132; }
+  .status-followup_done { background: #b6effb; color: #055160; }
+  .status-converting { background: #f8d7da; color: #842029; }
+  .status-purchased { background: #d1e7dd; color: #0f5132; }
+
+  .notes-cell {
+    max-width: 180px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  /* --- Actions Column --- */
+  .actions-cell { display: flex; gap: 4px; }
+
+  /* --- Customer Detail Panel --- */
+  .detail-info {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+  }
+
+  .detail-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .detail-field.full { grid-column: 1 / -1; }
+
+  .detail-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .detail-value {
+    font-size: 14px;
+    color: var(--text);
+    word-break: break-word;
+  }
+
+  .detail-timeline-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .detail-timeline-title .count {
+    background: var(--accent);
+    color: white;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+
+  .timeline {
+    position: relative;
+    padding-right: 24px;
+  }
+
+  .timeline::before {
+    content: '';
+    position: absolute;
+    right: 7px;
+    top: 4px;
+    bottom: 4px;
+    width: 2px;
+    background: var(--border);
+  }
+
+  .timeline-item {
+    position: relative;
+    padding: 10px 16px;
+    margin-bottom: 8px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    right: -21px;
+    top: 14px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid white;
+  }
+
+  .timeline-item:last-child { margin-bottom: 0; }
+
+  .timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+
+  .timeline-date {
+    font-size: 12px;
+    font-family: monospace;
+    color: var(--text-muted);
+  }
+
+  .timeline-type {
+    font-size: 11px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    background: var(--accent-light);
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .timeline-result {
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 2px;
+  }
+
+  .timeline-notes {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .timeline-next {
+    font-size: 11px;
+    color: var(--accent);
+    margin-top: 4px;
+  }
+
+  /* --- Product Section --- */
+  .product-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 10px 12px;
+    background: #f8f9fa;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  .product-row select,
+  .product-row input {
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+  }
+
+  .product-row select:focus,
+  .product-row input:focus {
+    border-color: var(--accent);
+  }
+
+  .product-row .product-name { min-width: 140px; }
+  .product-row .product-status { min-width: 100px; }
+  .product-row .product-price { min-width: 120px; direction: ltr; text-align: left; }
+  .product-row .product-deposit { min-width: 120px; direction: ltr; text-align: left; }
+
+  .product-balance {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 4px 8px;
+    background: white;
+    border-radius: 4px;
+    border: 1px dashed var(--border);
+    white-space: nowrap;
+  }
+
+  .product-balance.negative { color: var(--danger); border-color: var(--danger-light); }
+
+  .btn-remove-product {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border: none; background: transparent; cursor: pointer;
+    border-radius: 6px; font-size: 14px; color: var(--danger);
+    transition: all 0.15s;
+  }
+  .btn-remove-product:hover { background: var(--danger-light); }
+
+  /* --- Modal --- */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .modal-overlay.active { display: flex; }
+
+  .modal {
+    background: white;
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: modalIn 0.2s ease;
+  }
+
+  @keyframes modalIn {
+    from { opacity: 0; transform: translateY(-16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .modal-header h2 { font-size: 16px; font-weight: 600; }
+
+  .modal-close {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border: none; background: transparent; cursor: pointer;
+    border-radius: 6px; font-size: 18px; color: var(--text-muted);
+    transition: all 0.15s;
+  }
+  .modal-close:hover { background: #f1f3f5; color: var(--text); }
+
+  .modal-body { padding: 20px; }
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* --- Form --- */
+  .form-group { margin-bottom: 16px; }
+  .form-group:last-child { margin-bottom: 0; }
+
+  .form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+
+  .form-group label .required { color: var(--danger); }
+
+  .form-input,
+  .form-select,
+  .form-textarea {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s;
+    background: white;
+  }
+
+  .form-input:focus,
+  .form-select:focus,
+  .form-textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(13,110,253,0.1);
+  }
+
+  .form-textarea { resize: vertical; min-height: 80px; }
+
+  .form-row { display: flex; gap: 12px; }
+  .form-row .form-group { flex: 1; }
+
+  .form-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  /* --- Empty State --- */
+  .empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--text-muted);
+  }
+
+  .empty-state .icon { font-size: 32px; margin-bottom: 8px; opacity: 0.3; }
+  .empty-state h3 { font-size: 15px; margin-bottom: 4px; color: var(--text); }
+  .empty-state p { font-size: 13px; }
+
+  /* --- Legend --- */
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+
+  /* --- Toast --- */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--ink);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    z-index: 2000;
+    transition: transform 0.3s ease;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 768px) {
+    .content { padding: 16px; }
+    .stats { gap: 8px; }
+    .stat-card { min-width: 100px; padding: 12px 14px; }
+    .stat-card .value { font-size: 20px; }
+    .table-wrapper { overflow-x: auto; }
+    table { min-width: 900px; }
+    .form-row { flex-direction: column; gap: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>مدیریت کمپین دیجیتال مارکتینگ</h1>
+  <div class="header-actions">
+    <button class="btn" onclick="exportToCSV()">خروجی CSV</button>
+  </div>
+</div>
+
+<div class="content">
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('customers', this)">لیست مشتریان</button>
+    <button class="tab" onclick="switchTab('followups', this)">تاریخچه پیگیری</button>
+  </div>
+
+  <!-- شیت ۱: لیست مشتریان -->
+  <div class="sheet active" id="sheet-customers">
+    <div class="stats">
+      <div class="stat-card">
+        <div class="label">کل مشتریان</div>
+        <div class="value" id="stat-total">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">لید جدید</div>
+        <div class="value" style="color: var(--tag-ld)" id="stat-ld">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">مشتری قبلی</div>
+        <div class="value" style="color: var(--tag-cs)" id="stat-cs">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">در حال پیگیری</div>
+        <div class="value" style="color: var(--warning)" id="stat-following">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">تبدیل شده (LD→CS)</div>
+        <div class="value" style="color: var(--success)" id="stat-converted">0</div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" class="search-box" placeholder="جستجو..." id="searchCustomers" oninput="renderCustomers()">
+      <button class="btn btn-primary" onclick="openCustomerModal()">+ مشتری جدید</button>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="sortCustomers('id')">شناسه</th>
+            <th onclick="sortCustomers('platformId')">ایدی پلتفرم</th>
+            <th onclick="sortCustomers('platform')">پلتفرم</th>
+            <th onclick="sortCustomers('name')">نام</th>
+            <th onclick="sortCustomers('phone')">شماره</th>
+            <th onclick="sortCustomers('status')">وضعیت</th>
+            <th onclick="sortCustomers('followupCount')">پیگیری</th>
+            <th onclick="sortCustomers('lastFollowup')">آخرین پیگیری</th>
+            <th>توضیحات</th>
+            <th style="width: 80px;"></th>
+          </tr>
+        </thead>
+        <tbody id="customerBody"></tbody>
+      </table>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><span class="id-badge id-ld">LD</span> لید</div>
+      <div class="legend-item"><span class="id-badge id-cs">CS</span> مشتری قبلی</div>
+    </div>
+  </div>
+
+  <!-- شیت ۲: تاریخچه پیگیری -->
+  <div class="sheet" id="sheet-followups">
+    <div class="toolbar">
+      <input type="text" class="search-box" placeholder="جستجو..." id="searchFollowups" oninput="renderFollowups()">
+      <button class="btn btn-primary" onclick="openFollowupModal()">+ پیگیری جدید</button>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="sortFollowups('customerId')">شناسه</th>
+            <th onclick="sortFollowups('customerName')">نام</th>
+            <th onclick="sortFollowups('date')">تاریخ</th>
+            <th onclick="sortFollowups('type')">نوع</th>
+            <th onclick="sortFollowups('result')">نتیجه</th>
+            <th onclick="sortFollowups('nextDate')">پیگیری بعدی</th>
+            <th>توضیحات</th>
+            <th style="width: 60px;"></th>
+          </tr>
+        </thead>
+        <tbody id="followupBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- مودال اضافه کردن مشتری -->
+<div class="modal-overlay" id="customerModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="customerModalTitle">مشتری جدید</h2>
+      <button class="modal-close" onclick="closeCustomerModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editCustomerId">
+
+      <div class="form-group">
+        <label>شناسه</label>
+        <input type="text" class="form-input" id="customerIdDisplay" readonly style="background: #f8f9fa; font-family: monospace;">
+        <div class="form-hint" id="customerIdHint">خودکار تولید می‌شود</div>
+      </div>
+
+      <div class="form-group">
+        <label>ایدی پلتفرم <span class="required">*</span></label>
+        <input type="text" class="form-input" id="customerPlatformId" placeholder="مثلاً: ali_98">
+      </div>
+
+      <div class="form-group">
+        <label>پلتفرم <span class="required">*</span></label>
+        <select class="form-select" id="customerPlatform">
+          <option value="instagram">اینستاگرام</option>
+          <option value="telegram">تلگرام</option>
+          <option value="whatsapp">واتساپ</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>نام</label>
+          <input type="text" class="form-input" id="customerName" placeholder="اختیاری">
+        </div>
+        <div class="form-group">
+          <label>شماره تماس</label>
+          <input type="text" class="form-input" id="customerPhone" placeholder="اختیاری" dir="ltr" style="text-align: left;">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>وضعیت</label>
+        <select class="form-select" id="customerStatus">
+          <option value="new">جدید</option>
+          <option value="contacted">تماس گرفته شده</option>
+          <option value="chatting">در حال چت</option>
+          <option value="interested">علاقه‌مند</option>
+          <option value="sent">اطلاعات ارسال شده</option>
+          <option value="followup_done">تکمیل پیگیری</option>
+          <option value="converting">در حال تبدیل</option>
+          <option value="purchased">خرید کرد</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>توضیحات</label>
+        <textarea class="form-textarea" id="customerNotes" placeholder="توضیحات اضافه..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeCustomerModal()">انصراف</button>
+      <button class="btn btn-primary" onclick="saveCustomer()">ذخیره</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال اضافه کردن پیگیری -->
+<div class="modal-overlay" id="followupModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="followupModalTitle">پیگیری جدید</h2>
+      <button class="modal-close" onclick="closeFollowupModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editFollowupIndex">
+
+      <div class="form-group">
+        <label>مشتری <span class="required">*</span></label>
+        <select class="form-select" id="followupCustomer" onchange="onFollowupCustomerChange()">
+          <option value="">انتخاب کنید...</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>تاریخ پیگیری <span class="required">*</span></label>
+          <input type="text" class="form-input" id="followupDate" placeholder="1404/04/15">
+        </div>
+        <div class="form-group">
+          <label>پیگیری بعدی</label>
+          <input type="text" class="form-input" id="followupNextDate" placeholder="1404/04/18">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>نوع پیگیری <span class="required">*</span></label>
+          <select class="form-select" id="followupType">
+            <option value="دایرکت">دایرکت</option>
+            <option value="تماس">تماس</option>
+            <option value="کامنت">کامنت</option>
+            <option value="پیام">پیام</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>نتیجه</label>
+          <select class="form-select" id="followupResult">
+            <option value="پاسخ داد">پاسخ داد</option>
+            <option value="صحبت شد">صحبت شد</option>
+            <option value="ارسال قیمت">ارسال قیمت</option>
+            <option value="ارسال اطلاعات">ارسال اطلاعات</option>
+            <option value="پیگیری">پیگیری</option>
+            <option value="پاسخ نداد">پاسخ نداد</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>توضیحات</label>
+        <textarea class="form-textarea" id="followupNotes" placeholder="توضیحات این پیگیری..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeFollowupModal()">انصراف</button>
+      <button class="btn btn-primary" onclick="saveFollowup()">ذخیره</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال حذف -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal" style="max-width: 400px;">
+    <div class="modal-header">
+      <h2>تایید حذف</h2>
+      <button class="modal-close" onclick="closeDeleteModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="deleteMessage">آیا مطمئن هستید؟</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeDeleteModal()">انصراف</button>
+      <button class="btn btn-danger" id="deleteConfirmBtn">حذف</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال پنل مشتری -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" style="max-width: 640px;">
+    <div class="modal-header">
+      <h2 id="detailTitle">پنل مشتری</h2>
+      <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="detailBody"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeDetailModal()">بستن</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================
+// Data Layer (localStorage)
+// ============================================
+const STORAGE_KEY = 'campaign_manager_data';
+
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+
+  // Default demo data
+  return {
+    customers: [
+      { id: 'LD0001', platformId: 'user_ali_98', platform: 'instagram', name: 'علی محمدی', phone: '09121234567', status: 'contacted', notes: 'به محصول A علاقه‌مند', products: [] },
+      { id: 'LD0002', platformId: 'sara_online', platform: 'telegram', name: 'سارا احمدی', phone: '', status: 'new', notes: 'کامنت رو پست آخر', products: [] },
+      { id: 'LD0003', platformId: 'mehdi_dev', platform: 'instagram', name: 'مهدی رضایی', phone: '09359876543', status: 'interested', notes: 'قیمت رو پرسید', products: [] },
+      { id: 'CS0001', platformId: 'nora_club', platform: 'whatsapp', name: 'نرگس کریمی', phone: '09011112233', status: 'sent', notes: 'مشتری قبلی - خرید B', products: [
+        { name: 'کتاب', status: 'تکمیل', price: '450000', deposit: '' },
+        { name: 'آنلاین چینی', status: 'بیعانه', price: '1200000', deposit: '500000' }
+      ] },
+      { id: 'LD0004', platformId: 'reza_shop', platform: 'instagram', name: 'رضا عباسی', phone: '', status: 'new', notes: 'دایرکت داده', products: [] },
+    ],
+    followups: [
+      { customerId: 'LD0001', date: '1404/04/08', type: 'دایرکت', result: 'پاسخ داد', nextDate: '1404/04/10', notes: 'در مورد محصول A سوال داشت' },
+      { customerId: 'LD0001', date: '1404/04/10', type: 'تماس', result: 'صحبت شد', nextDate: '1404/04/12', notes: 'قیمت رو پذیرفت' },
+      { customerId: 'LD0001', date: '1404/04/12', type: 'پیام', result: 'پیگیری', nextDate: '1404/04/15', notes: 'منتظر پاسخ' },
+      { customerId: 'LD0003', date: '1404/04/11', type: 'کامنت', result: 'ارسال قیمت', nextDate: '1404/04/13', notes: 'قیمت کامل ارسال شد' },
+      { customerId: 'LD0003', date: '1404/04/12', type: 'دایرکت', result: 'پاسخ داد', nextDate: '1404/04/15', notes: 'در حال مقایسه با رقبا' },
+      { customerId: 'CS0001', date: '1404/04/05', type: 'تماس', result: 'پیگیری', nextDate: '1404/04/08', notes: 'رضایت از خرید قبلی' },
+      { customerId: 'CS0001', date: '1404/04/08', type: 'پیام', result: 'ارسال پیشنهاد', nextDate: '1404/04/10', notes: 'پیشنهاد محصول جدید' },
+      { customerId: 'CS0001', date: '1404/04/10', type: 'دایرکت', result: 'صحبت شد', nextDate: '1404/04/12', notes: 'علاقه‌مند شد' },
+      { customerId: 'CS0001', date: '1404/04/12', type: 'تماس', result: 'ارسال محصول', nextDate: '1404/04/14', notes: 'ارسال شد' },
+      { customerId: 'CS0001', date: '1404/04/14', type: 'پیام', result: 'تحویل شد', nextDate: '-', notes: 'رضایت کامل' },
+      { customerId: 'LD0004', date: '1404/04/13', type: 'دایرکت', result: 'پاسخ داد', nextDate: '1404/04/16', notes: 'اطلاعات ارسال شد' },
+    ],
+    nextId: 5,
+    convertedCount: 0
+  };
+}
+
+let data = loadData();
+
+function saveData() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+function generateId(type) {
+  const prefix = type === 'CS' ? 'CS' : 'LD';
+  const existingIds = data.customers
+    .filter(c => c.id.startsWith(prefix))
+    .map(c => parseInt(c.id.slice(2)))
+    .filter(n => !isNaN(n));
+  const nextNum = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
+  return prefix + String(nextNum).padStart(4, '0');
+}
+
+// ============================================
+// Render Customers
+// ============================================
+function renderCustomers() {
+  const tbody = document.getElementById('customerBody');
+  const search = document.getElementById('searchCustomers').value.toLowerCase();
+
+  const filtered = data.customers.filter(c =>
+    c.id.toLowerCase().includes(search) ||
+    c.name.toLowerCase().includes(search) ||
+    c.platformId.toLowerCase().includes(search) ||
+    c.phone.includes(search)
+  );
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr><td colspan="10">
+        <div class="empty-state">
+          <div class="icon">👤</div>
+          <h3>مشتری‌ای یافت نشد</h3>
+          <p>مشتری جدید اضافه کنید</p>
+        </div>
+      </td></tr>`;
+    updateStats();
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(c => {
+    const idClass = c.id.startsWith('CS') ? 'id-cs' : 'id-ld';
+    const platformClass = { instagram: 'platform-ig', telegram: 'platform-tg', whatsapp: 'platform-wa' }[c.platform] || '';
+    const platformLabel = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' }[c.platform] || c.platform;
+    const statusClass = { new: 'status-new', contacted: 'status-contacted', chatting: 'status-chatting', interested: 'status-interested', sent: 'status-sent', followup_done: 'status-followup_done', converting: 'status-converting', purchased: 'status-purchased' }[c.status] || 'status-new';
+    const statusLabel = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد' }[c.status] || c.status;
+
+    const followupCount = data.followups.filter(f => f.customerId === c.id).length;
+    let countClass = 'followup-none';
+    if (followupCount >= 5) countClass = 'followup-high';
+    else if (followupCount >= 3) countClass = 'followup-mid';
+    else if (followupCount >= 1) countClass = 'followup-low';
+
+    const customerFollowups = data.followups.filter(f => f.customerId === c.id);
+    const lastDate = customerFollowups.length > 0
+      ? customerFollowups[customerFollowups.length - 1].date
+      : '—';
+    const lastNote = customerFollowups.length > 0
+      ? customerFollowups[customerFollowups.length - 1].notes
+      : '';
+
+    return `<tr>
+      <td><span class="id-badge ${idClass}">${c.id}</span></td>
+      <td style="font-family: monospace; font-size: 13px;">${c.platformId}</td>
+      <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${platformLabel}</span></td>
+      <td>${c.name || '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td style="font-family: monospace; direction: ltr; text-align: right;">${c.phone || '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+      <td style="text-align:center;"><span class="followup-count ${countClass}">${followupCount}</span></td>
+      <td style="font-size:13px;color:var(--text-muted);">${lastDate}</td>
+      <td class="notes-cell" title="${escapeHtml(lastNote || c.notes)}">${lastNote || c.notes || '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td>
+        <div class="actions-cell">
+          <button class="btn-icon" title="پنل مشتری" onclick="openCustomerDetail('${c.id}')" style="color:var(--accent);">👤</button>
+          <button class="btn-icon" title="ویرایش" onclick="editCustomer('${c.id}')">✏</button>
+          <button class="btn-icon" title="حذف" onclick="deleteCustomer('${c.id}')">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  updateStats();
+}
+
+function updateStats() {
+  document.getElementById('stat-total').textContent = data.customers.length;
+  document.getElementById('stat-ld').textContent = data.customers.filter(c => c.id.startsWith('LD')).length;
+  document.getElementById('stat-cs').textContent = data.customers.filter(c => c.id.startsWith('CS')).length;
+  document.getElementById('stat-following').textContent = data.customers.filter(c =>
+    data.followups.some(f => f.customerId === c.id)
+  ).length;
+  document.getElementById('stat-converted').textContent = data.convertedCount || 0;
+}
+
+// ============================================
+// Render Followups
+// ============================================
+function renderFollowups() {
+  const tbody = document.getElementById('followupBody');
+  const search = document.getElementById('searchFollowups').value.toLowerCase();
+
+  const filtered = data.followups.filter(f => {
+    const customer = data.customers.find(c => c.id === f.customerId);
+    const name = customer ? customer.name : '';
+    return f.customerId.toLowerCase().includes(search) ||
+           name.toLowerCase().includes(search) ||
+           f.notes.toLowerCase().includes(search);
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr><td colspan="8">
+        <div class="empty-state">
+          <div class="icon">📋</div>
+          <h3>پیگیری‌ای ثبت نشده</h3>
+          <p>اولین پیگیری رو ثبت کنید</p>
+        </div>
+      </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map((f, i) => {
+    const realIndex = data.followups.indexOf(f);
+    const customer = data.customers.find(c => c.id === f.customerId);
+    const name = customer ? customer.name : '—';
+
+    return `<tr>
+      <td><span class="id-badge id-ld" style="font-size:11px;cursor:pointer;" onclick="openCustomerDetail('${f.customerId}')">${f.customerId}</span></td>
+      <td>${name}</td>
+      <td style="font-family:monospace;font-size:13px;">${f.date}</td>
+      <td>${f.type}</td>
+      <td>${f.result}</td>
+      <td style="font-size:13px;">${f.nextDate || '—'}</td>
+      <td class="notes-cell" title="${escapeHtml(f.notes)}">${f.notes || '—'}</td>
+      <td>
+        <div class="actions-cell">
+          <button class="btn-icon" title="ویرایش" onclick="editFollowup(${realIndex})">✏</button>
+          <button class="btn-icon" title="حذف" onclick="deleteFollowup(${realIndex})">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ============================================
+// Customer Modal
+// ============================================
+function openCustomerModal(editId) {
+  const modal = document.getElementById('customerModal');
+  const title = document.getElementById('customerModalTitle');
+
+  if (editId) {
+    const c = data.customers.find(x => x.id === editId);
+    if (!c) return;
+    title.textContent = 'ویرایش مشتری';
+    document.getElementById('editCustomerId').value = c.id;
+    document.getElementById('customerIdDisplay').value = c.id;
+    document.getElementById('customerIdHint').textContent = c.id.startsWith('CS') ? 'مشتری با شماره تماس' : 'لید بدون شماره تماس';
+    document.getElementById('customerPlatformId').value = c.platformId;
+    document.getElementById('customerPlatform').value = c.platform;
+    document.getElementById('customerName').value = c.name;
+    document.getElementById('customerPhone').value = c.phone;
+    document.getElementById('customerStatus').value = c.status;
+    document.getElementById('customerNotes').value = c.notes;
+  } else {
+    title.textContent = 'مشتری جدید';
+    document.getElementById('editCustomerId').value = '';
+    document.getElementById('customerIdHint').textContent = 'خودکار — LD اگر شماره نداشته باشد، CS اگر داشته باشد';
+    document.getElementById('customerPlatformId').value = '';
+    document.getElementById('customerPlatform').value = 'instagram';
+    document.getElementById('customerName').value = '';
+    document.getElementById('customerPhone').value = '';
+    document.getElementById('customerStatus').value = 'new';
+    document.getElementById('customerNotes').value = '';
+    updatePreviewId();
+  }
+
+  modal.classList.add('active');
+  document.getElementById('customerPlatformId').focus();
+}
+
+function updatePreviewId() {
+  if (document.getElementById('editCustomerId').value) return;
+  const phone = document.getElementById('customerPhone').value.trim();
+  const type = phone ? 'CS' : 'LD';
+  document.getElementById('customerIdDisplay').value = generateId(type);
+  document.getElementById('customerIdHint').textContent = phone
+    ? 'شماره وارد شد → مشتری (CS)'
+    : 'بدون شماره → لید (LD)';
+}
+
+document.getElementById('customerPhone').addEventListener('input', updatePreviewId);
+
+function closeCustomerModal() {
+  document.getElementById('customerModal').classList.remove('active');
+}
+
+function saveCustomer() {
+  const editId = document.getElementById('editCustomerId').value;
+  const platformId = document.getElementById('customerPlatformId').value.trim();
+  const platform = document.getElementById('customerPlatform').value;
+  const name = document.getElementById('customerName').value.trim();
+  const phone = document.getElementById('customerPhone').value.trim();
+  const status = document.getElementById('customerStatus').value;
+  const notes = document.getElementById('customerNotes').value.trim();
+
+  if (!platformId) {
+    showToast('ایدی پلتفرم را وارد کنید');
+    return;
+  }
+
+  // Duplicate check
+  if (!editId) {
+    const existById = data.customers.find(c => c.platformId.toLowerCase() === platformId.toLowerCase());
+    const existByPhone = phone && data.customers.find(c => c.phone && c.phone === phone);
+
+    if (existById) {
+      openCustomerDetail(existById.id);
+      showToast(`این ایدی قبلاً ثبت شده — پنل مشتری ${existById.id} باز شد`);
+      return;
+    }
+    if (existByPhone) {
+      openCustomerDetail(existByPhone.id);
+      showToast(`این شماره قبلاً ثبت شده — پنل مشتری ${existByPhone.id} باز شد`);
+      return;
+    }
+
+    // Auto type: phone → CS, no phone → LD
+    const type = phone ? 'CS' : 'LD';
+    const id = generateId(type);
+    data.customers.push({ id, platformId, platform, name, phone, status, notes });
+  } else {
+    // Edit existing
+    const dupById = data.customers.find(c => c.id !== editId && c.platformId.toLowerCase() === platformId.toLowerCase());
+    const dupByPhone = phone && data.customers.find(c => c.id !== editId && c.phone && c.phone === phone);
+
+    if (dupById) {
+      showToast(`این ایدی متعلق به مشتری ${dupById.id} است`);
+      return;
+    }
+    if (dupByPhone) {
+      showToast(`این شماره متعلق به مشتری ${dupByPhone.id} است`);
+      return;
+    }
+
+    const idx = data.customers.findIndex(c => c.id === editId);
+    if (idx !== -1) {
+      const oldCustomer = data.customers[idx];
+      const wasLD = oldCustomer.id.startsWith('LD');
+      const nowHasPhone = phone && phone.length > 0;
+
+      // LD → CS conversion: phone added to a lead
+      if (wasLD && nowHasPhone) {
+        const newId = generateId('CS');
+        data.customers[idx] = {
+          ...oldCustomer,
+          id: newId,
+          platformId, platform, name, phone, status, notes
+        };
+        // Update followups to reference new ID
+        data.followups.forEach(f => {
+          if (f.customerId === oldCustomer.id) f.customerId = newId;
+        });
+        data.convertedCount = (data.convertedCount || 0) + 1;
+        saveData();
+        renderCustomers();
+        renderFollowups();
+        closeCustomerModal();
+        showToast(`شماره ثبت شد — ${oldCustomer.id} تبدیل شد به ${newId}`);
+        return;
+      }
+
+      // CS → LD conversion: phone removed from a customer
+      if (!wasLD && !nowHasPhone && oldCustomer.id.startsWith('CS')) {
+        const newId = generateId('LD');
+        data.customers[idx] = {
+          ...oldCustomer,
+          id: newId,
+          platformId, platform, name, phone, status, notes
+        };
+        data.followups.forEach(f => {
+          if (f.customerId === oldCustomer.id) f.customerId = newId;
+        });
+        saveData();
+        renderCustomers();
+        renderFollowups();
+        closeCustomerModal();
+        showToast(`شماره حذف شد — ${oldCustomer.id} تبدیل شد به ${newId}`);
+        return;
+      }
+
+      // Normal edit (no type change)
+      data.customers[idx] = {
+        ...oldCustomer,
+        platformId, platform, name, phone, status, notes
+      };
+    }
+  }
+
+  saveData();
+  renderCustomers();
+  closeCustomerModal();
+  showToast(editId ? 'مشتری ویرایش شد' : 'مشتری جدید اضافه شد');
+}
+
+function editCustomer(id) {
+  openCustomerModal(id);
+}
+
+function deleteCustomer(id) {
+  const customer = data.customers.find(c => c.id === id);
+  document.getElementById('deleteMessage').textContent =
+    `آیا از حذف "${customer.name || customer.id}" مطمئن هستید؟ تمام پیگیری‌های مرتبط هم حذف می‌شوند.`;
+  document.getElementById('deleteConfirmBtn').onclick = function() {
+    data.customers = data.customers.filter(c => c.id !== id);
+    data.followups = data.followups.filter(f => f.customerId !== id);
+    saveData();
+    renderCustomers();
+    renderFollowups();
+    closeDeleteModal();
+    showToast('مشتری حذف شد');
+  };
+  document.getElementById('deleteModal').classList.add('active');
+}
+
+// ============================================
+// Followup Modal
+// ============================================
+function openFollowupModal(editIndex) {
+  const modal = document.getElementById('followupModal');
+  const title = document.getElementById('followupModalTitle');
+  const select = document.getElementById('followupCustomer');
+
+  // Populate customer dropdown
+  select.innerHTML = '<option value="">انتخاب کنید...</option>' +
+    data.customers.map(c =>
+      `<option value="${c.id}">${c.id} — ${c.name || c.platformId}</option>`
+    ).join('');
+
+  if (editIndex !== undefined) {
+    const f = data.followups[editIndex];
+    if (!f) return;
+    title.textContent = 'ویرایش پیگیری';
+    document.getElementById('editFollowupIndex').value = editIndex;
+    select.value = f.customerId;
+    document.getElementById('followupDate').value = f.date;
+    document.getElementById('followupNextDate').value = f.nextDate;
+    document.getElementById('followupType').value = f.type;
+    document.getElementById('followupResult').value = f.result;
+    document.getElementById('followupNotes').value = f.notes;
+  } else {
+    title.textContent = 'پیگیری جدید';
+    document.getElementById('editFollowupIndex').value = '';
+    select.value = '';
+    document.getElementById('followupDate').value = '';
+    document.getElementById('followupNextDate').value = '';
+    document.getElementById('followupType').value = 'دایرکت';
+    document.getElementById('followupResult').value = 'پاسخ داد';
+    document.getElementById('followupNotes').value = '';
+  }
+
+  modal.classList.add('active');
+  select.focus();
+}
+
+function closeFollowupModal() {
+  document.getElementById('followupModal').classList.remove('active');
+}
+
+function onFollowupCustomerChange() {
+  // Auto-fill notes from last followup if available
+  const customerId = document.getElementById('followupCustomer').value;
+  if (customerId) {
+    const last = data.followups.filter(f => f.customerId === customerId).pop();
+    if (last && !document.getElementById('followupNotes').value) {
+      // optionally prefill
+    }
+  }
+}
+
+function saveFollowup() {
+  const editIndex = document.getElementById('editFollowupIndex').value;
+  const customerId = document.getElementById('followupCustomer').value;
+  const date = document.getElementById('followupDate').value.trim();
+  const nextDate = document.getElementById('followupNextDate').value.trim();
+  const type = document.getElementById('followupType').value;
+  const result = document.getElementById('followupResult').value;
+  const notes = document.getElementById('followupNotes').value.trim();
+
+  if (!customerId) { showToast('مشتری را انتخاب کنید'); return; }
+  if (!date) { showToast('تاریخ پیگیری را وارد کنید'); return; }
+
+  if (editIndex !== '') {
+    data.followups[parseInt(editIndex)] = { customerId, date, nextDate, type, result, notes };
+  } else {
+    data.followups.push({ customerId, date, nextDate, type, result, notes });
+  }
+
+  saveData();
+  renderFollowups();
+  renderCustomers(); // update counts
+  closeFollowupModal();
+  showToast(editIndex !== '' ? 'پیگیری ویرایش شد' : 'پیگیری جدید ثبت شد');
+}
+
+function editFollowup(index) {
+  openFollowupModal(index);
+}
+
+function deleteFollowup(index) {
+  const f = data.followups[index];
+  document.getElementById('deleteMessage').textContent =
+    `آیا از حذف پیگیری ${f.customerId} در تاریخ ${f.date} مطمئن هستید؟`;
+  document.getElementById('deleteConfirmBtn').onclick = function() {
+    data.followups.splice(index, 1);
+    saveData();
+    renderFollowups();
+    renderCustomers();
+    closeDeleteModal();
+    showToast('پیگیری حذف شد');
+  };
+  document.getElementById('deleteModal').classList.add('active');
+}
+
+function closeDeleteModal() {
+  document.getElementById('deleteModal').classList.remove('active');
+}
+
+// ============================================
+// Customer Detail Panel
+// ============================================
+function openCustomerDetail(id) {
+  const c = data.customers.find(x => x.id === id);
+  if (!c) return;
+
+  const customerFollowups = data.followups.filter(f => f.customerId === id);
+  const idClass = c.id.startsWith('CS') ? 'id-cs' : 'id-ld';
+  const platformLabel = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' }[c.platform] || c.platform;
+  const statusLabel = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد' }[c.status] || c.status;
+
+  document.getElementById('detailTitle').textContent = `پنل مشتری — ${c.name || c.platformId}`;
+
+  let html = `
+    <div class="detail-info">
+      <div class="detail-field">
+        <span class="detail-label">شناسه</span>
+        <span class="detail-value"><span class="id-badge ${idClass}">${c.id}</span></span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">وضعیت</span>
+        <span class="detail-value">${statusLabel}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">ایدی پلتفرم</span>
+        <span class="detail-value" style="font-family:monospace;">${c.platformId}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">پلتفرم</span>
+        <span class="detail-value">${platformLabel}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">نام</span>
+        <span class="detail-value">${c.name || '—'}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">شماره تماس</span>
+        <span class="detail-value" style="direction:ltr;text-align:right;">${c.phone || '—'}</span>
+      </div>
+      <div class="detail-field full">
+        <span class="detail-label">توضیحات</span>
+        <span class="detail-value">${c.notes || '—'}</span>
+      </div>
+    </div>
+
+    <div class="detail-products" style="margin-bottom:20px;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:12px;">محصولات</div>
+      <div id="detailProductsList"></div>
+      <button class="btn btn-sm" style="margin-top:8px;" onclick="addProductRow('${c.id}')">+ افزودن محصول</button>
+    </div>
+
+    <div class="detail-timeline-title">
+      تاریخچه پیگیری <span class="count">${customerFollowups.length}</span>
+    </div>
+  `;
+
+  if (customerFollowups.length === 0) {
+    html += `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری ثبت نشده</div>`;
+  } else {
+    html += `<div class="timeline">`;
+    customerFollowups.forEach(f => {
+      const nextHtml = f.nextDate ? `<div class="timeline-next">پیگیری بعدی: ${f.nextDate}</div>` : '';
+      html += `
+        <div class="timeline-item">
+          <div class="timeline-header">
+            <span class="timeline-date">${f.date}</span>
+            <span class="timeline-type">${f.type}</span>
+          </div>
+          <div class="timeline-result">${f.result}</div>
+          ${f.notes ? `<div class="timeline-notes">${f.notes}</div>` : ''}
+          ${nextHtml}
+        </div>
+      `;
+    });
+    html += `</div>`;
+  }
+
+  // Quick note input
+  html += `
+    <div class="detail-add-note" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">افزودن توضیحات جدید</div>
+      <textarea class="form-textarea" id="detailQuickNote" placeholder="توضیحات جدید را اینجا بنویسید..." style="min-height:60px;margin-bottom:8px;"></textarea>
+      <div class="form-row">
+        <div class="form-group" style="margin-bottom:0;">
+          <select class="form-select" id="detailQuickType" style="font-size:13px;padding:7px 10px;">
+            <option value="دایرکت">دایرکت</option>
+            <option value="تماس">تماس</option>
+            <option value="کامنت">کامنت</option>
+            <option value="پیام">پیام</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <select class="form-select" id="detailQuickResult" style="font-size:13px;padding:7px 10px;">
+            <option value="پاسخ داد">پاسخ داد</option>
+            <option value="صحبت شد">صحبت شد</option>
+            <option value="ارسال قیمت">ارسال قیمت</option>
+            <option value="ارسال اطلاعات">ارسال اطلاعات</option>
+            <option value="پیگیری">پیگیری</option>
+            <option value="پاسخ نداد">پاسخ نداد</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <button class="btn btn-primary" style="width:100%;" onclick="addQuickNote('${c.id}')">ثبت</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('detailBody').innerHTML = html;
+  document.getElementById('detailModal').classList.add('active');
+  renderProducts(id);
+}
+
+function addQuickNote(customerId) {
+  const textarea = document.getElementById('detailQuickNote');
+  const notes = textarea.value.trim();
+  const type = document.getElementById('detailQuickType').value;
+  const result = document.getElementById('detailQuickResult').value;
+
+  if (!notes) {
+    showToast('توضیحات را وارد کنید');
+    return;
+  }
+
+  const today = new Date();
+  const jalali = toJalali(today);
+  const dateStr = `${jalali.year}/${String(jalali.month).padStart(2,'0')}/${String(jalali.day).padStart(2,'0')}`;
+
+  data.followups.push({
+    customerId,
+    date: dateStr,
+    type,
+    result,
+    nextDate: '',
+    notes
+  });
+
+  saveData();
+  renderFollowups();
+  renderCustomers();
+  openCustomerDetail(customerId);
+  showToast('توضیحات ثبت شد');
+}
+
+function toJalali(gregorian) {
+  const gy = gregorian.getFullYear();
+  const gm = gregorian.getMonth() + 1;
+  const gd = gregorian.getDate();
+
+  const g_d_m = [0,31,59,90,120,151,181,212,243,273,304,334];
+  let gy2 = (gm > 2) ? (gy + 1) : gy;
+  let days = 355666 + (365 * gy) + Math.floor((gy2 + 3) / 4) - Math.floor((gy2 + 99) / 100) + Math.floor((gy2 + 399) / 400) + gd + g_d_m[gm - 1];
+  let jy = -1595 + (33 * Math.floor(days / 12053));
+  days %= 12053;
+  jy += 4 * Math.floor(days / 1461);
+  days %= 1461;
+  if (days > 365) {
+    jy += Math.floor((days - 1) / 365);
+    days = (days - 1) % 365;
+  }
+  let jm, jd;
+  if (days < 186) {
+    jm = 1 + Math.floor(days / 31);
+    jd = 1 + (days % 31);
+  } else {
+    jm = 7 + Math.floor((days - 186) / 30);
+    jd = 1 + ((days - 186) % 30);
+  }
+  return { year: jy, month: jm, day: jd };
+}
+
+function closeDetailModal() {
+  document.getElementById('detailModal').classList.remove('active');
+}
+
+// ============================================
+// Product Management
+// ============================================
+const PRODUCTS = ['آنلاین چینی', 'حضوری چینی', 'کتاب'];
+const PRODUCT_STATUSES = ['تکمیل', 'بیعانه'];
+
+function getProducts(customerId) {
+  const c = data.customers.find(x => x.id === customerId);
+  return (c && c.products) ? c.products : [];
+}
+
+function setProducts(customerId, products) {
+  const idx = data.customers.findIndex(c => c.id === customerId);
+  if (idx !== -1) {
+    data.customers[idx].products = products;
+    saveData();
+  }
+}
+
+function renderProducts(customerId) {
+  const container = document.getElementById('detailProductsList');
+  if (!container) return;
+  const products = getProducts(customerId);
+
+  if (products.length === 0) {
+    container.innerHTML = '<div style="font-size:13px;color:var(--text-muted);padding:8px 0;">محصولی ثبت نشده</div>';
+    return;
+  }
+
+  container.innerHTML = products.map((p, i) => {
+    const isCompleted = p.status === 'تکمیل';
+    const price = parseFloat(p.price) || 0;
+    const deposit = parseFloat(p.deposit) || 0;
+    const balance = price - deposit;
+
+    let priceHtml = '';
+    if (isCompleted) {
+      priceHtml = `<input type="number" class="product-price" placeholder="قیمت" value="${p.price || ''}" onchange="updateProduct('${customerId}', ${i}, 'price', this.value)">`;
+    } else if (p.status === 'بیعانه') {
+      priceHtml = `
+        <input type="number" class="product-deposit" placeholder="بیعانه" value="${p.deposit || ''}" onchange="updateProduct('${customerId}', ${i}, 'deposit', this.value)">
+        <input type="number" class="product-price" placeholder="قیمت کل" value="${p.price || ''}" onchange="updateProduct('${customerId}', ${i}, 'price', this.value)">
+      `;
+    }
+
+    let balanceHtml = '';
+    if (p.status === 'بیعانه' && price > 0) {
+      const bal = price - deposit;
+      balanceHtml = `<span class="product-balance ${bal > 0 ? 'negative' : ''}">مانده: ${bal.toLocaleString('fa-IR')}</span>`;
+    }
+
+    return `
+      <div class="product-row">
+        <select class="product-name" onchange="updateProduct('${customerId}', ${i}, 'name', this.value)">
+          ${PRODUCTS.map(pr => `<option value="${pr}" ${p.name === pr ? 'selected' : ''}>${pr}</option>`).join('')}
+        </select>
+        <select class="product-status" onchange="updateProduct('${customerId}', ${i}, 'status', this.value)">
+          ${PRODUCT_STATUSES.map(s => `<option value="${s}" ${p.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+        ${priceHtml}
+        ${balanceHtml}
+        <button class="btn-remove-product" onclick="removeProduct('${customerId}', ${i})" title="حذف">✕</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function addProductRow(customerId) {
+  const products = getProducts(customerId);
+  products.push({ name: PRODUCTS[0], status: PRODUCT_STATUSES[0], price: '', deposit: '' });
+  setProducts(customerId, products);
+  renderProducts(customerId);
+}
+
+function updateProduct(customerId, index, field, value) {
+  const products = getProducts(customerId);
+  if (products[index]) {
+    products[index][field] = value;
+    // Reset deposit when status changes to completed
+    if (field === 'status' && value === 'تکمیل') {
+      products[index].deposit = '';
+    }
+    setProducts(customerId, products);
+    renderProducts(customerId);
+  }
+}
+
+function removeProduct(customerId, index) {
+  const products = getProducts(customerId);
+  products.splice(index, 1);
+  setProducts(customerId, products);
+  renderProducts(customerId);
+}
+
+// ============================================
+// Tab switching
+// ============================================
+function switchTab(tab, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.sheet').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('sheet-' + tab).classList.add('active');
+}
+
+// ============================================
+// Sort
+// ============================================
+let sortState = { field: null, asc: true };
+
+function sortCustomers(field) {
+  if (sortState.field === field) sortState.asc = !sortState.asc;
+  else { sortState.field = field; sortState.asc = true; }
+
+  data.customers.sort((a, b) => {
+    let va = a[field], vb = b[field];
+    if (field === 'followupCount') {
+      va = data.followups.filter(f => f.customerId === a.id).length;
+      vb = data.followups.filter(f => f.customerId === b.id).length;
+    }
+    if (field === 'lastFollowup') {
+      va = (data.followups.filter(f => f.customerId === a.id).pop() || {}).date || '';
+      vb = (data.followups.filter(f => f.customerId === b.id).pop() || {}).date || '';
+    }
+    if (typeof va === 'number') return sortState.asc ? va - vb : vb - va;
+    return sortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa');
+  });
+  renderCustomers();
+}
+
+function sortFollowups(field) {
+  if (sortState.field === field) sortState.asc = !sortState.asc;
+  else { sortState.field = field; sortState.asc = true; }
+
+  data.followups.sort((a, b) => {
+    let va = a[field], vb = b[field];
+    if (field === 'customerName') {
+      va = (data.customers.find(c => c.id === a.customerId) || {}).name || '';
+      vb = (data.customers.find(c => c.id === b.customerId) || {}).name || '';
+    }
+    return sortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa');
+  });
+  renderFollowups();
+}
+
+// ============================================
+// Export
+// ============================================
+function exportToCSV() {
+  const headers = ['شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'وضعیت', 'توضیحات'];
+  const rows = data.customers.map(c => [
+    c.id, c.platformId, c.platform, c.name, c.phone, c.status, c.notes
+  ]);
+
+  const statusMap = { new: 'جدید', contacted: 'تماس گرفته', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', converting: 'در حال تبدیل' };
+  const platformMap = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' };
+
+  const csvContent = '\uFEFF' + [headers, ...rows.map(r => [
+    r[0], r[1], platformMap[r[2]] || r[2], r[3], r[4], statusMap[r[5]] || r[5], r[6]
+  ])].map(r => r.map(c => `"${(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `customers_${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
+  showToast('فایل CSV دانلود شد');
+}
+
+// ============================================
+// Utils
+// ============================================
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', function(e) {
+    if (e.target === this) {
+      this.classList.remove('active');
+    }
+  });
+});
+
+// Close modals on Escape
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+  }
+});
+
+// ============================================
+// Init
+// ============================================
+renderCustomers();
+renderFollowups();
+</script>
+
+</body>
+</html>
