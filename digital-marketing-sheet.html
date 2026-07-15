@@ -639,6 +639,10 @@
         <div class="label">تبدیل شده (LD→CS)</div>
         <div class="value" style="color: var(--success)" id="stat-converted">0</div>
       </div>
+      <div class="stat-card">
+        <div class="label">جمع پرداختی مشتریان</div>
+        <div class="value" style="color: var(--accent)" id="stat-revenue">۰</div>
+      </div>
     </div>
 
     <div class="toolbar">
@@ -1000,6 +1004,23 @@ function updateStats() {
     data.followups.some(f => f.customerId === c.id)
   ).length;
   document.getElementById('stat-converted').textContent = data.convertedCount || 0;
+
+  // Calculate total payments from products
+  let totalPaid = 0;
+  data.customers.forEach(c => {
+    if (c.products) {
+      c.products.forEach(p => {
+        const price = parseFloat(p.price) || 0;
+        const deposit = parseFloat(p.deposit) || 0;
+        if (p.status === 'تکمیل') {
+          totalPaid += price;
+        } else if (p.status === 'بیعانه') {
+          totalPaid += deposit;
+        }
+      });
+    }
+  });
+  document.getElementById('stat-revenue').textContent = totalPaid.toLocaleString('fa-IR') + ' ریال';
 }
 
 // ============================================
