@@ -249,6 +249,7 @@
   .status-followup_done { background: #b6effb; color: #055160; }
   .status-converting { background: #f8d7da; color: #842029; }
   .status-purchased { background: #d1e7dd; color: #0f5132; }
+  .status-cancelled { background: #e9ecef; color: #6c757d; text-decoration: line-through; }
 
   .notes-cell {
     max-width: 180px;
@@ -755,6 +756,7 @@
           <option value="followup_done">تکمیل پیگیری</option>
           <option value="converting">در حال تبدیل</option>
           <option value="purchased">خرید کرد</option>
+          <option value="cancelled">منصرف شده</option>
         </select>
       </div>
 
@@ -957,8 +959,17 @@ function renderCustomers() {
     const idClass = c.id.startsWith('CS') ? 'id-cs' : 'id-ld';
     const platformClass = { instagram: 'platform-ig', telegram: 'platform-tg', whatsapp: 'platform-wa' }[c.platform] || '';
     const platformLabel = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' }[c.platform] || c.platform;
-    const statusClass = { new: 'status-new', contacted: 'status-contacted', chatting: 'status-chatting', interested: 'status-interested', sent: 'status-sent', followup_done: 'status-followup_done', converting: 'status-converting', purchased: 'status-purchased' }[c.status] || 'status-new';
-    const statusLabel = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد' }[c.status] || c.status;
+    const statusClass = { new: 'status-new', contacted: 'status-contacted', chatting: 'status-chatting', interested: 'status-interested', sent: 'status-sent', followup_done: 'status-followup_done', converting: 'status-converting', purchased: 'status-purchased', cancelled: 'status-cancelled' }[c.status] || 'status-new';
+    const statusLabel = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }[c.status] || c.status;
+
+    // Platform profile link
+    const platformUrl = c.platform === 'instagram' ? `https://instagram.com/${c.platformId}`
+      : c.platform === 'telegram' ? `https://t.me/${c.platformId}`
+      : c.platform === 'whatsapp' ? `https://wa.me/${c.phone || c.platformId}`
+      : '';
+    const platformIdHtml = platformUrl
+      ? `<a href="${platformUrl}" target="_blank" rel="noopener" style="font-family:monospace;font-size:13px;color:var(--accent);text-decoration:none;border-bottom:1px dashed var(--accent);">${c.platformId}</a>`
+      : `<span style="font-family:monospace;font-size:13px;">${c.platformId}</span>`;
 
     const followupCount = data.followups.filter(f => f.customerId === c.id).length;
     let countClass = 'followup-none';
@@ -976,7 +987,7 @@ function renderCustomers() {
 
     return `<tr>
       <td><span class="id-badge ${idClass}">${c.id}</span></td>
-      <td style="font-family: monospace; font-size: 13px;">${c.platformId}</td>
+      <td>${platformIdHtml}</td>
       <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${platformLabel}</span></td>
       <td>${c.name || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td style="font-family: monospace; direction: ltr; text-align: right;">${c.phone || '<span style="color:var(--text-muted)">—</span>'}</td>
@@ -1643,6 +1654,8 @@ function switchTab(tab, el) {
 // ============================================
 let sortState = { field: null, asc: true };
 
+const STATUS_ORDER = ['new', 'contacted', 'chatting', 'interested', 'sent', 'followup_done', 'converting', 'purchased', 'cancelled'];
+
 function sortCustomers(field) {
   if (sortState.field === field) sortState.asc = !sortState.asc;
   else { sortState.field = field; sortState.asc = true; }
@@ -1656,6 +1669,11 @@ function sortCustomers(field) {
     if (field === 'lastFollowup') {
       va = (data.followups.filter(f => f.customerId === a.id).pop() || {}).date || '';
       vb = (data.followups.filter(f => f.customerId === b.id).pop() || {}).date || '';
+    }
+    if (field === 'status') {
+      const orderA = STATUS_ORDER.indexOf(va);
+      const orderB = STATUS_ORDER.indexOf(vb);
+      return sortState.asc ? orderA - orderB : orderB - orderA;
     }
     if (typeof va === 'number') return sortState.asc ? va - vb : vb - va;
     return sortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa');
