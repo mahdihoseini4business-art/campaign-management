@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>سیستم مدیریت کمپین دیجیتال مارکتینگ</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <style>
   :root {
     --ink: #1a1a2e;
@@ -443,6 +444,40 @@
   }
   .btn-remove-product:hover { background: var(--danger-light); }
 
+  /* --- Import Mapping --- */
+  .import-map-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+
+  .import-map-row .excel-col {
+    flex: 1;
+    font-weight: 500;
+    color: var(--text);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .import-map-row .arrow { color: var(--text-muted); font-size: 14px; }
+
+  .import-map-row select {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+
   /* --- Modal --- */
   .modal-overlay {
     display: none;
@@ -607,6 +642,7 @@
 <div class="header">
   <h1>مدیریت کمپین دیجیتال مارکتینگ</h1>
   <div class="header-actions">
+    <button class="btn" onclick="openImportModal()">ایمپورت اکسل</button>
     <button class="btn" onclick="exportToCSV()">خروجی CSV</button>
   </div>
 </div>
@@ -848,6 +884,37 @@
     <div class="modal-footer">
       <button class="btn" onclick="closeDeleteModal()">انصراف</button>
       <button class="btn btn-danger" id="deleteConfirmBtn">حذف</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال ایمپورت اکسل -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal" style="max-width: 600px;">
+    <div class="modal-header">
+      <h2>ایمپورت از اکسل</h2>
+      <button class="modal-close" onclick="closeImportModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="importStep1">
+        <div class="form-group">
+          <label>فایل اکسل را انتخاب کنید</label>
+          <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" style="font-size:13px;">
+        </div>
+      </div>
+      <div id="importStep2" style="display:none;">
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
+          هر ستون اکسل رو به کدوم فیلد برنامه اختصاص بدید:
+        </div>
+        <div id="importMapping"></div>
+        <div style="margin-top:12px;font-size:12px;color:var(--text-muted);">
+          <span id="importPreview"></span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeImportModal()">انصراف</button>
+      <button class="btn btn-primary" id="importBtn" onclick="doImport()" style="display:none;">ایمپورت</button>
     </div>
   </div>
 </div>
@@ -1718,6 +1785,177 @@ function exportToCSV() {
   link.download = `customers_${new Date().toISOString().slice(0,10)}.csv`;
   link.click();
   showToast('فایل CSV دانلود شد');
+}
+
+// ============================================
+// Import from Excel
+// ============================================
+const IMPORT_FIELDS = [
+  { key: 'platformId', label: 'ایدی پلتفرم' },
+  { key: 'platform', label: 'پلتفرم' },
+  { key: 'name', label: 'نام' },
+  { key: 'phone', label: 'شماره تماس' },
+  { key: 'status', label: 'وضعیت' },
+  { key: 'notes', label: 'توضیحات' },
+];
+
+const PLATFORM_MAP_IMPORT = {
+  'اینستاگرام': 'instagram', 'instagram': 'instagram', 'اینستا': 'instagram', 'insta': 'instagram',
+  'تلگرام': 'telegram', 'telegram': 'telegram', 'tg': 'telegram',
+  'واتساپ': 'whatsapp', 'whatsapp': 'whatsapp', 'wa': 'whatsapp',
+};
+
+const STATUS_MAP_IMPORT = {
+  'جدید': 'new', 'جديد': 'new',
+  'تماس گرفته شده': 'contacted', 'تماس گرفته': 'contacted',
+  'در حال چت': 'chatting',
+  'علاقمند': 'interested', 'علاقه‌مند': 'interested',
+  'اطلاعات ارسال شده': 'sent', 'اطلاعات ارسال': 'sent',
+  'تکمیل پیگیری': 'followup_done',
+  'در حال تبدیل': 'converting',
+  'خرید کرد': 'purchased', 'خرید': 'purchased',
+  'منصرف شده': 'cancelled', 'منصرف': 'cancelled',
+};
+
+let importData = { headers: [], rows: [], mapping: {} };
+
+function openImportModal() {
+  importData = { headers: [], rows: [], mapping: {} };
+  document.getElementById('importStep1').style.display = '';
+  document.getElementById('importStep2').style.display = 'none';
+  document.getElementById('importBtn').style.display = 'none';
+  document.getElementById('importFileInput').value = '';
+  document.getElementById('importMapping').innerHTML = '';
+  document.getElementById('importPreview').textContent = '';
+  document.getElementById('importModal').classList.add('active');
+}
+
+function closeImportModal() {
+  document.getElementById('importModal').classList.remove('active');
+}
+
+document.getElementById('importFileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const wb = XLSX.read(ev.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+      if (json.length < 2) {
+        showToast('فایل خالی است');
+        return;
+      }
+
+      importData.headers = json[0].map(h => String(h || '').trim());
+      importData.rows = json.slice(1).filter(r => r.some(c => c != null && String(c).trim() !== ''));
+
+      // Auto-detect mappings
+      importData.mapping = {};
+      const headerLower = importData.headers.map(h => h.toLowerCase());
+      IMPORT_FIELDS.forEach(f => {
+        const idx = headerLower.findIndex(h =>
+          h === f.label || h.includes(f.label) || f.label.includes(h)
+        );
+        if (idx !== -1) importData.mapping[f.key] = idx;
+      });
+
+      renderImportMapping();
+    } catch(err) {
+      showToast('خطا در خواندن فایل');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+function renderImportMapping() {
+  const container = document.getElementById('importMapping');
+  document.getElementById('importStep1').style.display = 'none';
+  document.getElementById('importStep2').style.display = '';
+  document.getElementById('importBtn').style.display = '';
+  document.getElementById('importPreview').textContent = `${importData.rows.length} ردیف داده یافت شد`;
+
+  container.innerHTML = importData.headers.map((h, i) => {
+    const selected = importData.mapping[Object.keys(importData.mapping).find(k => importData.mapping[k] === i)] || '';
+    return `
+      <div class="import-map-row">
+        <span class="excel-col" title="${h}">${h || '(خالی)'}</span>
+        <span class="arrow">←</span>
+        <select onchange="setImportMapping(${i}, this.value)">
+          <option value="">— نادیده گرفتن —</option>
+          ${IMPORT_FIELDS.map(f => `<option value="${f.key}" ${selected === f.key ? 'selected' : ''}>${f.label}</option>`).join('')}
+        </select>
+      </div>
+    `;
+  }).join('');
+}
+
+function setImportMapping(colIndex, fieldKey) {
+  // Remove old mapping for this field
+  Object.keys(importData.mapping).forEach(k => {
+    if (importData.mapping[k] === colIndex) delete importData.mapping[k];
+  });
+  // Remove old mapping for this field from other columns
+  if (fieldKey) {
+    Object.keys(importData.mapping).forEach(k => {
+      if (k === fieldKey) delete importData.mapping[k];
+    });
+    importData.mapping[fieldKey] = colIndex;
+  }
+}
+
+function doImport() {
+  const mapping = importData.mapping;
+  if (Object.keys(mapping).length === 0) {
+    showToast('حداقل یک ستون را نقشه‌برداری کنید');
+    return;
+  }
+
+  let imported = 0, skipped = 0;
+
+  importData.rows.forEach(row => {
+    const getValue = (fieldKey) => {
+      const colIdx = mapping[fieldKey];
+      if (colIdx === undefined || colIdx === null) return '';
+      return String(row[colIdx] || '').trim();
+    };
+
+    const platformId = getValue('platformId');
+    if (!platformId) { skipped++; return; }
+
+    const phone = getValue('phone');
+    const platformRaw = getValue('platform').toLowerCase();
+    const platform = PLATFORM_MAP_IMPORT[platformRaw] || platformRaw || 'instagram';
+    const statusRaw = getValue('status');
+    const status = STATUS_MAP_IMPORT[statusRaw] || statusRaw || 'new';
+
+    // Duplicate check
+    const existById = data.customers.find(c => c.platformId.toLowerCase() === platformId.toLowerCase());
+    const existByPhone = phone && data.customers.find(c => c.phone && c.phone === phone);
+
+    if (existById || existByPhone) { skipped++; return; }
+
+    const type = phone ? 'CS' : 'LD';
+    data.customers.push({
+      id: generateId(type),
+      platformId,
+      platform,
+      name: getValue('name'),
+      phone,
+      status,
+      notes: getValue('notes'),
+      products: []
+    });
+    imported++;
+  });
+
+  saveData();
+  renderCustomers();
+  closeImportModal();
+  showToast(`${imported} مشتری ایمپورت شد${skipped > 0 ? ` — ${skipped} ردیف رد شد` : ''}`);
 }
 
 // ============================================
