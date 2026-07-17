@@ -703,7 +703,6 @@
   <h1>مدیریت کمپین دیجیتال مارکتینگ</h1>
   <div class="header-actions">
     <button class="btn" onclick="openImportModal()">ایمپورت اکسل</button>
-    <button class="btn" onclick="exportToCSV()">خروجی CSV</button>
   </div>
 </div>
 
@@ -745,6 +744,8 @@
 
     <div class="toolbar">
       <input type="text" class="search-box" placeholder="جستجو..." id="searchCustomers" oninput="renderCustomers()">
+      <button class="btn" onclick="exportTabCSV('customers')">خروجی CSV</button>
+      <button class="btn" onclick="exportTabXLSX('customers')">خروجی Excel</button>
       <button class="btn btn-primary" onclick="openCustomerModal()">+ مشتری جدید</button>
     </div>
 
@@ -778,6 +779,8 @@
   <div class="sheet" id="sheet-followups">
     <div class="toolbar">
       <input type="text" class="search-box" placeholder="جستجو..." id="searchFollowups" oninput="renderFollowups()">
+      <button class="btn" onclick="exportTabCSV('followups')">خروجی CSV</button>
+      <button class="btn" onclick="exportTabXLSX('followups')">خروجی Excel</button>
       <button class="btn btn-primary" onclick="openFollowupModal()">+ پیگیری جدید</button>
     </div>
 
@@ -827,6 +830,8 @@
 
     <div class="toolbar">
       <input type="text" class="search-box" placeholder="جستجو (نام، شماره، محصول)..." id="searchSales" oninput="renderSales()">
+      <button class="btn" onclick="exportTabCSV('sales')">خروجی CSV</button>
+      <button class="btn" onclick="exportTabXLSX('sales')">خروجی Excel</button>
       <button class="btn btn-primary" onclick="openSalesImportModal()">ایمپورت فروش از اکسل</button>
     </div>
 
@@ -2292,25 +2297,72 @@ function sortFollowups(field) {
 // ============================================
 // Export
 // ============================================
-function exportToCSV() {
-  const headers = ['شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'وضعیت', 'توضیحات'];
-  const rows = data.customers.map(c => [
-    c.id, c.platformId, c.platform, c.name, c.phone, c.status, c.notes
-  ]);
+const EXPORT_CONFIG = {
+  customers: {
+    label: 'مشتریان',
+    headers: ['شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'وضعیت', 'توضیحات'],
+    getRows: () => {
+      const statusMap = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' };
+      const platformMap = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' };
+      return data.customers.map(c => [
+        c.id, c.platformId || '', platformMap[c.platform] || c.platform, c.name, c.phone, statusMap[c.status] || c.status, c.notes
+      ]);
+    }
+  },
+  followups: {
+    label: 'پیگیری‌ها',
+    headers: ['شناسه مشتری', 'نام مشتری', 'تاریخ', 'نوع', 'نتیجه', 'پیگیری بعدی', 'توضیحات'],
+    getRows: () => data.followups.map(f => {
+      const c = data.customers.find(x => x.id === f.customerId);
+      return [f.customerId, c ? c.name : '', f.date, f.type, f.result, f.nextDate, f.notes];
+    })
+  },
+  sales: {
+    label: 'فروش‌ها',
+    headers: ['شناسه مشتری', 'نام مشتری', 'شماره موبایل', 'پلتفرم', 'محصول', 'وضعیت', 'مبلغ کل', 'بیعانه', 'مانده', 'تاریخ تسویه'],
+    getRows: () => {
+      const platformMap = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' };
+      return getAllSales().map(s => [
+        s.customerId, s.customerName, s.customerPhone, platformMap[s.platform] || s.platform,
+        s.productName, s.status, s.price || '', s.deposit || '', s.balance || '', s.settlementDate || ''
+      ]);
+    }
+  }
+};
 
-  const statusMap = { new: 'جدید', contacted: 'تماس گرفته', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', converting: 'در حال تبدیل' };
-  const platformMap = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' };
+function exportTabCSV(tab) {
+  const cfg = EXPORT_CONFIG[tab];
+  if (!cfg) return;
 
-  const csvContent = '\uFEFF' + [headers, ...rows.map(r => [
-    r[0], r[1], platformMap[r[2]] || r[2], r[3], r[4], statusMap[r[5]] || r[5], r[6]
-  ])].map(r => r.map(c => `"${(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const csvContent = '\uFEFF' + [cfg.headers, ...cfg.getRows()]
+    .map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(','))
+    .join('\n');
 
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `customers_${new Date().toISOString().slice(0,10)}.csv`;
+  link.download = `${cfg.label}_${new Date().toISOString().slice(0,10)}.csv`;
   link.click();
-  showToast('فایل CSV دانلود شد');
+  showToast(`فایل CSV دانلود شد`);
+}
+
+function exportTabXLSX(tab) {
+  const cfg = EXPORT_CONFIG[tab];
+  if (!cfg) return;
+
+  const ws = XLSX.utils.aoa_to_sheet([cfg.headers, ...cfg.getRows()]);
+
+  // Auto column widths
+  const colWidths = cfg.headers.map((h, i) => {
+    const maxLen = Math.max(h.length, ...cfg.getRows().map(r => String(r[i] || '').length));
+    return { wch: Math.min(Math.max(maxLen + 2, 10), 30) };
+  });
+  ws['!cols'] = colWidths;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, cfg.label);
+  XLSX.writeFile(wb, `${cfg.label}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  showToast(`فایل Excel دانلود شد`);
 }
 
 // ============================================
