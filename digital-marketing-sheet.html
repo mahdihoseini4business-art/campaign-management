@@ -422,6 +422,41 @@
   .product-row .product-status { min-width: 100px; }
   .product-row .product-price { min-width: 120px; direction: ltr; text-align: left; }
   .product-row .product-deposit { min-width: 120px; direction: ltr; text-align: left; }
+  .product-row .product-settlement { min-width: 130px; direction: ltr; text-align: left; font-size: 12px; }
+
+  .settlement-overdue {
+    background: #fff3cd !important;
+    border-color: var(--warning) !important;
+    animation: pulseWarning 2s infinite;
+  }
+
+  @keyframes pulseWarning {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,193,7,0.3); }
+    50% { box-shadow: 0 0 0 4px rgba(255,193,7,0.1); }
+  }
+
+  .settlement-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .settlement-overdue-badge {
+    background: #f8d7da;
+    color: #842029;
+  }
+
+  .settlement-soon-badge {
+    background: #fff3cd;
+    color: #664d03;
+  }
+
+  .settlement-ok-badge {
+    background: #d1e7dd;
+    color: #0f5132;
+  }
 
   .product-balance {
     font-size: 12px;
@@ -781,6 +816,7 @@
             <th onclick="sortSales('price')">مبلغ کل</th>
             <th onclick="sortSales('deposit')">بیعانه</th>
             <th onclick="sortSales('balance')">مانده</th>
+            <th onclick="sortSales('settlementDate')">تاریخ تسویه</th>
           </tr>
         </thead>
         <tbody id="salesBody"></tbody>
@@ -1703,6 +1739,7 @@ function renderProducts(customerId) {
       priceHtml = `
         <input type="number" class="product-deposit" placeholder="بیعانه" value="${p.deposit || ''}" onchange="updateProduct('${customerId}', ${i}, 'deposit', this.value)">
         <input type="number" class="product-price" placeholder="قیمت کل" value="${p.price || ''}" onchange="updateProduct('${customerId}', ${i}, 'price', this.value)">
+        <input type="text" class="product-settlement" placeholder="تاریخ تسویه: 1404/05/01" value="${p.settlementDate || ''}" onchange="updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">
       `;
     }
 
@@ -1730,7 +1767,7 @@ function renderProducts(customerId) {
 
 function addProductRow(customerId) {
   const products = getProducts(customerId);
-  products.push({ name: PRODUCTS[0], status: PRODUCT_STATUSES[0], price: '', deposit: '' });
+  products.push({ name: PRODUCTS[0], status: PRODUCT_STATUSES[0], price: '', deposit: '', settlementDate: '' });
   setProducts(customerId, products);
   renderProducts(customerId);
   renderSales();
@@ -1771,6 +1808,22 @@ function switchTab(tab, el) {
 // ============================================
 // Sales
 // ============================================
+function jalaliToNum(dateStr) {
+  if (!dateStr) return 99999999;
+  const parts = dateStr.split('/');
+  if (parts.length !== 3) return 99999999;
+  const y = parseInt(parts[0]) || 0;
+  const m = parseInt(parts[1]) || 0;
+  const d = parseInt(parts[2]) || 0;
+  return y * 10000 + m * 100 + d;
+}
+
+function getTodayJalaliNum() {
+  const now = new Date();
+  const j = toJalali(now);
+  return j.year * 10000 + j.month * 100 + j.day;
+}
+
 function getAllSales() {
   const sales = [];
   data.customers.forEach(c => {
@@ -1787,7 +1840,8 @@ function getAllSales() {
           status: p.status,
           price,
           deposit,
-          balance
+          balance,
+          settlementDate: p.settlementDate || ''
         });
       });
     }
@@ -1809,6 +1863,17 @@ function renderSales() {
     );
   }
 
+  // Sort: overdue settlement dates first, then by date ascending
+  const todayNum = getTodayJalaliNum();
+  allSales.sort((a, b) => {
+    const aNum = a.settlementDate ? jalaliToNum(a.settlementDate) : 99999999;
+    const bNum = b.settlementDate ? jalaliToNum(b.settlementDate) : 99999999;
+    const aOverdue = aNum < todayNum && a.settlementDate ? 0 : 1;
+    const bOverdue = bNum < todayNum && b.settlementDate ? 0 : 1;
+    if (aOverdue !== bOverdue) return aOverdue - bOverdue;
+    return aNum - bNum;
+  });
+
   // Stats
   const totalSales = getAllSales();
   const cashSales = totalSales.filter(s => s.status === 'تکمیل');
@@ -1827,7 +1892,7 @@ function renderSales() {
 
   if (allSales.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="8">
+      <tr><td colspan="9">
         <div class="empty-state">
           <div class="icon">🛒</div>
           <h3>فروشی ثبت نشده</h3>
@@ -1846,7 +1911,22 @@ function renderSales() {
     const statusColor = s.status === 'تکمیل' ? 'var(--success)' : 'var(--warning)';
     const balanceClass = s.balance > 0 ? 'color:var(--danger);' : '';
 
-    return `<tr>
+    // Settlement date badge
+    let settlementHtml = '—';
+    let rowClass = '';
+    if (s.settlementDate) {
+      const dateNum = jalaliToNum(s.settlementDate);
+      if (dateNum < todayNum) {
+        settlementHtml = `<span class="settlement-badge settlement-overdue-badge">⚠ ${s.settlementDate}</span>`;
+        rowClass = 'settlement-overdue';
+      } else if (dateNum < todayNum + 300) {
+        settlementHtml = `<span class="settlement-badge settlement-soon-badge">${s.settlementDate}</span>`;
+      } else {
+        settlementHtml = `<span class="settlement-badge settlement-ok-badge">${s.settlementDate}</span>`;
+      }
+    }
+
+    return `<tr class="${rowClass}">
       <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="openCustomerDetail('${s.customerId}')">${s.customerId}</span></td>
       <td>${s.customerName}</td>
       <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${pLabel}</span></td>
@@ -1855,6 +1935,7 @@ function renderSales() {
       <td style="direction:ltr;text-align:right;font-family:monospace;">${s.price > 0 ? s.price.toLocaleString('fa-IR') : '—'}</td>
       <td style="direction:ltr;text-align:right;font-family:monospace;">${s.deposit > 0 ? s.deposit.toLocaleString('fa-IR') : '—'}</td>
       <td style="direction:ltr;text-align:right;font-family:monospace;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? s.balance.toLocaleString('fa-IR') : '—'}</td>
+      <td style="font-size:12px;">${settlementHtml}</td>
     </tr>`;
   }).join('');
 }
@@ -1868,6 +1949,10 @@ function sortSales(field) {
   const allSales = getAllSales();
   allSales.sort((a, b) => {
     let va = a[field], vb = b[field];
+    if (field === 'settlementDate') {
+      va = jalaliToNum(va);
+      vb = jalaliToNum(vb);
+    }
     if (typeof va === 'number') return salesSortState.asc ? va - vb : vb - va;
     return salesSortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa');
   });
@@ -1875,6 +1960,7 @@ function sortSales(field) {
   const tbody = document.getElementById('salesBody');
   const platformLabel = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' };
   const platformClassMap = { instagram: 'platform-ig', telegram: 'platform-tg', whatsapp: 'platform-wa' };
+  const todayNum = getTodayJalaliNum();
 
   tbody.innerHTML = allSales.map(s => {
     const pClass = platformClassMap[s.platform] || '';
@@ -1882,7 +1968,21 @@ function sortSales(field) {
     const statusColor = s.status === 'تکمیل' ? 'var(--success)' : 'var(--warning)';
     const balanceClass = s.balance > 0 ? 'color:var(--danger);' : '';
 
-    return `<tr>
+    let settlementHtml = '—';
+    let rowClass = '';
+    if (s.settlementDate) {
+      const dateNum = jalaliToNum(s.settlementDate);
+      if (dateNum < todayNum) {
+        settlementHtml = `<span class="settlement-badge settlement-overdue-badge">⚠ ${s.settlementDate}</span>`;
+        rowClass = 'settlement-overdue';
+      } else if (dateNum < todayNum + 300) {
+        settlementHtml = `<span class="settlement-badge settlement-soon-badge">${s.settlementDate}</span>`;
+      } else {
+        settlementHtml = `<span class="settlement-badge settlement-ok-badge">${s.settlementDate}</span>`;
+      }
+    }
+
+    return `<tr class="${rowClass}">
       <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="openCustomerDetail('${s.customerId}')">${s.customerId}</span></td>
       <td>${s.customerName}</td>
       <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${pLabel}</span></td>
@@ -1891,6 +1991,7 @@ function sortSales(field) {
       <td style="direction:ltr;text-align:right;font-family:monospace;">${s.price > 0 ? s.price.toLocaleString('fa-IR') : '—'}</td>
       <td style="direction:ltr;text-align:right;font-family:monospace;">${s.deposit > 0 ? s.deposit.toLocaleString('fa-IR') : '—'}</td>
       <td style="direction:ltr;text-align:right;font-family:monospace;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? s.balance.toLocaleString('fa-IR') : '—'}</td>
+      <td style="font-size:12px;">${settlementHtml}</td>
     </tr>`;
   }).join('');
 }
