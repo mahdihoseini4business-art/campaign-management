@@ -449,8 +449,8 @@
   }
 
   .settlement-soon-badge {
-    background: #fff3cd;
-    color: #664d03;
+    background: #d1e7dd;
+    color: #0f5132;
   }
 
   .settlement-ok-badge {
@@ -1744,7 +1744,7 @@ function renderProducts(customerId) {
       priceHtml = `
         <input type="number" class="product-deposit" placeholder="بیعانه" value="${p.deposit || ''}" onchange="updateProduct('${customerId}', ${i}, 'deposit', this.value)">
         <input type="number" class="product-price" placeholder="قیمت کل" value="${p.price || ''}" onchange="updateProduct('${customerId}', ${i}, 'price', this.value)">
-        <input type="text" class="product-settlement" placeholder="تاریخ تسویه: 1404/05/01" value="${p.settlementDate || ''}" onchange="updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">
+        <input type="text" class="product-settlement" placeholder="تاریخ تسویه: 1405/05/01" value="${p.settlementDate || ''}" onchange="updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">
       `;
     }
 
