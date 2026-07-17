@@ -424,6 +424,25 @@
   .product-row .product-deposit { min-width: 120px; direction: ltr; text-align: left; }
   .product-row .product-settlement { min-width: 130px; direction: ltr; text-align: left; font-size: 12px; }
 
+  /* Force English/Latin font on all number inputs and displays */
+  input[type="number"],
+  input.product-price,
+  input.product-deposit,
+  .stat-card .value,
+  .product-balance,
+  [style*="font-family:monospace"],
+  [style*="direction:ltr"] {
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', 'Courier New', monospace !important;
+  }
+
+  /* Comma-formatted number inputs */
+  .num-input {
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', 'Courier New', monospace !important;
+    direction: ltr;
+    text-align: right;
+    letter-spacing: 0.3px;
+  }
+
   .settlement-overdue {
     background: #fff3cd !important;
     border-color: var(--warning) !important;
@@ -1189,7 +1208,7 @@ function updateStats() {
       });
     }
   });
-  document.getElementById('stat-revenue').textContent = totalPaid.toLocaleString('fa-IR') + ' ریال';
+  document.getElementById('stat-revenue').textContent = formatNumber(totalPaid) + ' ریال';
 }
 
 // ============================================
@@ -1739,11 +1758,11 @@ function renderProducts(customerId) {
 
     let priceHtml = '';
     if (isCompleted) {
-      priceHtml = `<input type="number" class="product-price" placeholder="قیمت" value="${p.price || ''}" onchange="updateProduct('${customerId}', ${i}, 'price', this.value)">`;
+      priceHtml = `<input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت" value="${p.price ? formatNumber(p.price) : ''}" oninput="formatInput(this)" onchange="updateProduct('${customerId}', ${i}, 'price', unformatInput(this))">`;
     } else if (p.status === 'بیعانه') {
       priceHtml = `
-        <input type="number" class="product-deposit" placeholder="بیعانه" value="${p.deposit || ''}" onchange="updateProduct('${customerId}', ${i}, 'deposit', this.value)">
-        <input type="number" class="product-price" placeholder="قیمت کل" value="${p.price || ''}" onchange="updateProduct('${customerId}', ${i}, 'price', this.value)">
+        <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="بیعانه" value="${p.deposit ? formatNumber(p.deposit) : ''}" oninput="formatInput(this)" onchange="updateProduct('${customerId}', ${i}, 'deposit', unformatInput(this))">
+        <input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت کل" value="${p.price ? formatNumber(p.price) : ''}" oninput="formatInput(this)" onchange="updateProduct('${customerId}', ${i}, 'price', unformatInput(this))">
         <input type="text" class="product-settlement" placeholder="تاریخ تسویه: 1405/05/01" value="${p.settlementDate || ''}" onchange="updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">
       `;
     }
@@ -1751,7 +1770,7 @@ function renderProducts(customerId) {
     let balanceHtml = '';
     if (p.status === 'بیعانه' && price > 0) {
       const bal = price - deposit;
-      balanceHtml = `<span class="product-balance ${bal > 0 ? 'negative' : ''}">مانده: ${bal.toLocaleString('fa-IR')}</span>`;
+      balanceHtml = `<span class="product-balance ${bal > 0 ? 'negative' : ''}">مانده: ${formatNumber(bal)}</span>`;
     }
 
     return `
@@ -1903,10 +1922,10 @@ function renderSales() {
   const totalAll = totalSales.reduce((sum, s) => sum + s.price, 0);
 
   document.getElementById('stat-sales-count').textContent = totalSales.length;
-  document.getElementById('stat-sales-cash').textContent = totalCash.toLocaleString('fa-IR') + ' ریال';
-  document.getElementById('stat-sales-deposit').textContent = totalDeposit.toLocaleString('fa-IR') + ' ریال';
-  document.getElementById('stat-sales-balance').textContent = totalBalance.toLocaleString('fa-IR') + ' ریال';
-  document.getElementById('stat-sales-total').textContent = totalAll.toLocaleString('fa-IR') + ' ریال';
+  document.getElementById('stat-sales-cash').textContent = formatNumber(totalCash) + ' ریال';
+  document.getElementById('stat-sales-deposit').textContent = formatNumber(totalDeposit) + ' ریال';
+  document.getElementById('stat-sales-balance').textContent = formatNumber(totalBalance) + ' ریال';
+  document.getElementById('stat-sales-total').textContent = formatNumber(totalAll) + ' ریال';
 
   if (allSales.length === 0) {
     tbody.innerHTML = `
@@ -1952,9 +1971,9 @@ function renderSales() {
       <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${pLabel}</span></td>
       <td>${s.productName}</td>
       <td><span style="color:${statusColor};font-weight:600;">${s.status}</span></td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.price > 0 ? s.price.toLocaleString('fa-IR') : '—'}</td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.deposit > 0 ? s.deposit.toLocaleString('fa-IR') : '—'}</td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? s.balance.toLocaleString('fa-IR') : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.price > 0 ? formatNumber(s.price) : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.deposit > 0 ? formatNumber(s.deposit) : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? formatNumber(s.balance) : '—'}</td>
       <td style="font-size:12px;">${settlementHtml}</td>
     </tr>`;
   }).join('');
@@ -2010,9 +2029,9 @@ function sortSales(field) {
       <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${pLabel}</span></td>
       <td>${s.productName}</td>
       <td><span style="color:${statusColor};font-weight:600;">${s.status}</span></td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.price > 0 ? s.price.toLocaleString('fa-IR') : '—'}</td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.deposit > 0 ? s.deposit.toLocaleString('fa-IR') : '—'}</td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? s.balance.toLocaleString('fa-IR') : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.price > 0 ? formatNumber(s.price) : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.deposit > 0 ? formatNumber(s.deposit) : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? formatNumber(s.balance) : '—'}</td>
       <td style="font-size:12px;">${settlementHtml}</td>
     </tr>`;
   }).join('');
@@ -2263,6 +2282,22 @@ function doImport() {
 // ============================================
 // Utils
 // ============================================
+function formatNumber(n) {
+  if (n === '' || n === null || n === undefined) return '';
+  const num = typeof n === 'string' ? n.replace(/[^\d]/g, '') : n;
+  if (num === '' || isNaN(num)) return '';
+  return Number(num).toLocaleString('en-US');
+}
+
+function formatInput(el) {
+  let raw = el.value.replace(/[^\d]/g, '');
+  el.value = raw ? Number(raw).toLocaleString('en-US') : '';
+}
+
+function unformatInput(el) {
+  return el.value.replace(/[^\d]/g, '');
+}
+
 function escapeHtml(str) {
   if (!str) return '';
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
