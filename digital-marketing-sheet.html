@@ -651,6 +651,7 @@
   <div class="tabs">
     <button class="tab active" onclick="switchTab('customers', this)">لیست مشتریان</button>
     <button class="tab" onclick="switchTab('followups', this)">تاریخچه پیگیری</button>
+    <button class="tab" onclick="switchTab('sales', this)">فروش‌ها</button>
   </div>
 
   <!-- شیت ۱: لیست مشتریان -->
@@ -735,6 +736,54 @@
           </tr>
         </thead>
         <tbody id="followupBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- شیت ۳: فروش‌ها -->
+  <div class="sheet" id="sheet-sales">
+    <div class="stats">
+      <div class="stat-card">
+        <div class="label">تعداد کل فروش</div>
+        <div class="value" id="stat-sales-count">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">فروش نقد (تکمیل)</div>
+        <div class="value" style="color: var(--success)" id="stat-sales-cash">۰</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">بیعانه‌ها</div>
+        <div class="value" style="color: var(--warning)" id="stat-sales-deposit">۰</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">مانده حساب‌ها</div>
+        <div class="value" style="color: var(--danger)" id="stat-sales-balance">۰</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">جمع کل مبلغ</div>
+        <div class="value" style="color: var(--accent)" id="stat-sales-total">۰</div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" class="search-box" placeholder="جستجو..." id="searchSales" oninput="renderSales()">
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="sortSales('customerId')">شناسه مشتری</th>
+            <th onclick="sortSales('customerName')">نام مشتری</th>
+            <th onclick="sortSales('platform')">پلتفرم</th>
+            <th onclick="sortSales('productName')">محصول</th>
+            <th onclick="sortSales('status')">وضعیت</th>
+            <th onclick="sortSales('price')">مبلغ کل</th>
+            <th onclick="sortSales('deposit')">بیعانه</th>
+            <th onclick="sortSales('balance')">مانده</th>
+          </tr>
+        </thead>
+        <tbody id="salesBody"></tbody>
       </table>
     </div>
   </div>
@@ -1684,6 +1733,7 @@ function addProductRow(customerId) {
   products.push({ name: PRODUCTS[0], status: PRODUCT_STATUSES[0], price: '', deposit: '' });
   setProducts(customerId, products);
   renderProducts(customerId);
+  renderSales();
 }
 
 function updateProduct(customerId, index, field, value) {
@@ -1696,6 +1746,7 @@ function updateProduct(customerId, index, field, value) {
     }
     setProducts(customerId, products);
     renderProducts(customerId);
+    renderSales();
   }
 }
 
@@ -1704,6 +1755,7 @@ function removeProduct(customerId, index) {
   products.splice(index, 1);
   setProducts(customerId, products);
   renderProducts(customerId);
+  renderSales();
 }
 
 // ============================================
@@ -1714,6 +1766,133 @@ function switchTab(tab, el) {
   document.querySelectorAll('.sheet').forEach(s => s.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('sheet-' + tab).classList.add('active');
+}
+
+// ============================================
+// Sales
+// ============================================
+function getAllSales() {
+  const sales = [];
+  data.customers.forEach(c => {
+    if (c.products) {
+      c.products.forEach(p => {
+        const price = parseFloat(p.price) || 0;
+        const deposit = parseFloat(p.deposit) || 0;
+        const balance = price - deposit;
+        sales.push({
+          customerId: c.id,
+          customerName: c.name || c.platformId,
+          platform: c.platform,
+          productName: p.name,
+          status: p.status,
+          price,
+          deposit,
+          balance
+        });
+      });
+    }
+  });
+  return sales;
+}
+
+function renderSales() {
+  const tbody = document.getElementById('salesBody');
+  const search = (document.getElementById('searchSales').value || '').toLowerCase();
+
+  let allSales = getAllSales();
+
+  if (search) {
+    allSales = allSales.filter(s =>
+      s.customerId.toLowerCase().includes(search) ||
+      s.customerName.toLowerCase().includes(search) ||
+      s.productName.toLowerCase().includes(search)
+    );
+  }
+
+  // Stats
+  const totalSales = getAllSales();
+  const cashSales = totalSales.filter(s => s.status === 'تکمیل');
+  const depositSales = totalSales.filter(s => s.status === 'بیعانه');
+
+  const totalCash = cashSales.reduce((sum, s) => sum + s.price, 0);
+  const totalDeposit = depositSales.reduce((sum, s) => sum + s.deposit, 0);
+  const totalBalance = depositSales.reduce((sum, s) => sum + s.balance, 0);
+  const totalAll = totalSales.reduce((sum, s) => sum + s.price, 0);
+
+  document.getElementById('stat-sales-count').textContent = totalSales.length;
+  document.getElementById('stat-sales-cash').textContent = totalCash.toLocaleString('fa-IR') + ' ریال';
+  document.getElementById('stat-sales-deposit').textContent = totalDeposit.toLocaleString('fa-IR') + ' ریال';
+  document.getElementById('stat-sales-balance').textContent = totalBalance.toLocaleString('fa-IR') + ' ریال';
+  document.getElementById('stat-sales-total').textContent = totalAll.toLocaleString('fa-IR') + ' ریال';
+
+  if (allSales.length === 0) {
+    tbody.innerHTML = `
+      <tr><td colspan="8">
+        <div class="empty-state">
+          <div class="icon">🛒</div>
+          <h3>فروشی ثبت نشده</h3>
+          <p>از پنل مشتریان محصول اضافه کنید</p>
+        </div>
+      </td></tr>`;
+    return;
+  }
+
+  const platformLabel = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' };
+  const platformClass = { instagram: 'platform-ig', telegram: 'platform-tg', whatsapp: 'platform-wa' };
+
+  tbody.innerHTML = allSales.map(s => {
+    const pClass = platformClass[s.platform] || '';
+    const pLabel = platformLabel[s.platform] || s.platform;
+    const statusColor = s.status === 'تکمیل' ? 'var(--success)' : 'var(--warning)';
+    const balanceClass = s.balance > 0 ? 'color:var(--danger);' : '';
+
+    return `<tr>
+      <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="openCustomerDetail('${s.customerId}')">${s.customerId}</span></td>
+      <td>${s.customerName}</td>
+      <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${pLabel}</span></td>
+      <td>${s.productName}</td>
+      <td><span style="color:${statusColor};font-weight:600;">${s.status}</span></td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.price > 0 ? s.price.toLocaleString('fa-IR') : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.deposit > 0 ? s.deposit.toLocaleString('fa-IR') : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? s.balance.toLocaleString('fa-IR') : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+let salesSortState = { field: null, asc: true };
+
+function sortSales(field) {
+  if (salesSortState.field === field) salesSortState.asc = !salesSortState.asc;
+  else { salesSortState.field = field; salesSortState.asc = true; }
+
+  const allSales = getAllSales();
+  allSales.sort((a, b) => {
+    let va = a[field], vb = b[field];
+    if (typeof va === 'number') return salesSortState.asc ? va - vb : vb - va;
+    return salesSortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa');
+  });
+
+  const tbody = document.getElementById('salesBody');
+  const platformLabel = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' };
+  const platformClassMap = { instagram: 'platform-ig', telegram: 'platform-tg', whatsapp: 'platform-wa' };
+
+  tbody.innerHTML = allSales.map(s => {
+    const pClass = platformClassMap[s.platform] || '';
+    const pLabel = platformLabel[s.platform] || s.platform;
+    const statusColor = s.status === 'تکمیل' ? 'var(--success)' : 'var(--warning)';
+    const balanceClass = s.balance > 0 ? 'color:var(--danger);' : '';
+
+    return `<tr>
+      <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="openCustomerDetail('${s.customerId}')">${s.customerId}</span></td>
+      <td>${s.customerName}</td>
+      <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${pLabel}</span></td>
+      <td>${s.productName}</td>
+      <td><span style="color:${statusColor};font-weight:600;">${s.status}</span></td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.price > 0 ? s.price.toLocaleString('fa-IR') : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.deposit > 0 ? s.deposit.toLocaleString('fa-IR') : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? s.balance.toLocaleString('fa-IR') : '—'}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ============================================
@@ -1994,6 +2173,7 @@ document.addEventListener('keydown', function(e) {
 // ============================================
 renderCustomers();
 renderFollowups();
+renderSales();
 </script>
 
 </body>
