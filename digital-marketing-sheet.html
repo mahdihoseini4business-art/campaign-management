@@ -826,7 +826,8 @@
     </div>
 
     <div class="toolbar">
-      <input type="text" class="search-box" placeholder="جستجو..." id="searchSales" oninput="renderSales()">
+      <input type="text" class="search-box" placeholder="جستجو (نام، شماره، محصول)..." id="searchSales" oninput="renderSales()">
+      <button class="btn btn-primary" onclick="openSalesImportModal()">ایمپورت فروش از اکسل</button>
     </div>
 
     <div class="table-wrapper">
@@ -835,6 +836,7 @@
           <tr>
             <th onclick="sortSales('customerId')">شناسه مشتری</th>
             <th onclick="sortSales('customerName')">نام مشتری</th>
+            <th onclick="sortSales('customerPhone')">شماره موبایل</th>
             <th onclick="sortSales('platform')">پلتفرم</th>
             <th onclick="sortSales('productName')">محصول</th>
             <th onclick="sortSales('status')">وضعیت</th>
@@ -867,8 +869,8 @@
       </div>
 
       <div class="form-group">
-        <label>ایدی پلتفرم <span class="required">*</span></label>
-        <input type="text" class="form-input" id="customerPlatformId" placeholder="مثلاً: ali_98">
+        <label>ایدی پلتفرم</label>
+        <input type="text" class="form-input" id="customerPlatformId" placeholder="اختیاری - مثلاً: ali_98">
       </div>
 
       <div class="form-group">
@@ -1025,6 +1027,32 @@
     <div class="modal-footer">
       <button class="btn" onclick="closeImportModal()">انصراف</button>
       <button class="btn btn-primary" id="importBtn" onclick="doImport()" style="display:none;">ایمپورت</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال ایمپورت فروش -->
+<div class="modal-overlay" id="salesImportModal">
+  <div class="modal" style="max-width: 600px;">
+    <div class="modal-header">
+      <h2>ایمپورت فروش از اکسل</h2>
+      <button class="modal-close" onclick="closeSalesImportModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
+        فایل اکسل باید شامل ستون‌های: <b>شماره موبایل</b>، <b>نام مشتری</b>، <b>محصول</b>، <b>وضعیت</b>، <b>قیمت کل</b>، <b>بیعانه</b>، <b>تاریخ تسویه</b> باشد.
+        <br>شماره موبایل الزامی است. اگه مشتری وجود نداشته باشد خودکار ساخته می‌شود.
+      </div>
+      <div class="form-group">
+        <label>فایل اکسل را انتخاب کنید</label>
+        <input type="file" id="salesImportFileInput" accept=".xlsx,.xls,.csv" style="font-size:13px;">
+      </div>
+      <div id="salesImportMapping" style="display:none;"></div>
+      <div id="salesImportPreview" style="margin-top:8px;font-size:12px;color:var(--text-muted);"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeSalesImportModal()">انصراف</button>
+      <button class="btn btn-primary" id="salesImportBtn" onclick="doSalesImport()" style="display:none;">ایمپورت</button>
     </div>
   </div>
 </div>
@@ -1324,14 +1352,9 @@ function saveCustomer() {
   const status = document.getElementById('customerStatus').value;
   const notes = document.getElementById('customerNotes').value.trim();
 
-  if (!platformId) {
-    showToast('ایدی پلتفرم را وارد کنید');
-    return;
-  }
-
   // Duplicate check
   if (!editId) {
-    const existById = data.customers.find(c => c.platformId.toLowerCase() === platformId.toLowerCase());
+    const existById = platformId && data.customers.find(c => c.platformId && c.platformId.toLowerCase() === platformId.toLowerCase());
     const existByPhone = phone && data.customers.find(c => c.phone && c.phone === phone);
 
     if (existById) {
@@ -1351,7 +1374,7 @@ function saveCustomer() {
     data.customers.push({ id, platformId, platform, name, phone, status, notes });
   } else {
     // Edit existing
-    const dupById = data.customers.find(c => c.id !== editId && c.platformId.toLowerCase() === platformId.toLowerCase());
+    const dupById = platformId && data.customers.find(c => c.id !== editId && c.platformId && c.platformId.toLowerCase() === platformId.toLowerCase());
     const dupByPhone = phone && data.customers.find(c => c.id !== editId && c.phone && c.phone === phone);
 
     if (dupById) {
@@ -1873,6 +1896,7 @@ function getAllSales() {
         sales.push({
           customerId: c.id,
           customerName: c.name || c.platformId,
+          customerPhone: c.phone || '',
           platform: c.platform,
           productName: p.name,
           status: p.status,
@@ -1897,6 +1921,7 @@ function renderSales() {
     allSales = allSales.filter(s =>
       s.customerId.toLowerCase().includes(search) ||
       s.customerName.toLowerCase().includes(search) ||
+      s.customerPhone.includes(search) ||
       s.productName.toLowerCase().includes(search)
     );
   }
@@ -1930,7 +1955,7 @@ function renderSales() {
 
   if (allSales.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="9">
+      <tr><td colspan="10">
         <div class="empty-state">
           <div class="icon">🛒</div>
           <h3>فروشی ثبت نشده</h3>
@@ -1969,6 +1994,7 @@ function renderSales() {
     return `<tr class="${rowClass}">
       <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="openCustomerDetail('${s.customerId}')">${s.customerId}</span></td>
       <td>${s.customerName}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${s.customerPhone || '—'}</td>
       <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${pLabel}</span></td>
       <td>${s.productName}</td>
       <td><span style="color:${statusColor};font-weight:600;">${s.status}</span></td>
@@ -2027,6 +2053,7 @@ function sortSales(field) {
     return `<tr class="${rowClass}">
       <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="openCustomerDetail('${s.customerId}')">${s.customerId}</span></td>
       <td>${s.customerName}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${s.customerPhone || '—'}</td>
       <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${pLabel}</span></td>
       <td>${s.productName}</td>
       <td><span style="color:${statusColor};font-weight:600;">${s.status}</span></td>
@@ -2036,6 +2063,183 @@ function sortSales(field) {
       <td style="font-size:12px;">${settlementHtml}</td>
     </tr>`;
   }).join('');
+}
+
+// ============================================
+// Sales Import
+// ============================================
+const SALES_IMPORT_FIELDS = [
+  { key: 'phone', label: 'شماره موبایل', required: true },
+  { key: 'customerName', label: 'نام مشتری' },
+  { key: 'productName', label: 'محصول' },
+  { key: 'status', label: 'وضعیت' },
+  { key: 'price', label: 'قیمت کل' },
+  { key: 'deposit', label: 'بیعانه' },
+  { key: 'settlementDate', label: 'تاریخ تسویه' },
+];
+
+const SALES_STATUS_MAP = {
+  'تکمیل': 'تکمیل', 'complet': 'تکمیل', 'completed': 'تکمیل',
+  'بیعانه': 'بیعانه', 'deposit': 'بیعانه', 'partial': 'بیعانه',
+};
+
+let salesImportData = { headers: [], rows: [], mapping: {} };
+
+function openSalesImportModal() {
+  salesImportData = { headers: [], rows: [], mapping: {} };
+  document.getElementById('salesImportMapping').style.display = 'none';
+  document.getElementById('salesImportMapping').innerHTML = '';
+  document.getElementById('salesImportBtn').style.display = 'none';
+  document.getElementById('salesImportPreview').textContent = '';
+  document.getElementById('salesImportFileInput').value = '';
+  document.getElementById('salesImportModal').classList.add('active');
+}
+
+function closeSalesImportModal() {
+  document.getElementById('salesImportModal').classList.remove('active');
+}
+
+document.getElementById('salesImportFileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const wb = XLSX.read(ev.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+      if (json.length < 2) {
+        showToast('فایل خالی است');
+        return;
+      }
+
+      salesImportData.headers = json[0].map(h => String(h || '').trim());
+      salesImportData.rows = json.slice(1).filter(r => r.some(c => c != null && String(c).trim() !== ''));
+
+      // Auto-detect mappings
+      salesImportData.mapping = {};
+      const headerLower = salesImportData.headers.map(h => h.toLowerCase());
+      SALES_IMPORT_FIELDS.forEach(f => {
+        const idx = headerLower.findIndex(h =>
+          h === f.label || h.includes(f.label) || f.label.includes(h)
+        );
+        if (idx !== -1) salesImportData.mapping[f.key] = idx;
+      });
+
+      renderSalesImportMapping();
+    } catch(err) {
+      showToast('خطا در خواندن فایل');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+function renderSalesImportMapping() {
+  const container = document.getElementById('salesImportMapping');
+  container.style.display = '';
+  document.getElementById('salesImportBtn').style.display = '';
+  document.getElementById('salesImportPreview').textContent = `${salesImportData.rows.length} ردیف داده یافت شد`;
+
+  container.innerHTML = salesImportData.headers.map((h, i) => {
+    const selected = salesImportData.mapping[Object.keys(salesImportData.mapping).find(k => salesImportData.mapping[k] === i)] || '';
+    return `
+      <div class="import-map-row">
+        <span class="excel-col" title="${h}">${h || '(خالی)'}</span>
+        <span class="arrow">←</span>
+        <select onchange="setSalesImportMapping(${i}, this.value)">
+          <option value="">— نادیده گرفتن —</option>
+          ${SALES_IMPORT_FIELDS.map(f => `<option value="${f.key}" ${selected === f.key ? 'selected' : ''}>${f.label}${f.required ? ' *' : ''}</option>`).join('')}
+        </select>
+      </div>
+    `;
+  }).join('');
+}
+
+function setSalesImportMapping(colIndex, fieldKey) {
+  Object.keys(salesImportData.mapping).forEach(k => {
+    if (salesImportData.mapping[k] === colIndex) delete salesImportData.mapping[k];
+  });
+  if (fieldKey) {
+    Object.keys(salesImportData.mapping).forEach(k => {
+      if (k === fieldKey) delete salesImportData.mapping[k];
+    });
+    salesImportData.mapping[fieldKey] = colIndex;
+  }
+}
+
+function doSalesImport() {
+  const mapping = salesImportData.mapping;
+  if (!mapping.phone && mapping.phone !== 0) {
+    showToast('ستون شماره موبایل الزامی است');
+    return;
+  }
+
+  let imported = 0, skipped = 0, created = 0;
+
+  salesImportData.rows.forEach(row => {
+    const getValue = (fieldKey) => {
+      const colIdx = mapping[fieldKey];
+      if (colIdx === undefined || colIdx === null) return '';
+      return String(row[colIdx] || '').trim();
+    };
+
+    const phone = getValue('phone');
+    if (!phone) { skipped++; return; }
+
+    const productName = getValue('productName');
+    if (!productName) { skipped++; return; }
+
+    // Find or create customer by phone
+    let customer = data.customers.find(c => c.phone === phone);
+    if (!customer) {
+      const name = getValue('customerName') || '';
+      const id = generateId('CS');
+      customer = {
+        id,
+        platformId: '',
+        platform: 'instagram',
+        name,
+        phone,
+        status: 'new',
+        notes: 'خودکار ایجاد شده از ایمپورت فروش',
+        products: []
+      };
+      data.customers.push(customer);
+      created++;
+    }
+
+    // Check duplicate product
+    const statusRaw = getValue('status');
+    const status = SALES_STATUS_MAP[statusRaw] || statusRaw || 'تکمیل';
+    const price = parseFloat(String(getValue('price')).replace(/[^\d]/g, '')) || 0;
+    const deposit = parseFloat(String(getValue('deposit')).replace(/[^\d]/g, '')) || 0;
+    const settlementDate = getValue('settlementDate');
+
+    const isDuplicate = customer.products.some(p =>
+      p.name === productName && p.status === status && (parseFloat(p.price) || 0) === price
+    );
+    if (isDuplicate) { skipped++; return; }
+
+    customer.products.push({
+      name: productName,
+      status,
+      price: String(price),
+      deposit: String(deposit),
+      settlementDate
+    });
+    imported++;
+  });
+
+  saveData();
+  renderCustomers();
+  renderSales();
+  closeSalesImportModal();
+  let msg = `${imported} محصول ایمپورت شد`;
+  if (created > 0) msg += ` — ${created} مشتری جدید ایجاد شد`;
+  if (skipped > 0) msg += ` — ${skipped} ردیف رد شد`;
+  showToast(msg);
 }
 
 // ============================================
