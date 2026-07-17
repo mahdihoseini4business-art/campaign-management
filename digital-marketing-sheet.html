@@ -458,6 +458,11 @@
     color: #0f5132;
   }
 
+  .settlement-soon {
+    background: #d1e7dd !important;
+    border-color: var(--success) !important;
+  }
+
   .product-balance {
     font-size: 12px;
     color: var(--text-muted);
@@ -1818,10 +1823,23 @@ function jalaliToNum(dateStr) {
   return y * 10000 + m * 100 + d;
 }
 
-function getTodayJalaliNum() {
+function getTodayJalaliStr() {
   const now = new Date();
   const j = toJalali(now);
-  return j.year * 10000 + j.month * 100 + j.day;
+  return `${j.year}/${String(j.month).padStart(2,'0')}/${String(j.day).padStart(2,'0')}`;
+}
+
+function getTodayJalaliNum() {
+  return jalaliToNum(getTodayJalaliStr());
+}
+
+function jalaliAddDays(dateStr, days) {
+  const parts = dateStr.split('/').map(Number);
+  let y = parts[0], m = parts[1], d = parts[2] + days;
+  const daysInMonth = [31,31,31,31,31,31,30,30,30,30,30,29];
+  while (d > daysInMonth[m - 1]) { d -= daysInMonth[m - 1]; m++; if (m > 12) { m = 1; y++; } }
+  while (d <= 0) { m--; if (m < 1) { m = 12; y--; } d += daysInMonth[m - 1]; }
+  return y * 10000 + m * 100 + d;
 }
 
 function getAllSales() {
@@ -1916,13 +1934,15 @@ function renderSales() {
     let rowClass = '';
     if (s.settlementDate) {
       const dateNum = jalaliToNum(s.settlementDate);
+      const in3DaysNum = jalaliAddDays(getTodayJalaliStr(), 3);
       if (dateNum < todayNum) {
         settlementHtml = `<span class="settlement-badge settlement-overdue-badge">⚠ ${s.settlementDate}</span>`;
         rowClass = 'settlement-overdue';
-      } else if (dateNum < todayNum + 300) {
+      } else if (dateNum <= in3DaysNum) {
         settlementHtml = `<span class="settlement-badge settlement-soon-badge">${s.settlementDate}</span>`;
+        rowClass = 'settlement-soon';
       } else {
-        settlementHtml = `<span class="settlement-badge settlement-ok-badge">${s.settlementDate}</span>`;
+        settlementHtml = `<span style="font-family:monospace;">${s.settlementDate}</span>`;
       }
     }
 
@@ -1972,13 +1992,15 @@ function sortSales(field) {
     let rowClass = '';
     if (s.settlementDate) {
       const dateNum = jalaliToNum(s.settlementDate);
+      const in3DaysNum = jalaliAddDays(getTodayJalaliStr(), 3);
       if (dateNum < todayNum) {
         settlementHtml = `<span class="settlement-badge settlement-overdue-badge">⚠ ${s.settlementDate}</span>`;
         rowClass = 'settlement-overdue';
-      } else if (dateNum < todayNum + 300) {
+      } else if (dateNum <= in3DaysNum) {
         settlementHtml = `<span class="settlement-badge settlement-soon-badge">${s.settlementDate}</span>`;
+        rowClass = 'settlement-soon';
       } else {
-        settlementHtml = `<span class="settlement-badge settlement-ok-badge">${s.settlementDate}</span>`;
+        settlementHtml = `<span style="font-family:monospace;">${s.settlementDate}</span>`;
       }
     }
 
