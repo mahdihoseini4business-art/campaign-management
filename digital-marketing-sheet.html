@@ -53,7 +53,40 @@
 
   .header h1 { font-size: 18px; font-weight: 600; color: var(--ink); }
 
-  .header-actions { display: flex; gap: 8px; }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+
+  .profile-menu { position: relative; }
+
+  .profile-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 8px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    min-width: 160px;
+    z-index: 200;
+  }
+
+  .profile-dropdown.active { display: block; }
+
+  .profile-dropdown-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.15s;
+  }
+
+  .profile-dropdown-item:first-child { border-radius: var(--radius) var(--radius) 0 0; }
+  .profile-dropdown-item:last-child { border-radius: 0 0 var(--radius) var(--radius); }
+
+  .profile-dropdown-item:hover { background: var(--accent-light); color: var(--accent); }
 
   /* --- Main Content --- */
   .content { padding: 24px; max-width: 1400px; margin: 0 auto; }
@@ -702,7 +735,17 @@
 <div class="header">
   <h1>مدیریت کمپین دیجیتال مارکتینگ</h1>
   <div class="header-actions">
-    <button class="btn" onclick="openImportModal()">ایمپورت اکسل</button>
+    <div class="profile-menu">
+      <button class="btn btn-icon" onclick="toggleProfileMenu()" title="پروفایل" style="font-size:16px;">👤</button>
+      <div class="profile-dropdown" id="profileDropdown">
+        <div class="profile-dropdown-item" onclick="showToast('پروفایل - به زودی')">
+          <span>پروفایل</span>
+        </div>
+        <div class="profile-dropdown-item" onclick="showToast('تنظیمات - به زودی')">
+          <span>تنظیمات</span>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -746,6 +789,7 @@
       <input type="text" class="search-box" placeholder="جستجو..." id="searchCustomers" oninput="renderCustomers()">
       <button class="btn" onclick="exportTabCSV('customers')">خروجی CSV</button>
       <button class="btn" onclick="exportTabXLSX('customers')">خروجی Excel</button>
+      <button class="btn" onclick="openImportModal()">ایمپورت اکسل</button>
       <button class="btn btn-primary" onclick="openCustomerModal()">+ مشتری جدید</button>
     </div>
 
@@ -2566,6 +2610,20 @@ function showToast(msg) {
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2500);
 }
+
+// ============================================
+// Profile Menu
+// ============================================
+function toggleProfileMenu() {
+  document.getElementById('profileDropdown').classList.toggle('active');
+}
+
+document.addEventListener('click', function(e) {
+  const menu = document.querySelector('.profile-menu');
+  if (menu && !menu.contains(e.target)) {
+    document.getElementById('profileDropdown').classList.remove('active');
+  }
+});
 
 // Close modals on overlay click
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
