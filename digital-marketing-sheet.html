@@ -6,6 +6,7 @@
 <title>سیستم مدیریت کمپین دیجیتال مارکتینگ</title>
 <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --ink: #1a1a2e;
@@ -517,17 +518,50 @@
   }
 
   /* Dashboard */
-  .dash-row {
+  .dash-collapsible {
     display: flex;
-    gap: 12px;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.15s;
+    user-select: none;
   }
 
-  .dash-row .stat-card {
-    flex: 1;
-    min-width: 140px;
+  .dash-collapsible:hover { background: #f8f9fa; }
+
+  .dash-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 0 8px;
   }
+
+  .dash-arrow {
+    margin-right: auto;
+    font-size: 12px;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+  }
+
+  .dash-arrow.open { transform: rotate(-90deg); }
+
+  .dash-collapsible-body {
+    display: none;
+    padding: 8px 0 0 0;
+  }
+
+  .dash-collapsible-body.open { display: block; }
 
   .product-balance {
     font-size: 12px;
@@ -778,6 +812,7 @@
 
   <!-- شیت داشبرد -->
   <div class="sheet" id="sheet-dashboard">
+    <!-- فیلتر تاریخ -->
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
       <div style="font-size:16px;font-weight:600;">فیلتر تاریخ:</div>
       <input type="text" class="form-input" id="dashDateFrom" placeholder="از تاریخ: 1405/01/01" style="width:150px;font-family:monospace;direction:ltr;text-align:left;">
@@ -787,7 +822,7 @@
     </div>
 
     <!-- آمار کلی -->
-    <div class="stats" style="margin-bottom:16px;">
+    <div class="stats" style="margin-bottom:20px;">
       <div class="stat-card">
         <div class="label">کل مشتریان</div>
         <div class="value" id="dash-total-customers">0</div>
@@ -807,7 +842,7 @@
     </div>
 
     <!-- آمار پیگیری -->
-    <div class="stats" style="margin-bottom:16px;">
+    <div class="stats" style="margin-bottom:20px;">
       <div class="stat-card">
         <div class="label">پیگیری عقب افتاده</div>
         <div class="value" style="color:var(--danger)" id="dash-overdue-followup">0</div>
@@ -827,7 +862,7 @@
     </div>
 
     <!-- آمار فروش -->
-    <div class="stats" style="margin-bottom:16px;">
+    <div class="stats" style="margin-bottom:20px;">
       <div class="stat-card">
         <div class="label">تعداد کل فروش</div>
         <div class="value" id="dash-sales-count">0</div>
@@ -846,7 +881,7 @@
       </div>
     </div>
 
-    <div class="stats" style="margin-bottom:16px;">
+    <div class="stats" style="margin-bottom:24px;">
       <div class="stat-card" style="flex:2;">
         <div class="label">جمع کل مبلغ فروش</div>
         <div class="value" style="color:var(--accent);font-size:30px;" id="dash-sales-total">۰</div>
@@ -861,39 +896,49 @@
       </div>
     </div>
 
-    <!-- لیست پیگیری‌های عقب افتاده -->
-    <div style="margin-top:24px;">
-      <div style="font-size:15px;font-weight:600;margin-bottom:12px;color:var(--danger);">پیگیری‌های عقب افتاده</div>
+    <!-- نمودارها -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+      <div style="background:white;border:1px solid var(--border);border-radius:var(--radius);padding:16px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:12px;">وضعیت مشتریان</div>
+        <canvas id="chartCustomers" height="200"></canvas>
+      </div>
+      <div style="background:white;border:1px solid var(--border);border-radius:var(--radius);padding:16px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:12px;">وضعیت فروش</div>
+        <canvas id="chartSalesStatus" height="200"></canvas>
+      </div>
+    </div>
+
+    <div style="background:white;border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:24px;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:12px;">فروش بر اساس محصول</div>
+      <canvas id="chartProducts" height="160"></canvas>
+    </div>
+
+    <!-- پیگیری‌ها (کشویی) -->
+    <div class="dash-collapsible" onclick="toggleDashSection('overdue')">
+      <span style="color:var(--danger);">⚠</span>
+      <span>پیگیری‌های عقب افتاده</span>
+      <span class="dash-badge" id="dash-overdue-badge" style="background:var(--danger);color:white;">0</span>
+      <span class="dash-arrow" id="dash-arrow-overdue">◀</span>
+    </div>
+    <div class="dash-collapsible-body" id="dash-overdue-body">
       <div class="table-wrapper">
         <table>
-          <thead>
-            <tr>
-              <th>شناسه</th>
-              <th>نام</th>
-              <th>شماره</th>
-              <th>تاریخ پیگیری</th>
-              <th>تعداد فروش</th>
-            </tr>
-          </thead>
+          <thead><tr><th>شناسه</th><th>نام</th><th>شماره</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
           <tbody id="dashOverdueBody"></tbody>
         </table>
       </div>
     </div>
 
-    <!-- لیست پیگیری‌های نزدیک -->
-    <div style="margin-top:24px;">
-      <div style="font-size:15px;font-weight:600;margin-bottom:12px;color:var(--success);">پیگیری‌های نزدیک (۳ روز آینده)</div>
+    <div class="dash-collapsible" onclick="toggleDashSection('soon')" style="margin-top:8px;">
+      <span style="color:var(--success);">●</span>
+      <span>پیگیری‌های نزدیک (۳ روز آینده)</span>
+      <span class="dash-badge" id="dash-soon-badge" style="background:var(--success);color:white;">0</span>
+      <span class="dash-arrow" id="dash-arrow-soon">◀</span>
+    </div>
+    <div class="dash-collapsible-body" id="dash-soon-body">
       <div class="table-wrapper">
         <table>
-          <thead>
-            <tr>
-              <th>شناسه</th>
-              <th>نام</th>
-              <th>شماره</th>
-              <th>تاریخ پیگیری</th>
-              <th>تعداد فروش</th>
-            </tr>
-          </thead>
+          <thead><tr><th>شناسه</th><th>نام</th><th>شماره</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
           <tbody id="dashSoonBody"></tbody>
         </table>
       </div>
@@ -2327,19 +2372,22 @@ function sortSales(field) {
 // ============================================
 // Dashboard
 // ============================================
+let dashCharts = {};
+
+function toggleDashSection(section) {
+  const body = document.getElementById(`dash-${section}-body`);
+  const arrow = document.getElementById(`dash-arrow-${section}`);
+  body.classList.toggle('open');
+  arrow.classList.toggle('open');
+}
+
 function renderDashboard() {
   const dateFrom = document.getElementById('dashDateFrom').value.trim();
   const dateTo = document.getElementById('dashDateTo').value.trim();
-  const fromNum = dateFrom ? jalaliToNum(dateFrom) : 0;
-  const toNum = dateTo ? jalaliToNum(dateTo) : 99999999;
   const todayNum = getTodayJalaliNum();
   const in3DaysNum = jalaliAddDays(getTodayJalaliStr(), 3);
 
-  // Filter customers by followup date if filter is set
-  let customers = data.customers;
-  let followups = data.followups;
-
-  // General stats (not filtered)
+  // General stats
   document.getElementById('dash-total-customers').textContent = data.customers.length;
   document.getElementById('dash-total-leads').textContent = data.customers.filter(c => c.id.startsWith('LD')).length;
   document.getElementById('dash-total-cs').textContent = data.customers.filter(c => c.id.startsWith('CS')).length;
@@ -2354,11 +2402,8 @@ function renderDashboard() {
   data.customers.forEach(c => {
     if (c.nextFollowupDate) {
       const dNum = jalaliToNum(c.nextFollowupDate);
-      if (dNum < todayNum) {
-        overdueList.push(c);
-      } else if (dNum <= in3DaysNum) {
-        soonList.push(c);
-      }
+      if (dNum < todayNum) overdueList.push(c);
+      else if (dNum <= in3DaysNum) soonList.push(c);
       setCount++;
     } else {
       noSetCount++;
@@ -2369,6 +2414,8 @@ function renderDashboard() {
   document.getElementById('dash-soon-followup').textContent = soonList.length;
   document.getElementById('dash-set-followup').textContent = setCount;
   document.getElementById('dash-no-followup').textContent = noSetCount;
+  document.getElementById('dash-overdue-badge').textContent = overdueList.length;
+  document.getElementById('dash-soon-badge').textContent = soonList.length;
 
   // Sales stats
   const allSales = getAllSales();
@@ -2386,11 +2433,9 @@ function renderDashboard() {
   document.getElementById('dash-sales-balance').textContent = formatNumber(totalBalance) + ' ریال';
   document.getElementById('dash-sales-total').textContent = formatNumber(totalAll) + ' ریال';
 
-  // Active customers (with products)
   const activeCustomers = data.customers.filter(c => c.products && c.products.length > 0);
   document.getElementById('dash-active-customers').textContent = activeCustomers.length;
 
-  // Average sale
   const avgSale = allSales.length > 0 ? Math.round(totalAll / allSales.length) : 0;
   document.getElementById('dash-avg-sale').textContent = formatNumber(avgSale) + ' ریال';
 
@@ -2399,16 +2444,13 @@ function renderDashboard() {
   if (overdueList.length === 0) {
     overdueBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری عقب افتاده‌ای وجود ندارد</td></tr>';
   } else {
-    overdueBody.innerHTML = overdueList.map(c => {
-      const saleCount = (c.products || []).length;
-      return `<tr style="background:#fff8f0;">
-        <td><span class="id-badge ${c.id.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="openCustomerDetail('${c.id}')">${c.id}</span></td>
-        <td>${c.name || c.platformId}</td>
-        <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${c.phone || '—'}</td>
-        <td><span class="settlement-badge settlement-overdue-badge">⚠ ${c.nextFollowupDate}</span></td>
-        <td style="text-align:center;">${saleCount}</td>
-      </tr>`;
-    }).join('');
+    overdueBody.innerHTML = overdueList.map(c => `<tr style="background:#fff8f0;">
+      <td><span class="id-badge ${c.id.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="openCustomerDetail('${c.id}')">${c.id}</span></td>
+      <td>${c.name || c.platformId}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${c.phone || '—'}</td>
+      <td><span class="settlement-badge settlement-overdue-badge">⚠ ${c.nextFollowupDate}</span></td>
+      <td style="text-align:center;">${(c.products||[]).length}</td>
+    </tr>`).join('');
   }
 
   // Soon list
@@ -2416,17 +2458,73 @@ function renderDashboard() {
   if (soonList.length === 0) {
     soonBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری نزدیکی وجود ندارد</td></tr>';
   } else {
-    soonBody.innerHTML = soonList.map(c => {
-      const saleCount = (c.products || []).length;
-      return `<tr style="background:#f0fff4;">
-        <td><span class="id-badge ${c.id.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="openCustomerDetail('${c.id}')">${c.id}</span></td>
-        <td>${c.name || c.platformId}</td>
-        <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${c.phone || '—'}</td>
-        <td><span class="settlement-badge settlement-soon-badge">${c.nextFollowupDate}</span></td>
-        <td style="text-align:center;">${saleCount}</td>
-      </tr>`;
-    }).join('');
+    soonBody.innerHTML = soonList.map(c => `<tr style="background:#f0fff4;">
+      <td><span class="id-badge ${c.id.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="openCustomerDetail('${c.id}')">${c.id}</span></td>
+      <td>${c.name || c.platformId}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${c.phone || '—'}</td>
+      <td><span class="settlement-badge settlement-soon-badge">${c.nextFollowupDate}</span></td>
+      <td style="text-align:center;">${(c.products||[]).length}</td>
+    </tr>`).join('');
   }
+
+  // Charts
+  renderDashCharts();
+}
+
+function renderDashCharts() {
+  // Destroy old charts
+  Object.values(dashCharts).forEach(c => c.destroy());
+  dashCharts = {};
+
+  const statusLabels = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' };
+  const statusColors = { new: '#e9ecef', contacted: '#cce5ff', chatting: '#d0bfff', interested: '#fff3cd', sent: '#d1e7dd', followup_done: '#b6effb', converting: '#f8d7da', purchased: '#198754', cancelled: '#adb5bd' };
+
+  // 1. Customer status doughnut
+  const custStatusCounts = {};
+  data.customers.forEach(c => {
+    const label = statusLabels[c.status] || c.status;
+    custStatusCounts[label] = (custStatusCounts[label] || 0) + 1;
+  });
+  dashCharts.custStatus = new Chart(document.getElementById('chartCustomers'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(custStatusCounts),
+      datasets: [{ data: Object.values(custStatusCounts), backgroundColor: Object.keys(custStatusCounts).map(k => {
+        const key = Object.keys(statusLabels).find(sk => statusLabels[sk] === k);
+        return statusColors[key] || '#dee2e6';
+      }), borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Vazirmatn', size: 11 } } } } }
+  });
+
+  // 2. Sales status pie
+  const salesStatus = { 'تکمیل': 0, 'بیعانه': 0 };
+  getAllSales().forEach(s => { salesStatus[s.status] = (salesStatus[s.status] || 0) + s.price; });
+  dashCharts.salesStatus = new Chart(document.getElementById('chartSalesStatus'), {
+    type: 'pie',
+    data: {
+      labels: Object.keys(salesStatus),
+      datasets: [{ data: Object.values(salesStatus), backgroundColor: ['#198754', '#ffc107'], borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Vazirmatn', size: 11 } } } } }
+  });
+
+  // 3. Products bar chart
+  const productSales = {};
+  getAllSales().forEach(s => { productSales[s.productName] = (productSales[s.productName] || 0) + s.price; });
+  dashCharts.products = new Chart(document.getElementById('chartProducts'), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(productSales),
+      datasets: [{ label: 'مبلغ فروش', data: Object.values(productSales), backgroundColor: '#0d6efd', borderRadius: 6 }]
+    },
+    options: {
+      responsive: true,
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { font: { family: 'monospace' }, callback: v => formatNumber(v) } } }
+    }
+  });
 }
 
 function clearDashFilter() {
