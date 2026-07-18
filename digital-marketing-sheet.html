@@ -1379,13 +1379,13 @@ function generateId(type) {
 // ============================================
 function renderCustomers() {
   const tbody = document.getElementById('customerBody');
-  const search = document.getElementById('searchCustomers').value.toLowerCase();
+  const search = toEnDigits(document.getElementById('searchCustomers').value).toLowerCase();
 
   const filtered = data.customers.filter(c =>
     c.id.toLowerCase().includes(search) ||
     c.name.toLowerCase().includes(search) ||
-    c.platformId.toLowerCase().includes(search) ||
-    c.phone.includes(search)
+    (c.platformId || '').toLowerCase().includes(search) ||
+    (c.phone || '').includes(search)
   );
 
   if (filtered.length === 0) {
@@ -1505,7 +1505,7 @@ function updateStats() {
 // ============================================
 function renderFollowups() {
   const tbody = document.getElementById('followupBody');
-  const search = document.getElementById('searchFollowups').value.toLowerCase();
+  const search = toEnDigits(document.getElementById('searchFollowups').value).toLowerCase();
 
   const filtered = data.followups.filter(f => {
     const customer = data.customers.find(c => c.id === f.customerId);
@@ -2219,7 +2219,7 @@ function getAllSales() {
 
 function renderSales() {
   const tbody = document.getElementById('salesBody');
-  const search = (document.getElementById('searchSales').value || '').toLowerCase();
+  const search = toEnDigits(document.getElementById('searchSales').value || '').toLowerCase();
 
   let allSales = getAllSales();
 
@@ -3009,14 +3009,17 @@ function doImport() {
 // ============================================
 // Global Persian/Arabic digit → English conversion
 // ============================================
+function toEnDigits(str) {
+  return String(str).replace(/[\u06F0-\u06F9\u0660-\u0669]/g, ch =>
+    String.fromCharCode(ch.charCodeAt(0) + (ch >= '\u06F0' ? -1728 : -1584))
+  );
+}
+
 document.addEventListener('input', function(e) {
   const el = e.target;
   if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-    const raw = el.value;
-    const converted = raw.replace(/[\u06F0-\u06F9\u0660-\u0669]/g, ch =>
-      String.fromCharCode(ch.charCodeAt(0) + (ch >= '\u06F0' ? -1728 : -1584))
-    );
-    if (raw !== converted) el.value = converted;
+    const converted = toEnDigits(el.value);
+    if (el.value !== converted) el.value = converted;
   }
 });
 
