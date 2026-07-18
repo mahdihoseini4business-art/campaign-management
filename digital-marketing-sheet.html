@@ -5,8 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>سیستم مدیریت کمپین دیجیتال مارکتینگ</title>
 <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+<link rel="stylesheet" href="https://unpkg.com/@majidh1/jalalidatepicker/dist/jalalidatepicker.min.css">
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/@majidh1/jalalidatepicker/dist/jalalidatepicker.min.js"></script>
 <style>
   :root {
     --ink: #1a1a2e;
@@ -815,8 +817,8 @@
     <!-- فیلتر تاریخ -->
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
       <div style="font-size:16px;font-weight:600;">فیلتر تاریخ:</div>
-      <input type="text" class="form-input" id="dashDateFrom" placeholder="از تاریخ: 1405/01/01" style="width:150px;font-family:monospace;direction:ltr;text-align:left;">
-      <input type="text" class="form-input" id="dashDateTo" placeholder="تا تاریخ: 1405/12/29" style="width:150px;font-family:monospace;direction:ltr;text-align:left;">
+      <input type="text" class="form-input" id="dashDateFrom" placeholder="از تاریخ" data-jdp style="width:150px;">
+      <input type="text" class="form-input" id="dashDateTo" placeholder="تا تاریخ" data-jdp style="width:150px;">
       <button class="btn btn-primary" onclick="renderDashboard()">اعمال فیلتر</button>
       <button class="btn" onclick="clearDashFilter()">پاک کردن فیلتر</button>
     </div>
@@ -1179,11 +1181,11 @@
       <div class="form-row">
         <div class="form-group">
           <label>تاریخ پیگیری <span class="required">*</span></label>
-          <input type="text" class="form-input" id="followupDate" placeholder="1404/04/15">
+          <input type="text" class="form-input" id="followupDate" placeholder="تاریخ پیگیری" data-jdp>
         </div>
         <div class="form-group">
           <label>پیگیری بعدی</label>
-          <input type="text" class="form-input" id="followupNextDate" placeholder="1404/04/18">
+          <input type="text" class="form-input" id="followupNextDate" placeholder="پیگیری بعدی" data-jdp>
         </div>
       </div>
 
@@ -1882,7 +1884,7 @@ function openCustomerDetail(id) {
           </div>
         </div>
         <div style="display:flex;gap:6px;align-items:center;">
-          <input type="text" id="detailFollowupDate" placeholder="1405/05/01" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:monospace;width:130px;direction:ltr;text-align:left;">
+          <input type="text" id="detailFollowupDate" placeholder="تاریخ پیگیری" data-jdp style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:150px;">
           <button class="btn btn-sm btn-primary" onclick="setNextFollowup('${c.id}')">ذخیره</button>
           ${c.nextFollowupDate ? `<button class="btn btn-sm" onclick="clearNextFollowup('${c.id}')" style="color:var(--danger);">حذف</button>` : ''}
         </div>
@@ -2088,7 +2090,7 @@ function renderProducts(customerId) {
       priceHtml = `
         <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="بیعانه" value="${p.deposit ? formatNumber(p.deposit) : ''}" oninput="formatInput(this)" onchange="updateProduct('${customerId}', ${i}, 'deposit', unformatInput(this))">
         <input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت کل" value="${p.price ? formatNumber(p.price) : ''}" oninput="formatInput(this)" onchange="updateProduct('${customerId}', ${i}, 'price', unformatInput(this))">
-        <input type="text" class="product-settlement" placeholder="تاریخ تسویه: 1405/05/01" value="${p.settlementDate || ''}" onchange="updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">
+        <input type="text" class="product-settlement" placeholder="تاریخ تسویه" data-jdp value="${p.settlementDate || ''}" onchange="updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">
       `;
     }
 
@@ -3068,6 +3070,17 @@ document.addEventListener('keydown', function(e) {
 // ============================================
 // Init
 // ============================================
+jalaliDatepicker.startWatch({
+  selector: 'input[data-jdp]',
+  autoShow: true,
+  autoHide: true,
+  hideAfterChange: true,
+  showTodayBtn: true,
+  showEmptyBtn: true,
+  position: 'center',
+  persianDigits: false
+});
+
 renderCustomers();
 renderFollowups();
 renderSales();
