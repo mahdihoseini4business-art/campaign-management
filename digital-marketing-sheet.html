@@ -2325,6 +2325,13 @@ function removeProduct(customerId, index) {
 // Tab switching
 // ============================================
 function switchTab(tab, el) {
+  // Permission check
+  const permMap = { dashboard: 'dashboard', customers: 'customers_view', followups: 'followups_view', sales: 'sales_view' };
+  if (permMap[tab] && !hasPermission(permMap[tab])) {
+    showToast('شما به این بخش دسترسی ندارید');
+    return;
+  }
+
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.sheet').forEach(s => s.classList.remove('active'));
   if (el) el.classList.add('active');
@@ -3353,7 +3360,7 @@ function addUser() {
     return;
   }
 
-  users.push({ username, password: hashPassword(password), displayName: displayName || username, role });
+  users.push({ username, password: hashPassword(password), displayName: displayName || username, role, permissions: role === 'admin' ? null : getDefaultPermissions() });
   saveUsers(users);
   renderUsersList();
   showToast('کاربر اضافه شد');
@@ -3378,21 +3385,115 @@ function renderUsersList() {
   const container = document.getElementById('settingsUsersList');
   const currentUser = getCurrentUser();
 
-  container.innerHTML = users.map(u => `
-    <div class="settings-user-row">
-      <div class="user-info">
-        <div class="user-name">${u.displayName || u.username} ${u.username === currentUser?.username ? '<span style="font-size:11px;color:var(--accent);">(شما)</span>' : ''}</div>
-        <div class="user-role">@${u.username} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${u.role === 'admin' ? 'مدیر' : 'کاربر'}</span></div>
+  container.innerHTML = users.map(u => {
+    const isCurrentUser = u.username === currentUser?.username;
+    const isAdminUser = u.username === 'admin';
+    const perms = u.permissions || getDefaultPermissions();
+
+    const permsHtml = (u.role === 'admin')
+      ? '<div style="font-size:12px;color:var(--accent);margin-top:6px;">دسترسی کامل (مدیر)</div>'
+      : PERMISSION_GROUPS.map(g => `
+        <div style="margin-top:10px;">
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px;">${g.label}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px 12px;">
+            ${g.keys.map(k => `
+              <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:${perms[k] ? '#d1e7dd' : '#f8f9fa'};">
+                <input type="checkbox" data-perm-user="${u.username}" data-perm-key="${k}" ${perms[k] ? 'checked' : ''} onchange="togglePermCheckbox(this)" style="width:14px;height:14px;">
+                ${ALL_PERMISSIONS[k]}
+              </label>
+            `).join('')}
+          </div>
+        </div>
+      `).join('');
+
+    return `
+      <div class="settings-user-row" style="flex-direction:column;align-items:stretch;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="user-info">
+            <div class="user-name">${u.displayName || u.username} ${isCurrentUser ? '<span style="font-size:11px;color:var(--accent);">(شما)</span>' : ''}</div>
+            <div class="user-role">@${u.username} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${u.role === 'admin' ? 'مدیر' : 'کاربر'}</span></div>
+          </div>
+          ${!isAdminUser ? `<button class="btn-icon" title="حذف" onclick="deleteUser('${u.username}')" style="color:var(--danger);">🗑</button>` : ''}
+        </div>
+        ${!isAdminUser ? `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+          ${permsHtml}
+          <button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="saveUserPermissions('${u.username}')">ذخیره دسترسی‌ها</button>
+        </div>
+        ` : ''}
       </div>
-      ${u.username !== 'admin' ? `<button class="btn-icon" title="حذف" onclick="deleteUser('${u.username}')" style="color:var(--danger);">🗑</button>` : ''}
-    </div>
-  `).join('');
+    `;
+  }).join('');
+}
+
+function togglePermCheckbox(el) {
+  // Visual feedback is handled by the onchange, no extra logic needed
+}
+
+function saveUserPermissions(username) {
+  const checkboxes = document.querySelectorAll(`input[data-perm-user="${username}"]`);
+  const permissions = {};
+  checkboxes.forEach(cb => {
+    permissions[cb.dataset.permKey] = cb.checked;
+  });
+
+  const users = getUsers();
+  const user = users.find(u => u.username === username);
+  if (user) {
+    user.permissions = permissions;
+    saveUsers(users);
+    showToast('دسترسی‌ها ذخیره شد');
+  }
 }
 
 // Permissions check
 function isAdmin() {
   const user = getCurrentUser();
   return user && user.role === 'admin';
+}
+
+// ============================================
+// Permission System
+// ============================================
+const ALL_PERMISSIONS = {
+  dashboard: 'مشاهده داشبورد',
+  customers_view: 'مشاهده مشتریان',
+  customers_add: 'افزودن و ویرایش مشتری',
+  customers_delete: 'حذف مشتری',
+  customers_import: 'ایمپورت اکسل مشتریان',
+  customers_export: 'خروجی مشتریان',
+  followups_view: 'مشاهده پیگیری‌ها',
+  followups_add: 'افزودن و ویرایش پیگیری',
+  followups_delete: 'حذف پیگیری',
+  followups_export: 'خروجی پیگیری‌ها',
+  sales_view: 'مشاهده فروش‌ها',
+  sales_import: 'ایمپورت فروش',
+  sales_export: 'خروجی فروش‌ها',
+  settings: 'مدیریت کاربران'
+};
+
+const PERMISSION_GROUPS = [
+  { label: 'داشبرد', keys: ['dashboard'] },
+  { label: 'مشتریان', keys: ['customers_view', 'customers_add', 'customers_delete', 'customers_import', 'customers_export'] },
+  { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_delete', 'followups_export'] },
+  { label: 'فروش‌ها', keys: ['sales_view', 'sales_import', 'sales_export'] },
+  { label: 'سیستم', keys: ['settings'] }
+];
+
+function getDefaultPermissions() {
+  const p = {};
+  Object.keys(ALL_PERMISSIONS).forEach(k => p[k] = true);
+  p.customers_delete = false;
+  p.followups_delete = false;
+  p.settings = false;
+  return p;
+}
+
+function hasPermission(key) {
+  const user = getCurrentUser();
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  return user.permissions && user.permissions[key] === true;
 }
 
 // ============================================
@@ -3433,6 +3534,40 @@ const currentUser = checkSession();
 if (currentUser) {
   document.getElementById('headerUsername').textContent = currentUser.displayName || currentUser.username;
 }
+
+// Apply permission-based visibility
+function applyPermissions() {
+  // Hide tabs without access
+  const tabPermMap = { 'tab-dashboard': 'dashboard', 'sheet-customers': 'customers_view', 'sheet-followups': 'followups_view', 'sheet-sales': 'sales_view' };
+  document.querySelectorAll('.tab').forEach(t => {
+    const text = t.textContent.trim();
+    let permKey = null;
+    if (text === 'داشبرد') permKey = 'dashboard';
+    else if (text === 'لیست مشتریان') permKey = 'customers_view';
+    else if (text === 'تاریخچه پیگیری') permKey = 'followups_view';
+    else if (text === 'فروش‌ها') permKey = 'sales_view';
+    if (permKey && !hasPermission(permKey)) {
+      t.style.display = 'none';
+    } else {
+      t.style.display = '';
+    }
+  });
+
+  // Hide settings button in profile menu
+  const settingsItem = document.querySelector('.profile-dropdown-item[onclick*="openSettingsModal"]');
+  if (settingsItem && !hasPermission('settings')) {
+    settingsItem.style.display = 'none';
+  }
+
+  // Auto-select first visible tab if current is hidden
+  const activeTab = document.querySelector('.tab.active');
+  if (activeTab && activeTab.style.display === 'none') {
+    const firstVisible = document.querySelector('.tab:not([style*="display: none"])');
+    if (firstVisible) firstVisible.click();
+  }
+}
+
+applyPermissions();
 
 jalaliDatepicker.startWatch({
   selector: 'input[data-jdp]',
