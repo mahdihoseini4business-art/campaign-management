@@ -805,6 +805,7 @@
             <th onclick="sortCustomers('status')">وضعیت</th>
             <th onclick="sortCustomers('followupCount')">پیگیری</th>
             <th onclick="sortCustomers('lastFollowup')">آخرین پیگیری</th>
+            <th onclick="sortCustomers('nextFollowupDate')">پیگیری بعدی</th>
             <th>توضیحات</th>
             <th style="width: 80px;"></th>
           </tr>
@@ -1198,7 +1199,7 @@ function renderCustomers() {
 
   if (filtered.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="10">
+      <tr><td colspan="11">
         <div class="empty-state">
           <div class="icon">👤</div>
           <h3>مشتری‌ای یافت نشد</h3>
@@ -1239,7 +1240,25 @@ function renderCustomers() {
       ? customerFollowups[customerFollowups.length - 1].notes
       : '';
 
-    return `<tr>
+    // Next followup date display
+    let nextFollowupHtml = '<span style="color:var(--text-muted)">—</span>';
+    let nextFollowupClass = '';
+    if (c.nextFollowupDate) {
+      const todayN = getTodayJalaliNum();
+      const dateN = jalaliToNum(c.nextFollowupDate);
+      const in3N = jalaliAddDays(getTodayJalaliStr(), 3);
+      if (dateN < todayN) {
+        nextFollowupHtml = `<span class="settlement-badge settlement-overdue-badge">⚠ ${c.nextFollowupDate}</span>`;
+        nextFollowupClass = 'settlement-overdue';
+      } else if (dateN <= in3N) {
+        nextFollowupHtml = `<span class="settlement-badge settlement-soon-badge">${c.nextFollowupDate}</span>`;
+        nextFollowupClass = 'settlement-soon';
+      } else {
+        nextFollowupHtml = `<span style="font-family:monospace;font-size:13px;">${c.nextFollowupDate}</span>`;
+      }
+    }
+
+    return `<tr class="${nextFollowupClass}">
       <td><span class="id-badge ${idClass}">${c.id}</span></td>
       <td>${platformIdHtml}</td>
       <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${platformLabel}</span></td>
@@ -1248,6 +1267,7 @@ function renderCustomers() {
       <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
       <td style="text-align:center;"><span class="followup-count ${countClass}">${followupCount}</span></td>
       <td style="font-size:13px;color:var(--text-muted);">${lastDate}</td>
+      <td style="font-size:12px;">${nextFollowupHtml}</td>
       <td class="notes-cell" title="${escapeHtml(lastNote || c.notes)}">${lastNote || c.notes || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td>
         <div class="actions-cell">
@@ -1664,6 +1684,22 @@ function openCustomerDetail(id) {
       </div>
     </div>
 
+    <div style="margin-bottom:20px;padding:12px 16px;background:#f8f9fa;border-radius:8px;border:1px solid var(--border);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px;">تاریخ پیگیری بعدی</div>
+          <div style="font-size:13px;color:${c.nextFollowupDate ? 'var(--accent)' : 'var(--text-muted)'}; font-family:monospace;">
+            ${c.nextFollowupDate || 'تنظیم نشده'}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input type="text" id="detailFollowupDate" placeholder="1405/05/01" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:monospace;width:130px;direction:ltr;text-align:left;">
+          <button class="btn btn-sm btn-primary" onclick="setNextFollowup('${c.id}')">ذخیره</button>
+          ${c.nextFollowupDate ? `<button class="btn btn-sm" onclick="clearNextFollowup('${c.id}')" style="color:var(--danger);">حذف</button>` : ''}
+        </div>
+      </div>
+    </div>
+
     <div class="detail-products" style="margin-bottom:20px;">
       <div style="font-size:14px;font-weight:600;margin-bottom:12px;">محصولات</div>
       <div id="detailProductsList"></div>
@@ -1730,6 +1766,33 @@ function openCustomerDetail(id) {
   document.getElementById('detailBody').innerHTML = html;
   document.getElementById('detailModal').classList.add('active');
   renderProducts(id);
+}
+
+function setNextFollowup(customerId) {
+  const input = document.getElementById('detailFollowupDate');
+  const date = input.value.trim();
+  if (!date) { showToast('تاریخ را وارد کنید'); return; }
+  if (!/^\d{4}\/\d{2}\/\d{2}$/.test(date)) { showToast('فرمت تاریخ صحیح نیست (1405/05/01)'); return; }
+
+  const idx = data.customers.findIndex(c => c.id === customerId);
+  if (idx !== -1) {
+    data.customers[idx].nextFollowupDate = date;
+    saveData();
+    renderCustomers();
+    openCustomerDetail(customerId);
+    showToast('تاریخ پیگیری تنظیم شد');
+  }
+}
+
+function clearNextFollowup(customerId) {
+  const idx = data.customers.findIndex(c => c.id === customerId);
+  if (idx !== -1) {
+    data.customers[idx].nextFollowupDate = '';
+    saveData();
+    renderCustomers();
+    openCustomerDetail(customerId);
+    showToast('تاریخ پیگیری حذف شد');
+  }
 }
 
 function addQuickNote(customerId) {
@@ -2312,6 +2375,11 @@ function sortCustomers(field) {
       va = (data.followups.filter(f => f.customerId === a.id).pop() || {}).date || '';
       vb = (data.followups.filter(f => f.customerId === b.id).pop() || {}).date || '';
     }
+    if (field === 'nextFollowupDate') {
+      va = jalaliToNum(a.nextFollowupDate || '');
+      vb = jalaliToNum(b.nextFollowupDate || '');
+      return sortState.asc ? va - vb : vb - va;
+    }
     if (field === 'status') {
       const orderA = STATUS_ORDER.indexOf(va);
       const orderB = STATUS_ORDER.indexOf(vb);
@@ -2344,12 +2412,12 @@ function sortFollowups(field) {
 const EXPORT_CONFIG = {
   customers: {
     label: 'مشتریان',
-    headers: ['شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'وضعیت', 'توضیحات'],
+    headers: ['شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'وضعیت', 'پیگیری بعدی', 'توضیحات'],
     getRows: () => {
       const statusMap = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' };
       const platformMap = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' };
       return data.customers.map(c => [
-        c.id, c.platformId || '', platformMap[c.platform] || c.platform, c.name, c.phone, statusMap[c.status] || c.status, c.notes
+        c.id, c.platformId || '', platformMap[c.platform] || c.platform, c.name, c.phone, statusMap[c.status] || c.status, c.nextFollowupDate || '', c.notes
       ]);
     }
   },
