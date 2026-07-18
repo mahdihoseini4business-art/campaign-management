@@ -3007,6 +3007,20 @@ function doImport() {
 }
 
 // ============================================
+// Global Persian/Arabic digit → English conversion
+// ============================================
+document.addEventListener('input', function(e) {
+  const el = e.target;
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+    const raw = el.value;
+    const converted = raw.replace(/[\u06F0-\u06F9\u0660-\u0669]/g, ch =>
+      String.fromCharCode(ch.charCodeAt(0) + (ch >= '\u06F0' ? -1728 : -1584))
+    );
+    if (raw !== converted) el.value = converted;
+  }
+});
+
+// ============================================
 // Utils
 // ============================================
 function formatNumber(n) {
