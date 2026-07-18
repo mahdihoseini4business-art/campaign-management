@@ -3305,7 +3305,9 @@ function doLogin() {
 
   setCurrentUser({ username: user.username, displayName: user.displayName, role: user.role });
   document.getElementById('loginOverlay').classList.add('hidden');
+  document.getElementById('headerUsername').textContent = user.displayName || user.username;
   errorEl.classList.remove('show');
+  applyPermissions();
 }
 
 function doLogout() {
