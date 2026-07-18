@@ -1556,12 +1556,17 @@ function renderCustomers() {
   const tbody = document.getElementById('customerBody');
   const search = toEnDigits(document.getElementById('searchCustomers').value).toLowerCase();
 
-  const filtered = data.customers.filter(c =>
-    c.id.toLowerCase().includes(search) ||
-    c.name.toLowerCase().includes(search) ||
-    (c.platformId || '').toLowerCase().includes(search) ||
-    (c.phone || '').includes(search)
-  );
+  const filtered = data.customers.filter(c => {
+    if (!c.id.toLowerCase().includes(search) &&
+        !c.name.toLowerCase().includes(search) &&
+        !(c.platformId || '').toLowerCase().includes(search) &&
+        !(c.phone || '').includes(search)) return false;
+    const isCS = c.id.startsWith('CS');
+    const isLD = c.id.startsWith('LD');
+    if (isCS && !hasPermission('customers_cs')) return false;
+    if (isLD && !hasPermission('customers_ld')) return false;
+    return true;
+  });
 
   if (filtered.length === 0) {
     tbody.innerHTML = `
@@ -1649,17 +1654,25 @@ function renderCustomers() {
 }
 
 function updateStats() {
-  document.getElementById('stat-total').textContent = data.customers.length;
-  document.getElementById('stat-ld').textContent = data.customers.filter(c => c.id.startsWith('LD')).length;
-  document.getElementById('stat-cs').textContent = data.customers.filter(c => c.id.startsWith('CS')).length;
-  document.getElementById('stat-following').textContent = data.customers.filter(c =>
-    data.followups.some(f => f.customerId === c.id)
-  ).length;
+  document.getElementById('stat-total').textContent = data.customers.filter(c => {
+    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false;
+    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false;
+    return true;
+  }).length;
+  document.getElementById('stat-ld').textContent = data.customers.filter(c => c.id.startsWith('LD') && hasPermission('customers_ld')).length;
+  document.getElementById('stat-cs').textContent = data.customers.filter(c => c.id.startsWith('CS') && hasPermission('customers_cs')).length;
+  document.getElementById('stat-following').textContent = data.customers.filter(c => {
+    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false;
+    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false;
+    return data.followups.some(f => f.customerId === c.id);
+  }).length;
   document.getElementById('stat-converted').textContent = data.convertedCount || 0;
 
   // Calculate total payments from products
   let totalPaid = 0;
   data.customers.forEach(c => {
+    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return;
+    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return;
     if (c.products) {
       c.products.forEach(p => {
         const price = parseFloat(p.price) || 0;
@@ -1685,6 +1698,10 @@ function renderFollowups() {
   const filtered = data.followups.filter(f => {
     const customer = data.customers.find(c => c.id === f.customerId);
     const name = customer ? customer.name : '';
+    if (customer) {
+      if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false;
+      if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false;
+    }
     return f.customerId.toLowerCase().includes(search) ||
            name.toLowerCase().includes(search) ||
            f.notes.toLowerCase().includes(search);
@@ -2414,6 +2431,13 @@ function renderSales() {
     );
   }
 
+  // Filter by CS/LD permissions
+  allSales = allSales.filter(s => {
+    if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false;
+    if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false;
+    return true;
+  });
+
   // Sort: overdue settlement dates first, then by date ascending
   const todayNum = getTodayJalaliNum();
   allSales.sort((a, b) => {
@@ -2426,7 +2450,7 @@ function renderSales() {
   });
 
   // Stats
-  const totalSales = getAllSales();
+  const totalSales = allSales;
   const cashSales = totalSales.filter(s => s.status === 'تکمیل');
   const depositSales = totalSales.filter(s => s.status === 'بیعانه');
 
@@ -2572,10 +2596,21 @@ function renderDashboard() {
   const in3DaysNum = jalaliAddDays(getTodayJalaliStr(), 3);
 
   // General stats
-  document.getElementById('dash-total-customers').textContent = data.customers.length;
-  document.getElementById('dash-total-leads').textContent = data.customers.filter(c => c.id.startsWith('LD')).length;
-  document.getElementById('dash-total-cs').textContent = data.customers.filter(c => c.id.startsWith('CS')).length;
-  document.getElementById('dash-total-followups').textContent = data.followups.length;
+  document.getElementById('dash-total-customers').textContent = data.customers.filter(c => {
+    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false;
+    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false;
+    return true;
+  }).length;
+  document.getElementById('dash-total-leads').textContent = data.customers.filter(c => c.id.startsWith('LD') && hasPermission('customers_ld')).length;
+  document.getElementById('dash-total-cs').textContent = data.customers.filter(c => c.id.startsWith('CS') && hasPermission('customers_cs')).length;
+  document.getElementById('dash-total-followups').textContent = data.followups.filter(f => {
+    const customer = data.customers.find(c => c.id === f.customerId);
+    if (customer) {
+      if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false;
+      if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false;
+    }
+    return true;
+  }).length;
 
   // Followup stats
   let overdueList = [];
@@ -2584,6 +2619,8 @@ function renderDashboard() {
   let noSetCount = 0;
 
   data.customers.forEach(c => {
+    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return;
+    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return;
     if (c.nextFollowupDate) {
       const dNum = jalaliToNum(c.nextFollowupDate);
       if (dNum < todayNum) overdueList.push(c);
@@ -2602,7 +2639,11 @@ function renderDashboard() {
   document.getElementById('dash-soon-badge').textContent = soonList.length;
 
   // Sales stats
-  const allSales = getAllSales();
+  const allSales = getAllSales().filter(s => {
+    if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false;
+    if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false;
+    return true;
+  });
   const cashSales = allSales.filter(s => s.status === 'تکمیل');
   const depositSales = allSales.filter(s => s.status === 'بیعانه');
 
@@ -2617,7 +2658,11 @@ function renderDashboard() {
   document.getElementById('dash-sales-balance').textContent = formatNumber(totalBalance) + ' ریال';
   document.getElementById('dash-sales-total').textContent = formatNumber(totalAll) + ' ریال';
 
-  const activeCustomers = data.customers.filter(c => c.products && c.products.length > 0);
+  const activeCustomers = data.customers.filter(c => {
+    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false;
+    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false;
+    return c.products && c.products.length > 0;
+  });
   document.getElementById('dash-active-customers').textContent = activeCustomers.length;
 
   const avgSale = allSales.length > 0 ? Math.round(totalAll / allSales.length) : 0;
@@ -2666,6 +2711,8 @@ function renderDashCharts() {
   // 1. Customer status doughnut
   const custStatusCounts = {};
   data.customers.forEach(c => {
+    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return;
+    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return;
     const label = statusLabels[c.status] || c.status;
     custStatusCounts[label] = (custStatusCounts[label] || 0) + 1;
   });
@@ -2683,7 +2730,11 @@ function renderDashCharts() {
 
   // 2. Sales status pie
   const salesStatus = { 'تکمیل': 0, 'بیعانه': 0 };
-  getAllSales().forEach(s => { salesStatus[s.status] = (salesStatus[s.status] || 0) + s.price; });
+  getAllSales().forEach(s => {
+    if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return;
+    if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return;
+    salesStatus[s.status] = (salesStatus[s.status] || 0) + s.price;
+  });
   dashCharts.salesStatus = new Chart(document.getElementById('chartSalesStatus'), {
     type: 'pie',
     data: {
@@ -2695,7 +2746,11 @@ function renderDashCharts() {
 
   // 3. Products bar chart
   const productSales = {};
-  getAllSales().forEach(s => { productSales[s.productName] = (productSales[s.productName] || 0) + s.price; });
+  getAllSales().forEach(s => {
+    if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return;
+    if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return;
+    productSales[s.productName] = (productSales[s.productName] || 0) + s.price;
+  });
   dashCharts.products = new Chart(document.getElementById('chartProducts'), {
     type: 'bar',
     data: {
@@ -3460,6 +3515,8 @@ function isAdmin() {
 const ALL_PERMISSIONS = {
   dashboard: 'مشاهده داشبورد',
   customers_view: 'مشاهده مشتریان',
+  customers_ld: 'مشاهده لیدها (LD)',
+  customers_cs: 'مشاهده مشتریان تماسی (CS)',
   customers_add: 'افزودن و ویرایش مشتری',
   customers_delete: 'حذف مشتری',
   customers_import: 'ایمپورت اکسل مشتریان',
@@ -3476,7 +3533,7 @@ const ALL_PERMISSIONS = {
 
 const PERMISSION_GROUPS = [
   { label: 'داشبرد', keys: ['dashboard'] },
-  { label: 'مشتریان', keys: ['customers_view', 'customers_add', 'customers_delete', 'customers_import', 'customers_export'] },
+  { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_delete', 'customers_import', 'customers_export'] },
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_import', 'sales_export'] },
   { label: 'سیستم', keys: ['settings'] }
