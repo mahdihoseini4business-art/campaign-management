@@ -3240,8 +3240,8 @@ function getUsers() {
     const raw = localStorage.getItem(AUTH_KEY);
     if (raw) return JSON.parse(raw);
   } catch(e) {}
-  // Default admin user
-  return [{ username: 'admin', password: 'admin123', displayName: 'مدیر سیستم', role: 'admin' }];
+  // Default admin user (password is hashed)
+  return [{ username: 'admin', password: hashPassword('admin123'), displayName: 'مدیر سیستم', role: 'admin' }];
 }
 
 function saveUsers(users) {
