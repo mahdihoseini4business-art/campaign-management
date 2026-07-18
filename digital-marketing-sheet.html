@@ -777,15 +777,190 @@
     table { min-width: 900px; }
     .form-row { flex-direction: column; gap: 0; }
   }
+  /* Login Screen */
+  .login-overlay {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .login-overlay.hidden { display: none; }
+
+  .login-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    width: 100%;
+    max-width: 380px;
+    padding: 40px 32px;
+    text-align: center;
+  }
+
+  .login-card h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+
+  .login-card .login-subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 28px;
+  }
+
+  .login-card .login-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+  }
+
+  .login-card .login-error {
+    background: #f8d7da;
+    color: #842029;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 16px;
+    display: none;
+  }
+
+  .login-card .login-error.show { display: block; }
+
+  .login-card .form-group { margin-bottom: 16px; text-align: right; }
+
+  .login-card .btn-login {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-family: inherit;
+  }
+
+  .login-card .btn-login:hover { background: var(--accent-hover); }
+
+  /* Settings Modal */
+  .settings-user-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: #f8f9fa;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+  }
+
+  .settings-user-row .user-info { flex: 1; }
+
+  .settings-user-row .user-name {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .settings-user-row .user-role {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .role-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .role-admin { background: #e8f0fe; color: var(--accent); }
+  .role-user { background: #d1e7dd; color: #0f5132; }
+
 </style>
 </head>
 <body>
+
+<!-- صفحه لاگین -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-card">
+    <div class="login-icon">🔐</div>
+    <h2>ورود به سیستم</h1>
+    <div class="login-subtitle">مدیریت کمپین دیجیتال مارکتینگ</div>
+    <div class="login-error" id="loginError">نام کاربری یا رمز عبور اشتباه است</div>
+    <div class="form-group">
+      <label>نام کاربری</label>
+      <input type="text" class="form-input" id="loginUsername" placeholder="نام کاربری" autofocus>
+    </div>
+    <div class="form-group">
+      <label>رمز عبور</label>
+      <input type="password" class="form-input" id="loginPassword" placeholder="رمز عبور">
+    </div>
+    <button class="btn-login" onclick="doLogin()">ورود</button>
+  </div>
+</div>
+
+<!-- مودال تنظیمات -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal" style="max-width: 560px;">
+    <div class="modal-header">
+      <h2>تنظیمات و مدیریت کاربران</h2>
+      <button class="modal-close" onclick="closeSettingsModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:16px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:12px;">افزودن کاربر جدید</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>نام کاربری <span class="required">*</span></label>
+            <input type="text" class="form-input" id="newUsername" placeholder="نام کاربری">
+          </div>
+          <div class="form-group">
+            <label>رمز عبور <span class="required">*</span></label>
+            <input type="password" class="form-input" id="newPassword" placeholder="رمز عبور">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>نام نمایشی</label>
+            <input type="text" class="form-input" id="newDisplayName" placeholder="نام کامل">
+          </div>
+          <div class="form-group">
+            <label>سطح دسترسی</label>
+            <select class="form-select" id="newRole">
+              <option value="user">کاربر عادی</option>
+              <option value="admin">مدیر سیستم</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="addUser()" style="margin-top:4px;">افزودن کاربر</button>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:16px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:12px;">لیست کاربران</div>
+        <div id="settingsUsersList"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeSettingsModal()">بستن</button>
+    </div>
+  </div>
+</div>
 
 <div class="header">
   <h1>مدیریت کمپین دیجیتال مارکتینگ</h1>
   <div class="header-actions">
     <div class="profile-menu">
-      <button class="btn btn-icon" onclick="toggleProfileMenu()" title="پروفایل" style="font-size:16px;">👤</button>
+      <button class="btn btn-icon" onclick="toggleProfileMenu()" title="پروفایل" style="font-size:16px;display:flex;align-items:center;gap:6px;">
+        <span>👤</span>
+        <span id="headerUsername" style="font-size:12px;font-family:inherit;"></span>
+      </button>
       <div class="profile-dropdown" id="profileDropdown">
         <div class="profile-dropdown-item" onclick="switchTab('dashboard', document.querySelector('.tab-dashboard'))">
           <span>داشبرد</span>
@@ -793,10 +968,10 @@
         <div class="profile-dropdown-item" onclick="showToast('پروفایل - به زودی')">
           <span>پروفایل</span>
         </div>
-        <div class="profile-dropdown-item" onclick="showToast('تنظیمات - به زودی')">
+        <div class="profile-dropdown-item" onclick="openSettingsModal()">
           <span>تنظیمات</span>
         </div>
-        <div class="profile-dropdown-item" style="border-top:1px solid var(--border);color:var(--text-muted);" onclick="showToast('سیستم ورود و خروج به زودی فعال می‌شود')">
+        <div class="profile-dropdown-item" style="border-top:1px solid var(--border);color:var(--danger);" onclick="doLogout()">
           <span>خروج</span>
         </div>
       </div>
@@ -3055,6 +3230,172 @@ function showToast(msg) {
 }
 
 // ============================================
+// Auth & User Management
+// ============================================
+const AUTH_KEY = 'campaign_manager_users';
+const SESSION_KEY = 'campaign_manager_session';
+
+function getUsers() {
+  try {
+    const raw = localStorage.getItem(AUTH_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  // Default admin user
+  return [{ username: 'admin', password: 'admin123', displayName: 'مدیر سیستم', role: 'admin' }];
+}
+
+function saveUsers(users) {
+  localStorage.setItem(AUTH_KEY, JSON.stringify(users));
+}
+
+function hashPassword(pw) {
+  // Simple hash - not cryptographic but better than plaintext
+  let hash = 0;
+  for (let i = 0; i < pw.length; i++) {
+    const ch = pw.charCodeAt(i);
+    hash = ((hash << 5) - hash) + ch;
+    hash |= 0;
+  }
+  return 'h_' + Math.abs(hash).toString(36);
+}
+
+function getCurrentUser() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return null;
+}
+
+function setCurrentUser(user) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+}
+
+function clearCurrentUser() {
+  localStorage.removeItem(SESSION_KEY);
+}
+
+function doLogin() {
+  const username = toEnDigits(document.getElementById('loginUsername').value.trim());
+  const password = toEnDigits(document.getElementById('loginPassword').value);
+  const errorEl = document.getElementById('loginError');
+
+  if (!username || !password) {
+    errorEl.textContent = 'نام کاربری و رمز عبور را وارد کنید';
+    errorEl.classList.add('show');
+    return;
+  }
+
+  const users = getUsers();
+  const hashedPw = hashPassword(password);
+  const user = users.find(u => u.username === username && u.password === hashedPw);
+
+  if (!user) {
+    errorEl.textContent = 'نام کاربری یا رمز عبور اشتباه است';
+    errorEl.classList.add('show');
+    return;
+  }
+
+  setCurrentUser({ username: user.username, displayName: user.displayName, role: user.role });
+  document.getElementById('loginOverlay').classList.add('hidden');
+  errorEl.classList.remove('show');
+}
+
+function doLogout() {
+  clearCurrentUser();
+  location.reload();
+}
+
+function checkSession() {
+  const user = getCurrentUser();
+  if (user) {
+    document.getElementById('loginOverlay').classList.add('hidden');
+    return user;
+  }
+  return null;
+}
+
+// Login on Enter key
+document.getElementById('loginPassword').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('loginUsername').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') document.getElementById('loginPassword').focus();
+});
+
+// User Management
+function openSettingsModal() {
+  document.getElementById('newUsername').value = '';
+  document.getElementById('newPassword').value = '';
+  document.getElementById('newDisplayName').value = '';
+  document.getElementById('newRole').value = 'user';
+  renderUsersList();
+  document.getElementById('settingsModal').classList.add('active');
+  document.getElementById('profileDropdown').classList.remove('active');
+}
+
+function closeSettingsModal() {
+  document.getElementById('settingsModal').classList.remove('active');
+}
+
+function addUser() {
+  const username = toEnDigits(document.getElementById('newUsername').value.trim());
+  const password = toEnDigits(document.getElementById('newPassword').value);
+  const displayName = document.getElementById('newDisplayName').value.trim();
+  const role = document.getElementById('newRole').value;
+
+  if (!username) { showToast('نام کاربری را وارد کنید'); return; }
+  if (!password) { showToast('رمز عبور را وارد کنید'); return; }
+
+  const users = getUsers();
+  if (users.find(u => u.username === username)) {
+    showToast('این نام کاربری قبلاً ثبت شده');
+    return;
+  }
+
+  users.push({ username, password: hashPassword(password), displayName: displayName || username, role });
+  saveUsers(users);
+  renderUsersList();
+  showToast('کاربر اضافه شد');
+}
+
+function deleteUser(username) {
+  if (username === 'admin') { showToast('امکان حذف مدیر وجود ندارد'); return; }
+  const currentUser = getCurrentUser();
+  if (currentUser && currentUser.username === username) { showToast('امکان حذف کاربر جاری وجود ندارد'); return; }
+
+  if (!confirm('آیا از حذف این کاربر مطمئن هستید؟')) return;
+
+  let users = getUsers();
+  users = users.filter(u => u.username !== username);
+  saveUsers(users);
+  renderUsersList();
+  showToast('کاربر حذف شد');
+}
+
+function renderUsersList() {
+  const users = getUsers();
+  const container = document.getElementById('settingsUsersList');
+  const currentUser = getCurrentUser();
+
+  container.innerHTML = users.map(u => `
+    <div class="settings-user-row">
+      <div class="user-info">
+        <div class="user-name">${u.displayName || u.username} ${u.username === currentUser?.username ? '<span style="font-size:11px;color:var(--accent);">(شما)</span>' : ''}</div>
+        <div class="user-role">@${u.username} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${u.role === 'admin' ? 'مدیر' : 'کاربر'}</span></div>
+      </div>
+      ${u.username !== 'admin' ? `<button class="btn-icon" title="حذف" onclick="deleteUser('${u.username}')" style="color:var(--danger);">🗑</button>` : ''}
+    </div>
+  `).join('');
+}
+
+// Permissions check
+function isAdmin() {
+  const user = getCurrentUser();
+  return user && user.role === 'admin';
+}
+
+// ============================================
 // Profile Menu
 // ============================================
 function toggleProfileMenu() {
@@ -3087,6 +3428,12 @@ document.addEventListener('keydown', function(e) {
 // ============================================
 // Init
 // ============================================
+// Check session
+const currentUser = checkSession();
+if (currentUser) {
+  document.getElementById('headerUsername').textContent = currentUser.displayName || currentUser.username;
+}
+
 jalaliDatepicker.startWatch({
   selector: 'input[data-jdp]',
   autoShow: true,
