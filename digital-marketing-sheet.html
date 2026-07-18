@@ -516,6 +516,19 @@
     border-color: var(--success) !important;
   }
 
+  /* Dashboard */
+  .dash-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .dash-row .stat-card {
+    flex: 1;
+    min-width: 140px;
+  }
+
   .product-balance {
     font-size: 12px;
     color: var(--text-muted);
@@ -738,11 +751,17 @@
     <div class="profile-menu">
       <button class="btn btn-icon" onclick="toggleProfileMenu()" title="پروفایل" style="font-size:16px;">👤</button>
       <div class="profile-dropdown" id="profileDropdown">
+        <div class="profile-dropdown-item" onclick="switchTab('dashboard', document.querySelector('.tab-dashboard'))">
+          <span>داشبرد</span>
+        </div>
         <div class="profile-dropdown-item" onclick="showToast('پروفایل - به زودی')">
           <span>پروفایل</span>
         </div>
         <div class="profile-dropdown-item" onclick="showToast('تنظیمات - به زودی')">
           <span>تنظیمات</span>
+        </div>
+        <div class="profile-dropdown-item" style="border-top:1px solid var(--border);color:var(--danger);" onclick="if(confirm('آیا مطمئن هستید؟')) localStorage.clear(); location.reload();">
+          <span>خروج</span>
         </div>
       </div>
     </div>
@@ -751,9 +770,134 @@
 
 <div class="content">
   <div class="tabs">
+    <button class="tab tab-dashboard" onclick="switchTab('dashboard', this)">داشبرد</button>
     <button class="tab active" onclick="switchTab('customers', this)">لیست مشتریان</button>
     <button class="tab" onclick="switchTab('followups', this)">تاریخچه پیگیری</button>
     <button class="tab" onclick="switchTab('sales', this)">فروش‌ها</button>
+  </div>
+
+  <!-- شیت داشبرد -->
+  <div class="sheet" id="sheet-dashboard">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+      <div style="font-size:16px;font-weight:600;">فیلتر تاریخ:</div>
+      <input type="text" class="form-input" id="dashDateFrom" placeholder="از تاریخ: 1405/01/01" style="width:150px;font-family:monospace;direction:ltr;text-align:left;">
+      <input type="text" class="form-input" id="dashDateTo" placeholder="تا تاریخ: 1405/12/29" style="width:150px;font-family:monospace;direction:ltr;text-align:left;">
+      <button class="btn btn-primary" onclick="renderDashboard()">اعمال فیلتر</button>
+      <button class="btn" onclick="clearDashFilter()">پاک کردن فیلتر</button>
+    </div>
+
+    <!-- آمار کلی -->
+    <div class="stats" style="margin-bottom:16px;">
+      <div class="stat-card">
+        <div class="label">کل مشتریان</div>
+        <div class="value" id="dash-total-customers">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">لیدها</div>
+        <div class="value" style="color:var(--tag-ld)" id="dash-total-leads">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">مشتریان</div>
+        <div class="value" style="color:var(--tag-cs)" id="dash-total-cs">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">تعداد پیگیری‌ها</div>
+        <div class="value" style="color:var(--accent)" id="dash-total-followups">0</div>
+      </div>
+    </div>
+
+    <!-- آمار پیگیری -->
+    <div class="stats" style="margin-bottom:16px;">
+      <div class="stat-card">
+        <div class="label">پیگیری عقب افتاده</div>
+        <div class="value" style="color:var(--danger)" id="dash-overdue-followup">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">پیگیری نزدیک (۳ روز)</div>
+        <div class="value" style="color:var(--success)" id="dash-soon-followup">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">پیگیری تنظیم شده</div>
+        <div class="value" style="color:var(--warning)" id="dash-set-followup">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">بدون تاریخ پیگیری</div>
+        <div class="value" id="dash-no-followup">0</div>
+      </div>
+    </div>
+
+    <!-- آمار فروش -->
+    <div class="stats" style="margin-bottom:16px;">
+      <div class="stat-card">
+        <div class="label">تعداد کل فروش</div>
+        <div class="value" id="dash-sales-count">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">فروش نقد</div>
+        <div class="value" style="color:var(--success)" id="dash-sales-cash">۰</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">بیعانه‌ها</div>
+        <div class="value" style="color:var(--warning)" id="dash-sales-deposit">۰</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">مانده حساب‌ها</div>
+        <div class="value" style="color:var(--danger)" id="dash-sales-balance">۰</div>
+      </div>
+    </div>
+
+    <div class="stats" style="margin-bottom:16px;">
+      <div class="stat-card" style="flex:2;">
+        <div class="label">جمع کل مبلغ فروش</div>
+        <div class="value" style="color:var(--accent);font-size:30px;" id="dash-sales-total">۰</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">تعداد مشتریان فعال</div>
+        <div class="value" style="color:var(--accent)" id="dash-active-customers">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">میانگین مبلغ فروش</div>
+        <div class="value" style="color:var(--text)" id="dash-avg-sale">۰</div>
+      </div>
+    </div>
+
+    <!-- لیست پیگیری‌های عقب افتاده -->
+    <div style="margin-top:24px;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:12px;color:var(--danger);">پیگیری‌های عقب افتاده</div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>شناسه</th>
+              <th>نام</th>
+              <th>شماره</th>
+              <th>تاریخ پیگیری</th>
+              <th>تعداد فروش</th>
+            </tr>
+          </thead>
+          <tbody id="dashOverdueBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- لیست پیگیری‌های نزدیک -->
+    <div style="margin-top:24px;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:12px;color:var(--success);">پیگیری‌های نزدیک (۳ روز آینده)</div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>شناسه</th>
+              <th>نام</th>
+              <th>شماره</th>
+              <th>تاریخ پیگیری</th>
+              <th>تعداد فروش</th>
+            </tr>
+          </thead>
+          <tbody id="dashSoonBody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- شیت ۱: لیست مشتریان -->
@@ -1961,8 +2105,11 @@ function removeProduct(customerId, index) {
 function switchTab(tab, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.sheet').forEach(s => s.classList.remove('active'));
-  el.classList.add('active');
+  if (el) el.classList.add('active');
+  else document.querySelector(`.tab-${tab}`)?.classList.add('active');
   document.getElementById('sheet-' + tab).classList.add('active');
+  document.getElementById('profileDropdown').classList.remove('active');
+  if (tab === 'dashboard') renderDashboard();
 }
 
 // ============================================
@@ -2175,6 +2322,117 @@ function sortSales(field) {
       <td style="font-size:12px;">${settlementHtml}</td>
     </tr>`;
   }).join('');
+}
+
+// ============================================
+// Dashboard
+// ============================================
+function renderDashboard() {
+  const dateFrom = document.getElementById('dashDateFrom').value.trim();
+  const dateTo = document.getElementById('dashDateTo').value.trim();
+  const fromNum = dateFrom ? jalaliToNum(dateFrom) : 0;
+  const toNum = dateTo ? jalaliToNum(dateTo) : 99999999;
+  const todayNum = getTodayJalaliNum();
+  const in3DaysNum = jalaliAddDays(getTodayJalaliStr(), 3);
+
+  // Filter customers by followup date if filter is set
+  let customers = data.customers;
+  let followups = data.followups;
+
+  // General stats (not filtered)
+  document.getElementById('dash-total-customers').textContent = data.customers.length;
+  document.getElementById('dash-total-leads').textContent = data.customers.filter(c => c.id.startsWith('LD')).length;
+  document.getElementById('dash-total-cs').textContent = data.customers.filter(c => c.id.startsWith('CS')).length;
+  document.getElementById('dash-total-followups').textContent = data.followups.length;
+
+  // Followup stats
+  let overdueList = [];
+  let soonList = [];
+  let setCount = 0;
+  let noSetCount = 0;
+
+  data.customers.forEach(c => {
+    if (c.nextFollowupDate) {
+      const dNum = jalaliToNum(c.nextFollowupDate);
+      if (dNum < todayNum) {
+        overdueList.push(c);
+      } else if (dNum <= in3DaysNum) {
+        soonList.push(c);
+      }
+      setCount++;
+    } else {
+      noSetCount++;
+    }
+  });
+
+  document.getElementById('dash-overdue-followup').textContent = overdueList.length;
+  document.getElementById('dash-soon-followup').textContent = soonList.length;
+  document.getElementById('dash-set-followup').textContent = setCount;
+  document.getElementById('dash-no-followup').textContent = noSetCount;
+
+  // Sales stats
+  const allSales = getAllSales();
+  const cashSales = allSales.filter(s => s.status === 'تکمیل');
+  const depositSales = allSales.filter(s => s.status === 'بیعانه');
+
+  const totalCash = cashSales.reduce((sum, s) => sum + s.price, 0);
+  const totalDeposit = depositSales.reduce((sum, s) => sum + s.deposit, 0);
+  const totalBalance = depositSales.reduce((sum, s) => sum + s.balance, 0);
+  const totalAll = allSales.reduce((sum, s) => sum + s.price, 0);
+
+  document.getElementById('dash-sales-count').textContent = allSales.length;
+  document.getElementById('dash-sales-cash').textContent = formatNumber(totalCash) + ' ریال';
+  document.getElementById('dash-sales-deposit').textContent = formatNumber(totalDeposit) + ' ریال';
+  document.getElementById('dash-sales-balance').textContent = formatNumber(totalBalance) + ' ریال';
+  document.getElementById('dash-sales-total').textContent = formatNumber(totalAll) + ' ریال';
+
+  // Active customers (with products)
+  const activeCustomers = data.customers.filter(c => c.products && c.products.length > 0);
+  document.getElementById('dash-active-customers').textContent = activeCustomers.length;
+
+  // Average sale
+  const avgSale = allSales.length > 0 ? Math.round(totalAll / allSales.length) : 0;
+  document.getElementById('dash-avg-sale').textContent = formatNumber(avgSale) + ' ریال';
+
+  // Overdue list
+  const overdueBody = document.getElementById('dashOverdueBody');
+  if (overdueList.length === 0) {
+    overdueBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری عقب افتاده‌ای وجود ندارد</td></tr>';
+  } else {
+    overdueBody.innerHTML = overdueList.map(c => {
+      const saleCount = (c.products || []).length;
+      return `<tr style="background:#fff8f0;">
+        <td><span class="id-badge ${c.id.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="openCustomerDetail('${c.id}')">${c.id}</span></td>
+        <td>${c.name || c.platformId}</td>
+        <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${c.phone || '—'}</td>
+        <td><span class="settlement-badge settlement-overdue-badge">⚠ ${c.nextFollowupDate}</span></td>
+        <td style="text-align:center;">${saleCount}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Soon list
+  const soonBody = document.getElementById('dashSoonBody');
+  if (soonList.length === 0) {
+    soonBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری نزدیکی وجود ندارد</td></tr>';
+  } else {
+    soonBody.innerHTML = soonList.map(c => {
+      const saleCount = (c.products || []).length;
+      return `<tr style="background:#f0fff4;">
+        <td><span class="id-badge ${c.id.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="openCustomerDetail('${c.id}')">${c.id}</span></td>
+        <td>${c.name || c.platformId}</td>
+        <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${c.phone || '—'}</td>
+        <td><span class="settlement-badge settlement-soon-badge">${c.nextFollowupDate}</span></td>
+        <td style="text-align:center;">${saleCount}</td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+function clearDashFilter() {
+  document.getElementById('dashDateFrom').value = '';
+  document.getElementById('dashDateTo').value = '';
+  renderDashboard();
 }
 
 // ============================================
@@ -2715,6 +2973,7 @@ document.addEventListener('keydown', function(e) {
 renderCustomers();
 renderFollowups();
 renderSales();
+renderDashboard();
 </script>
 
 </body>
