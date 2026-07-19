@@ -957,10 +957,8 @@
   <h1>مدیریت کمپین دیجیتال مارکتینگ</h1>
   <div class="header-actions">
     <div class="profile-menu">
-      <button class="btn btn-icon" onclick="toggleProfileMenu()" title="پروفایل" style="font-size:14px;display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:var(--radius);background:var(--bg);border:1px solid var(--border);">
-        <span style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;" id="headerAvatar">👤</span>
-        <span id="headerUsername" style="font-size:13px;font-weight:500;color:var(--ink);"></span>
-        <span style="font-size:10px;color:var(--text-muted);">▼</span>
+      <button class="btn btn-icon" onclick="toggleProfileMenu()" title="پروفایل">
+        👤
       </button>
       <div class="profile-dropdown" id="profileDropdown">
         <div class="profile-dropdown-item" onclick="switchTab('dashboard', document.querySelector('.tab-dashboard'))">
@@ -3393,8 +3391,6 @@ function doLogin() {
 
   setCurrentUser({ username: user.username, displayName: user.displayName, role: user.role, permissions: user.permissions || null });
   document.getElementById('loginOverlay').classList.add('hidden');
-  document.getElementById('headerUsername').textContent = user.displayName || user.username;
-  document.getElementById('headerAvatar').textContent = (user.displayName || user.username || '?')[0];
   errorEl.classList.remove('show');
   applyPermissions();
 }
@@ -3625,8 +3621,6 @@ document.addEventListener('keydown', function(e) {
 // Check session
 const currentUser = checkSession();
 if (currentUser) {
-  document.getElementById('headerUsername').textContent = currentUser.displayName || currentUser.username;
-  document.getElementById('headerAvatar').textContent = (currentUser.displayName || currentUser.username || '?')[0];
 }
 
 // Apply permission-based visibility
