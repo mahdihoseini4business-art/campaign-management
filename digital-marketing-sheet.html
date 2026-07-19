@@ -1152,6 +1152,9 @@
 
     <div class="toolbar">
       <input type="text" class="search-box" placeholder="جستجو..." id="searchCustomers" oninput="renderCustomers()">
+      <select class="form-select" id="filterAdvisor" style="width:150px;" onchange="renderCustomers()">
+        <option value="">همه کارشناسان</option>
+      </select>
       <button class="btn" onclick="exportTabCSV('customers')">خروجی CSV</button>
       <button class="btn" onclick="exportTabXLSX('customers')">خروجی Excel</button>
       <button class="btn" onclick="openImportModal()">ایمپورت اکسل</button>
@@ -1168,6 +1171,7 @@
             <th onclick="sortCustomers('name')">نام</th>
             <th onclick="sortCustomers('phone')">شماره</th>
             <th onclick="sortCustomers('status')">وضعیت</th>
+            <th onclick="sortCustomers('advisor')">کارشناس</th>
             <th onclick="sortCustomers('followupCount')">پیگیری</th>
             <th onclick="sortCustomers('lastFollowup')">آخرین پیگیری</th>
             <th onclick="sortCustomers('nextFollowupDate')">پیگیری بعدی</th>
@@ -1326,6 +1330,11 @@
       <div class="form-group">
         <label>توضیحات</label>
         <textarea class="form-textarea" id="customerNotes" placeholder="توضیحات اضافه..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>کارشناس مسئول</label>
+        <select class="form-select" id="customerAdvisor"></select>
       </div>
     </div>
     <div class="modal-footer">
@@ -1504,14 +1513,14 @@ function loadData() {
   // Default demo data
   return {
     customers: [
-      { id: 'LD0001', platformId: 'user_ali_98', platform: 'instagram', name: 'علی محمدی', phone: '09121234567', status: 'contacted', notes: 'به محصول A علاقه‌مند', products: [] },
-      { id: 'LD0002', platformId: 'sara_online', platform: 'telegram', name: 'سارا احمدی', phone: '', status: 'new', notes: 'کامنت رو پست آخر', products: [] },
-      { id: 'LD0003', platformId: 'mehdi_dev', platform: 'instagram', name: 'مهدی رضایی', phone: '09359876543', status: 'interested', notes: 'قیمت رو پرسید', products: [] },
-      { id: 'CS0001', platformId: 'nora_club', platform: 'whatsapp', name: 'نرگس کریمی', phone: '09011112233', status: 'sent', notes: 'مشتری قبلی - خرید B', products: [
+      { id: 'LD0001', platformId: 'user_ali_98', platform: 'instagram', name: 'علی محمدی', phone: '09121234567', status: 'contacted', notes: 'به محصول A علاقه‌مند', advisor: 'مدیر سیستم', products: [] },
+      { id: 'LD0002', platformId: 'sara_online', platform: 'telegram', name: 'سارا احمدی', phone: '', status: 'new', notes: 'کامنت رو پست آخر', advisor: 'مدیر سیستم', products: [] },
+      { id: 'LD0003', platformId: 'mehdi_dev', platform: 'instagram', name: 'مهدی رضایی', phone: '09359876543', status: 'interested', notes: 'قیمت رو پرسید', advisor: 'مدیر سیستم', products: [] },
+      { id: 'CS0001', platformId: 'nora_club', platform: 'whatsapp', name: 'نرگس کریمی', phone: '09011112233', status: 'sent', notes: 'مشتری قبلی - خرید B', advisor: 'مدیر سیستم', products: [
         { name: 'کتاب', status: 'تکمیل', price: '450000', deposit: '' },
         { name: 'آنلاین چینی', status: 'بیعانه', price: '1200000', deposit: '500000' }
       ] },
-      { id: 'LD0004', platformId: 'reza_shop', platform: 'instagram', name: 'رضا عباسی', phone: '', status: 'new', notes: 'دایرکت داده', products: [] },
+      { id: 'LD0004', platformId: 'reza_shop', platform: 'instagram', name: 'رضا عباسی', phone: '', status: 'new', notes: 'دایرکت داده', advisor: 'مدیر سیستم', products: [] },
     ],
     followups: [
       { customerId: 'LD0001', date: '1404/04/08', type: 'دایرکت', result: 'پاسخ داد', nextDate: '1404/04/10', notes: 'در مورد محصول A سوال داشت' },
@@ -1554,6 +1563,14 @@ function generateId(type) {
 function renderCustomers() {
   const tbody = document.getElementById('customerBody');
   const search = toEnDigits(document.getElementById('searchCustomers').value).toLowerCase();
+  const advisorFilter = document.getElementById('filterAdvisor').value;
+
+  // Populate advisor filter dropdown
+  const users = getUsers();
+  const advisorSelect = document.getElementById('filterAdvisor');
+  const currentVal = advisorSelect.value;
+  advisorSelect.innerHTML = '<option value="">همه کارشناسان</option>' + users.map(u => `<option value="${escapeHtml(u.displayName)}">${escapeHtml(u.displayName)}</option>`).join('');
+  advisorSelect.value = currentVal;
 
   const filtered = data.customers.filter(c => {
     if (!c.id.toLowerCase().includes(search) &&
@@ -1564,12 +1581,13 @@ function renderCustomers() {
     const isLD = c.id.startsWith('LD');
     if (isCS && !hasPermission('customers_cs')) return false;
     if (isLD && !hasPermission('customers_ld')) return false;
+    if (advisorFilter && (c.advisor || '') !== advisorFilter) return false;
     return true;
   });
 
   if (filtered.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="11">
+      <tr><td colspan="12">
         <div class="empty-state">
           <div class="icon">👤</div>
           <h3>مشتری‌ای یافت نشد</h3>
@@ -1635,6 +1653,7 @@ function renderCustomers() {
       <td>${c.name || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td style="font-family: monospace; direction: ltr; text-align: right;">${c.phone || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+      <td style="font-size:12px;">${c.advisor || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td style="text-align:center;"><span class="followup-count ${countClass}">${followupCount}</span></td>
       <td style="font-size:13px;color:var(--text-muted);">${lastDate}</td>
       <td style="font-size:12px;">${nextFollowupHtml}</td>
@@ -1747,6 +1766,10 @@ function renderFollowups() {
 function openCustomerModal(editId) {
   const modal = document.getElementById('customerModal');
   const title = document.getElementById('customerModalTitle');
+  const currentUser = getCurrentUser();
+  const users = getUsers();
+  const advisorSelect = document.getElementById('customerAdvisor');
+  advisorSelect.innerHTML = users.map(u => `<option value="${escapeHtml(u.displayName)}">${escapeHtml(u.displayName)}</option>`).join('');
 
   if (editId) {
     const c = data.customers.find(x => x.id === editId);
@@ -1761,6 +1784,7 @@ function openCustomerModal(editId) {
     document.getElementById('customerPhone').value = c.phone;
     document.getElementById('customerStatus').value = c.status;
     document.getElementById('customerNotes').value = c.notes;
+    advisorSelect.value = c.advisor || (currentUser ? currentUser.displayName : '');
   } else {
     title.textContent = 'مشتری جدید';
     document.getElementById('editCustomerId').value = '';
@@ -1771,6 +1795,7 @@ function openCustomerModal(editId) {
     document.getElementById('customerPhone').value = '';
     document.getElementById('customerStatus').value = 'new';
     document.getElementById('customerNotes').value = '';
+    advisorSelect.value = currentUser ? currentUser.displayName : '';
     updatePreviewId();
   }
 
@@ -1802,6 +1827,7 @@ function saveCustomer() {
   const phone = document.getElementById('customerPhone').value.trim();
   const status = document.getElementById('customerStatus').value;
   const notes = document.getElementById('customerNotes').value.trim();
+  const advisor = document.getElementById('customerAdvisor').value;
 
   // Duplicate check
   if (!editId) {
@@ -1822,7 +1848,7 @@ function saveCustomer() {
     // Auto type: phone → CS, no phone → LD
     const type = phone ? 'CS' : 'LD';
     const id = generateId(type);
-    data.customers.push({ id, platformId, platform, name, phone, status, notes });
+    data.customers.push({ id, platformId, platform, name, phone, status, notes, advisor });
   } else {
     // Edit existing
     const dupById = platformId && data.customers.find(c => c.id !== editId && c.platformId && c.platformId.toLowerCase() === platformId.toLowerCase());
@@ -1849,7 +1875,7 @@ function saveCustomer() {
         data.customers[idx] = {
           ...oldCustomer,
           id: newId,
-          platformId, platform, name, phone, status, notes
+          platformId, platform, name, phone, status, notes, advisor
         };
         // Update followups to reference new ID
         data.followups.forEach(f => {
@@ -1870,7 +1896,7 @@ function saveCustomer() {
         data.customers[idx] = {
           ...oldCustomer,
           id: newId,
-          platformId, platform, name, phone, status, notes
+          platformId, platform, name, phone, status, notes, advisor
         };
         data.followups.forEach(f => {
           if (f.customerId === oldCustomer.id) f.customerId = newId;
@@ -1886,7 +1912,7 @@ function saveCustomer() {
       // Normal edit (no type change)
       data.customers[idx] = {
         ...oldCustomer,
-        platformId, platform, name, phone, status, notes
+        platformId, platform, name, phone, status, notes, advisor
       };
     }
   }
@@ -2043,6 +2069,14 @@ function openCustomerDetail(id) {
       <div class="detail-field">
         <span class="detail-label">وضعیت</span>
         <span class="detail-value">${statusLabel}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">کارشناس مسئول</span>
+        <span class="detail-value">
+          <select class="form-select" id="detailAdvisor" style="width:auto;display:inline-block;" onchange="updateCustomerAdvisor('${c.id}', this.value)">
+            ${getUsers().map(u => `<option value="${escapeHtml(u.displayName)}" ${u.displayName === c.advisor ? 'selected' : ''}>${escapeHtml(u.displayName)}</option>`).join('')}
+          </select>
+        </span>
       </div>
       <div class="detail-field">
         <span class="detail-label">ایدی پلتفرم</span>
@@ -2233,6 +2267,16 @@ function toJalali(gregorian) {
     jd = 1 + ((days - 186) % 30);
   }
   return { year: jy, month: jm, day: jd };
+}
+
+function updateCustomerAdvisor(customerId, advisor) {
+  const c = data.customers.find(x => x.id === customerId);
+  if (c) {
+    c.advisor = advisor;
+    saveData();
+    renderCustomers();
+    showToast('کارشناس مسئول تغییر کرد');
+  }
 }
 
 function closeDetailModal() {
@@ -2814,6 +2858,7 @@ const SALES_IMPORT_FIELDS = [
   { key: 'price', label: 'قیمت کل' },
   { key: 'deposit', label: 'بیعانه' },
   { key: 'settlementDate', label: 'تاریخ تسویه' },
+  { key: 'advisor', label: 'کارشناس' },
 ];
 
 const SALES_STATUS_MAP = {
@@ -2934,6 +2979,8 @@ function doSalesImport() {
     if (!customer) {
       const name = getValue('customerName') || '';
       const id = generateId('CS');
+      const currentUser = getCurrentUser();
+      const advisor = getValue('advisor') || (currentUser ? currentUser.displayName : '');
       customer = {
         id,
         platformId: '',
@@ -2942,6 +2989,7 @@ function doSalesImport() {
         phone,
         status: 'new',
         notes: 'خودکار ایجاد شده از ایمپورت فروش',
+        advisor,
         products: []
       };
       data.customers.push(customer);
@@ -3038,12 +3086,12 @@ function sortFollowups(field) {
 const EXPORT_CONFIG = {
   customers: {
     label: 'مشتریان',
-    headers: ['شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'وضعیت', 'پیگیری بعدی', 'توضیحات'],
+    headers: ['شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'وضعیت', 'کارشناس', 'پیگیری بعدی', 'توضیحات'],
     getRows: () => {
       const statusMap = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' };
       const platformMap = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' };
       return data.customers.map(c => [
-        c.id, c.platformId || '', platformMap[c.platform] || c.platform, c.name, c.phone, statusMap[c.status] || c.status, c.nextFollowupDate || '', c.notes
+        c.id, c.platformId || '', platformMap[c.platform] || c.platform, c.name, c.phone, statusMap[c.status] || c.status, c.advisor || '', c.nextFollowupDate || '', c.notes
       ]);
     }
   },
@@ -3057,13 +3105,16 @@ const EXPORT_CONFIG = {
   },
   sales: {
     label: 'فروش‌ها',
-    headers: ['شناسه مشتری', 'نام مشتری', 'شماره موبایل', 'پلتفرم', 'محصول', 'وضعیت', 'مبلغ کل', 'بیعانه', 'مانده', 'تاریخ تسویه'],
+    headers: ['شناسه مشتری', 'نام مشتری', 'شماره موبایل', 'پلتفرم', 'محصول', 'وضعیت', 'مبلغ کل', 'بیعانه', 'مانده', 'تاریخ تسویه', 'کارشناس'],
     getRows: () => {
       const platformMap = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' };
-      return getAllSales().map(s => [
-        s.customerId, s.customerName, s.customerPhone, platformMap[s.platform] || s.platform,
-        s.productName, s.status, s.price || '', s.deposit || '', s.balance || '', s.settlementDate || ''
-      ]);
+      return getAllSales().map(s => {
+        const cust = data.customers.find(c => c.id === s.customerId);
+        return [
+          s.customerId, s.customerName, s.customerPhone, platformMap[s.platform] || s.platform,
+          s.productName, s.status, s.price || '', s.deposit || '', s.balance || '', s.settlementDate || '', cust ? (cust.advisor || '') : ''
+        ];
+      });
     }
   }
 };
@@ -3113,6 +3164,7 @@ const IMPORT_FIELDS = [
   { key: 'phone', label: 'شماره تماس' },
   { key: 'status', label: 'وضعیت' },
   { key: 'notes', label: 'توضیحات' },
+  { key: 'advisor', label: 'کارشناس' },
 ];
 
 const PLATFORM_MAP_IMPORT = {
@@ -3255,6 +3307,8 @@ function doImport() {
     if (existById || existByPhone) { skipped++; return; }
 
     const type = phone ? 'CS' : 'LD';
+    const currentUser = getCurrentUser();
+    const advisor = getValue('advisor') || (currentUser ? currentUser.displayName : '');
     data.customers.push({
       id: generateId(type),
       platformId,
@@ -3263,6 +3317,7 @@ function doImport() {
       phone,
       status,
       notes: getValue('notes'),
+      advisor,
       products: []
     });
     imported++;
