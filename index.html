@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>سیستم مدیریت کمپین دیجیتال مارکتینگ</title>
+<link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+<link rel="stylesheet" href="https://unpkg.com/@majidh1/jalalidatepicker/dist/jalalidatepicker.min.css">
+<script type="module" src="/src/main.js"></script>
+</head>
+<body>
+
+<!-- صفحه لاگین -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-card">
+    <div class="login-icon">🔐</div>
+    <h2>ورود به سیستم</h2>
+    <div class="login-subtitle">مدیریت کمپین دیجیتال مارکتینگ</div>
+    <div class="login-error" id="loginError">نام کاربری یا رمز عبور اشتباه است</div>
+    <div class="form-group">
+      <label>نام کاربری</label>
+      <input type="text" class="form-input" id="loginUsername" placeholder="نام کاربری" autofocus>
+    </div>
+    <div class="form-group">
+      <label>رمز عبور</label>
+      <input type="password" class="form-input" id="loginPassword" placeholder="رمز عبور">
+    </div>
+    <button class="btn-login" onclick="window.appDoLogin()">ورود</button>
+  </div>
+</div>
+
+<!-- مودال تنظیمات -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal" style="max-width: 560px;">
+    <div class="modal-header">
+      <h2>تنظیمات و مدیریت کاربران</h2>
+      <button class="modal-close" onclick="window.appCloseSettingsModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:16px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:12px;">افزودن کاربر جدید</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>نام کاربری <span class="required">*</span></label>
+            <input type="text" class="form-input" id="newUsername" placeholder="نام کاربری">
+          </div>
+          <div class="form-group">
+            <label>رمز عبور <span class="required">*</span></label>
+            <input type="password" class="form-input" id="newPassword" placeholder="رمز عبور">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>نام نمایشی</label>
+            <input type="text" class="form-input" id="newDisplayName" placeholder="نام کامل">
+          </div>
+          <div class="form-group">
+            <label>سطح دسترسی</label>
+            <select class="form-select" id="newRole">
+              <option value="user">کاربر عادی</option>
+              <option value="admin">مدیر سیستم</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="window.appAddUser()" style="margin-top:4px;">افزودن کاربر</button>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:16px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:12px;">لیست کاربران</div>
+        <div id="settingsUsersList"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="window.appCloseSettingsModal()">بستن</button>
+    </div>
+  </div>
+</div>
+
+<div class="header">
+  <h1>مدیریت کمپین دیجیتال مارکتینگ</h1>
+  <div class="header-actions">
+    <div class="profile-menu">
+      <button class="btn btn-icon" onclick="window.appToggleProfileMenu()" title="پروفایل">👤</button>
+      <div class="profile-dropdown" id="profileDropdown">
+        <div class="profile-dropdown-item" onclick="window.appSwitchTab('dashboard', document.querySelector('.tab-dashboard'))">
+          <span>داشبرد</span>
+        </div>
+        <div class="profile-dropdown-item" onclick="showToast('پروفایل - به زودی')">
+          <span>پروفایل</span>
+        </div>
+        <div class="profile-dropdown-item" onclick="window.appOpenSettingsModal()">
+          <span>تنظیمات</span>
+        </div>
+        <div class="profile-dropdown-item" style="border-top:1px solid var(--border);color:var(--danger);" onclick="window.appDoLogout()">
+          <span>خروج</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="content">
+  <div class="tabs">
+    <button class="tab tab-dashboard" onclick="window.appSwitchTab('dashboard', this)">داشبرد</button>
+    <button class="tab active" onclick="window.appSwitchTab('customers', this)">لیست مشتریان</button>
+    <button class="tab" onclick="window.appSwitchTab('followups', this)">تاریخچه پیگیری</button>
+    <button class="tab" onclick="window.appSwitchTab('sales', this)">فروش‌ها</button>
+  </div>
+
+  <!-- شیت داشبرد -->
+  <div class="sheet" id="sheet-dashboard">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+      <div style="font-size:16px;font-weight:600;">فیلتر تاریخ:</div>
+      <input type="text" class="form-input" id="dashDateFrom" placeholder="از تاریخ" data-jdp style="width:150px;">
+      <input type="text" class="form-input" id="dashDateTo" placeholder="تا تاریخ" data-jdp style="width:150px;">
+      <button class="btn btn-primary" onclick="window.appRenderDashboard()">اعمال فیلتر</button>
+      <button class="btn" onclick="window.appClearDashFilter()">پاک کردن فیلتر</button>
+    </div>
+
+    <div class="stats" style="margin-bottom:20px;">
+      <div class="stat-card"><div class="label">کل مشتریان</div><div class="value" id="dash-total-customers">0</div></div>
+      <div class="stat-card"><div class="label">لیدها</div><div class="value" style="color:var(--tag-ld)" id="dash-total-leads">0</div></div>
+      <div class="stat-card"><div class="label">مشتریان</div><div class="value" style="color:var(--tag-cs)" id="dash-total-cs">0</div></div>
+      <div class="stat-card"><div class="label">تعداد پیگیری‌ها</div><div class="value" style="color:var(--accent)" id="dash-total-followups">0</div></div>
+    </div>
+
+    <div class="stats" style="margin-bottom:20px;">
+      <div class="stat-card"><div class="label">پیگیری عقب افتاده</div><div class="value" style="color:var(--danger)" id="dash-overdue-followup">0</div></div>
+      <div class="stat-card"><div class="label">پیگیری نزدیک (۳ روز)</div><div class="value" style="color:var(--success)" id="dash-soon-followup">0</div></div>
+      <div class="stat-card"><div class="label">پیگیری تنظیم شده</div><div class="value" style="color:var(--warning)" id="dash-set-followup">0</div></div>
+      <div class="stat-card"><div class="label">بدون تاریخ پیگیری</div><div class="value" id="dash-no-followup">0</div></div>
+    </div>
+
+    <div class="stats" style="margin-bottom:20px;">
+      <div class="stat-card"><div class="label">تعداد کل فروش</div><div class="value" id="dash-sales-count">0</div></div>
+      <div class="stat-card"><div class="label">فروش نقد</div><div class="value" style="color:var(--success)" id="dash-sales-cash">۰</div></div>
+      <div class="stat-card"><div class="label">بیعانه‌ها</div><div class="value" style="color:var(--warning)" id="dash-sales-deposit">۰</div></div>
+      <div class="stat-card"><div class="label">مانده حساب‌ها</div><div class="value" style="color:var(--danger)" id="dash-sales-balance">۰</div></div>
+    </div>
+
+    <div class="stats" style="margin-bottom:24px;">
+      <div class="stat-card" style="flex:2;"><div class="label">جمع کل مبلغ فروش</div><div class="value" style="color:var(--accent);font-size:30px;" id="dash-sales-total">۰</div></div>
+      <div class="stat-card"><div class="label">تعداد مشتریان فعال</div><div class="value" style="color:var(--accent)" id="dash-active-customers">0</div></div>
+      <div class="stat-card"><div class="label">میانگین مبلغ فروش</div><div class="value" style="color:var(--text)" id="dash-avg-sale">۰</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+      <div style="background:white;border:1px solid var(--border);border-radius:var(--radius);padding:16px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:12px;">وضعیت مشتریان</div>
+        <canvas id="chartCustomers" height="200"></canvas>
+      </div>
+      <div style="background:white;border:1px solid var(--border);border-radius:var(--radius);padding:16px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:12px;">وضعیت فروش</div>
+        <canvas id="chartSalesStatus" height="200"></canvas>
+      </div>
+    </div>
+
+    <div style="background:white;border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:24px;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:12px;">فروش بر اساس محصول</div>
+      <canvas id="chartProducts" height="160"></canvas>
+    </div>
+
+    <div class="dash-collapsible" onclick="window.appToggleDashSection('overdue')">
+      <span style="color:var(--danger);">⚠</span>
+      <span>پیگیری‌های عقب افتاده</span>
+      <span class="dash-badge" id="dash-overdue-badge" style="background:var(--danger);color:white;">0</span>
+      <span class="dash-arrow" id="dash-arrow-overdue">◀</span>
+    </div>
+    <div class="dash-collapsible-body" id="dash-overdue-body">
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>شناسه</th><th>نام</th><th>شماره</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
+          <tbody id="dashOverdueBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="dash-collapsible" onclick="window.appToggleDashSection('soon')" style="margin-top:8px;">
+      <span style="color:var(--success);">●</span>
+      <span>پیگیری‌های نزدیک (۳ روز آینده)</span>
+      <span class="dash-badge" id="dash-soon-badge" style="background:var(--success);color:white;">0</span>
+      <span class="dash-arrow" id="dash-arrow-soon">◀</span>
+    </div>
+    <div class="dash-collapsible-body" id="dash-soon-body">
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>شناسه</th><th>نام</th><th>شماره</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
+          <tbody id="dashSoonBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- شیت مشتریان -->
+  <div class="sheet active" id="sheet-customers">
+    <div class="stats">
+      <div class="stat-card"><div class="label">کل مشتریان</div><div class="value" id="stat-total">0</div></div>
+      <div class="stat-card"><div class="label">لید جدید</div><div class="value" style="color: var(--tag-ld)" id="stat-ld">0</div></div>
+      <div class="stat-card"><div class="label">مشتری قبلی</div><div class="value" style="color: var(--tag-cs)" id="stat-cs">0</div></div>
+      <div class="stat-card"><div class="label">در حال پیگیری</div><div class="value" style="color: var(--warning)" id="stat-following">0</div></div>
+      <div class="stat-card"><div class="label">تبدیل شده (LD→CS)</div><div class="value" style="color: var(--success)" id="stat-converted">0</div></div>
+      <div class="stat-card"><div class="label">جمع پرداختی مشتریان</div><div class="value" style="color: var(--accent)" id="stat-revenue">۰</div></div>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" class="search-box" placeholder="جستجو..." id="searchCustomers" oninput="window.appRenderCustomers()">
+      <select class="form-select" id="filterAdvisor" style="width:150px;" onchange="window.appRenderCustomers()">
+        <option value="">همه کارشناسان</option>
+      </select>
+      <button class="btn" onclick="window.appExportTabCSV('customers')">خروجی CSV</button>
+      <button class="btn" onclick="window.appExportTabXLSX('customers')">خروجی Excel</button>
+      <button class="btn" onclick="window.appOpenImportModal()">ایمپورت اکسل</button>
+      <button class="btn btn-primary" onclick="window.appOpenCustomerModal()">+ مشتری جدید</button>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="window.appSortCustomersHeader('id')">شناسه</th>
+            <th onclick="window.appSortCustomersHeader('platformId')">ایدی پلتفرم</th>
+            <th onclick="window.appSortCustomersHeader('platform')">پلتفرم</th>
+            <th onclick="window.appSortCustomersHeader('name')">نام</th>
+            <th onclick="window.appSortCustomersHeader('phone')">شماره</th>
+            <th onclick="window.appSortCustomersHeader('status')">وضعیت</th>
+            <th onclick="window.appSortCustomersHeader('advisor')">کارشناس</th>
+            <th onclick="window.appSortCustomersHeader('followupCount')">پیگیری</th>
+            <th onclick="window.appSortCustomersHeader('lastFollowup')">آخرین پیگیری</th>
+            <th onclick="window.appSortCustomersHeader('nextFollowupDate')">پیگیری بعدی</th>
+            <th>توضیحات</th>
+            <th style="width: 80px;"></th>
+          </tr>
+        </thead>
+        <tbody id="customerBody"></tbody>
+      </table>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><span class="id-badge id-ld">LD</span> لید</div>
+      <div class="legend-item"><span class="id-badge id-cs">CS</span> مشتری قبلی</div>
+    </div>
+  </div>
+
+  <!-- شیت پیگیری -->
+  <div class="sheet" id="sheet-followups">
+    <div class="toolbar">
+      <input type="text" class="search-box" placeholder="جستجو..." id="searchFollowups" oninput="window.appRenderFollowups()">
+      <button class="btn" onclick="window.appExportTabCSV('followups')">خروجی CSV</button>
+      <button class="btn" onclick="window.appExportTabXLSX('followups')">خروجی Excel</button>
+      <button class="btn btn-primary" onclick="window.appOpenFollowupModal()">+ پیگیری جدید</button>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="window.appSortFollowupsHeader('customerId')">شناسه</th>
+            <th onclick="window.appSortFollowupsHeader('customerName')">نام</th>
+            <th onclick="window.appSortFollowupsHeader('date')">تاریخ</th>
+            <th onclick="window.appSortFollowupsHeader('type')">نوع</th>
+            <th onclick="window.appSortFollowupsHeader('result')">نتیجه</th>
+            <th onclick="window.appSortFollowupsHeader('nextDate')">پیگیری بعدی</th>
+            <th>توضیحات</th>
+            <th style="width: 60px;"></th>
+          </tr>
+        </thead>
+        <tbody id="followupBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- شیت فروش‌ها -->
+  <div class="sheet" id="sheet-sales">
+    <div class="stats">
+      <div class="stat-card"><div class="label">تعداد کل فروش</div><div class="value" id="stat-sales-count">0</div></div>
+      <div class="stat-card"><div class="label">فروش نقد (تکمیل)</div><div class="value" style="color: var(--success)" id="stat-sales-cash">۰</div></div>
+      <div class="stat-card"><div class="label">بیعانه‌ها</div><div class="value" style="color: var(--warning)" id="stat-sales-deposit">۰</div></div>
+      <div class="stat-card"><div class="label">مانده حساب‌ها</div><div class="value" style="color: var(--danger)" id="stat-sales-balance">۰</div></div>
+      <div class="stat-card"><div class="label">جمع کل مبلغ</div><div class="value" style="color: var(--accent)" id="stat-sales-total">۰</div></div>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" class="search-box" placeholder="جستجو (نام، شماره، محصول)..." id="searchSales" oninput="window.appRenderSales()">
+      <button class="btn" onclick="window.appExportTabCSV('sales')">خروجی CSV</button>
+      <button class="btn" onclick="window.appExportTabXLSX('sales')">خروجی Excel</button>
+      <button class="btn btn-primary" onclick="window.appOpenSalesImportModal()">ایمپورت فروش از اکسل</button>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="window.appSortSalesHeader('customerId')">شناسه مشتری</th>
+            <th onclick="window.appSortSalesHeader('customerName')">نام مشتری</th>
+            <th onclick="window.appSortSalesHeader('customerPhone')">شماره موبایل</th>
+            <th onclick="window.appSortSalesHeader('platform')">پلتفرم</th>
+            <th onclick="window.appSortSalesHeader('productName')">محصول</th>
+            <th onclick="window.appSortSalesHeader('status')">وضعیت</th>
+            <th onclick="window.appSortSalesHeader('price')">مبلغ کل</th>
+            <th onclick="window.appSortSalesHeader('deposit')">بیعانه</th>
+            <th onclick="window.appSortSalesHeader('balance')">مانده</th>
+            <th onclick="window.appSortSalesHeader('settlementDate')">تاریخ تسویه</th>
+          </tr>
+        </thead>
+        <tbody id="salesBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- مودال مشتری -->
+<div class="modal-overlay" id="customerModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="customerModalTitle">مشتری جدید</h2>
+      <button class="modal-close" onclick="window.appCloseCustomerModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editCustomerId">
+      <div class="form-group">
+        <label>شناسه</label>
+        <input type="text" class="form-input" id="customerIdDisplay" readonly style="background: #f8f9fa; font-family: monospace;">
+        <div class="form-hint" id="customerIdHint">خودکار تولید می‌شود</div>
+      </div>
+      <div class="form-group">
+        <label>ایدی پلتفرم</label>
+        <input type="text" class="form-input" id="customerPlatformId" placeholder="اختیاری - مثلاً: ali_98">
+      </div>
+      <div class="form-group">
+        <label>پلتفرم <span class="required">*</span></label>
+        <select class="form-select" id="customerPlatform">
+          <option value="instagram">اینستاگرام</option>
+          <option value="telegram">تلگرام</option>
+          <option value="whatsapp">واتساپ</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>نام</label><input type="text" class="form-input" id="customerName" placeholder="اختیاری"></div>
+        <div class="form-group"><label>شماره تماس</label><input type="text" class="form-input" id="customerPhone" placeholder="اختیاری" dir="ltr" style="text-align: left;"></div>
+      </div>
+      <div class="form-group">
+        <label>وضعیت</label>
+        <select class="form-select" id="customerStatus">
+          <option value="new">جدید</option>
+          <option value="contacted">تماس گرفته شده</option>
+          <option value="chatting">در حال چت</option>
+          <option value="interested">علاقه‌مند</option>
+          <option value="sent">اطلاعات ارسال شده</option>
+          <option value="followup_done">تکمیل پیگیری</option>
+          <option value="converting">در حال تبدیل</option>
+          <option value="purchased">خرید کرد</option>
+          <option value="cancelled">منصرف شده</option>
+        </select>
+      </div>
+      <div class="form-group"><label>توضیحات</label><textarea class="form-textarea" id="customerNotes" placeholder="توضیحات اضافه..."></textarea></div>
+      <div class="form-group"><label>کارشناس مسئول</label><select class="form-select" id="customerAdvisor"></select></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="window.appCloseCustomerModal()">انصراف</button>
+      <button class="btn btn-primary" onclick="window.appSaveCustomer()">ذخیره</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال پیگیری -->
+<div class="modal-overlay" id="followupModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="followupModalTitle">پیگیری جدید</h2>
+      <button class="modal-close" onclick="window.appCloseFollowupModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editFollowupIndex">
+      <div class="form-group">
+        <label>مشتری <span class="required">*</span></label>
+        <select class="form-select" id="followupCustomer"><option value="">انتخاب کنید...</option></select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>تاریخ پیگیری <span class="required">*</span></label><input type="text" class="form-input" id="followupDate" placeholder="تاریخ پیگیری" data-jdp></div>
+        <div class="form-group"><label>پیگیری بعدی</label><input type="text" class="form-input" id="followupNextDate" placeholder="پیگیری بعدی" data-jdp></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>نوع پیگیری <span class="required">*</span></label>
+          <select class="form-select" id="followupType">
+            <option value="دایرکت">دایرکت</option><option value="تماس">تماس</option><option value="کامنت">کامنت</option><option value="پیام">پیام</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>نتیجه</label>
+          <select class="form-select" id="followupResult">
+            <option value="پاسخ داد">پاسخ داد</option><option value="صحبت شد">صحبت شد</option><option value="ارسال قیمت">ارسال قیمت</option><option value="ارسال اطلاعات">ارسال اطلاعات</option><option value="پیگیری">پیگیری</option><option value="پاسخ نداد">پاسخ نداد</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group"><label>توضیحات</label><textarea class="form-textarea" id="followupNotes" placeholder="توضیحات این پیگیری..."></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="window.appCloseFollowupModal()">انصراف</button>
+      <button class="btn btn-primary" onclick="window.appSaveFollowup()">ذخیره</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال حذف -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal" style="max-width: 400px;">
+    <div class="modal-header"><h2>تایید حذف</h2><button class="modal-close" onclick="window.appCloseDeleteModal()">&times;</button></div>
+    <div class="modal-body"><p id="deleteMessage">آیا مطمئن هستید؟</p></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="window.appCloseDeleteModal()">انصراف</button>
+      <button class="btn btn-danger" id="deleteConfirmBtn">حذف</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال ایمپورت اکسل -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal" style="max-width: 600px;">
+    <div class="modal-header"><h2>ایمپورت از اکسل</h2><button class="modal-close" onclick="window.appCloseImportModal()">&times;</button></div>
+    <div class="modal-body">
+      <div id="importStep1">
+        <div class="form-group"><label>فایل اکسل را انتخاب کنید</label><input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" style="font-size:13px;"></div>
+      </div>
+      <div id="importStep2" style="display:none;">
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">هر ستون اکسل رو به کدوم فیلد برنامه اختصاص بدید:</div>
+        <div id="importMapping"></div>
+        <div style="margin-top:12px;font-size:12px;color:var(--text-muted);"><span id="importPreview"></span></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="window.appCloseImportModal()">انصراف</button>
+      <button class="btn btn-primary" id="importBtn" onclick="window.appDoImport()" style="display:none;">ایمپورت</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال ایمپورت فروش -->
+<div class="modal-overlay" id="salesImportModal">
+  <div class="modal" style="max-width: 600px;">
+    <div class="modal-header"><h2>ایمپورت فروش از اکسل</h2><button class="modal-close" onclick="window.appCloseSalesImportModal()">&times;</button></div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
+        فایل اکسل باید شامل ستون‌های: <b>شماره موبایل</b>، <b>نام مشتری</b>، <b>محصول</b>، <b>وضعیت</b>، <b>قیمت کل</b>، <b>بیعانه</b>، <b>تاریخ تسویه</b> باشد.
+        <br>شماره موبایل الزامی است. اگه مشتری وجود نداشته باشد خودکار ساخته می‌شود.
+      </div>
+      <div class="form-group"><label>فایل اکسل را انتخاب کنید</label><input type="file" id="salesImportFileInput" accept=".xlsx,.xls,.csv" style="font-size:13px;"></div>
+      <div id="salesImportMapping" style="display:none;"></div>
+      <div id="salesImportPreview" style="margin-top:8px;font-size:12px;color:var(--text-muted);"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="window.appCloseSalesImportModal()">انصراف</button>
+      <button class="btn btn-primary" id="salesImportBtn" onclick="window.appDoSalesImport()" style="display:none;">ایمپورت</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال پنل مشتری -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" style="max-width: 640px;">
+    <div class="modal-header">
+      <h2 id="detailTitle">پنل مشتری</h2>
+      <button class="modal-close" onclick="window.appCloseDetailModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="detailBody"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="window.appCloseDetailModal()">بستن</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+</body>
+</html>

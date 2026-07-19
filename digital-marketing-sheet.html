@@ -9,6 +9,12 @@
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/@majidh1/jalalidatepicker/dist/jalalidatepicker.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const SUPABASE_URL = 'https://vyiqgusxlrzrxteoofmi.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_49-om9CP8QL3z7aQuvjm3g_ZpSQ_nzY';
+  const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+</script>
 <style>
   :root {
     --ink: #1a1a2e;
@@ -1560,13 +1566,13 @@ function generateId(type) {
 // ============================================
 // Render Customers
 // ============================================
-function renderCustomers() {
+async function renderCustomers() {
   const tbody = document.getElementById('customerBody');
   const search = toEnDigits(document.getElementById('searchCustomers').value).toLowerCase();
   const advisorFilter = document.getElementById('filterAdvisor').value;
 
   // Populate advisor filter dropdown
-  const users = getUsers();
+  const users = await getUsers();
   const advisorSelect = document.getElementById('filterAdvisor');
   const currentVal = advisorSelect.value;
   advisorSelect.innerHTML = '<option value="">همه کارشناسان</option>' + users.map(u => `<option value="${escapeHtml(u.displayName)}">${escapeHtml(u.displayName)}</option>`).join('');
@@ -1763,11 +1769,11 @@ function renderFollowups() {
 // ============================================
 // Customer Modal
 // ============================================
-function openCustomerModal(editId) {
+async function openCustomerModal(editId) {
   const modal = document.getElementById('customerModal');
   const title = document.getElementById('customerModalTitle');
   const currentUser = getCurrentUser();
-  const users = getUsers();
+  const users = await getUsers();
   const advisorSelect = document.getElementById('customerAdvisor');
   advisorSelect.innerHTML = users.map(u => `<option value="${escapeHtml(u.displayName)}">${escapeHtml(u.displayName)}</option>`).join('');
 
@@ -2049,7 +2055,7 @@ function closeDeleteModal() {
 // ============================================
 // Customer Detail Panel
 // ============================================
-function openCustomerDetail(id) {
+async function openCustomerDetail(id) {
   const c = data.customers.find(x => x.id === id);
   if (!c) return;
 
@@ -2057,6 +2063,8 @@ function openCustomerDetail(id) {
   const idClass = c.id.startsWith('CS') ? 'id-cs' : 'id-ld';
   const platformLabel = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' }[c.platform] || c.platform;
   const statusLabel = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد' }[c.status] || c.status;
+
+  const detailUsers = await getUsers();
 
   document.getElementById('detailTitle').textContent = `پنل مشتری — ${c.name || c.platformId}`;
 
@@ -2074,7 +2082,7 @@ function openCustomerDetail(id) {
         <span class="detail-label">کارشناس مسئول</span>
         <span class="detail-value">
           <select class="form-select" id="detailAdvisor" style="width:auto;display:inline-block;" onchange="updateCustomerAdvisor('${c.id}', this.value)">
-            ${getUsers().map(u => `<option value="${escapeHtml(u.displayName)}" ${u.displayName === c.advisor ? 'selected' : ''}>${escapeHtml(u.displayName)}</option>`).join('')}
+            ${detailUsers.map(u => `<option value="${escapeHtml(u.displayName)}" ${u.displayName === c.advisor ? 'selected' : ''}>${escapeHtml(u.displayName)}</option>`).join('')}
           </select>
         </span>
       </div>
@@ -3378,33 +3386,35 @@ function showToast(msg) {
 }
 
 // ============================================
-// Auth & User Management
+// Auth & User Management (Supabase)
 // ============================================
-const AUTH_KEY = 'campaign_manager_users';
 const SESSION_KEY = 'campaign_manager_session';
 
-function getUsers() {
-  try {
-    const raw = localStorage.getItem(AUTH_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch(e) {}
-  // Default admin user (password is hashed)
-  return [{ username: 'admin', password: hashPassword('admin123'), displayName: 'مدیر سیستم', role: 'admin' }];
+async function hashPassword(pw) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(pw);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-function saveUsers(users) {
-  localStorage.setItem(AUTH_KEY, JSON.stringify(users));
-}
-
-function hashPassword(pw) {
-  // Simple hash - not cryptographic but better than plaintext
-  let hash = 0;
-  for (let i = 0; i < pw.length; i++) {
-    const ch = pw.charCodeAt(i);
-    hash = ((hash << 5) - hash) + ch;
-    hash |= 0;
+async function getUsers() {
+  const { data, error } = await _supabase.from('users').select('*');
+  if (error) {
+    console.error('getUsers error:', error);
+    return [];
   }
-  return 'h_' + Math.abs(hash).toString(36);
+  return data || [];
+}
+
+async function saveUser(user) {
+  const { error } = await _supabase.from('users').upsert(user, { onConflict: 'username' });
+  if (error) console.error('saveUser error:', error);
+}
+
+async function deleteUserFromDB(username) {
+  const { error } = await _supabase.from('users').delete().eq('username', username);
+  if (error) console.error('deleteUser error:', error);
 }
 
 function getCurrentUser() {
@@ -3423,7 +3433,7 @@ function clearCurrentUser() {
   localStorage.removeItem(SESSION_KEY);
 }
 
-function doLogin() {
+async function doLogin() {
   const username = toEnDigits(document.getElementById('loginUsername').value.trim());
   const password = toEnDigits(document.getElementById('loginPassword').value);
   const errorEl = document.getElementById('loginError');
@@ -3434,17 +3444,21 @@ function doLogin() {
     return;
   }
 
-  const users = getUsers();
-  const hashedPw = hashPassword(password);
-  const user = users.find(u => u.username === username && u.password === hashedPw);
+  const hash = await hashPassword(password);
+  const { data: user, error } = await _supabase
+    .from('users')
+    .select('*')
+    .eq('username', username)
+    .eq('password_hash', hash)
+    .single();
 
-  if (!user) {
+  if (error || !user) {
     errorEl.textContent = 'نام کاربری یا رمز عبور اشتباه است';
     errorEl.classList.add('show');
     return;
   }
 
-  setCurrentUser({ username: user.username, displayName: user.displayName, role: user.role, permissions: user.permissions || null });
+  setCurrentUser({ username: user.username, displayName: user.display_name, role: user.role, permissions: user.permissions || null });
   document.getElementById('loginOverlay').classList.add('hidden');
   errorEl.classList.remove('show');
   applyPermissions();
@@ -3473,12 +3487,12 @@ document.getElementById('loginUsername').addEventListener('keydown', function(e)
 });
 
 // User Management
-function openSettingsModal() {
+async function openSettingsModal() {
   document.getElementById('newUsername').value = '';
   document.getElementById('newPassword').value = '';
   document.getElementById('newDisplayName').value = '';
   document.getElementById('newRole').value = 'user';
-  renderUsersList();
+  await renderUsersList();
   document.getElementById('settingsModal').classList.add('active');
   document.getElementById('profileDropdown').classList.remove('active');
 }
@@ -3487,7 +3501,7 @@ function closeSettingsModal() {
   document.getElementById('settingsModal').classList.remove('active');
 }
 
-function addUser() {
+async function addUser() {
   const username = toEnDigits(document.getElementById('newUsername').value.trim());
   const password = toEnDigits(document.getElementById('newPassword').value);
   const displayName = document.getElementById('newDisplayName').value.trim();
@@ -3496,34 +3510,38 @@ function addUser() {
   if (!username) { showToast('نام کاربری را وارد کنید'); return; }
   if (!password) { showToast('رمز عبور را وارد کنید'); return; }
 
-  const users = getUsers();
+  const users = await getUsers();
   if (users.find(u => u.username === username)) {
     showToast('این نام کاربری قبلاً ثبت شده');
     return;
   }
 
-  users.push({ username, password: hashPassword(password), displayName: displayName || username, role, permissions: role === 'admin' ? null : getDefaultPermissions() });
-  saveUsers(users);
-  renderUsersList();
+  const hash = await hashPassword(password);
+  await saveUser({
+    username,
+    password_hash: hash,
+    display_name: displayName || username,
+    role,
+    permissions: role === 'admin' ? null : getDefaultPermissions()
+  });
+  await renderUsersList();
   showToast('کاربر اضافه شد');
 }
 
-function deleteUser(username) {
+async function deleteUser(username) {
   if (username === 'admin') { showToast('امکان حذف مدیر وجود ندارد'); return; }
   const currentUser = getCurrentUser();
   if (currentUser && currentUser.username === username) { showToast('امکان حذف کاربر جاری وجود ندارد'); return; }
 
   if (!confirm('آیا از حذف این کاربر مطمئن هستید؟')) return;
 
-  let users = getUsers();
-  users = users.filter(u => u.username !== username);
-  saveUsers(users);
-  renderUsersList();
+  await deleteUserFromDB(username);
+  await renderUsersList();
   showToast('کاربر حذف شد');
 }
 
-function renderUsersList() {
-  const users = getUsers();
+async function renderUsersList() {
+  const users = await getUsers();
   const container = document.getElementById('settingsUsersList');
   const currentUser = getCurrentUser();
 
@@ -3572,18 +3590,22 @@ function togglePermCheckbox(el) {
   // Visual feedback is handled by the onchange, no extra logic needed
 }
 
-function saveUserPermissions(username) {
+async function saveUserPermissions(username) {
   const checkboxes = document.querySelectorAll(`input[data-perm-user="${username}"]`);
   const permissions = {};
   checkboxes.forEach(cb => {
     permissions[cb.dataset.permKey] = cb.checked;
   });
 
-  const users = getUsers();
-  const user = users.find(u => u.username === username);
-  if (user) {
-    user.permissions = permissions;
-    saveUsers(users);
+  const { error } = await _supabase
+    .from('users')
+    .update({ permissions })
+    .eq('username', username);
+
+  if (error) {
+    console.error('saveUserPermissions error:', error);
+    showToast('خطا در ذخیره دسترسی‌ها');
+  } else {
     showToast('دسترسی‌ها ذخیره شد');
   }
 }
@@ -3673,6 +3695,21 @@ document.addEventListener('keydown', function(e) {
 // ============================================
 // Init
 // ============================================
+// Seed admin user if not exists
+async function seedAdmin() {
+  const users = await getUsers();
+  if (users.length === 0) {
+    const hash = await hashPassword('admin123');
+    await saveUser({
+      username: 'admin',
+      password_hash: hash,
+      display_name: 'مدیر سیستم',
+      role: 'admin',
+      permissions: null
+    });
+  }
+}
+
 // Check session
 const currentUser = checkSession();
 if (currentUser) {
@@ -3723,10 +3760,12 @@ jalaliDatepicker.startWatch({
   persianDigits: false
 });
 
-renderCustomers();
-renderFollowups();
-renderSales();
-renderDashboard();
+seedAdmin().then(() => {
+  renderCustomers();
+  renderFollowups();
+  renderSales();
+  renderDashboard();
+});
 </script>
 
 </body>
