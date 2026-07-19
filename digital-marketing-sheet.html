@@ -957,9 +957,10 @@
   <h1>مدیریت کمپین دیجیتال مارکتینگ</h1>
   <div class="header-actions">
     <div class="profile-menu">
-      <button class="btn btn-icon" onclick="toggleProfileMenu()" title="پروفایل" style="font-size:16px;display:flex;align-items:center;gap:6px;">
-        <span>👤</span>
-        <span id="headerUsername" style="font-size:12px;font-family:inherit;"></span>
+      <button class="btn btn-icon" onclick="toggleProfileMenu()" title="پروفایل" style="font-size:14px;display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:var(--radius);background:var(--bg);border:1px solid var(--border);">
+        <span style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;" id="headerAvatar">👤</span>
+        <span id="headerUsername" style="font-size:13px;font-weight:500;color:var(--ink);"></span>
+        <span style="font-size:10px;color:var(--text-muted);">▼</span>
       </button>
       <div class="profile-dropdown" id="profileDropdown">
         <div class="profile-dropdown-item" onclick="switchTab('dashboard', document.querySelector('.tab-dashboard'))">
@@ -2602,8 +2603,18 @@ function toggleDashSection(section) {
 function renderDashboard() {
   const dateFrom = document.getElementById('dashDateFrom').value.trim();
   const dateTo = document.getElementById('dashDateTo').value.trim();
+  const dateFromNum = dateFrom ? jalaliToNum(dateFrom) : 0;
+  const dateToNum = dateTo ? jalaliToNum(dateTo) : 99999999;
   const todayNum = getTodayJalaliNum();
   const in3DaysNum = jalaliAddDays(getTodayJalaliStr(), 3);
+
+  // Date filter helper
+  function inDateRange(dateStr) {
+    if (!dateFrom && !dateTo) return true;
+    if (!dateStr) return false;
+    const dNum = jalaliToNum(dateStr);
+    return dNum >= dateFromNum && dNum <= dateToNum;
+  }
 
   // General stats
   document.getElementById('dash-total-customers').textContent = data.customers.filter(c => {
@@ -2619,6 +2630,7 @@ function renderDashboard() {
       if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false;
       if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false;
     }
+    if (!inDateRange(f.date)) return false;
     return true;
   }).length;
 
@@ -2632,6 +2644,7 @@ function renderDashboard() {
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return;
     if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return;
     if (c.nextFollowupDate) {
+      if (!inDateRange(c.nextFollowupDate)) return;
       const dNum = jalaliToNum(c.nextFollowupDate);
       if (dNum < todayNum) overdueList.push(c);
       else if (dNum <= in3DaysNum) soonList.push(c);
@@ -2652,6 +2665,7 @@ function renderDashboard() {
   const allSales = getAllSales().filter(s => {
     if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false;
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false;
+    if ((dateFrom || dateTo) && !inDateRange(s.settlementDate)) return false;
     return true;
   });
   const cashSales = allSales.filter(s => s.status === 'تکمیل');
@@ -2707,13 +2721,20 @@ function renderDashboard() {
   }
 
   // Charts
-  renderDashCharts();
+  renderDashCharts(dateFromNum, dateToNum);
 }
 
-function renderDashCharts() {
+function renderDashCharts(dateFromNum, dateToNum) {
   // Destroy old charts
   Object.values(dashCharts).forEach(c => c.destroy());
   dashCharts = {};
+
+  function inChartDateRange(dateStr) {
+    if (!dateFromNum && (!dateToNum || dateToNum === 99999999)) return true;
+    if (!dateStr) return false;
+    const dNum = jalaliToNum(dateStr);
+    return dNum >= (dateFromNum || 0) && dNum <= (dateToNum || 99999999);
+  }
 
   const statusLabels = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' };
   const statusColors = { new: '#e9ecef', contacted: '#cce5ff', chatting: '#d0bfff', interested: '#fff3cd', sent: '#d1e7dd', followup_done: '#b6effb', converting: '#f8d7da', purchased: '#198754', cancelled: '#adb5bd' };
@@ -2743,6 +2764,7 @@ function renderDashCharts() {
   getAllSales().forEach(s => {
     if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return;
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return;
+    if (!inChartDateRange(s.settlementDate)) return;
     salesStatus[s.status] = (salesStatus[s.status] || 0) + s.price;
   });
   dashCharts.salesStatus = new Chart(document.getElementById('chartSalesStatus'), {
@@ -2759,6 +2781,7 @@ function renderDashCharts() {
   getAllSales().forEach(s => {
     if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return;
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return;
+    if (!inChartDateRange(s.settlementDate)) return;
     productSales[s.productName] = (productSales[s.productName] || 0) + s.price;
   });
   dashCharts.products = new Chart(document.getElementById('chartProducts'), {
@@ -3371,6 +3394,7 @@ function doLogin() {
   setCurrentUser({ username: user.username, displayName: user.displayName, role: user.role, permissions: user.permissions || null });
   document.getElementById('loginOverlay').classList.add('hidden');
   document.getElementById('headerUsername').textContent = user.displayName || user.username;
+  document.getElementById('headerAvatar').textContent = (user.displayName || user.username || '?')[0];
   errorEl.classList.remove('show');
   applyPermissions();
 }
@@ -3602,6 +3626,7 @@ document.addEventListener('keydown', function(e) {
 const currentUser = checkSession();
 if (currentUser) {
   document.getElementById('headerUsername').textContent = currentUser.displayName || currentUser.username;
+  document.getElementById('headerAvatar').textContent = (currentUser.displayName || currentUser.username || '?')[0];
 }
 
 // Apply permission-based visibility
