@@ -2277,11 +2277,11 @@ function renderProducts(customerId) {
 
     let priceHtml = '';
     if (isCompleted) {
-      priceHtml = `<input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت" value="${p.price ? formatNumber(p.price) : ''}" oninput="formatInput(this)" onchange="updateProduct('${customerId}', ${i}, 'price', unformatInput(this))">`;
+      priceHtml = `<input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت" value="${p.price ? formatNumber(p.price) : ''}" oninput="formatInput(this)" onblur="saveProductField('${customerId}', ${i}, 'price', unformatInput(this))">`;
     } else if (p.status === 'بیعانه') {
       priceHtml = `
-        <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="بیعانه" value="${p.deposit ? formatNumber(p.deposit) : ''}" oninput="formatInput(this)" onchange="updateProduct('${customerId}', ${i}, 'deposit', unformatInput(this))">
-        <input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت کل" value="${p.price ? formatNumber(p.price) : ''}" oninput="formatInput(this)" onchange="updateProduct('${customerId}', ${i}, 'price', unformatInput(this))">
+        <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="بیعانه" value="${p.deposit ? formatNumber(p.deposit) : ''}" oninput="formatInput(this)" onblur="saveProductField('${customerId}', ${i}, 'deposit', unformatInput(this))">
+        <input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت کل" value="${p.price ? formatNumber(p.price) : ''}" oninput="formatInput(this)" onblur="saveProductField('${customerId}', ${i}, 'price', unformatInput(this))">
         <input type="text" class="product-settlement" placeholder="تاریخ تسویه" data-jdp value="${p.settlementDate || ''}" onchange="updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">
       `;
     }
@@ -2314,6 +2314,15 @@ function addProductRow(customerId) {
   setProducts(customerId, products);
   renderProducts(customerId);
   renderSales();
+}
+
+function saveProductField(customerId, index, field, value) {
+  const products = getProducts(customerId);
+  if (products[index]) {
+    products[index][field] = value;
+    setProducts(customerId, products);
+    renderSales();
+  }
 }
 
 function updateProduct(customerId, index, field, value) {
@@ -2356,6 +2365,7 @@ function switchTab(tab, el) {
   document.getElementById('sheet-' + tab).classList.add('active');
   document.getElementById('profileDropdown').classList.remove('active');
   if (tab === 'dashboard') renderDashboard();
+  if (tab === 'sales') renderSales();
 }
 
 // ============================================
