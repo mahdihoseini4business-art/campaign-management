@@ -1,6 +1,6 @@
 import './styles.css'
 import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum } from './utils.js'
-import { getData } from './data.js'
+import { getData, loadData } from './data.js'
 import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers } from './auth.js'
 import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, addProductRow, saveProductField, updateProduct, removeProduct } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup } from './followups.js'
@@ -132,6 +132,10 @@ window.appSortFollowups = sortFollowups
 window.appSortSales = sortSales
 window.appToggleDashSection = toggleDashSection
 window.appClearDashFilter = clearDashFilter
+window.appRenderDashboard = renderDashboard
+window.appRenderCustomers = renderCustomers
+window.appRenderFollowups = renderFollowups
+window.appRenderSales = renderSales
 window.appFormatInput = (el) => {
   let raw = el.value.replace(/[^\d]/g, '')
   el.value = raw ? Number(raw).toLocaleString('en-US') : ''
@@ -173,6 +177,9 @@ async function init() {
 
   // Seed admin if needed
   await seedAdmin()
+
+  // Load data from Supabase
+  await loadData()
 
   // Check session
   checkSession()

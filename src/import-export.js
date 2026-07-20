@@ -1,4 +1,4 @@
-import { getData, saveData, generateId } from './data.js'
+import { getData, saveCustomerToDB, generateId } from './data.js'
 import { toEnDigits, showToast, getCurrentUser } from './utils.js'
 
 // ============================================
@@ -255,7 +255,10 @@ export function doImport() {
     imported++
   })
 
-  saveData()
+  // Save all imported customers to Supabase
+  const newCustomers = data.customers.slice(-imported)
+  newCustomers.forEach(c => saveCustomerToDB(c))
+
   closeImportModal()
   showToast(`${imported} مشتری ایمپورت شد${skipped > 0 ? ` — ${skipped} ردیف رد شد` : ''}`)
   // Re-render will be called by main.js
@@ -414,7 +417,13 @@ export function doSalesImport() {
     imported++
   })
 
-  saveData()
+  // Save all affected customers to Supabase
+  const affectedCustomers = [...new Set(data.customers.filter(c => c.products.length > 0).map(c => c.id))]
+  affectedCustomers.forEach(id => {
+    const c = data.customers.find(x => x.id === id)
+    if (c) saveCustomerToDB(c)
+  })
+
   closeSalesImportModal()
   let msg = `${imported} محصول ایمپورت شد`
   if (created > 0) msg += ` — ${created} مشتری جدید ایجاد شد`

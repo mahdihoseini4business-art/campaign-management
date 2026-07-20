@@ -1,4 +1,4 @@
-import { getData, saveData } from './data.js'
+import { getData, saveFollowupToDB, deleteFollowupFromDB } from './data.js'
 import { toEnDigits, escapeHtml, showToast, hasPermission } from './utils.js'
 import { openCustomerDetail } from './customers.js'
 
@@ -118,11 +118,12 @@ export function saveFollowup() {
 
   if (editIndex !== '') {
     data.followups[parseInt(editIndex)] = { customerId, date, nextDate, type, result, notes }
+    saveFollowupToDB({ customerId, date, nextDate, type, result, notes }, parseInt(editIndex))
   } else {
     data.followups.push({ customerId, date, nextDate, type, result, notes })
+    saveFollowupToDB({ customerId, date, nextDate, type, result, notes })
   }
 
-  saveData()
   renderFollowups()
   closeFollowupModal()
   showToast(editIndex !== '' ? 'پیگیری ویرایش شد' : 'پیگیری جدید ثبت شد')
@@ -139,7 +140,7 @@ export function deleteFollowup(index) {
     `آیا از حذف پیگیری ${f.customerId} در تاریخ ${f.date} مطمئن هستید؟`
   document.getElementById('deleteConfirmBtn').onclick = function () {
     data.followups.splice(index, 1)
-    saveData()
+    deleteFollowupFromDB(f.customerId)
     renderFollowups()
     closeDeleteModal()
     showToast('پیگیری حذف شد')

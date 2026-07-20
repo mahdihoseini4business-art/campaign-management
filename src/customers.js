@@ -1,4 +1,4 @@
-import { getData, saveData, generateId } from './data.js'
+import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId } from './data.js'
 import { getUsers } from './auth.js'
 import { toEnDigits, escapeHtml, showToast, hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays } from './utils.js'
 
@@ -261,7 +261,9 @@ export function saveCustomer() {
         data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor }
         data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
         data.convertedCount = (data.convertedCount || 0) + 1
-        saveData()
+        saveCustomerToDB(data.customers[idx])
+        updateFollowupsCustomerId(oldCustomer.id, newId)
+        saveSetting('convertedCount', data.convertedCount)
         renderCustomers()
         closeCustomerModal()
         showToast(`شماره ثبت شد — ${oldCustomer.id} تبدیل شد به ${newId}`)
@@ -272,7 +274,8 @@ export function saveCustomer() {
         const newId = generateId('LD')
         data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor }
         data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
-        saveData()
+        saveCustomerToDB(data.customers[idx])
+        updateFollowupsCustomerId(oldCustomer.id, newId)
         renderCustomers()
         closeCustomerModal()
         showToast(`شماره حذف شد — ${oldCustomer.id} تبدیل شد به ${newId}`)
@@ -283,7 +286,7 @@ export function saveCustomer() {
     }
   }
 
-  saveData()
+  saveCustomerToDB(data.customers[data.customers.findIndex(c => c.id === (editId || data.customers[data.customers.length - 1].id))])
   renderCustomers()
   closeCustomerModal()
   showToast(editId ? 'مشتری ویرایش شد' : 'مشتری جدید اضافه شد')
@@ -301,7 +304,7 @@ export function deleteCustomer(id) {
   document.getElementById('deleteConfirmBtn').onclick = function () {
     data.customers = data.customers.filter(c => c.id !== id)
     data.followups = data.followups.filter(f => f.customerId !== id)
-    saveData()
+    deleteCustomerFromDB(id)
     renderCustomers()
     closeDeleteModal()
     showToast('مشتری حذف شد')
@@ -464,7 +467,7 @@ export function setNextFollowup(customerId) {
   const idx = data.customers.findIndex(c => c.id === customerId)
   if (idx !== -1) {
     data.customers[idx].nextFollowupDate = date
-    saveData()
+    saveCustomerToDB(data.customers[idx])
     renderCustomers()
     openCustomerDetail(customerId)
     showToast('تاریخ پیگیری تنظیم شد')
@@ -476,7 +479,7 @@ export function clearNextFollowup(customerId) {
   const idx = data.customers.findIndex(c => c.id === customerId)
   if (idx !== -1) {
     data.customers[idx].nextFollowupDate = ''
-    saveData()
+    saveCustomerToDB(data.customers[idx])
     renderCustomers()
     openCustomerDetail(customerId)
     showToast('تاریخ پیگیری حذف شد')
@@ -497,7 +500,7 @@ export function addQuickNote(customerId) {
   const dateStr = `${jalali.year}/${String(jalali.month).padStart(2, '0')}/${String(jalali.day).padStart(2, '0')}`
 
   data.followups.push({ customerId, date: dateStr, type, result, nextDate: '', notes })
-  saveData()
+  saveFollowupToDB({ customerId, date: dateStr, type, result, nextDate: '', notes })
   renderCustomers()
   openCustomerDetail(customerId)
   showToast('توضیحات ثبت شد')
@@ -526,7 +529,7 @@ export function updateCustomerAdvisor(customerId, advisor) {
   const c = data.customers.find(x => x.id === customerId)
   if (c) {
     c.advisor = advisor
-    saveData()
+    saveCustomerToDB(c)
     renderCustomers()
     showToast('کارشناس مسئول تغییر کرد')
   }
@@ -554,7 +557,7 @@ export function setProducts(customerId, products) {
   const idx = data.customers.findIndex(c => c.id === customerId)
   if (idx !== -1) {
     data.customers[idx].products = products
-    saveData()
+    saveCustomerToDB(data.customers[idx])
   }
 }
 
