@@ -1,4 +1,4 @@
-﻿:root {
+:root {
     --ink: #1a1a2e;
     --paper: #f8f9fa;
     --accent: #0d6efd;
@@ -756,14 +756,243 @@
 
   .toast.show { transform: translateX(-50%) translateY(0); }
 
-  @media (max-width: 768px) {
-    .content { padding: 16px; }
-    .stats { gap: 8px; }
-    .stat-card { min-width: 100px; padding: 12px 14px; }
-    .stat-card .value { font-size: 20px; }
-    .table-wrapper { overflow-x: auto; }
-    table { min-width: 900px; }
-    .form-row { flex-direction: column; gap: 0; }
+  /* ============================================
+     Responsive - Mobile First
+     ============================================ */
+
+  /* --- Small phones (< 480px) --- */
+  @media (max-width: 480px) {
+    .header {
+      padding: 12px 16px;
+    }
+    .header h1 {
+      font-size: 14px;
+    }
+    .content {
+      padding: 12px;
+    }
+    .tabs {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      padding: 8px 14px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .toolbar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .search-box {
+      max-width: 100%;
+    }
+    .toolbar .btn {
+      width: 100%;
+      justify-content: center;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .stat-card {
+      min-width: 0;
+      padding: 10px 12px;
+    }
+    .stat-card .value {
+      font-size: 18px;
+    }
+    .stat-card .label {
+      font-size: 10px;
+    }
+    .table-wrapper {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    table {
+      min-width: 700px;
+    }
+    thead th {
+      padding: 8px 10px;
+      font-size: 11px;
+    }
+    tbody td {
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+    .modal-overlay {
+      padding: 0;
+      align-items: flex-end;
+    }
+    .modal {
+      max-width: 100%;
+      max-height: 95vh;
+      border-radius: 12px 12px 0 0;
+    }
+    .modal-header {
+      padding: 14px 16px;
+    }
+    .modal-body {
+      padding: 16px;
+    }
+    .modal-footer {
+      padding: 12px 16px;
+    }
+    .form-row {
+      flex-direction: column;
+      gap: 0;
+    }
+    .detail-info {
+      grid-template-columns: 1fr;
+      padding: 12px;
+      gap: 10px;
+    }
+    .product-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .product-row select,
+    .product-row input {
+      min-width: 0;
+      width: 100%;
+    }
+    .import-map-row {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+    }
+    .import-map-row .arrow {
+      transform: rotate(90deg);
+      text-align: center;
+    }
+    .empty-state {
+      padding: 32px 16px;
+    }
+    .legend {
+      flex-direction: column;
+      gap: 8px;
+    }
+    .login-card {
+      padding: 28px 20px;
+      border-radius: 12px;
+    }
+    .login-card .login-icon {
+      font-size: 36px;
+    }
+    .login-card h2 {
+      font-size: 18px;
+    }
+    .toast {
+      left: 12px;
+      right: 12px;
+      transform: translateX(0) translateY(100px);
+      text-align: center;
+      font-size: 13px;
+    }
+    .toast.show {
+      transform: translateX(0) translateY(0);
+    }
+    .notes-cell {
+      max-width: 100px;
+    }
+    .timeline {
+      padding-right: 20px;
+    }
+    .timeline-item {
+      padding: 8px 12px;
+    }
+    .settings-user-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .settings-user-row > div:first-child {
+      flex-direction: row;
+      align-items: center;
+    }
+  }
+
+  /* --- Tablets (480px - 768px) --- */
+  @media (min-width: 481px) and (max-width: 768px) {
+    .header {
+      padding: 14px 16px;
+    }
+    .header h1 {
+      font-size: 16px;
+    }
+    .content {
+      padding: 16px;
+    }
+    .tabs {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      width: 100%;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      padding: 8px 16px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .stat-card {
+      min-width: 0;
+      padding: 12px 16px;
+    }
+    .stat-card .value {
+      font-size: 22px;
+    }
+    .table-wrapper {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    table {
+      min-width: 800px;
+    }
+    .modal-overlay {
+      padding: 16px;
+    }
+    .modal {
+      max-width: 480px;
+    }
+    .form-row {
+      flex-direction: column;
+      gap: 0;
+    }
+    .detail-info {
+      grid-template-columns: 1fr 1fr;
+      padding: 14px;
+    }
+    .toolbar {
+      flex-wrap: wrap;
+    }
+    .search-box {
+      max-width: 250px;
+    }
+  }
+
+  /* --- Large tablets & small desktops (769px - 1024px) --- */
+  @media (min-width: 769px) and (max-width: 1024px) {
+    .content {
+      padding: 20px;
+    }
+    .stats {
+      gap: 10px;
+    }
+    .stat-card {
+      padding: 14px 18px;
+    }
+    .search-box {
+      max-width: 280px;
+    }
   }
   /* Login Screen */
   .login-overlay {
@@ -871,3 +1100,15 @@
 
   .role-admin { background: #e8f0fe; color: var(--accent); }
   .role-user { background: #d1e7dd; color: #0f5132; }
+
+  /* --- Charts Responsive --- */
+  .chart-container {
+    position: relative;
+    width: 100%;
+    max-height: 300px;
+  }
+
+  canvas {
+    max-width: 100%;
+    height: auto !important;
+  }
