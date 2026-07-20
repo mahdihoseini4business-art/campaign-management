@@ -216,10 +216,10 @@ async function init() {
   })
 
   // Render all
-  await renderCustomers()
-  renderFollowups()
-  renderSales()
-  renderDashboard()
+  try { await renderCustomers() } catch (e) { console.error('renderCustomers error:', e) }
+  try { renderFollowups() } catch (e) { console.error('renderFollowups error:', e) }
+  try { renderSales() } catch (e) { console.error('renderSales error:', e) }
+  try { renderDashboard() } catch (e) { console.error('renderDashboard error:', e) }
 }
 
 init()

@@ -14,10 +14,12 @@ const STATUS_CLASSES = { new: 'status-new', contacted: 'status-contacted', chatt
 export async function renderCustomers() {
   const data = getData()
   const tbody = document.getElementById('customerBody')
+  if (!tbody) return
   const search = toEnDigits(document.getElementById('searchCustomers').value).toLowerCase()
   const advisorFilter = document.getElementById('filterAdvisor').value
 
-  const users = await getUsers()
+  let users = []
+  try { users = await getUsers() } catch (e) { console.error('getUsers error:', e) }
   const advisorSelect = document.getElementById('filterAdvisor')
   const currentVal = advisorSelect.value
   advisorSelect.innerHTML = '<option value="">همه کارشناسان</option>' + users.map(u => `<option value="${escapeHtml(u.display_name)}">${escapeHtml(u.display_name)}</option>`).join('')
@@ -214,7 +216,7 @@ export function closeCustomerModal() {
   document.getElementById('customerModal').classList.remove('active')
 }
 
-export function saveCustomer() {
+export async function saveCustomer() {
   const data = getData()
   const editId = document.getElementById('editCustomerId').value
   const platformId = document.getElementById('customerPlatformId').value.trim()
@@ -242,7 +244,7 @@ export function saveCustomer() {
 
     const type = phone ? 'CS' : 'LD'
     const id = generateId(type)
-    data.customers.push({ id, platformId, platform, name, phone, status, notes, advisor })
+    data.customers.push({ id, platformId, platform, name, phone, status, notes, advisor, products: [] })
   } else {
     const dupById = platformId && data.customers.find(c => c.id !== editId && c.platformId && c.platformId.toLowerCase() === platformId.toLowerCase())
     const dupByPhone = phone && data.customers.find(c => c.id !== editId && c.phone && c.phone === phone)
@@ -286,8 +288,8 @@ export function saveCustomer() {
     }
   }
 
-  saveCustomerToDB(data.customers[data.customers.findIndex(c => c.id === (editId || data.customers[data.customers.length - 1].id))])
-  renderCustomers()
+  await saveCustomerToDB(data.customers[data.customers.findIndex(c => c.id === (editId || data.customers[data.customers.length - 1].id))])
+  await renderCustomers()
   closeCustomerModal()
   showToast(editId ? 'مشتری ویرایش شد' : 'مشتری جدید اضافه شد')
 }
@@ -304,8 +306,8 @@ export function deleteCustomer(id) {
   document.getElementById('deleteConfirmBtn').onclick = function () {
     data.customers = data.customers.filter(c => c.id !== id)
     data.followups = data.followups.filter(f => f.customerId !== id)
-    deleteCustomerFromDB(id)
-    renderCustomers()
+    deleteCustomerFromDB(id).catch(e => console.error('deleteCustomer error:', e))
+    renderCustomers().catch(e => console.error('renderCustomers error:', e))
     closeDeleteModal()
     showToast('مشتری حذف شد')
   }
@@ -524,13 +526,13 @@ function toJalali(gregorian) {
   return { year: jy, month: jm, day: jd }
 }
 
-export function updateCustomerAdvisor(customerId, advisor) {
+export async function updateCustomerAdvisor(customerId, advisor) {
   const data = getData()
   const c = data.customers.find(x => x.id === customerId)
   if (c) {
     c.advisor = advisor
-    saveCustomerToDB(c)
-    renderCustomers()
+    await saveCustomerToDB(c)
+    await renderCustomers()
     showToast('کارشناس مسئول تغییر کرد')
   }
 }
