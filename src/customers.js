@@ -630,36 +630,36 @@ export function renderProducts(customerId) {
   }).join('')
 }
 
-export function addProductRow(customerId) {
+export async function addProductRow(customerId) {
   const products = getProducts(customerId)
   products.push({ name: PRODUCTS[0], status: PRODUCT_STATUSES[0], price: '', deposit: '', settlementDate: '' })
-  setProducts(customerId, products)
+  await setProducts(customerId, products)
   renderProducts(customerId)
 }
 
-export function saveProductField(customerId, index, field, value) {
+export async function saveProductField(customerId, index, field, value) {
   const products = getProducts(customerId)
   if (products[index]) {
     products[index][field] = value
-    setProducts(customerId, products)
+    await setProducts(customerId, products)
   }
 }
 
-export function updateProduct(customerId, index, field, value) {
+export async function updateProduct(customerId, index, field, value) {
   const products = getProducts(customerId)
   if (products[index]) {
     products[index][field] = value
     if (field === 'status' && value === 'تکمیل') {
       products[index].deposit = ''
     }
-    setProducts(customerId, products)
+    await setProducts(customerId, products)
     renderProducts(customerId)
   }
 }
 
-export function removeProduct(customerId, index) {
+export async function removeProduct(customerId, index) {
   const products = getProducts(customerId)
   products.splice(index, 1)
-  setProducts(customerId, products)
+  await setProducts(customerId, products)
   renderProducts(customerId)
 }
