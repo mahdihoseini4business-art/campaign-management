@@ -297,4 +297,6 @@ export function initProfileMenu() {
       document.getElementById('profileDropdown').classList.remove('active')
     }
   })
+  // Prevent profile menu clicks from triggering modal close
+  document.querySelector('.profile-menu')?.addEventListener('click', e => e.stopPropagation())
 }
