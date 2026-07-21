@@ -207,14 +207,6 @@ async function init() {
   try { renderFollowups() } catch (e) { console.error('renderFollowups error:', e) }
   try { renderSales() } catch (e) { console.error('renderSales error:', e) }
   try { renderDashboard() } catch (e) { console.error('renderDashboard error:', e) }
-
-  // Re-render after a short delay to ensure data is displayed
-  setTimeout(() => {
-    renderCustomers()
-    renderFollowups()
-    renderSales()
-    renderDashboard()
-  }, 500)
 }
 
 init()
