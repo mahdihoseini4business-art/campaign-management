@@ -80,7 +80,8 @@ export function jalaliToNum(dateStr) {
 }
 
 export function getTodayJalaliStr() {
-  const now = new Date()
+  // Use Asia/Tehran timezone for consistent Jalali dates
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tehran' }))
   const j = toJalali(now)
   return `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.day).padStart(2, '0')}`
 }
