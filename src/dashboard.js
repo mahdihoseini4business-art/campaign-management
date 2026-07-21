@@ -1,5 +1,5 @@
 import { getData } from './data.js'
-import { hasPermission, formatNumber, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr } from './utils.js'
+import { hasPermission, formatNumber, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, escapeHtml } from './utils.js'
 import { getAllSales } from './sales.js'
 
 let dashCharts = {}
