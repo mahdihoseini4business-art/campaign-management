@@ -311,13 +311,18 @@ export function deleteCustomer(id) {
   const customer = data.customers.find(c => c.id === id)
   document.getElementById('deleteMessage').textContent =
     `آیا از حذف "${customer.name || customer.id}" مطمئن هستید؟ تمام پیگیری‌های مرتبط هم حذف می‌شوند.`
-  document.getElementById('deleteConfirmBtn').onclick = function () {
-    data.customers = data.customers.filter(c => c.id !== id)
-    data.followups = data.followups.filter(f => f.customerId !== id)
-    deleteCustomerFromDB(id).catch(e => console.error('deleteCustomer error:', e))
-    renderCustomers().catch(e => console.error('renderCustomers error:', e))
-    closeDeleteModal()
-    showToast('مشتری حذف شد')
+  document.getElementById('deleteConfirmBtn').onclick = async function () {
+    try {
+      await deleteCustomerFromDB(id)
+      data.customers = data.customers.filter(c => c.id !== id)
+      data.followups = data.followups.filter(f => f.customerId !== id)
+      await renderCustomers()
+      closeDeleteModal()
+      showToast('مشتری حذف شد')
+    } catch (e) {
+      console.error('deleteCustomer error:', e)
+      showToast('خطا در حذف مشتری')
+    }
   }
   document.getElementById('deleteModal').classList.add('active')
 }

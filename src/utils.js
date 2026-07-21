@@ -90,9 +90,11 @@ export function getTodayJalaliNum() {
 export function jalaliAddDays(dateStr, days) {
   const parts = dateStr.split('/').map(Number)
   let y = parts[0], m = parts[1], d = parts[2] + days
-  const daysInMonth = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29]
-  while (d > daysInMonth[m - 1]) { d -= daysInMonth[m - 1]; m++; if (m > 12) { m = 1; y++ } }
-  while (d <= 0) { m--; if (m < 1) { m = 12; y-- } d += daysInMonth[m - 1] }
+  // Jalali leap year check: Esfand has 30 days in leap years
+  const isLeap = ((y + 2346) % 33) % 4 === 1
+  const daysInMonth = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, isLeap ? 30 : 29]
+  while (d > daysInMonth[m - 1]) { d -= daysInMonth[m - 1]; m++; if (m > 12) { m = 1; y++; } }
+  while (d <= 0) { m--; if (m < 1) { m = 12; y--; } d += daysInMonth[m - 1] }
   return y * 10000 + m * 100 + d
 }
 
