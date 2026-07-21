@@ -35,7 +35,11 @@ export async function getUsers() {
 
 export async function saveUser(user) {
   const { error } = await supabase.from('users').upsert(user, { onConflict: 'username' })
-  if (error) console.error('saveUser error:', error)
+  if (error) {
+    console.error('saveUser error:', error)
+    return false
+  }
+  return true
 }
 
 export async function deleteUserFromDB(username) {
