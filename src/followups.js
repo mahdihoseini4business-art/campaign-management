@@ -143,7 +143,11 @@ export async function deleteFollowup(index) {
   document.getElementById('deleteMessage').textContent =
     `آیا از حذف پیگیری ${f.customerId} در تاریخ ${f.date} مطمئن هستید؟`
   document.getElementById('deleteConfirmBtn').onclick = async function () {
-    if (f.id) await deleteFollowupFromDB(f.id)
+    if (f.id) {
+      await deleteFollowupFromDB(f.id)
+    } else {
+      showToast('خطا: پیگیری شناسه دیتابیس ندارد')
+    }
     data.followups.splice(index, 1)
     await renderFollowups()
     closeDeleteModal()
