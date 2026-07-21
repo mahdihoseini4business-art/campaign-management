@@ -5,11 +5,11 @@ import { toEnDigits, escapeHtml, showToast, getCurrentUser, setCurrentUser, clea
 // Password Hashing (SHA-256)
 // ============================================
 
-export async function hashPassword(pw) {
+export async function hashPassword(pw, username) {
   const encoder = new TextEncoder()
   const data = encoder.encode(pw)
-  // Use PBKDF2 with salt for better security
-  const salt = encoder.encode('campaign_manager_salt_2024')
+  // Use PBKDF2 with per-user salt for better security
+  const salt = encoder.encode('campaign_manager_' + (username || 'default') + '_salt')
   const keyMaterial = await crypto.subtle.importKey('raw', data, 'PBKDF2', false, ['deriveBits'])
   const hash = await crypto.subtle.deriveBits(
     { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
@@ -51,7 +51,7 @@ export async function seedAdmin() {
   const users = await getUsers()
   if (users.length === 0) {
     // NOTE: Change this password in production! Default: admin123
-    const hash = await hashPassword('admin123')
+    const hash = await hashPassword('admin123', 'admin')
     await saveUser({
       username: 'admin',
       password_hash: hash,
@@ -77,7 +77,7 @@ export async function doLogin() {
     return
   }
 
-  const hash = await hashPassword(password)
+  const hash = await hashPassword(password, username)
   const { data: user, error } = await supabase
     .from('users')
     .select('*')
@@ -147,7 +147,7 @@ export async function addUser() {
     return
   }
 
-  const hash = await hashPassword(password)
+  const hash = await hashPassword(password, username)
   await saveUser({
     username,
     password_hash: hash,
