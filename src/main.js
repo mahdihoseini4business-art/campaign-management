@@ -1,7 +1,7 @@
 import './styles.css'
 import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum, showToast } from './utils.js'
 import { getData, loadData } from './data.js'
-import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers } from './auth.js'
+import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers, resetAdminPassword } from './auth.js'
 import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, addProductRow, saveProductField, updateProduct, removeProduct } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup } from './followups.js'
 import { renderSales, sortSales } from './sales.js'
@@ -128,6 +128,7 @@ window.appDeleteUser = deleteUser
 window.appSaveUserPermissions = saveUserPermissions
 window.appTogglePermCheckbox = togglePermCheckbox
 window.appToggleProfileMenu = toggleProfileMenu
+window.appResetAdminPassword = resetAdminPassword
 window.appSwitchTab = switchTab
 window.appSortCustomers = sortCustomers
 window.appSortFollowups = sortFollowups
