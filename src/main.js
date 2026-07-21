@@ -153,17 +153,6 @@ window.appSortFollowupsHeader = (field) => sortFollowups(field)
 window.appSortSalesHeader = (field) => sortSales(field)
 
 // ============================================
-// Re-render after import
-// ============================================
-
-function reRenderAll() {
-  renderCustomers()
-  renderFollowups()
-  renderSales()
-  renderDashboard()
-}
-
-// ============================================
 // Init
 // ============================================
 
