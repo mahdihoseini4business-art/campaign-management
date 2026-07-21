@@ -36,6 +36,7 @@ export async function loadData() {
   }))
 
   data.followups = (followupsRes.data || []).map(f => ({
+    id: f.id,
     customerId: f.customer_id,
     date: f.date || '',
     type: f.type || '',
@@ -100,63 +101,39 @@ export async function deleteCustomerFromDB(id) {
 
 // followups don't have a stable primary key in the app,
 // so we use customer_id + date + type as a soft key
-export async function saveFollowupToDB(followup, oldIndex) {
-  // For new followups, just insert
-  if (oldIndex === undefined || oldIndex === null) {
-    const { error } = await supabase.from('followups').insert({
-      customer_id: followup.customerId,
-      date: followup.date,
-      type: followup.type,
-      result: followup.result,
-      next_date: followup.nextDate,
-      notes: followup.notes
-    })
-    if (error) console.error('Insert followup error:', error)
-    return
-  }
+export async function saveFollowupToDB(followup) {
+  const { data: inserted, error } = await supabase.from('followups').insert({
+    customer_id: followup.customerId,
+    date: followup.date,
+    type: followup.type,
+    result: followup.result,
+    next_date: followup.nextDate,
+    notes: followup.notes
+  }).select('id').single()
+  if (error) console.error('Insert followup error:', error)
+  return inserted ? inserted.id : null
+}
 
-  // For edits: delete all followups for this customer and re-insert
-  // (simple approach since followups don't have stable IDs)
-  const customerId = followup.customerId
-  await supabase.from('followups').delete().eq('customer_id', customerId)
-
-  const allFollowups = data.followups.filter(f => f.customerId === customerId)
-  const rows = allFollowups.map(f => ({
-    customer_id: f.customerId,
-    date: f.date,
-    type: f.type,
-    result: f.result,
-    next_date: f.nextDate,
-    notes: f.notes
-  }))
-
-  if (rows.length > 0) {
-    const { error } = await supabase.from('followups').insert(rows)
-    if (error) console.error('Re-insert followups error:', error)
-  }
+export async function updateFollowupInDB(followup) {
+  if (!followup.id) return
+  const { error } = await supabase.from('followups').update({
+    customer_id: followup.customerId,
+    date: followup.date,
+    type: followup.type,
+    result: followup.result,
+    next_date: followup.nextDate,
+    notes: followup.notes
+  }).eq('id', followup.id)
+  if (error) console.error('Update followup error:', error)
 }
 
 // ============================================
 // Delete followup from Supabase
 // ============================================
 
-export async function deleteFollowupFromDB(customerId) {
-  // Delete all followups for this customer and re-insert remaining
-  await supabase.from('followups').delete().eq('customer_id', customerId)
-
-  const remaining = data.followups.filter(f => f.customerId === customerId)
-  if (remaining.length > 0) {
-    const rows = remaining.map(f => ({
-      customer_id: f.customerId,
-      date: f.date,
-      type: f.type,
-      result: f.result,
-      next_date: f.nextDate,
-      notes: f.notes
-    }))
-    const { error } = await supabase.from('followups').insert(rows)
-    if (error) console.error('Re-insert followups error:', error)
-  }
+export async function deleteFollowupFromDB(id) {
+  const { error } = await supabase.from('followups').delete().eq('id', id)
+  if (error) console.error('Delete followup error:', error)
 }
 
 // ============================================
