@@ -61,17 +61,55 @@ function getFilteredSales() {
   return allSales
 }
 
+function renderSalesRows(allSales) {
+  const todayNum = getTodayJalaliNum()
+  return allSales.map(s => {
+    const pClass = PLATFORM_CLASSES[s.platform] || ''
+    const pLabel = PLATFORM_LABELS[s.platform] || s.platform
+    const statusColor = s.status === 'تکمیل' ? 'var(--success)' : 'var(--warning)'
+    const balanceClass = s.balance > 0 ? 'color:var(--danger);' : ''
+
+    let settlementHtml = '—'
+    let rowClass = ''
+    if (s.settlementDate) {
+      const dateNum = jalaliToNum(s.settlementDate)
+      const in3DaysNum = jalaliAddDays(getTodayJalaliStr(), 3)
+      if (dateNum < todayNum) {
+        settlementHtml = `<span class="settlement-badge settlement-overdue-badge">⚠ ${s.settlementDate}</span>`
+        rowClass = 'settlement-overdue'
+      } else if (dateNum <= in3DaysNum) {
+        settlementHtml = `<span class="settlement-badge settlement-soon-badge">${s.settlementDate}</span>`
+        rowClass = 'settlement-soon'
+      } else {
+        settlementHtml = `<span style="font-family:monospace;">${s.settlementDate}</span>`
+      }
+    }
+
+    return `<tr class="${rowClass}">
+      <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="window.appOpenCustomerDetail('${s.customerId}')">${escapeHtml(s.customerId)}</span></td>
+      <td>${escapeHtml(s.customerName)}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${escapeHtml(s.customerPhone) || '—'}</td>
+      <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${escapeHtml(pLabel)}</span></td>
+      <td>${escapeHtml(s.productName)}</td>
+      <td><span style="color:${statusColor};font-weight:600;">${escapeHtml(s.status)}</span></td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.price > 0 ? formatNumber(s.price) : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.deposit > 0 ? formatNumber(s.deposit) : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? formatNumber(s.balance) : '—'}</td>
+      <td style="font-size:12px;">${settlementHtml}</td>
+    </tr>`
+  }).join('')
+}
+
 export function renderSales() {
   const tbody = document.getElementById('salesBody')
 
   let allSales = getFilteredSales()
 
-  const todayNum = getTodayJalaliNum()
   allSales.sort((a, b) => {
     const aNum = a.settlementDate ? jalaliToNum(a.settlementDate) : 99999999
     const bNum = b.settlementDate ? jalaliToNum(b.settlementDate) : 99999999
-    const aOverdue = aNum < todayNum && a.settlementDate ? 0 : 1
-    const bOverdue = bNum < todayNum && b.settlementDate ? 0 : 1
+    const aOverdue = aNum < getTodayJalaliNum() && a.settlementDate ? 0 : 1
+    const bOverdue = bNum < getTodayJalaliNum() && b.settlementDate ? 0 : 1
     if (aOverdue !== bOverdue) return aOverdue - bOverdue
     return aNum - bNum
   })
@@ -103,7 +141,7 @@ export function renderSales() {
     return
   }
 
-  tbody.innerHTML = allSales.map(s => {
+  tbody.innerHTML = renderSalesRows(allSales)
     const pClass = PLATFORM_CLASSES[s.platform] || ''
     const pLabel = PLATFORM_LABELS[s.platform] || s.platform
     const statusColor = s.status === 'تکمیل' ? 'var(--success)' : 'var(--warning)'
@@ -161,43 +199,6 @@ export function sortSales(field) {
     return salesSortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa')
   })
 
-  // Re-render sorted
   const tbody = document.getElementById('salesBody')
-  const todayNum = getTodayJalaliNum()
-
-  tbody.innerHTML = allSales.map(s => {
-    const pClass = PLATFORM_CLASSES[s.platform] || ''
-    const pLabel = PLATFORM_LABELS[s.platform] || s.platform
-    const statusColor = s.status === 'تکمیل' ? 'var(--success)' : 'var(--warning)'
-    const balanceClass = s.balance > 0 ? 'color:var(--danger);' : ''
-
-    let settlementHtml = '—'
-    let rowClass = ''
-    if (s.settlementDate) {
-      const dateNum = jalaliToNum(s.settlementDate)
-      const in3DaysNum = jalaliAddDays(getTodayJalaliStr(), 3)
-      if (dateNum < todayNum) {
-        settlementHtml = `<span class="settlement-badge settlement-overdue-badge">⚠ ${s.settlementDate}</span>`
-        rowClass = 'settlement-overdue'
-      } else if (dateNum <= in3DaysNum) {
-        settlementHtml = `<span class="settlement-badge settlement-soon-badge">${s.settlementDate}</span>`
-        rowClass = 'settlement-soon'
-      } else {
-        settlementHtml = `<span style="font-family:monospace;">${s.settlementDate}</span>`
-      }
-    }
-
-    return `<tr class="${rowClass}">
-      <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="window.appOpenCustomerDetail('${s.customerId}')">${escapeHtml(s.customerId)}</span></td>
-      <td>${escapeHtml(s.customerName)}</td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${escapeHtml(s.customerPhone) || '—'}</td>
-      <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${escapeHtml(pLabel)}</span></td>
-      <td>${escapeHtml(s.productName)}</td>
-      <td><span style="color:${statusColor};font-weight:600;">${escapeHtml(s.status)}</span></td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.price > 0 ? formatNumber(s.price) : '—'}</td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.deposit > 0 ? formatNumber(s.deposit) : '—'}</td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? formatNumber(s.balance) : '—'}</td>
-      <td style="font-size:12px;">${settlementHtml}</td>
-    </tr>`
-  }).join('')
+  tbody.innerHTML = renderSalesRows(allSales)
 }
