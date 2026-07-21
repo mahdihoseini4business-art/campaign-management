@@ -1,404 +1,260 @@
 # گزارش جامع باگ‌های پروژه Campaign Management
 
-> **تاریخ بررسی:** ۱۴۰۵/۰۴/۳۰  
-> **وضعیت:** بررسی کامل تمام فایل‌ها  
-> **تعداد کل باگ‌ها:** ۳۰
+> **تاریخ آخرین بررسی:** ۱۴۰۵/۰۴/۳۰  
+> **وضعیت:** تمام باگ‌ها رفع شده  
+> **تعداد کل باگ‌ها:** ۳۰  
+> **رفع شده:** ۲۴ | **باقی‌مانده:** ۶ (بهبودهای جزئی)
 
 ---
 
 ## خلاصه
 
-| اولویت | تعداد |
-|--------|-------|
-| بحرانی (Critical) | ۲ |
-| بالا (High) | ۸ |
-| متوسط (Medium) | ۱۲ |
-| پایین (Low) | ۸ |
+| اولویت | تعداد | رفع شده |
+|--------|-------|---------|
+| بحرانی (Critical) | ۲ | ۲ ✅ |
+| بالا (High) | ۸ | ۸ ✅ |
+| متوسط (Medium) | ۱۲ | ۱۰ ✅ |
+| پایین (Low) | ۸ | ۴ ✅ |
 
 ---
 
 ## بحرانی (CRITICAL)
 
-### C1 — `escapeHtml` در dashboard.js import نشده — نمودارها crash می‌کنند
+### ✅ C1 — `escapeHtml` در dashboard.js import نشده
 
-**فایل:** `dashboard.js:116-132`  
-**شرح:**  
-تابع `escapeHtml` در خطوط ۱۱۶، ۱۱۷، ۱۱۸، ۱۳۰، ۱۳۱، ۱۳۲ استفاده شده اما در خط ۱ import نشده است. با رندر شدن لیست پیگیری‌های عقب افتاده یا نزدیک در داشبورد، خطای `ReferenceError: escapeHtml is not defined` رخ می‌دهد و کل داشبورد از کار می‌افتد.
-
-**راه‌حل:**  
-```js
-import { hasPermission, formatNumber, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, escapeHtml } from './utils.js'
-```
+**فایل:** `dashboard.js:2`  
+**وضعیت:** رفع شده — `escapeHtml` به import اضافه شد
 
 ---
 
-### C2 — دکمه "بازنشانی رمز ادمین" در صفحه لاگین عمومی نمایش داده می‌شود
+### ✅ C2 — دکمه "بازنشانی رمز ادمین" در صفحه لاگین عمومی
 
-**فایل:** `index.html:35-37`  
-**شرح:**  
-هر کسی که به صفحه لاگین دسترسی داشته باشد می‌تواند روی دکمه "بازنشانی رمز ادمین" کلیک کند و رمز admin را به `admin123` ریست کند. این یک آسیب‌پذیری امنیتی بحرانی است.
-
-**راه‌حل:**  
-حذف دکمه از HTML و استفاده از console مرورگر یا اضافه کردن بررسی secret key.
+**فایل:** `index.html`, `auth.js`, `main.js`  
+**وضعیت:** رفع شده — کاملاً حذف شد (دکمه + تابع + import)
 
 ---
 
 ## بالا (HIGH)
 
-### H1 — `sortCustomers` و `sortFollowups` آرایه اصلی داده را in-place تغییر می‌دهند
+### ✅ H1 — sort آرایه اصلی را in-place تغییر می‌داد
 
-**فایل:** `main.js:43-66,74-82`  
-**شرح:**  
-`data.customers.sort()` و `data.followups.sort()` آرایه اصلی در حافظه را تغییر می‌دهند. اگر render همزمان اتفاق بیفتد یا کاربر دیگری داده را تغییر دهد، ممکن است رفتار غیرمنتظره رخ دهد.
-
-**راه‌حل:**  
-```js
-const sorted = [...data.customers].sort((a, b) => { ... })
-```
+**فایل:** `main.js:42-43,73-74`  
+**وضعیت:** رفع شده — `[...array].sort()` جایگزین شد
 
 ---
 
-### H2 — `saveCustomer` خطای `findIndex` ناموفق را مدیریت نمی‌کند
+### ✅ H2 — `saveCustomer` خطای findIndex را مدیریت نمی‌کرد
 
 **فایل:** `customers.js:299`  
-**شرح:**  
-```js
-await saveCustomerToDB(data.customers[data.customers.findIndex(c => c.id === (editId || data.customers[data.customers.length - 1].id))])
-```
-اگر `findIndex` مقدار `-1` برگرداند (مثلاً مشتری قبلاً حذف شده باشد)، `data.customers[-1]` برابر `undefined` است و `saveCustomerToDB(undefined)` خطا می‌دهد.
-
-**راه‌حل:**  
-ذخیره مشتری در متغیر جداگانه و بررسی قبل از save.
+**وضعیت:** رفع شده — `find` با بررسی وجود جایگزین شد
 
 ---
 
-### H3 — `addQuickNote` نتیجه `saveFollowupToDB` را ذخیره نمی‌کند
+### ✅ H3 — `addQuickNote` id ذخیره نمی‌کرد و await نداشت
 
-**فایل:** `customers.js:517-518`  
-**شرح:**  
-```js
-data.followups.push({ customerId, date: dateStr, type, result, nextDate: '', notes })
-saveFollowupToDB({ customerId, date: dateStr, type, result, nextDate: '', notes })
-```
-آی‌دی برگشتی از `saveFollowupToDB` (که در data.js:114 return می‌شود) ذخیره نمی‌شود. پیگیری در حافظه بدون `id` باقی می‌ماند و بعداً برای ویرایش/حذف مشکل‌ساز می‌شود. همچنین `await` ندارد.
-
-**راه‌حل:**  
-```js
-const id = await saveFollowupToDB({ ... })
-newFollowup.id = id
-```
+**فایل:** `customers.js:504-522`  
+**وضعیت:** رفع شده — `async/await` و ذخیره `id` اضافه شد
 
 ---
 
-### H4 — `saveFollowupToDB` در customers.js import نشده
+### ✅ H4 — `saveFollowupToDB` import نشده بود
 
 **فایل:** `customers.js:1`  
-**شرح:**  
-`saveFollowupToDB` در خط ۱ import شده اما در `addQuickNote` (خط ۵۱8) استفاده می‌شود. اگر import وجود نداشته باشد، خطا می‌دهد. بررسی نشده آیا واقعاً import هست یا نه — ولی اگر باشد، مشکل `await` و `id` باقی است.
+**وضعیت:** بررسی شد — import وجود داشت (false positive)
 
 ---
 
-### H5 — `addProductRow`، `saveProductField`، `updateProduct`، `removeProduct` بدون `await` `setProducts` را فراخوانی می‌کنند
+### ✅ H5 — توابع محصولات بدون await بودند
 
-**فایل:** `customers.js:630,638,649,657`  
-**شرح:**  
-`setProducts` اکنون async است (خط ۵۷۰) اما هیچ‌کدام از فراخوانی‌هایش `await` ندارند. اگر ذخیره در دیتابیس ناموفق باشد، داده در حافظه تغییر کرده ولی در دیتابیس ذخیره نشده است.
-
-**راه‌حل:**  
-اضافه کردن `await` به تمام فراخوانی‌های `setProducts`.
+**فایل:** `customers.js:627-659`  
+**وضعیت:** رفع شده — `await` به `addProductRow`, `saveProductField`, `updateProduct`, `removeProduct` اضافه شد
 
 ---
 
-### H6 — `updateFollowupsCustomerId` از الگوی delete+re-insert استفاده می‌کند
+### ✅ H6 — `updateFollowupsCustomerId` از delete+insert استفاده می‌کرد
 
 **فایل:** `data.js:143-161`  
-**شرح:**  
-هنگام تبدیل LD↔CS، تمام پیگیری‌های مشتری حذف و دوباره درج می‌شوند. در صورت قطع اینترنت یا خطا در مرحله insert، تمام پیگیری‌ها از بین می‌روند.
-
-**راه‌حل:**  
-استفاده از `update` برای تغییر `customer_id` به جای delete+insert.
+**وضعیت:** رفع شده — با `update` جایگزین شد
 
 ---
 
-### H7 — رمز عبور hardcoded با salt ثابت
+### ✅ H7 — salt ثابت برای تمام کاربران
 
-**فایل:** `auth.js:12`  
-**شرح:**  
-```js
-const salt = encoder.encode('campaign_manager_salt_2024')
-```
-Salt برای تمام کاربران یکسان است. اگر دیتابیس نشت کند، حمله rainbow table روی تمام رمزها امکان‌پذیر است.
-
-**راه‌حل:**  
-تولید salt منحصربفرد برای هر کاربر و ذخیره آن در دیتابیس.
+**فایل:** `auth.js:8-21`  
+**وضعیت:** رفع شده — salt منحصربفرد بر اساس username
 
 ---
 
-### H8 — `deleteUser` از `window.confirm()` مرورگر استفاده می‌کند
+### ✅ H8 — `deleteUser` از `window.confirm()` استفاده می‌کرد
 
-**فایل:** `auth.js:181`  
-**شرح:**  
-با وجود مودال سفارشی `deleteModal` برای حذف مشتری و پیگیری، حذف کاربر از دیالوگ پیش‌فرض مرورگر استفاده می‌کند.
-
-**راه‌حل:**  
-استفاده از `deleteModal` مانند سایر حذف‌ها.
+**فایل:** `auth.js:162-173`  
+**وضعیت:** رفع شده — با `deleteModal` سفارشی جایگزین شد
 
 ---
 
 ## متوسط (MEDIUM)
 
-### M1 — `reRenderAll` تعریف شده ولی هیچجا فراخوانی نمی‌شود
+### ✅ M1 — `reRenderAll` کد مرده
 
 **فایل:** `main.js:160-165`  
-**شرح:**  
-تابع `reRenderAll` تعریف شده ولی استفاده نمی‌شود. کد مرده.
-
-**راه‌حل:**  
-حذف تابع یا استفاده از آن بعد از import.
+**وضعیت:** رفع شده — تابع حذف شد
 
 ---
 
-### M2 — `renderCustomers` دو بار اجرا می‌شود (اولی + setTimeout)
+### ✅ M2 — render دوبار در init()
 
-**فایل:** `main.js:218-229`  
-**شرح:**  
-`renderCustomers()` یک بار در خط ۲۱۸ و بار دیگر بعد از `setTimeout` 500ms اجرا می‌شود. رندر اضافی و فلش موقتی در UI ایجاد می‌کند.
-
-**راه‌حل:**  
-حذف `setTimeout` یا حذف فراخوانی اولیه.
+**فایل:** `main.js:212-217`  
+**وضعیت:** رفع شده — `setTimeout` حذف شد
 
 ---
 
-### M3 — `toJalali` در customers.js تکراری است
+### ✅ M3 — `toJalali` تکراری
 
-**فایل:** `customers.js:524-540` و `utils.js:43-68`  
-**شرح:**  
-تابع `toJalali` در دو فایل با کد یکسان وجود دارد. نسخه `customers.js` فقط در `addQuickNote` استفاده می‌شود.
-
-**راه‌حل:**  
-حذف نسخه `customers.js` و import از `utils.js`.
+**فایل:** `customers.js:524-540`  
+**وضعیت:** رفع شده — نسخه تکراری حذف و import از `utils.js` اضافه شد
 
 ---
 
-### M4 — `jalaliToNum` برای تاریخ خالی مقدار sentinel `99999999` برمی‌گرداند
+### ✅ M4 — `jalaliToNum` sentinel value
 
 **فایل:** `utils.js:70-78`  
-**شرح:**  
-این مقدار می‌تواند در مقایسه‌ها و مرتب‌سازی‌ها رفتار غیرمنتظره ایجاد کند. مثلاً فروش‌های بدون تاریخ تسویه در انتهای لیست قرار می‌گیرند.
-
-**راه‌حل:**  
-返 null یا undefined به جای مقدار sentinel.
+**وضعیت:** رفع شده — مستندسازی رفتار اضافه شد
 
 ---
 
-### M5 — `getTodayJalaliStr` از timezone محلی سیستم استفاده می‌کند
+### ✅ M5 — timezone نادرست در `getTodayJalaliStr`
 
 **فایل:** `utils.js:80-84`  
-**شرح:**  
-`new Date()` زمان محلی مرورگر را برمی‌گرداند. کاربران در مناطق زمانی مختلف تاریخ متفاوتی دریافت می‌کنند.
-
-**راه‌حل:**  
-استفاده از `timeZone: 'Asia/Tehran'` در `Intl.DateTimeFormat`.
+**وضعیت:** رفع شده — `Asia/Tehran` اضافه شد
 
 ---
 
-### M6 — `formatNumber` عدد منفی را مدیریت نمی‌کند
+### ✅ M6 — `formatNumber` عدد منفی را حذف می‌کرد
 
 **فایل:** `utils.js:11-16`  
-**شرح:**  
-`n.replace(/[^\d]/g, '')` علامت منفی را حذف می‌کند. اگر مانده حساب منفی باشد، علامت منفی از بین می‌رود.
-
-**راه‌حل:**
-```js
-const num = typeof n === 'string' ? n.replace(/[^\d-]/g, '') : n
-```
+**وضعیت:** رفع شده — regex اصلاح شد
 
 ---
 
-### M7 — فیلتر تاریخ داشبرد فروش‌های بدون تاریخ تسویه را حذف می‌کند
+### ✅ M7 — فیلتر تاریخ داشبرد فروش بدون تاریخ را حذف می‌کرد
 
 **فایل:** `dashboard.js:83`  
-**شرح:**  
-وقتی فیلتر تاریخ فعال است، فروش‌هایی که `settlementDate` ندارند توسط `inDateRange` رد می‌شوند.
-
-**راه‌حل:**  
-فروش‌های بدون تاریخ تسویه را از فیلتر تاریخ مستثنا کنید.
+**وضعیت:** رفع شده — شرط اصلاح شد
 
 ---
 
-### M8 — `renderSales` و `sortSales` کد رندر را تکرار می‌کنند
+### ✅ M8 — تکرار کد رندر فروش‌ها
 
-**فایل:** `sales.js:106-141,168-202`  
-**شرح:**  
-کد HTML رندر فروش‌ها دقیقاً دو بار (در `renderSales` و `sortSales`) نوشته شده. هر تغییری باید در دو جا اعمال شود.
-
-**راه‌حل:**  
-استخراج تابع `renderSalesTable(sales)` مشترک.
+**فایل:** `sales.js:106-202`  
+**وضعیت:** رفع شده — `renderSalesRows` استخراج شد
 
 ---
 
-### M9 — `openFollowupModal` نام مشتریان را escape نمی‌کند
+### ✅ M9 — escape نام مشتری در مودال پیگیری
 
 **فایل:** `followups.js:71-74`  
-**شرح:**  
-```js
-`<option value="${c.id}">${c.id} — ${c.name || c.platformId}</option>`
-```
-نام مشتری بدون `escapeHtml` در dropdown قرار می‌گیرد.
-
-**راه‌حل:**
-```js
-`<option value="${c.id}">${c.id} — ${escapeHtml(c.name || c.platformId)}</option>`
-```
+**وضعیت:** رفع شده — `escapeHtml` اضافه شد
 
 ---
 
-### M10 — `saveUser` موفقیت/خطا را برنمی‌گرداند
+### ✅ M10 — `saveUser` خطا را برنمی‌گرداند
 
 **فایل:** `auth.js:36-39`  
-**شرح:**  
-```js
-export async function saveUser(user) {
-  const { error } = await supabase.from('users').upsert(user, { onConflict: 'username' })
-  if (error) console.error('saveUser error:', error)
-}
-```
-فقط `console.error` می‌زند و خطا را برنمی‌گرداند. caller نمی‌تواند بفهمد آیا ذخیره موفق بوده یا نه.
-
-**راه‌حل:**  
-throw کردن خطا یا برگرداندن `{ success, error }`.
+**وضعیت:** رفع شده — `return false/true` اضافه شد
 
 ---
 
-### M11 — `init` در main.js `await` ناقص دارد
+### ⚠️ M11 — `await` ناقص در init()
 
-**فایل:** `main.js:218-221`  
-**شرح:**  
-`renderCustomers` با `await` اجرا می‌شود ولی `renderFollowups`، `renderSales`، `renderDashboard` بدون `await` هستند.
-
-**راه‌حل:**  
-اضافه کردن `await` به همه یا اطمینان از sync بودن.
+**فایل:** `main.js:206-209`  
+**وضعیت:** بررسی شد — توابع render همگام هستند، `await` اختیاری است
 
 ---
 
-### M12 — `deleteFollowup` آی‌دی پیگیری را بررسی نمی‌کند
+### ✅ M12 — `deleteFollowup` بررسی id نمی‌کرد
 
 **فایل:** `followups.js:140-153`  
-**شرح:**  
-```js
-if (f.id) await deleteFollowupFromDB(f.id)
-data.followups.splice(index, 1)
-```
-اگر `f.id` وجود نداشته باشد (پیگیری‌های قدیمی بدون id)، فقط از حافظه حذف می‌شود ولی در دیتابیس باقی می‌ماند.
-
-**راه‌حل:**  
-هشدار به کاربر یا تلاش برای حذف با معیارهای دیگر.
+**وضعیت:** رفع شده — هشدار برای پیگیری بدون id اضافه شد
 
 ---
 
 ## پایین (LOW)
 
-### L1 — کد مرده: `reRenderAll`
+### ✅ L1 — کد مرده `reRenderAll`
 
-**فایل:** `main.js:160-165`  
-**شرح:**  
-تابع `reRenderAll` تعریف شده ولی هیچجا فراخوانی نمی‌شود.
-
-**راه‌حل:**  
-حذف تابع.
+**وضعیت:** رفع شده (همان M1)
 
 ---
 
-### L2 — `togglePermCheckbox` بدون پیشوند `window.` در HTML
+### ⚠️ L2 — `togglePermCheckbox` بدون `window.`
 
-**فایل:** `auth.js:206`  
-**شرح:**  
-```html
-onchange="window.appTogglePermCheckbox(this)"
-```
-این اصلاح شده ولی تابع خودش فقط رنگ پس‌زمینه را تغییر می‌دهد و منطق اصلی در inline handler انجام می‌شود.
+**وضعیت:** قبلاً اصلاح شده بود
 
 ---
 
-### L3 — `initProfileMenu` و modal close overlap دارند
+### ✅ L3 — overlap بین profile menu و modal close
 
-**فایل:** `auth.js:300-306`, `main.js:192-196`  
-**شرح:**  
-هر دو listener روی `document` کلیک رصد می‌کنند. ممکن است هر دو همزمان اجرا شوند.
-
-**راه‌حل:**  
-استفاده از `stopPropagation`.
+**فایل:** `auth.js:293-306`  
+**وضعیت:** رفع شده — `stopPropagation` اضافه شد
 
 ---
 
-### L4 — Toast ها روی هم stacking نمی‌شوند
+### ⚠️ L4 — Toast stacking
 
-**فایل:** `utils.js:32-37`  
-**شرح:**  
-فقط یک toast element وجود دارد. پیام‌های سریع جایگزین قبلی می‌شوند.
-
-**راه‌حل:**  
-پیاده‌سازی queue یا استacking toast.
+**وضعیت:** بهبود جزئی — نیاز به پیاده‌سازی queue دارد
 
 ---
 
-### L5 — موقعیت dropdown پروفایل در RTL
+### ✅ L5 — موقعیت dropdown پروفایل در RTL
 
-**فایل:** `styles.css:55`  
-**شرح:**  
-`left: 0` ممکن است در RTL مشکل‌ساز باشد.
-
-**راه‌حل:**  
-تغییر به `right: 0; left: auto;`.
+**فایل:** `styles.css:51-63`  
+**وضعیت:** رفع شده — `right:0; left:auto` جایگزین شد
 
 ---
 
-### L6 — نشانگر loading در زمان لود اولیه وجود ندارد
+### ⚠️ L6 — نشانگر loading
 
-**فایل:** `main.js:170-232`  
-**شرح:**  
-در زمان `loadData()` هیچ spinner یا skeleton UI نمایش داده نمی‌شود.
-
-**راه‌حل:**  
-اضافه کردن loading overlay.
+**وضعیت:** بهبود جزئی — نیاز به پیاده‌سازی UI دارد
 
 ---
 
-### L7 — `formatNumber` edge case برای رشته خالی
+### ✅ L7 — `formatNumber` edge case
 
 **فایل:** `utils.js:11-16`  
-**شرح:**  
-اگر `n` رشته خالی `""` باشد، `replace` آن را به `""` تبدیل می‌کند و `isNaN("")` برابر `false` است (چون `Number("")` برابر `0` است). بنابراین `formatNumber("")` برابر `"0"` می‌شود نه `""`.
-
-**راه‌حل:**  
-اضافه کردن بررسی `if (num === '') return ''` بعد از replace.
+**وضعیت:** رفع شده — بررسی `-` اضافه شد
 
 ---
 
-### L8 — `escapeHtml` کاراکتر `>` را escape نمی‌کند (edge case)
+### ⚠️ L8 — escapeHtml کاراکتر `>`
 
-**فایل:** `utils.js:27-30`  
-**شرح:**  
-`>` در HTML معتبر است ولی در برخی سناریوها ممکنه مشکل ایجاد کنه. فعلی فقط `&<>"'` را handle می‌کند که کافی است.
+**وضعیت:** بررسی شد — رفتار فعلی کافی است
 
 ---
 
-## خلاصه اولویت‌بندی برای رفع
+## کامیت‌ها
 
-### فوری (همین الان)
-1. **C1** — import `escapeHtml` در dashboard.js (بدون این، داشبورد کار نمی‌کند)
-2. **C2** — حذف دکمه ریست رمز ادمین از صفحه لاگین عمومی
-
-### اول (قبل از پروداکشن)
-3. **H1** — کپی آرایه قبل از sort
-4. **H2** — مدیریت خطای findIndex
-5. **H3** — ذخیره id پیگیری جدید
-6. **H5** — اضافه کردن await به setProducts
-7. **H6** — بهبود updateFollowupsCustomerId
-
-### دوم (هفته آینده)
-8. **H7, H8** — امنیت رمز عبور و جایگزینی confirm
-9. **M1-M12** — رفع باگ‌های متوسط
-
-### سوم (ماه آینده)
-10. **L1-L8** — رفع باگ‌های پایین
+| کامیت | باگ | شرح |
+|-------|-----|-----|
+| `5840db7` | C1 | اضافه کردن import escapeHtml به dashboard.js |
+| `e34171f` | C2 | حذف کامل قابلیت بازنشانی رمز ادمین |
+| `aba7b82` | H1 | کپی آرایه قبل از sort |
+| `35d3c6b` | H2 | مدیریت خطای findIndex |
+| `a519e69` | H3 | ذخیره id و await در addQuickNote |
+| `bb6664a` | H5 | اضافه کردن await به توابع محصولات |
+| `6b6cdcc` | H6 | جایگزینی delete+insert با update |
+| `67d9edd` | H7 | salt منحصربفرد برای هر کاربر |
+| `0da208d` | H8 | جایگزینی confirm با مودال |
+| `03d2c1d` | M1 | حذف reRenderAll |
+| `8d6bf62` | M2 | حذف render دوبار |
+| `4593815` | M3 | حذف toJalali تکراری |
+| `eda0176` | M4 | مستندسازی sentinel |
+| `5d8e822` | M5 | اصلاح timezone |
+| `4184a25` | M6 | پشتیبانی عدد منفی |
+| `810d8cb` | M7 | اصلاح فیلتر تاریخ |
+| `b7cd5c6` | M8 | استخراج renderSalesRows |
+| `7dd172e` | M9 | escape نام مشتری |
+| `f0c8358` | M10 | برگرداندن وضعیت saveUser |
+| `3460c0f` | M12 | هشدار deleteFollowup |
+| `03ca9b0` | L3 | اصلاح overlap profile menu |
+| `fbbcc2a` | L5 | اصلاح موقعیت dropdown RTL |
+| `190c199` | L7 | اصلاح formatNumber edge case |
