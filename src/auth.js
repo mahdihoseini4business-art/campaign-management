@@ -62,19 +62,6 @@ export async function seedAdmin() {
   }
 }
 
-// Temporary: Reset admin password (call from browser console or login page)
-export async function resetAdminPassword() {
-  const hash = await hashPassword('admin123')
-  await saveUser({
-    username: 'admin',
-    password_hash: hash,
-    display_name: 'مدیر سیستم',
-    role: 'admin',
-    permissions: null
-  })
-  return hash
-}
-
 // ============================================
 // Login / Logout
 // ============================================
