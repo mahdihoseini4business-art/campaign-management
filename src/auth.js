@@ -164,12 +164,14 @@ export async function deleteUser(username) {
   const currentUser = getCurrentUser()
   if (currentUser && currentUser.username === username) { showToast('امکان حذف کاربر جاری وجود ندارد'); return }
 
-  // Use consistent confirmation style
-  if (!window.confirm('آیا از حذف این کاربر مطمئن هستید؟')) return
-
-  await deleteUserFromDB(username)
-  await renderUsersList()
-  showToast('کاربر حذف شد')
+  document.getElementById('deleteMessage').textContent = `آیا از حذف کاربر "${username}" مطمئن هستید؟`
+  document.getElementById('deleteConfirmBtn').onclick = async function () {
+    await deleteUserFromDB(username)
+    await renderUsersList()
+    document.getElementById('deleteModal').classList.remove('active')
+    showToast('کاربر حذف شد')
+  }
+  document.getElementById('deleteModal').classList.add('active')
 }
 
 export async function renderUsersList() {
