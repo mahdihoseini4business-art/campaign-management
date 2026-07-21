@@ -70,7 +70,7 @@ export function openFollowupModal(editIndex) {
 
   select.innerHTML = '<option value="">انتخاب کنید...</option>' +
     data.customers.map(c =>
-      `<option value="${c.id}">${c.id} — ${c.name || c.platformId}</option>`
+      `<option value="${c.id}">${c.id} — ${escapeHtml(c.name || c.platformId)}</option>`
     ).join('')
 
   if (editIndex !== undefined) {
