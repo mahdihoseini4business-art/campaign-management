@@ -41,13 +41,13 @@ export function renderFollowups() {
     const name = customer ? customer.name : '—'
 
     return `<tr>
-      <td><span class="id-badge id-ld" style="font-size:11px;cursor:pointer;" onclick="window.appOpenCustomerDetail('${f.customerId}')">${f.customerId}</span></td>
-      <td>${name}</td>
-      <td style="font-family:monospace;font-size:13px;">${f.date}</td>
-      <td>${f.type}</td>
-      <td>${f.result}</td>
-      <td style="font-size:13px;">${f.nextDate || '—'}</td>
-      <td class="notes-cell" title="${escapeHtml(f.notes)}">${f.notes || '—'}</td>
+      <td><span class="id-badge id-ld" style="font-size:11px;cursor:pointer;" onclick="window.appOpenCustomerDetail('${f.customerId}')">${escapeHtml(f.customerId)}</span></td>
+      <td>${escapeHtml(name)}</td>
+      <td style="font-family:monospace;font-size:13px;">${escapeHtml(f.date)}</td>
+      <td>${escapeHtml(f.type)}</td>
+      <td>${escapeHtml(f.result)}</td>
+      <td style="font-size:13px;">${escapeHtml(f.nextDate) || '—'}</td>
+      <td class="notes-cell" title="${escapeHtml(f.notes)}">${escapeHtml(f.notes) || '—'}</td>
       <td>
         <div class="actions-cell">
           <button class="btn-icon" title="ویرایش" onclick="window.appEditFollowup(${realIndex})">✏</button>

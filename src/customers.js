@@ -54,13 +54,13 @@ export async function renderCustomers() {
     const statusClass = STATUS_CLASSES[c.status] || 'status-new'
     const statusLabel = STATUS_LABELS[c.status] || c.status
 
-    const platformUrl = c.platform === 'instagram' ? `https://instagram.com/${c.platformId}`
-      : c.platform === 'telegram' ? `https://telegram.me/${c.platformId}`
-        : c.platform === 'whatsapp' ? `https://wa.me/${c.phone || c.platformId}`
+    const platformUrl = c.platform === 'instagram' ? `https://instagram.com/${encodeURIComponent(c.platformId)}`
+      : c.platform === 'telegram' ? `https://telegram.me/${encodeURIComponent(c.platformId)}`
+        : c.platform === 'whatsapp' ? `https://wa.me/${encodeURIComponent(c.phone || c.platformId)}`
           : ''
     const platformIdHtml = platformUrl
-      ? `<a href="${platformUrl}" target="_blank" rel="noopener" style="font-family:monospace;font-size:13px;color:var(--accent);text-decoration:none;border-bottom:1px dashed var(--accent);">${c.platformId}</a>`
-      : `<span style="font-family:monospace;font-size:13px;">${c.platformId}</span>`
+      ? `<a href="${platformUrl}" target="_blank" rel="noopener" style="font-family:monospace;font-size:13px;color:var(--accent);text-decoration:none;border-bottom:1px dashed var(--accent);">${escapeHtml(c.platformId)}</a>`
+      : `<span style="font-family:monospace;font-size:13px;">${escapeHtml(c.platformId)}</span>`
 
     const followupCount = data.followups.filter(f => f.customerId === c.id).length
     let countClass = 'followup-none'
@@ -348,11 +348,11 @@ export async function openCustomerDetail(id) {
     <div class="detail-info">
       <div class="detail-field">
         <span class="detail-label">شناسه</span>
-        <span class="detail-value"><span class="id-badge ${idClass}">${c.id}</span></span>
+        <span class="detail-value"><span class="id-badge ${idClass}">${escapeHtml(c.id)}</span></span>
       </div>
       <div class="detail-field">
         <span class="detail-label">وضعیت</span>
-        <span class="detail-value">${statusLabel}</span>
+        <span class="detail-value">${escapeHtml(statusLabel)}</span>
       </div>
       <div class="detail-field">
         <span class="detail-label">کارشناس مسئول</span>
@@ -364,23 +364,23 @@ export async function openCustomerDetail(id) {
       </div>
       <div class="detail-field">
         <span class="detail-label">ایدی پلتفرم</span>
-        <span class="detail-value" style="font-family:monospace;">${c.platformId}</span>
+        <span class="detail-value" style="font-family:monospace;">${escapeHtml(c.platformId)}</span>
       </div>
       <div class="detail-field">
         <span class="detail-label">پلتفرم</span>
-        <span class="detail-value">${platformLabel}</span>
+        <span class="detail-value">${escapeHtml(platformLabel)}</span>
       </div>
       <div class="detail-field">
         <span class="detail-label">نام</span>
-        <span class="detail-value">${c.name || '—'}</span>
+        <span class="detail-value">${escapeHtml(c.name) || '—'}</span>
       </div>
       <div class="detail-field">
         <span class="detail-label">شماره تماس</span>
-        <span class="detail-value" style="direction:ltr;text-align:right;">${c.phone || '—'}</span>
+        <span class="detail-value" style="direction:ltr;text-align:right;">${escapeHtml(c.phone) || '—'}</span>
       </div>
       <div class="detail-field full">
         <span class="detail-label">توضیحات</span>
-        <span class="detail-value">${c.notes || '—'}</span>
+        <span class="detail-value">${escapeHtml(c.notes) || '—'}</span>
       </div>
     </div>
 
@@ -421,10 +421,10 @@ export async function openCustomerDetail(id) {
         <div class="timeline-item">
           <div class="timeline-header">
             <span class="timeline-date">${f.date}</span>
-            <span class="timeline-type">${f.type}</span>
+            <span class="timeline-type">${escapeHtml(f.type)}</span>
           </div>
-          <div class="timeline-result">${f.result}</div>
-          ${f.notes ? `<div class="timeline-notes">${f.notes}</div>` : ''}
+          <div class="timeline-result">${escapeHtml(f.result)}</div>
+          ${f.notes ? `<div class="timeline-notes">${escapeHtml(f.notes)}</div>` : ''}
           ${nextHtml}
         </div>
       `

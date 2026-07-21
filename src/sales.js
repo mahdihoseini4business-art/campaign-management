@@ -120,12 +120,12 @@ export function renderSales() {
     }
 
     return `<tr class="${rowClass}">
-      <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="window.appOpenCustomerDetail('${s.customerId}')">${s.customerId}</span></td>
-      <td>${s.customerName}</td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${s.customerPhone || '—'}</td>
-      <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${pLabel}</span></td>
-      <td>${s.productName}</td>
-      <td><span style="color:${statusColor};font-weight:600;">${s.status}</span></td>
+      <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="window.appOpenCustomerDetail('${s.customerId}')">${escapeHtml(s.customerId)}</span></td>
+      <td>${escapeHtml(s.customerName)}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${escapeHtml(s.customerPhone) || '—'}</td>
+      <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${escapeHtml(pLabel)}</span></td>
+      <td>${escapeHtml(s.productName)}</td>
+      <td><span style="color:${statusColor};font-weight:600;">${escapeHtml(s.status)}</span></td>
       <td style="direction:ltr;text-align:right;font-family:monospace;">${s.price > 0 ? formatNumber(s.price) : '—'}</td>
       <td style="direction:ltr;text-align:right;font-family:monospace;">${s.deposit > 0 ? formatNumber(s.deposit) : '—'}</td>
       <td style="direction:ltr;text-align:right;font-family:monospace;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? formatNumber(s.balance) : '—'}</td>
@@ -182,12 +182,12 @@ export function sortSales(field) {
     }
 
     return `<tr class="${rowClass}">
-      <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="window.appOpenCustomerDetail('${s.customerId}')">${s.customerId}</span></td>
-      <td>${s.customerName}</td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${s.customerPhone || '—'}</td>
-      <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${pLabel}</span></td>
-      <td>${s.productName}</td>
-      <td><span style="color:${statusColor};font-weight:600;">${s.status}</span></td>
+      <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="window.appOpenCustomerDetail('${s.customerId}')">${escapeHtml(s.customerId)}</span></td>
+      <td>${escapeHtml(s.customerName)}</td>
+      <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${escapeHtml(s.customerPhone) || '—'}</td>
+      <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${escapeHtml(pLabel)}</span></td>
+      <td>${escapeHtml(s.productName)}</td>
+      <td><span style="color:${statusColor};font-weight:600;">${escapeHtml(s.status)}</span></td>
       <td style="direction:ltr;text-align:right;font-family:monospace;">${s.price > 0 ? formatNumber(s.price) : '—'}</td>
       <td style="direction:ltr;text-align:right;font-family:monospace;">${s.deposit > 0 ? formatNumber(s.deposit) : '—'}</td>
       <td style="direction:ltr;text-align:right;font-family:monospace;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? formatNumber(s.balance) : '—'}</td>
