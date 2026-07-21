@@ -11,7 +11,7 @@ export function toEnDigits(str) {
 export function formatNumber(n) {
   if (n === '' || n === null || n === undefined) return ''
   const num = typeof n === 'string' ? n.replace(/[^\d-]/g, '') : n
-  if (num === '' || isNaN(num)) return ''
+  if (num === '' || num === '-' || isNaN(num)) return ''
   return Number(num).toLocaleString('en-US')
 }
 
