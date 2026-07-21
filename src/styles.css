@@ -52,7 +52,8 @@
     display: none;
     position: absolute;
     top: 100%;
-    left: 0;
+    right: 0;
+    left: auto;
     margin-top: 8px;
     background: white;
     border: 1px solid var(--border);
