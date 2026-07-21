@@ -141,23 +141,9 @@ export async function deleteFollowupFromDB(id) {
 // ============================================
 
 export async function updateFollowupsCustomerId(oldId, newId) {
-  // Delete old followups
-  await supabase.from('followups').delete().eq('customer_id', oldId)
-
-  // Re-insert with new ID
-  const affected = data.followups.filter(f => f.customerId === newId)
-  if (affected.length > 0) {
-    const rows = affected.map(f => ({
-      customer_id: newId,
-      date: f.date,
-      type: f.type,
-      result: f.result,
-      next_date: f.nextDate,
-      notes: f.notes
-    }))
-    const { error } = await supabase.from('followups').insert(rows)
-    if (error) console.error('Re-insert followups error:', error)
-  }
+  // Update customer_id directly instead of delete+re-insert
+  const { error } = await supabase.from('followups').update({ customer_id: newId }).eq('customer_id', oldId)
+  if (error) console.error('Update followups customer_id error:', error)
 }
 
 // ============================================
