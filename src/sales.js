@@ -39,10 +39,8 @@ export function getAllSales() {
 // Render Sales
 // ============================================
 
-export function renderSales() {
-  const tbody = document.getElementById('salesBody')
+function getFilteredSales() {
   const search = toEnDigits(document.getElementById('searchSales').value || '').toLowerCase()
-
   let allSales = getAllSales()
 
   if (search) {
@@ -59,6 +57,14 @@ export function renderSales() {
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
     return true
   })
+
+  return allSales
+}
+
+export function renderSales() {
+  const tbody = document.getElementById('salesBody')
+
+  let allSales = getFilteredSales()
 
   const todayNum = getTodayJalaliNum()
   allSales.sort((a, b) => {
@@ -144,7 +150,7 @@ export function sortSales(field) {
   if (salesSortState.field === field) salesSortState.asc = !salesSortState.asc
   else { salesSortState.field = field; salesSortState.asc = true }
 
-  const allSales = getAllSales()
+  const allSales = getFilteredSales()
   allSales.sort((a, b) => {
     let va = a[field], vb = b[field]
     if (field === 'settlementDate') {

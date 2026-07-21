@@ -41,7 +41,7 @@ export function renderFollowups() {
     const name = customer ? customer.name : '—'
 
     return `<tr>
-      <td><span class="id-badge id-ld" style="font-size:11px;cursor:pointer;" onclick="window.appOpenCustomerDetail('${f.customerId}')">${escapeHtml(f.customerId)}</span></td>
+      <td><span class="id-badge ${f.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="font-size:11px;cursor:pointer;" onclick="window.appOpenCustomerDetail('${f.customerId}')">${escapeHtml(f.customerId)}</span></td>
       <td>${escapeHtml(name)}</td>
       <td style="font-family:monospace;font-size:13px;">${escapeHtml(f.date)}</td>
       <td>${escapeHtml(f.type)}</td>
