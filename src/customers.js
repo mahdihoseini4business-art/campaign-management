@@ -1,6 +1,6 @@
 import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId } from './data.js'
 import { getUsers } from './auth.js'
-import { toEnDigits, escapeHtml, showToast, hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays } from './utils.js'
+import { toEnDigits, escapeHtml, showToast, hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali } from './utils.js'
 
 const STATUS_LABELS = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
 const PLATFORM_LABELS = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' }
@@ -525,24 +525,6 @@ export async function addQuickNote(customerId) {
   await renderCustomers()
   openCustomerDetail(customerId)
   showToast('توضیحات ثبت شد')
-}
-
-function toJalali(gregorian) {
-  const gy = gregorian.getFullYear()
-  const gm = gregorian.getMonth() + 1
-  const gd = gregorian.getDate()
-  const g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
-  let gy2 = (gm > 2) ? (gy + 1) : gy
-  let days = 355666 + (365 * gy) + Math.floor((gy2 + 3) / 4) - Math.floor((gy2 + 99) / 100) + Math.floor((gy2 + 399) / 400) + gd + g_d_m[gm - 1]
-  let jy = -1595 + (33 * Math.floor(days / 12053))
-  days %= 12053
-  jy += 4 * Math.floor(days / 1461)
-  days %= 1461
-  if (days > 365) { jy += Math.floor((days - 1) / 365); days = (days - 1) % 365 }
-  let jm, jd
-  if (days < 186) { jm = 1 + Math.floor(days / 31); jd = 1 + (days % 31) }
-  else { jm = 7 + Math.floor((days - 186) / 30); jd = 1 + ((days - 186) % 30) }
-  return { year: jy, month: jm, day: jd }
 }
 
 export async function updateCustomerAdvisor(customerId, advisor) {
