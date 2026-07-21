@@ -119,6 +119,7 @@ window.appDoSalesImport = doSalesImport
 window.appSetSalesImportMapping = setSalesImportMapping
 window.appDoLogin = doLogin
 window.appShowToast = showToast
+window.appHasPermission = hasPermission
 window.appDoLogout = doLogout
 window.appOpenSettingsModal = openSettingsModal
 window.appCloseSettingsModal = closeSettingsModal

@@ -212,10 +212,10 @@
       <select class="form-select" id="filterAdvisor" style="width:150px;" onchange="window.appRenderCustomers()">
         <option value="">همه کارشناسان</option>
       </select>
-      <button class="btn" onclick="window.appExportTabCSV('customers')">خروجی CSV</button>
-      <button class="btn" onclick="window.appExportTabXLSX('customers')">خروجی Excel</button>
-      <button class="btn" onclick="window.appOpenImportModal()">ایمپورت اکسل</button>
-      <button class="btn btn-primary" onclick="window.appOpenCustomerModal()">+ مشتری جدید</button>
+      <button class="btn" onclick="if(window.appHasPermission('customers_export'))window.appExportTabCSV('customers')">خروجی CSV</button>
+      <button class="btn" onclick="if(window.appHasPermission('customers_export'))window.appExportTabXLSX('customers')">خروجی Excel</button>
+      <button class="btn" onclick="if(window.appHasPermission('customers_import'))window.appOpenImportModal()">ایمپورت اکسل</button>
+      <button class="btn btn-primary" onclick="if(window.appHasPermission('customers_add'))window.appOpenCustomerModal()">+ مشتری جدید</button>
     </div>
 
     <div class="table-wrapper">
@@ -250,9 +250,9 @@
   <div class="sheet" id="sheet-followups">
     <div class="toolbar">
       <input type="text" class="search-box" placeholder="جستجو..." id="searchFollowups" oninput="window.appRenderFollowups()">
-      <button class="btn" onclick="window.appExportTabCSV('followups')">خروجی CSV</button>
-      <button class="btn" onclick="window.appExportTabXLSX('followups')">خروجی Excel</button>
-      <button class="btn btn-primary" onclick="window.appOpenFollowupModal()">+ پیگیری جدید</button>
+      <button class="btn" onclick="if(window.appHasPermission('followups_export'))window.appExportTabCSV('followups')">خروجی CSV</button>
+      <button class="btn" onclick="if(window.appHasPermission('followups_export'))window.appExportTabXLSX('followups')">خروجی Excel</button>
+      <button class="btn btn-primary" onclick="if(window.appHasPermission('followups_add'))window.appOpenFollowupModal()">+ پیگیری جدید</button>
     </div>
 
     <div class="table-wrapper">
@@ -286,9 +286,9 @@
 
     <div class="toolbar">
       <input type="text" class="search-box" placeholder="جستجو (نام، شماره، محصول)..." id="searchSales" oninput="window.appRenderSales()">
-      <button class="btn" onclick="window.appExportTabCSV('sales')">خروجی CSV</button>
-      <button class="btn" onclick="window.appExportTabXLSX('sales')">خروجی Excel</button>
-      <button class="btn btn-primary" onclick="window.appOpenSalesImportModal()">ایمپورت فروش از اکسل</button>
+      <button class="btn" onclick="if(window.appHasPermission('sales_export'))window.appExportTabCSV('sales')">خروجی CSV</button>
+      <button class="btn" onclick="if(window.appHasPermission('sales_export'))window.appExportTabXLSX('sales')">خروجی Excel</button>
+      <button class="btn btn-primary" onclick="if(window.appHasPermission('sales_import'))window.appOpenSalesImportModal()">ایمپورت فروش از اکسل</button>
     </div>
 
     <div class="table-wrapper">
