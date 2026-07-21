@@ -213,7 +213,7 @@ export function setImportMapping(colIndex, fieldKey) {
   }
 }
 
-export function doImport() {
+export async function doImport() {
   const data = getData()
   const mapping = importData.mapping
   if (Object.keys(mapping).length === 0) {
@@ -257,7 +257,9 @@ export function doImport() {
 
   // Save all imported customers to Supabase
   const newCustomers = data.customers.slice(-imported)
-  newCustomers.forEach(c => saveCustomerToDB(c))
+  for (const c of newCustomers) {
+    await saveCustomerToDB(c)
+  }
 
   closeImportModal()
   showToast(`${imported} مشتری ایمپورت شد${skipped > 0 ? ` — ${skipped} ردیف رد شد` : ''}`)
@@ -368,7 +370,7 @@ export function setSalesImportMapping(colIndex, fieldKey) {
   }
 }
 
-export function doSalesImport() {
+export async function doSalesImport() {
   const data = getData()
   const mapping = salesImportData.mapping
   if (!mapping.phone && mapping.phone !== 0) {
@@ -419,10 +421,10 @@ export function doSalesImport() {
 
   // Save all affected customers to Supabase
   const affectedCustomers = [...new Set(data.customers.filter(c => c.products.length > 0).map(c => c.id))]
-  affectedCustomers.forEach(id => {
+  for (const id of affectedCustomers) {
     const c = data.customers.find(x => x.id === id)
-    if (c) saveCustomerToDB(c)
-  })
+    if (c) await saveCustomerToDB(c)
+  }
 
   closeSalesImportModal()
   let msg = `${imported} محصول ایمپورت شد`

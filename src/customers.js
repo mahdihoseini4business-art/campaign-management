@@ -271,10 +271,10 @@ export async function saveCustomer() {
         data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor }
         data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
         data.convertedCount = (data.convertedCount || 0) + 1
-        saveCustomerToDB(data.customers[idx])
-        updateFollowupsCustomerId(oldCustomer.id, newId)
-        saveSetting('convertedCount', data.convertedCount)
-        renderCustomers()
+        await saveCustomerToDB(data.customers[idx])
+        await updateFollowupsCustomerId(oldCustomer.id, newId)
+        await saveSetting('convertedCount', data.convertedCount)
+        await renderCustomers()
         closeCustomerModal()
         showToast(`شماره ثبت شد — ${oldCustomer.id} تبدیل شد به ${newId}`)
         return
@@ -284,8 +284,8 @@ export async function saveCustomer() {
         const newId = generateId('LD')
         data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor }
         data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
-        saveCustomerToDB(data.customers[idx])
-        updateFollowupsCustomerId(oldCustomer.id, newId)
+        await saveCustomerToDB(data.customers[idx])
+        await updateFollowupsCustomerId(oldCustomer.id, newId)
         renderCustomers()
         closeCustomerModal()
         showToast(`شماره حذف شد — ${oldCustomer.id} تبدیل شد به ${newId}`)
@@ -467,7 +467,7 @@ export async function openCustomerDetail(id) {
   renderProducts(c.id)
 }
 
-export function setNextFollowup(customerId) {
+export async function setNextFollowup(customerId) {
   const data = getData()
   const input = document.getElementById('detailFollowupDate')
   const date = input.value.trim()
@@ -477,20 +477,20 @@ export function setNextFollowup(customerId) {
   const idx = data.customers.findIndex(c => c.id === customerId)
   if (idx !== -1) {
     data.customers[idx].nextFollowupDate = date
-    saveCustomerToDB(data.customers[idx])
-    renderCustomers()
+    await saveCustomerToDB(data.customers[idx])
+    await renderCustomers()
     openCustomerDetail(customerId)
     showToast('تاریخ پیگیری تنظیم شد')
   }
 }
 
-export function clearNextFollowup(customerId) {
+export async function clearNextFollowup(customerId) {
   const data = getData()
   const idx = data.customers.findIndex(c => c.id === customerId)
   if (idx !== -1) {
     data.customers[idx].nextFollowupDate = ''
-    saveCustomerToDB(data.customers[idx])
-    renderCustomers()
+    await saveCustomerToDB(data.customers[idx])
+    await renderCustomers()
     openCustomerDetail(customerId)
     showToast('تاریخ پیگیری حذف شد')
   }
