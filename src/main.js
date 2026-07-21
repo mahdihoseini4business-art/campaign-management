@@ -40,7 +40,7 @@ function sortCustomers(field) {
   else { sortState.field = field; sortState.asc = true }
 
   const data = getData()
-  data.customers.sort((a, b) => {
+  data.customers = [...data.customers].sort((a, b) => {
     let va = a[field], vb = b[field]
     if (field === 'followupCount') {
       va = data.followups.filter(f => f.customerId === a.id).length
@@ -71,7 +71,7 @@ function sortFollowups(field) {
   else { sortState.field = field; sortState.asc = true }
 
   const data = getData()
-  data.followups.sort((a, b) => {
+  data.followups = [...data.followups].sort((a, b) => {
     let va = a[field], vb = b[field]
     if (field === 'customerName') {
       va = (data.customers.find(c => c.id === a.customerId) || {}).name || ''
