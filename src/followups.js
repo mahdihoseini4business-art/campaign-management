@@ -117,11 +117,15 @@ export function saveFollowup() {
   if (!date) { showToast('تاریخ پیگیری را وارد کنید'); return }
 
   if (editIndex !== '') {
-    data.followups[parseInt(editIndex)] = { customerId, date, nextDate, type, result, notes }
-    saveFollowupToDB({ customerId, date, nextDate, type, result, notes }, parseInt(editIndex))
+    const existing = data.followups[parseInt(editIndex)]
+    const updated = { ...existing, customerId, date, nextDate, type, result, notes }
+    data.followups[parseInt(editIndex)] = updated
+    await updateFollowupInDB(updated)
   } else {
-    data.followups.push({ customerId, date, nextDate, type, result, notes })
-    saveFollowupToDB({ customerId, date, nextDate, type, result, notes })
+    const newFollowup = { customerId, date, nextDate, type, result, notes }
+    const id = await saveFollowupToDB(newFollowup)
+    newFollowup.id = id
+    data.followups.push(newFollowup)
   }
 
   renderFollowups()
@@ -133,15 +137,15 @@ export function editFollowup(index) {
   openFollowupModal(index)
 }
 
-export function deleteFollowup(index) {
+export async function deleteFollowup(index) {
   const data = getData()
   const f = data.followups[index]
   document.getElementById('deleteMessage').textContent =
     `آیا از حذف پیگیری ${f.customerId} در تاریخ ${f.date} مطمئن هستید؟`
-  document.getElementById('deleteConfirmBtn').onclick = function () {
+  document.getElementById('deleteConfirmBtn').onclick = async function () {
+    if (f.id) await deleteFollowupFromDB(f.id)
     data.followups.splice(index, 1)
-    deleteFollowupFromDB(f.customerId)
-    renderFollowups()
+    await renderFollowups()
     closeDeleteModal()
     showToast('پیگیری حذف شد')
   }
