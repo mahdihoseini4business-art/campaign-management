@@ -88,6 +88,7 @@ export async function doLogin() {
   if (error || !user) {
     errorEl.textContent = 'نام کاربری یا رمز عبور اشتباه است'
     errorEl.classList.add('show')
+    document.getElementById('loginPassword').value = ''
     return
   }
 
@@ -163,7 +164,8 @@ export async function deleteUser(username) {
   const currentUser = getCurrentUser()
   if (currentUser && currentUser.username === username) { showToast('امکان حذف کاربر جاری وجود ندارد'); return }
 
-  if (!confirm('آیا از حذف این کاربر مطمئن هستید؟')) return
+  // Use consistent confirmation style
+  if (!window.confirm('آیا از حذف این کاربر مطمئن هستید؟')) return
 
   await deleteUserFromDB(username)
   await renderUsersList()

@@ -567,12 +567,12 @@ export function getProducts(customerId) {
   return (c && c.products) ? c.products : []
 }
 
-export function setProducts(customerId, products) {
+export async function setProducts(customerId, products) {
   const data = getData()
   const idx = data.customers.findIndex(c => c.id === customerId)
   if (idx !== -1) {
     data.customers[idx].products = products
-    saveCustomerToDB(data.customers[idx])
+    await saveCustomerToDB(data.customers[idx])
   }
 }
 
