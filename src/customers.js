@@ -505,7 +505,7 @@ export async function clearNextFollowup(customerId) {
   }
 }
 
-export function addQuickNote(customerId) {
+export async function addQuickNote(customerId) {
   const data = getData()
   const textarea = document.getElementById('detailQuickNote')
   const notes = textarea.value.trim()
@@ -518,9 +518,11 @@ export function addQuickNote(customerId) {
   const jalali = toJalali(today)
   const dateStr = `${jalali.year}/${String(jalali.month).padStart(2, '0')}/${String(jalali.day).padStart(2, '0')}`
 
-  data.followups.push({ customerId, date: dateStr, type, result, nextDate: '', notes })
-  saveFollowupToDB({ customerId, date: dateStr, type, result, nextDate: '', notes })
-  renderCustomers()
+  const newFollowup = { customerId, date: dateStr, type, result, nextDate: '', notes }
+  const id = await saveFollowupToDB(newFollowup)
+  newFollowup.id = id
+  data.followups.push(newFollowup)
+  await renderCustomers()
   openCustomerDetail(customerId)
   showToast('توضیحات ثبت شد')
 }
