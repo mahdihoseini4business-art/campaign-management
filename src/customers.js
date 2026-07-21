@@ -18,13 +18,7 @@ export async function renderCustomers() {
   const search = toEnDigits(document.getElementById('searchCustomers').value).toLowerCase()
   const advisorFilter = document.getElementById('filterAdvisor').value
 
-  let users = []
-  try { users = await getUsers() } catch (e) { console.error('getUsers error:', e) }
-  const advisorSelect = document.getElementById('filterAdvisor')
-  const currentVal = advisorSelect.value
-  advisorSelect.innerHTML = '<option value="">همه کارشناسان</option>' + users.map(u => `<option value="${escapeHtml(u.display_name)}">${escapeHtml(u.display_name)}</option>`).join('')
-  advisorSelect.value = currentVal
-
+  // Render customers immediately (don't wait for users)
   const filtered = data.customers.filter(c => {
     if (!c.id.toLowerCase().includes(search) &&
       !c.name.toLowerCase().includes(search) &&
@@ -48,6 +42,8 @@ export async function renderCustomers() {
         </div>
       </td></tr>`
     updateStats()
+    // Still update advisor dropdown in background
+    updateAdvisorDropdown()
     return
   }
 
@@ -120,6 +116,18 @@ export async function renderCustomers() {
   }).join('')
 
   updateStats()
+  // Update advisor dropdown in background (non-blocking)
+  updateAdvisorDropdown()
+}
+
+async function updateAdvisorDropdown() {
+  const advisorSelect = document.getElementById('filterAdvisor')
+  if (!advisorSelect) return
+  const currentVal = advisorSelect.value
+  let users = []
+  try { users = await getUsers() } catch (e) { console.error('getUsers error:', e) }
+  advisorSelect.innerHTML = '<option value="">همه کارشناسان</option>' + users.map(u => `<option value="${escapeHtml(u.display_name)}">${escapeHtml(u.display_name)}</option>`).join('')
+  advisorSelect.value = currentVal
 }
 
 export function updateStats() {
