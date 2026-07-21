@@ -94,17 +94,17 @@ export async function renderCustomers() {
     }
 
     return `<tr class="${nextFollowupClass}">
-      <td><span class="id-badge ${idClass}">${c.id}</span></td>
+      <td><span class="id-badge ${idClass}">${escapeHtml(c.id)}</span></td>
       <td>${platformIdHtml}</td>
-      <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${platformLabel}</span></td>
-      <td>${c.name || '<span style="color:var(--text-muted)">—</span>'}</td>
-      <td style="font-family: monospace; direction: ltr; text-align: right;">${c.phone || '<span style="color:var(--text-muted)">—</span>'}</td>
-      <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-      <td style="font-size:12px;">${c.advisor || '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>
+      <td>${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td style="font-family: monospace; direction: ltr; text-align: right;">${escapeHtml(c.phone) || '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td><span class="status-badge ${statusClass}">${escapeHtml(statusLabel)}</span></td>
+      <td style="font-size:12px;">${escapeHtml(c.advisor) || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td style="text-align:center;"><span class="followup-count ${countClass}">${followupCount}</span></td>
-      <td style="font-size:13px;color:var(--text-muted);">${lastDate}</td>
+      <td style="font-size:13px;color:var(--text-muted);">${escapeHtml(lastDate)}</td>
       <td style="font-size:12px;">${nextFollowupHtml}</td>
-      <td class="notes-cell" title="${escapeHtml(lastNote || c.notes)}">${lastNote || c.notes || '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td class="notes-cell" title="${escapeHtml(lastNote || c.notes)}">${escapeHtml(lastNote || c.notes) || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td>
         <div class="actions-cell">
           <button class="btn-icon" title="پنل مشتری" onclick="window.appOpenCustomerDetail('${c.id}')" style="color:var(--accent);">👤</button>

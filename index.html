@@ -9,6 +9,9 @@
 <title>سیستم مدیریت کمپین دیجیتال مارکتینگ</title>
 <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
 <link rel="stylesheet" href="https://unpkg.com/@majidh1/jalalidatepicker/dist/jalalidatepicker.min.css">
+<script src="https://unpkg.com/@majidh1/jalalidatepicker/dist/jalalidatepicker.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 <script type="module" src="/src/main.js"></script>
 </head>
 <body>
@@ -87,7 +90,7 @@
         <div class="profile-dropdown-item" onclick="window.appSwitchTab('dashboard', document.querySelector('.tab-dashboard'))">
           <span>داشبرد</span>
         </div>
-        <div class="profile-dropdown-item" onclick="showToast('پروفایل - به زودی')">
+        <div class="profile-dropdown-item" onclick="window.appShowToast('پروفایل - به زودی')">
           <span>پروفایل</span>
         </div>
         <div class="profile-dropdown-item" onclick="window.appOpenSettingsModal()">

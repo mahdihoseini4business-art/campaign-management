@@ -1,5 +1,5 @@
 import './styles.css'
-import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum } from './utils.js'
+import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum, showToast } from './utils.js'
 import { getData, loadData } from './data.js'
 import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers } from './auth.js'
 import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, addProductRow, saveProductField, updateProduct, removeProduct } from './customers.js'
@@ -118,6 +118,7 @@ window.appCloseSalesImportModal = closeSalesImportModal
 window.appDoSalesImport = doSalesImport
 window.appSetSalesImportMapping = setSalesImportMapping
 window.appDoLogin = doLogin
+window.appShowToast = showToast
 window.appDoLogout = doLogout
 window.appOpenSettingsModal = openSettingsModal
 window.appCloseSettingsModal = closeSettingsModal
