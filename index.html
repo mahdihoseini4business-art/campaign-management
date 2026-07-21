@@ -32,6 +32,9 @@
       <input type="password" class="form-input" id="loginPassword" placeholder="رمز عبور">
     </div>
     <button class="btn-login" onclick="window.appDoLogin()">ورود</button>
+    <div style="margin-top:12px;">
+      <button onclick="window.appResetAdminPassword().then(()=>alert('رمز ادمین ریست شد: admin123'))" style="background:none;border:none;color:var(--text-muted);font-size:11px;cursor:pointer;text-decoration:underline;">بازنشانی رمز ادمین</button>
+    </div>
   </div>
 </div>
 
