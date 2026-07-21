@@ -8,7 +8,14 @@ import { toEnDigits, escapeHtml, showToast, getCurrentUser, setCurrentUser, clea
 export async function hashPassword(pw) {
   const encoder = new TextEncoder()
   const data = encoder.encode(pw)
-  const hash = await crypto.subtle.digest('SHA-256', data)
+  // Use PBKDF2 with salt for better security
+  const salt = encoder.encode('campaign_manager_salt_2024')
+  const keyMaterial = await crypto.subtle.importKey('raw', data, 'PBKDF2', false, ['deriveBits'])
+  const hash = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    keyMaterial,
+    256
+  )
   return Array.from(new Uint8Array(hash))
     .map(b => b.toString(16).padStart(2, '0')).join('')
 }
@@ -43,6 +50,7 @@ export async function deleteUserFromDB(username) {
 export async function seedAdmin() {
   const users = await getUsers()
   if (users.length === 0) {
+    // NOTE: Change this password in production! Default: admin123
     const hash = await hashPassword('admin123')
     await saveUser({
       username: 'admin',

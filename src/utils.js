@@ -148,17 +148,30 @@ export function hasPermission(key) {
 // ============================================
 
 const SESSION_KEY = 'campaign_manager_session'
+const SESSION_EXPIRY_HOURS = 24 // Session expires after 24 hours
 
 export function getCurrentUser() {
   try {
     const raw = localStorage.getItem(SESSION_KEY)
-    if (raw) return JSON.parse(raw)
+    if (raw) {
+      const session = JSON.parse(raw)
+      // Check if session has expired
+      if (session.expiresAt && Date.now() > session.expiresAt) {
+        localStorage.removeItem(SESSION_KEY)
+        return null
+      }
+      return session
+    }
   } catch (e) {}
   return null
 }
 
 export function setCurrentUser(user) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(user))
+  const session = {
+    ...user,
+    expiresAt: Date.now() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
+  }
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
 }
 
 export function clearCurrentUser() {
