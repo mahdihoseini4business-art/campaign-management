@@ -103,7 +103,7 @@ export function closeFollowupModal() {
   document.getElementById('followupModal').classList.remove('active')
 }
 
-export function saveFollowup() {
+export async function saveFollowup() {
   const data = getData()
   const editIndex = document.getElementById('editFollowupIndex').value
   const customerId = document.getElementById('followupCustomer').value
