@@ -163,10 +163,6 @@ function reRenderAll() {
   renderDashboard()
 }
 
-// Override import functions to trigger re-render
-const origDoImport = doImport
-const origDoSalesImport = doSalesImport
-
 // ============================================
 // Init
 // ============================================

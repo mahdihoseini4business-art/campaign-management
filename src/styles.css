@@ -1108,6 +1108,19 @@
     max-height: 300px;
   }
 
+  .chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  @media (max-width: 600px) {
+    .chart-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
   canvas {
     max-width: 100%;
     height: auto !important;
