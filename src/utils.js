@@ -67,6 +67,8 @@ export function toJalali(gregorian) {
   return { year: jy, month: jm, day: jd }
 }
 
+// Returns a numeric representation of a Jalali date for comparison/sorting.
+// Empty/invalid dates return 99999999 (sorts to end of list).
 export function jalaliToNum(dateStr) {
   if (!dateStr) return 99999999
   const parts = dateStr.split('/')
