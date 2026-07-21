@@ -100,6 +100,8 @@ export function checkSession() {
     document.getElementById('loginOverlay').classList.add('hidden')
     return user
   }
+  // No session - show login
+  document.getElementById('loginOverlay').classList.remove('hidden')
   return null
 }
 
