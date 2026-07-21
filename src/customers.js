@@ -296,7 +296,11 @@ export async function saveCustomer() {
     }
   }
 
-  await saveCustomerToDB(data.customers[data.customers.findIndex(c => c.id === (editId || data.customers[data.customers.length - 1].id))])
+  const targetId = editId || data.customers[data.customers.length - 1].id
+  const targetCustomer = data.customers.find(c => c.id === targetId)
+  if (targetCustomer) {
+    await saveCustomerToDB(targetCustomer)
+  }
   await renderCustomers()
   closeCustomerModal()
   showToast(editId ? 'مشتری ویرایش شد' : 'مشتری جدید اضافه شد')
