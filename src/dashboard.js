@@ -76,11 +76,11 @@ export function renderDashboard() {
   document.getElementById('dash-overdue-badge').textContent = overdueList.length
   document.getElementById('dash-soon-badge').textContent = soonList.length
 
-  // Sales stats
+  // Sales stats - include sales without settlement date when date filter is active
   const allSales = getAllSales().filter(s => {
     if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
-    if ((dateFrom || dateTo) && !inDateRange(s.settlementDate)) return false
+    if ((dateFrom || dateTo) && s.settlementDate && !inDateRange(s.settlementDate)) return false
     return true
   })
   const cashSales = allSales.filter(s => s.status === 'تکمیل')
