@@ -163,11 +163,18 @@ async function init() {
   initImportListeners()
   initSalesImportListeners()
 
+  // Show loading overlay
+  const loadingOverlay = document.getElementById('loadingOverlay')
+  if (loadingOverlay) loadingOverlay.style.display = 'flex'
+
   // Seed admin if needed
   await seedAdmin()
 
   // Load data from Supabase
   await loadData()
+
+  // Hide loading overlay
+  if (loadingOverlay) loadingOverlay.style.display = 'none'
 
   // Check session
   checkSession()
