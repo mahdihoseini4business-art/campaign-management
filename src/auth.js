@@ -157,15 +157,20 @@ export async function addUser() {
   }
 
   const hash = await hashPassword(password, username)
-  await saveUser({
-    username,
-    password_hash: hash,
-    display_name: displayName || username,
-    role,
-    permissions: role === 'admin' ? null : getDefaultPermissions()
-  })
-  await renderUsersList()
-  showToast('کاربر اضافه شد')
+  try {
+    await saveUser({
+      username,
+      password_hash: hash,
+      display_name: displayName || username,
+      role,
+      permissions: role === 'admin' ? null : getDefaultPermissions()
+    })
+    await renderUsersList()
+    showToast('کاربر اضافه شد')
+  } catch (e) {
+    console.error('addUser error:', e)
+    showToast('خطا در اضافه کردن کاربر')
+  }
 }
 
 export async function deleteUser(username) {
