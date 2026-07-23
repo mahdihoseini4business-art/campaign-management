@@ -1,5 +1,7 @@
 import { getData, saveCustomerToDB, generateId } from './data.js'
 import { toEnDigits, showToast, getCurrentUser } from './utils.js'
+import { renderCustomers } from './customers.js'
+import { renderSales } from './sales.js'
 
 // ============================================
 // Export
@@ -262,8 +264,8 @@ export async function doImport() {
   }
 
   closeImportModal()
+  await renderCustomers()
   showToast(`${imported} مشتری ایمپورت شد${skipped > 0 ? ` — ${skipped} ردیف رد شد` : ''}`)
-  // Re-render will be called by main.js
 }
 
 // ============================================
@@ -427,6 +429,8 @@ export async function doSalesImport() {
   }
 
   closeSalesImportModal()
+  await renderCustomers()
+  await renderSales()
   let msg = `${imported} محصول ایمپورت شد`
   if (created > 0) msg += ` — ${created} مشتری جدید ایجاد شد`
   if (skipped > 0) msg += ` — ${skipped} ردیف رد شد`
