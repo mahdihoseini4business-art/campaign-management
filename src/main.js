@@ -32,12 +32,13 @@ function switchTab(tab, el) {
 // Sort Functions
 // ============================================
 
-let sortState = { field: null, asc: true }
+let customerSortState = { field: null, asc: true }
+let followupSortState = { field: null, asc: true }
 const STATUS_ORDER = ['new', 'contacted', 'chatting', 'interested', 'sent', 'followup_done', 'converting', 'purchased', 'cancelled']
 
 function sortCustomers(field) {
-  if (sortState.field === field) sortState.asc = !sortState.asc
-  else { sortState.field = field; sortState.asc = true }
+  if (customerSortState.field === field) customerSortState.asc = !customerSortState.asc
+  else { customerSortState.field = field; customerSortState.asc = true }
 
   const data = getData()
   data.customers = [...data.customers].sort((a, b) => {
@@ -53,22 +54,22 @@ function sortCustomers(field) {
     if (field === 'nextFollowupDate') {
       va = jalaliToNum(a.nextFollowupDate || '')
       vb = jalaliToNum(b.nextFollowupDate || '')
-      return sortState.asc ? va - vb : vb - va
+      return customerSortState.asc ? va - vb : vb - va
     }
     if (field === 'status') {
       const orderA = STATUS_ORDER.indexOf(va)
       const orderB = STATUS_ORDER.indexOf(vb)
-      return sortState.asc ? orderA - orderB : orderB - orderA
+      return customerSortState.asc ? orderA - orderB : orderB - orderA
     }
-    if (typeof va === 'number') return sortState.asc ? va - vb : vb - va
-    return sortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa')
+    if (typeof va === 'number') return customerSortState.asc ? va - vb : vb - va
+    return customerSortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa')
   })
   renderCustomers()
 }
 
 function sortFollowups(field) {
-  if (sortState.field === field) sortState.asc = !sortState.asc
-  else { sortState.field = field; sortState.asc = true }
+  if (followupSortState.field === field) followupSortState.asc = !followupSortState.asc
+  else { followupSortState.field = field; followupSortState.asc = true }
 
   const data = getData()
   data.followups = [...data.followups].sort((a, b) => {
@@ -77,7 +78,7 @@ function sortFollowups(field) {
       va = (data.customers.find(c => c.id === a.customerId) || {}).name || ''
       vb = (data.customers.find(c => c.id === b.customerId) || {}).name || ''
     }
-    return sortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa')
+    return followupSortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa')
   })
   renderFollowups()
 }
