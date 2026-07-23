@@ -656,6 +656,7 @@ export async function updateProduct(customerId, index, field, value) {
 }
 
 export async function removeProduct(customerId, index) {
+  if (!window.confirm('آیا از حذف این محصول مطمئن هستید؟')) return
   const products = getProducts(customerId)
   products.splice(index, 1)
   await setProducts(customerId, products)
