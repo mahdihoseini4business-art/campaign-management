@@ -232,7 +232,15 @@ export async function doImport() {
       return String(row[colIdx] || '').trim()
     }
 
-    const platformId = getValue('platformId') || `auto_${Date.now()}_${Math.random().toString(36).slice(2,6)}`
+    const phone = getValue('phone')
+    let platformId = getValue('platformId')
+    if (!platformId && phone) {
+      // Auto-generate Telegram link from phone number
+      const cleanPhone = phone.replace(/^0/, '+98')
+      platformId = `telegram.me/${cleanPhone}`
+    } else if (!platformId) {
+      platformId = `auto_${Date.now()}_${Math.random().toString(36).slice(2,6)}`
+    }
 
     const phone = getValue('phone')
     const platformRaw = getValue('platform').toLowerCase()
