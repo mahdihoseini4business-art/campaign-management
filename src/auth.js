@@ -78,6 +78,7 @@ export async function doLogin() {
   if (!username || !password) {
     errorEl.textContent = 'نام کاربری و رمز عبور را وارد کنید'
     errorEl.classList.add('show')
+    document.getElementById('loginPassword').value = ''
     return
   }
 
