@@ -1,5 +1,5 @@
 import { getData } from './data.js'
-import { toEnDigits, formatNumber, hasPermission, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr } from './utils.js'
+import { toEnDigits, formatNumber, escapeHtml, hasPermission, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr } from './utils.js'
 
 const PLATFORM_LABELS = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' }
 const PLATFORM_CLASSES = { instagram: 'platform-ig', telegram: 'platform-tg', whatsapp: 'platform-wa' }
