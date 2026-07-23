@@ -80,7 +80,7 @@ export async function saveCustomerToDB(customer) {
   }
 
   const { error } = await supabase.from('customers').upsert(row, { onConflict: 'id' })
-  if (error) console.error('Save customer error:', error)
+  if (error) throw new Error('خطا در ذخیره مشتری: ' + error.message)
 }
 
 // ============================================
@@ -92,7 +92,7 @@ export async function deleteCustomerFromDB(id) {
   await supabase.from('followups').delete().eq('customer_id', id)
   // Delete customer
   const { error } = await supabase.from('customers').delete().eq('id', id)
-  if (error) console.error('Delete customer error:', error)
+  if (error) throw new Error('خطا در حذف مشتری: ' + error.message)
 }
 
 // ============================================
@@ -110,7 +110,7 @@ export async function saveFollowupToDB(followup) {
     next_date: followup.nextDate,
     notes: followup.notes
   }).select('id').single()
-  if (error) console.error('Insert followup error:', error)
+  if (error) throw new Error('خطا در درج پیگیری: ' + error.message)
   return inserted ? inserted.id : null
 }
 
@@ -124,7 +124,7 @@ export async function updateFollowupInDB(followup) {
     next_date: followup.nextDate,
     notes: followup.notes
   }).eq('id', followup.id)
-  if (error) console.error('Update followup error:', error)
+  if (error) throw new Error('خطا در ویرایش پیگیری: ' + error.message)
 }
 
 // ============================================
@@ -133,7 +133,7 @@ export async function updateFollowupInDB(followup) {
 
 export async function deleteFollowupFromDB(id) {
   const { error } = await supabase.from('followups').delete().eq('id', id)
-  if (error) console.error('Delete followup error:', error)
+  if (error) throw new Error('خطا در حذف پیگیری: ' + error.message)
 }
 
 // ============================================
@@ -143,7 +143,7 @@ export async function deleteFollowupFromDB(id) {
 export async function updateFollowupsCustomerId(oldId, newId) {
   // Update customer_id directly instead of delete+re-insert
   const { error } = await supabase.from('followups').update({ customer_id: newId }).eq('customer_id', oldId)
-  if (error) console.error('Update followups customer_id error:', error)
+  if (error) throw new Error('خطا در بروزرسانی پیگیری‌ها: ' + error.message)
 }
 
 // ============================================
@@ -152,7 +152,7 @@ export async function updateFollowupsCustomerId(oldId, newId) {
 
 export async function saveSetting(key, value) {
   const { error } = await supabase.from('app_settings').upsert({ key, value }, { onConflict: 'key' })
-  if (error) console.error('Save setting error:', error)
+  if (error) throw new Error('خطا در ذخیره تنظیمات: ' + error.message)
 }
 
 // ============================================

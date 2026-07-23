@@ -119,13 +119,25 @@ export async function saveFollowup() {
   if (editIndex !== '') {
     const existing = data.followups[parseInt(editIndex)]
     const updated = { ...existing, customerId, date, nextDate, type, result, notes }
-    data.followups[parseInt(editIndex)] = updated
-    await updateFollowupInDB(updated)
+    try {
+      await updateFollowupInDB(updated)
+      data.followups[parseInt(editIndex)] = updated
+    } catch (e) {
+      console.error('saveFollowup error:', e)
+      showToast('خطا در ذخیره پیگیری')
+      return
+    }
   } else {
     const newFollowup = { customerId, date, nextDate, type, result, notes }
-    const id = await saveFollowupToDB(newFollowup)
-    newFollowup.id = id
-    data.followups.push(newFollowup)
+    try {
+      const id = await saveFollowupToDB(newFollowup)
+      newFollowup.id = id
+      data.followups.push(newFollowup)
+    } catch (e) {
+      console.error('saveFollowup error:', e)
+      showToast('خطا در ذخیره پیگیری')
+      return
+    }
   }
 
   renderFollowups()
@@ -143,15 +155,21 @@ export async function deleteFollowup(index) {
   document.getElementById('deleteMessage').textContent =
     `آیا از حذف پیگیری ${f.customerId} در تاریخ ${f.date} مطمئن هستید؟`
   document.getElementById('deleteConfirmBtn').onclick = async function () {
-    if (f.id) {
-      await deleteFollowupFromDB(f.id)
-    } else {
-      showToast('خطا: پیگیری شناسه دیتابیس ندارد')
+    try {
+      if (f.id) {
+        await deleteFollowupFromDB(f.id)
+      } else {
+        showToast('خطا: پیگیری شناسه دیتابیس ندارد')
+        return
+      }
+      data.followups.splice(index, 1)
+      await renderFollowups()
+      closeDeleteModal()
+      showToast('پیگیری حذف شد')
+    } catch (e) {
+      console.error('deleteFollowup error:', e)
+      showToast('خطا در حذف پیگیری')
     }
-    data.followups.splice(index, 1)
-    await renderFollowups()
-    closeDeleteModal()
-    showToast('پیگیری حذف شد')
   }
   document.getElementById('deleteModal').classList.add('active')
 }

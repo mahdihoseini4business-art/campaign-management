@@ -299,7 +299,13 @@ export async function saveCustomer() {
   const targetId = editId || data.customers[data.customers.length - 1].id
   const targetCustomer = data.customers.find(c => c.id === targetId)
   if (targetCustomer) {
-    await saveCustomerToDB(targetCustomer)
+    try {
+      await saveCustomerToDB(targetCustomer)
+    } catch (e) {
+      console.error('saveCustomer error:', e)
+      showToast('خطا در ذخیره مشتری')
+      return
+    }
   }
   await renderCustomers()
   closeCustomerModal()
