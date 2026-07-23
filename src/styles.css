@@ -61,6 +61,21 @@
     box-shadow: var(--shadow-lg);
     min-width: 160px;
     z-index: 200;
+    max-width: 90vw;
+    overflow-x: hidden;
+  }
+
+  @media (max-width: 480px) {
+    .profile-dropdown {
+      position: fixed;
+      top: auto;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      margin-top: 0;
+      border-radius: 12px 12px 0 0;
+      max-width: 100%;
+    }
   }
 
   .profile-dropdown.active { display: block; }
