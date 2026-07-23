@@ -232,8 +232,7 @@ export async function doImport() {
       return String(row[colIdx] || '').trim()
     }
 
-    const platformId = getValue('platformId')
-    if (!platformId) { skipped++; return }
+    const platformId = getValue('platformId') || `auto_${Date.now()}_${Math.random().toString(36).slice(2,6)}`
 
     const phone = getValue('phone')
     const platformRaw = getValue('platform').toLowerCase()
