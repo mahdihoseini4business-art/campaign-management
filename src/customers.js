@@ -252,7 +252,7 @@ export async function saveCustomer() {
 
     const type = phone ? 'CS' : 'LD'
     const id = generateId(type)
-    data.customers.push({ id, platformId, platform, name, phone, status, notes, advisor, products: [] })
+    data.customers.push({ id, platformId, platform, name, phone, status, notes, advisor, nextFollowupDate: '', products: [] })
   } else {
     const dupById = platformId && data.customers.find(c => c.id !== editId && c.platformId && c.platformId.toLowerCase() === platformId.toLowerCase())
     const dupByPhone = phone && data.customers.find(c => c.id !== editId && c.phone && c.phone === phone)
