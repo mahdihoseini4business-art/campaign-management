@@ -1,4 +1,4 @@
-import { getData, saveFollowupToDB, deleteFollowupFromDB } from './data.js'
+import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB } from './data.js'
 import { toEnDigits, escapeHtml, showToast, hasPermission } from './utils.js'
 import { openCustomerDetail } from './customers.js'
 
