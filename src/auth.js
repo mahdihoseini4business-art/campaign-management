@@ -180,10 +180,15 @@ export async function deleteUser(username) {
 
   document.getElementById('deleteMessage').textContent = `آیا از حذف کاربر "${username}" مطمئن هستید؟`
   document.getElementById('deleteConfirmBtn').onclick = async function () {
-    await deleteUserFromDB(username)
-    await renderUsersList()
-    document.getElementById('deleteModal').classList.remove('active')
-    showToast('کاربر حذف شد')
+    try {
+      await deleteUserFromDB(username)
+      await renderUsersList()
+      document.getElementById('deleteModal').classList.remove('active')
+      showToast('کاربر حذف شد')
+    } catch (e) {
+      console.error('deleteUser error:', e)
+      showToast('خطا در حذف کاربر')
+    }
   }
   document.getElementById('deleteModal').classList.add('active')
 }
