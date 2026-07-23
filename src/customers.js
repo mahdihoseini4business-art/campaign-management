@@ -268,27 +268,37 @@ export async function saveCustomer() {
 
       if (wasLD && nowHasPhone) {
         const newId = generateId('CS')
-        data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor }
-        data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
-        data.convertedCount = (data.convertedCount || 0) + 1
-        await saveCustomerToDB(data.customers[idx])
-        await updateFollowupsCustomerId(oldCustomer.id, newId)
-        await saveSetting('convertedCount', data.convertedCount)
-        await renderCustomers()
-        closeCustomerModal()
-        showToast(`شماره ثبت شد — ${oldCustomer.id} تبدیل شد به ${newId}`)
+        try {
+          await saveCustomerToDB({ ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor })
+          await updateFollowupsCustomerId(oldCustomer.id, newId)
+          await saveSetting('convertedCount', (data.convertedCount || 0) + 1)
+          data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor }
+          data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
+          data.convertedCount = (data.convertedCount || 0) + 1
+          await renderCustomers()
+          closeCustomerModal()
+          showToast(`شماره ثبت شد — ${oldCustomer.id} تبدیل شد به ${newId}`)
+        } catch (e) {
+          console.error('LD→CS conversion error:', e)
+          showToast('خطا در تبدیل مشتری')
+        }
         return
       }
 
       if (!wasLD && !nowHasPhone && oldCustomer.id.startsWith('CS')) {
         const newId = generateId('LD')
-        data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor }
-        data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
-        await saveCustomerToDB(data.customers[idx])
-        await updateFollowupsCustomerId(oldCustomer.id, newId)
-        renderCustomers()
-        closeCustomerModal()
-        showToast(`شماره حذف شد — ${oldCustomer.id} تبدیل شد به ${newId}`)
+        try {
+          await saveCustomerToDB({ ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor })
+          await updateFollowupsCustomerId(oldCustomer.id, newId)
+          data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor }
+          data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
+          await renderCustomers()
+          closeCustomerModal()
+          showToast(`شماره حذف شد — ${oldCustomer.id} تبدیل شد به ${newId}`)
+        } catch (e) {
+          console.error('CS→LD conversion error:', e)
+          showToast('خطا در تبدیل مشتری')
+        }
         return
       }
 
