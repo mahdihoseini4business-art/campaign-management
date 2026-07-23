@@ -123,6 +123,11 @@ export function checkSession() {
 // ============================================
 
 export async function openSettingsModal() {
+  const currentUser = getCurrentUser()
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('فقط مدیر سیستم به تنظیمات دسترسی دارد')
+    return
+  }
   document.getElementById('newUsername').value = ''
   document.getElementById('newPassword').value = ''
   document.getElementById('newDisplayName').value = ''
@@ -271,7 +276,8 @@ export function applyPermissions() {
   })
 
   const settingsItem = document.querySelector('.profile-dropdown-item[onclick*="openSettingsModal"]')
-  if (settingsItem && !hasPermission('settings')) {
+  const currentUser = getCurrentUser()
+  if (settingsItem && (!currentUser || currentUser.role !== 'admin')) {
     settingsItem.style.display = 'none'
   }
 
