@@ -1,5 +1,5 @@
 import { getData } from './data.js'
-import { toEnDigits, formatNumber, escapeHtml, hasPermission, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr } from './utils.js'
+import { toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr } from './utils.js'
 
 const PLATFORM_LABELS = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' }
 const PLATFORM_CLASSES = { instagram: 'platform-ig', telegram: 'platform-tg', whatsapp: 'platform-wa' }
@@ -86,7 +86,7 @@ function renderSalesRows(allSales) {
     }
 
     return `<tr class="${rowClass}">
-      <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="window.appOpenCustomerDetail('${s.customerId}')">${escapeHtml(s.customerId)}</span></td>
+      <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="window.appOpenCustomerDetail('${escapeAttr(s.customerId)}')">${escapeHtml(s.customerId)}</span></td>
       <td>${escapeHtml(s.customerName)}</td>
       <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${escapeHtml(s.customerPhone) || '—'}</td>
       <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${escapeHtml(pLabel)}</span></td>

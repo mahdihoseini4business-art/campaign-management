@@ -1,5 +1,5 @@
 import './styles.css'
-import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum, showToast } from './utils.js'
+import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum, showToast, escapeAttr } from './utils.js'
 import { getData, loadData } from './data.js'
 import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers } from './auth.js'
 import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, addProductRow, saveProductField, updateProduct, removeProduct } from './customers.js'

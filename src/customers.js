@@ -1,6 +1,6 @@
 import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId } from './data.js'
 import { getUsers } from './auth.js'
-import { toEnDigits, escapeHtml, showToast, hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali } from './utils.js'
 
 const STATUS_LABELS = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
 const PLATFORM_LABELS = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' }
@@ -107,9 +107,9 @@ export async function renderCustomers() {
       <td class="notes-cell" title="${escapeHtml(lastNote || c.notes)}">${escapeHtml(lastNote || c.notes) || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td>
         <div class="actions-cell">
-          <button class="btn-icon" title="پنل مشتری" onclick="window.appOpenCustomerDetail('${c.id}')" style="color:var(--accent);">👤</button>
-          <button class="btn-icon" title="ویرایش" onclick="window.appEditCustomer('${c.id}')">✏</button>
-          <button class="btn-icon" title="حذف" onclick="window.appDeleteCustomer('${c.id}')">🗑</button>
+          <button class="btn-icon" title="پنل مشتری" onclick="window.appOpenCustomerDetail('${escapeAttr(c.id)}')" style="color:var(--accent);">👤</button>
+          <button class="btn-icon" title="ویرایش" onclick="window.appEditCustomer('${escapeAttr(c.id)}')">✏</button>
+          <button class="btn-icon" title="حذف" onclick="window.appDeleteCustomer('${escapeAttr(c.id)}')">🗑</button>
         </div>
       </td>
     </tr>`
@@ -419,8 +419,8 @@ export async function openCustomerDetail(id) {
         </div>
         <div style="display:flex;gap:6px;align-items:center;">
           <input type="text" id="detailFollowupDate" placeholder="تاریخ پیگیری" data-jdp style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:150px;">
-          <button class="btn btn-sm btn-primary" onclick="window.appSetNextFollowup('${c.id}')">ذخیره</button>
-          ${c.nextFollowupDate ? `<button class="btn btn-sm" onclick="window.appClearNextFollowup('${c.id}')" style="color:var(--danger);">حذف</button>` : ''}
+          <button class="btn btn-sm btn-primary" onclick="window.appSetNextFollowup('${escapeAttr(c.id)}')">ذخیره</button>
+          ${c.nextFollowupDate ? `<button class="btn btn-sm" onclick="window.appClearNextFollowup('${escapeAttr(c.id)}')" style="color:var(--danger);">حذف</button>` : ''}
         </div>
       </div>
     </div>
@@ -428,7 +428,7 @@ export async function openCustomerDetail(id) {
     <div class="detail-products" style="margin-bottom:20px;">
       <div style="font-size:14px;font-weight:600;margin-bottom:12px;">محصولات</div>
       <div id="detailProductsList"></div>
-      <button class="btn btn-sm" style="margin-top:8px;" onclick="window.appAddProductRow('${c.id}')">+ افزودن محصول</button>
+      <button class="btn btn-sm" style="margin-top:8px;" onclick="window.appAddProductRow('${escapeAttr(c.id)}')">+ افزودن محصول</button>
     </div>
 
     <div class="detail-timeline-title">
@@ -481,7 +481,7 @@ export async function openCustomerDetail(id) {
           </select>
         </div>
         <div class="form-group" style="margin-bottom:0;">
-          <button class="btn btn-primary" style="width:100%;" onclick="window.appAddQuickNote('${c.id}')">ثبت</button>
+          <button class="btn btn-primary" style="width:100%;" onclick="window.appAddQuickNote('${escapeAttr(c.id)}')">ثبت</button>
         </div>
       </div>
     </div>
@@ -622,7 +622,7 @@ export function renderProducts(customerId) {
         </select>
         ${priceHtml}
         ${balanceHtml}
-        <button class="btn-remove-product" onclick="window.appRemoveProduct('${customerId}', ${i})" title="حذف">✕</button>
+        <button class="btn-remove-product" onclick="window.appRemoveProduct('${escapeAttr(customerId)}', ${i})" title="حذف">✕</button>
       </div>
     `
   }).join('')

@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { toEnDigits, escapeHtml, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, hasPermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, hasPermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS } from './utils.js'
 
 // ============================================
 // Password Hashing (SHA-256)
@@ -225,12 +225,12 @@ export async function renderUsersList() {
             <div class="user-name">${escapeHtml(u.display_name || u.username)} ${isCurrentUser ? '<span style="font-size:11px;color:var(--accent);">(شما)</span>' : ''}</div>
             <div class="user-role">@${u.username} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${u.role === 'admin' ? 'مدیر' : 'کاربر'}</span></div>
           </div>
-          ${!isAdminUser ? `<button class="btn-icon" title="حذف" onclick="window.appDeleteUser('${u.username}')" style="color:var(--danger);">🗑</button>` : ''}
+          ${!isAdminUser ? `<button class="btn-icon" title="حذف" onclick="window.appDeleteUser('${escapeAttr(u.username)}')" style="color:var(--danger);">🗑</button>` : ''}
         </div>
         ${!isAdminUser ? `
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
           ${permsHtml}
-          <button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="window.appSaveUserPermissions('${u.username}')">ذخیره دسترسی‌ها</button>
+          <button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="window.appSaveUserPermissions('${escapeAttr(u.username)}')">ذخیره دسترسی‌ها</button>
         </div>
         ` : ''}
       </div>
