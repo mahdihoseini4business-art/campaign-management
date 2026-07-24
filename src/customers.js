@@ -214,7 +214,7 @@ function updatePreviewId() {
   if (document.getElementById('editCustomerId').value) return
   const phone = document.getElementById('customerPhone').value.trim()
   const type = phone ? 'CS' : 'LD'
-  document.getElementById('customerIdDisplay').value = generateId(type)
+  document.getElementById('customerIdDisplay').value = await generateId(type)
   document.getElementById('customerIdHint').textContent = phone
     ? 'شماره وارد شد → مشتری (CS)'
     : 'بدون شماره → لید (LD)'
@@ -251,7 +251,7 @@ export async function saveCustomer() {
     }
 
     const type = phone ? 'CS' : 'LD'
-    const id = generateId(type)
+    const id = await generateId(type)
     data.customers.push({ id, platformId, platform, name, phone, status, notes, advisor, nextFollowupDate: '', products: [] })
   } else {
     const dupById = platformId && data.customers.find(c => c.id !== editId && c.platformId && c.platformId.toLowerCase() === platformId.toLowerCase())
@@ -267,7 +267,7 @@ export async function saveCustomer() {
       const nowHasPhone = phone && phone.length > 0
 
       if (wasLD && nowHasPhone) {
-        const newId = generateId('CS')
+        const newId = await generateId('CS')
         try {
           await saveCustomerToDB({ ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor })
           await updateFollowupsCustomerId(oldCustomer.id, newId)
@@ -286,7 +286,7 @@ export async function saveCustomer() {
       }
 
       if (!wasLD && !nowHasPhone && oldCustomer.id.startsWith('CS')) {
-        const newId = generateId('LD')
+        const newId = await generateId('LD')
         try {
           await saveCustomerToDB({ ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor })
           await updateFollowupsCustomerId(oldCustomer.id, newId)

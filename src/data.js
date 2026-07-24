@@ -165,10 +165,11 @@ export async function saveSetting(key, value) {
 // Generate next ID
 // ============================================
 
-export function generateId(type) {
+export async function generateId(type) {
   const prefix = type === 'CS' ? 'CS' : 'LD'
-  const existingIds = data.customers
-    .filter(c => c.id.startsWith(prefix))
+  // Query DB directly to avoid stale in-memory data
+  const { data: rows } = await supabase.from('customers').select('id').like('id', prefix + '%')
+  const existingIds = (rows || [])
     .map(c => parseInt(c.id.slice(2)))
     .filter(n => !isNaN(n))
   const nextNum = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1

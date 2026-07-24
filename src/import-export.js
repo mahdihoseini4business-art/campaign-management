@@ -225,7 +225,7 @@ export async function doImport() {
 
   let imported = 0, skipped = 0
 
-  importData.rows.forEach(row => {
+  for (const row of importData.rows) {
     const getValue = (fieldKey) => {
       const colIdx = mapping[fieldKey]
       if (colIdx === undefined || colIdx === null) return ''
@@ -256,12 +256,12 @@ export async function doImport() {
     const currentUser = getCurrentUser()
     const advisor = getValue('advisor') || (currentUser ? currentUser.displayName : '')
     data.customers.push({
-      id: generateId(type), platformId, platform,
+      id: await generateId(type), platformId, platform,
       name: getValue('name'), phone, status,
       notes: getValue('notes'), advisor, products: []
     })
     imported++
-  })
+  }
 
   // Save all imported customers to Supabase
   const newCustomers = data.customers.slice(-imported)
@@ -404,7 +404,7 @@ export async function doSalesImport() {
     let customer = data.customers.find(c => c.phone === phone)
     if (!customer) {
       const name = getValue('customerName') || ''
-      const id = generateId('CS')
+      const id = await generateId('CS')
       const currentUser = getCurrentUser()
       const advisor = getValue('advisor') || (currentUser ? currentUser.displayName : '')
       customer = { id, platformId: '', platform: 'instagram', name, phone, status: 'new', notes: 'خودکار ایجاد شده از ایمپورت فروش', advisor, products: [] }
