@@ -215,4 +215,18 @@ async function init() {
   try { renderDashboard() } catch (e) { console.error('renderDashboard error:', e) }
 }
 
-init()
+init().catch(err => {
+  console.error('Init error:', err)
+  const loadingOverlay = document.getElementById('loadingOverlay')
+  if (loadingOverlay) loadingOverlay.style.display = 'none'
+  document.body.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;text-align:center;font-family:Vazirmatn,sans-serif;">
+      <div>
+        <div style="font-size:48px;margin-bottom:16px;">⚠️</div>
+        <h2 style="margin-bottom:8px;">خطا در بارگذاری برنامه</h2>
+        <p style="color:#78716C;">لطفاً صفحه را رفرش کنید یا با پشتیبانی تماس بگیرید</p>
+        <button onclick="location.reload()" style="margin-top:16px;padding:8px 24px;background:#1D1C74;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit;">تلاش مجدد</button>
+      </div>
+    </div>
+  `
+})
