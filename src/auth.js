@@ -54,9 +54,9 @@ export async function deleteUserFromDB(username) {
 export async function seedAdmin() {
   const users = await getUsers()
   const adminHash = await hashPassword('admin123', 'admin')
-  
+
   if (users.length === 0) {
-    // Create admin if no users exist
+    // Create admin only if no users exist
     await saveUser({
       username: 'admin',
       password_hash: adminHash,
@@ -64,12 +64,6 @@ export async function seedAdmin() {
       role: 'admin',
       permissions: null
     })
-  } else {
-    // Ensure admin password hash is up-to-date (migration for hash algorithm changes)
-    const admin = users.find(u => u.username === 'admin')
-    if (admin && admin.password_hash !== adminHash) {
-      await supabase.from('users').update({ password_hash: adminHash }).eq('username', 'admin')
-    }
   }
 }
 
