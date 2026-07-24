@@ -105,24 +105,21 @@ export async function doLogin() {
   }
 
   setCurrentUser({ username: user.username, displayName: user.display_name, role: user.role, permissions: user.permissions || null })
-  document.getElementById('loginOverlay').classList.add('hidden')
-  errorEl.classList.remove('show')
-  applyPermissions()
+  window.location.href = '/index.html'
 }
 
 export function doLogout() {
   clearCurrentUser()
-  location.reload()
+  window.location.href = '/login.html'
 }
 
 export function checkSession() {
   const user = getCurrentUser()
   if (user) {
-    document.getElementById('loginOverlay').classList.add('hidden')
     return user
   }
-  // No session - show login
-  document.getElementById('loginOverlay').classList.remove('hidden')
+  // No session - redirect to login
+  window.location.href = '/login.html'
   return null
 }
 

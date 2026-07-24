@@ -167,6 +167,10 @@ async function init() {
   const loadingOverlay = document.getElementById('loadingOverlay')
   if (loadingOverlay) loadingOverlay.style.display = 'flex'
 
+  // Check session - redirect to login if not authenticated
+  const user = checkSession()
+  if (!user) return
+
   // Seed admin if needed
   await seedAdmin()
 
@@ -176,13 +180,7 @@ async function init() {
   // Hide loading overlay
   if (loadingOverlay) loadingOverlay.style.display = 'none'
 
-  // Check session
-  checkSession()
   applyPermissions()
-
-  // Login handlers
-  document.getElementById('loginPassword').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin() })
-  document.getElementById('loginUsername').addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('loginPassword').focus() })
 
   // Modal close on overlay click
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
