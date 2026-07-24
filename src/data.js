@@ -89,7 +89,8 @@ export async function saveCustomerToDB(customer) {
 
 export async function deleteCustomerFromDB(id) {
   // Delete followups first
-  await supabase.from('followups').delete().eq('customer_id', id)
+  const { error: followupError } = await supabase.from('followups').delete().eq('customer_id', id)
+  if (followupError) throw new Error('خطا در حذف پیگیری‌ها: ' + followupError.message)
   // Delete customer
   const { error } = await supabase.from('customers').delete().eq('id', id)
   if (error) throw new Error('خطا در حذف مشتری: ' + error.message)
