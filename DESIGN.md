@@ -22,7 +22,7 @@ BudgetZen is a warm, reassuring design system crafted for personal finance and b
 
 - **Headline Font**: Vazirmatn
 - **Body Font**: Vazirmatn
-- **Mono Font**: SF Mono, Cascadia Code, Consolas
+- **Mono Font**: Vazirmatn
 
 - **Display**: Vazirmatn 36px extra-bold, 1.15 line height, 0.02em tracking
 - **Headline**: Vazirmatn 28px bold, 1.2 line height, 0.01em tracking
@@ -32,7 +32,7 @@ BudgetZen is a warm, reassuring design system crafted for personal finance and b
 - **Body Small**: Vazirmatn 14px regular, 1.5 line height, 0.01em tracking
 - **Caption**: Vazirmatn 12px semibold, 1.4 line height, 0.02em tracking
 - **Overline**: Vazirmatn 11px bold, 1.2 line height, 0.06em tracking
-- **Code**: SF Mono, Cascadia Code, Consolas 14px regular, 1.6 line height
+- **Code**: Vazirmatn 14px regular, 1.6 line height
 
 ## Spacing
 

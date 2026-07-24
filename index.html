@@ -157,19 +157,18 @@
     </div>
 
     <div class="chart-grid">
-      <div style="background:white;border:1px solid var(--border);border-radius:var(--radius);padding:16px;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:12px;">وضعیت مشتریان</div>
-        <canvas id="chartCustomers" height="200"></canvas>
+      <div class="chart-card">
+        <div class="chart-title">وضعیت مشتریان</div>
+        <canvas id="chartCustomers"></canvas>
       </div>
-      <div style="background:white;border:1px solid var(--border);border-radius:var(--radius);padding:16px;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:12px;">وضعیت فروش</div>
-        <canvas id="chartSalesStatus" height="200"></canvas>
+      <div class="chart-card">
+        <div class="chart-title">وضعیت فروش</div>
+        <canvas id="chartSalesStatus"></canvas>
       </div>
-    </div>
-
-    <div style="background:white;border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:24px;">
-      <div style="font-size:14px;font-weight:600;margin-bottom:12px;">فروش بر اساس محصول</div>
-      <canvas id="chartProducts" height="160"></canvas>
+      <div class="chart-card">
+        <div class="chart-title">فروش بر اساس محصول</div>
+        <canvas id="chartProducts"></canvas>
+      </div>
     </div>
 
     <div class="dash-collapsible" onclick="window.appToggleDashSection('overdue')">
