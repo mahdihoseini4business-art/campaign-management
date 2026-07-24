@@ -17,9 +17,14 @@ export async function loadData() {
     supabase.from('app_settings').select('*')
   ])
 
-  if (customersRes.error) console.error('Load customers error:', customersRes.error)
-  if (followupsRes.error) console.error('Load followups error:', followupsRes.error)
-  if (settingsRes.error) console.error('Load settings error:', settingsRes.error)
+  const errors = []
+  if (customersRes.error) errors.push('مشتریان: ' + customersRes.error.message)
+  if (followupsRes.error) errors.push('پیگیری‌ها: ' + followupsRes.error.message)
+  if (settingsRes.error) errors.push('تنظیمات: ' + settingsRes.error.message)
+
+  if (errors.length > 0) {
+    throw new Error('خطا در بارگذاری داده‌ها:\n' + errors.join('\n'))
+  }
 
   // Map DB rows to app format
   data.customers = (customersRes.data || []).map(c => ({
