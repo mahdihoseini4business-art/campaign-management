@@ -131,17 +131,19 @@
   import { hashPassword, seedAdmin } from './src/auth.js'
   import { setCurrentUser, toEnDigits } from './src/utils.js'
 
-  // If already logged in, redirect to main page
-  const existingUser = localStorage.getItem('campaign_user')
-  if (existingUser) {
-    window.location.href = '/index.html'
-  }
+  ;(async () => {
+    // If already logged in, redirect to main page
+    const existingUser = localStorage.getItem('campaign_user')
+    if (existingUser) {
+      window.location.href = '/index.html'
+      return
+    }
 
-  // Seed admin
-  await seedAdmin()
+    // Seed admin
+    await seedAdmin()
 
-  const loginForm = document.getElementById('loginForm')
-  const loginBtn = document.getElementById('loginBtn')
+    const loginForm = document.getElementById('loginForm')
+    const loginBtn = document.getElementById('loginBtn')
   const errorEl = document.getElementById('loginError')
 
   async function doLogin() {
@@ -181,6 +183,7 @@
 
   loginForm.addEventListener('submit', (e) => { e.preventDefault(); doLogin() })
   document.getElementById('loginPassword').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin() })
+  })()
 </script>
 
 </body>
