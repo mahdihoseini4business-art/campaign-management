@@ -159,29 +159,45 @@ export function hasPermission(key) {
 
 const SESSION_KEY = 'campaign_manager_session'
 const SESSION_EXPIRY_HOURS = 24 // Session expires after 24 hours
+const SESSION_SECRET = 'c4mp_m4n4g3r_s3ss10n_s1gn'
 
-export function getCurrentUser() {
+async function signSession(data) {
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey('raw', encoder.encode(SESSION_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(JSON.stringify(data)))
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+export async function getCurrentUser() {
   try {
     const raw = localStorage.getItem(SESSION_KEY)
     if (raw) {
-      const session = JSON.parse(raw)
+      const envelope = JSON.parse(raw)
       // Check if session has expired
-      if (session.expiresAt && Date.now() > session.expiresAt) {
+      if (envelope.expiresAt && Date.now() > envelope.expiresAt) {
         localStorage.removeItem(SESSION_KEY)
         return null
       }
-      return session
+      // Verify session signature
+      const expectedSig = await signSession(envelope.data)
+      if (envelope.sig !== expectedSig) {
+        localStorage.removeItem(SESSION_KEY)
+        return null
+      }
+      return envelope.data
     }
   } catch (e) {}
   return null
 }
 
-export function setCurrentUser(user) {
-  const session = {
-    ...user,
+export async function setCurrentUser(user) {
+  const data = { ...user }
+  const envelope = {
+    data,
     expiresAt: Date.now() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
   }
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+  envelope.sig = await signSession(data)
+  localStorage.setItem(SESSION_KEY, JSON.stringify(envelope))
 }
 
 export function clearCurrentUser() {

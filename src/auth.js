@@ -98,7 +98,7 @@ export async function doLogin() {
     return
   }
 
-  setCurrentUser({ username: user.username, displayName: user.display_name, role: user.role, permissions: user.permissions || null })
+  await setCurrentUser({ username: user.username, displayName: user.display_name, role: user.role, permissions: user.permissions || null })
   window.location.href = '/index.html'
 }
 
