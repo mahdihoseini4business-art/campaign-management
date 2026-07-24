@@ -169,7 +169,10 @@ async function init() {
 
   // Check session - redirect to login if not authenticated
   const user = checkSession()
-  if (!user) return
+  if (!user) {
+    if (loadingOverlay) loadingOverlay.style.display = 'none'
+    return
+  }
 
   // Seed admin if needed
   await seedAdmin()
