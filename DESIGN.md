@@ -1,22 +1,22 @@
-# BudgetZen
-Calm, encouraging, goal-oriented -- your money, your peace of mind.
+# Campaign Management System
+Digital marketing campaign management platform.
 
 ## Overview
 
-BudgetZen is a warm, reassuring design system crafted for personal finance and budgeting applications. It uses soft mints, gentle sky blues, and warm grays to create an environment that reduces financial anxiety. The rounded, friendly aesthetic encourages users to engage with their finances without judgment. Every component is designed to celebrate progress and make goal-tracking feel rewarding rather than stressful.
+A professional, efficient design system for digital marketing campaign management. Uses bold red and deep navy to convey energy and trust. The clean, structured aesthetic supports fast decision-making and clear data visualization for marketing teams.
 
 ## Colors
 
-- **Primary** (#10B981): Mint -- CTAs, savings indicators, progress
-- **Secondary** (#38BDF8): Sky -- links, informational highlights
+- **Primary** (#ED1C24): Red -- CTAs, main actions, key indicators
+- **Secondary** (#1D1C74): Navy -- links, headers, informational highlights
 - **Tertiary** (#A8A29E): Warm Gray -- muted accents, inactive states
 - **Neutral** (#78716C): Stone -- secondary text, subtle UI elements
-- **Background** (#FAFFFE): App background, root canvas
+- **Background** (#FAFAFF): App background, root canvas
 - **Surface** (#FFFFFF): Cards, panels, modals
 - **Success** (#10B981): Goals met, on-track budgets
 - **Warning** (#F59E0B): Approaching limit, review needed
-- **Error** (#EF4444): Over budget, failed transactions
-- **Info** (#38BDF8): Tips, suggestions, helpful callouts
+- **Error** (#ED1C24): Over budget, failed transactions (uses Primary Red)
+- **Info** (#1D1C74): Tips, suggestions, helpful callouts (uses Secondary Navy)
 
 ## Typography
 
@@ -62,10 +62,10 @@ BudgetZen is a warm, reassuring design system crafted for personal finance and b
 
 ### Buttons
 #### Variants
-- **Primary**: #10B981 fill, #FFFFFF text, no border. Hover: #059669.
-- **Secondary**: transparent fill, #10B981 text, 1.5px #10B981 border. Hover: bg #10B9811A, border darker.
+- **Primary**: #ED1C24 fill, #FFFFFF text, no border. Hover: #c41820.
+- **Secondary**: transparent fill, #1D1C74 text, 1.5px #1D1C74 border. Hover: bg #1D1C741A, border darker.
 - **Ghost**: transparent fill, #57534E text, no border. Hover: bg #F5F5F4, text #1C1917.
-- **Destructive**: #EF4444 fill, #FFFFFF text, no border. Hover: #DC2626.
+- **Destructive**: #ED1C24 fill, #FFFFFF text, no border. Hover: #c41820.
 #### Sizes
 Sizes: Small (32px, 8px 16px, 13px, 12px), Medium (40px, 10px 20px, 15px, 12px), Large (48px, 12px 28px, 17px, 12px).
 #### Disabled State
@@ -85,26 +85,26 @@ Sizes: Small (32px, 8px 16px, 13px, 12px), Medium (40px, 10px 20px, 15px, 12px),
 #### Text Input
 - **Default**: 1.5px #D6D3D1 border, #FFFFFF fill, #1C1917 text, no shadow.
 - **Hover**: 1.5px #A8A29E border, #FFFFFF fill, #1C1917 text, no shadow.
-- **Focus**: 1.5px #10B981 border, #FFFFFF fill, #1C1917 text, 3px ring #10B981 at 15% shadow.
-- **Error**: 1.5px #EF4444 border, #FFFFFF fill, #1C1917 text, 3px ring #EF4444 at 12% shadow.
+- **Focus**: 1.5px #ED1C24 border, #FFFFFF fill, #1C1917 text, 3px ring #ED1C24 at 15% shadow.
+- **Error**: 1.5px #ED1C24 border, #FFFFFF fill, #1C1917 text, 3px ring #ED1C24 at 12% shadow.
 - **Disabled**: 1.5px #E7E5E4 border, #F5F5F4 fill, #A8A29E text, no shadow.
 ** 44px **height, ** 12px 16px **padding, ** 12px **radius, ** 14px / 600 / #57534E, 6px below **label, ** 13px / 400 / #78716C, 4px above **helper text.
 
 ### Chips
 #### Filter Chip
-** #F5F5F4 **background, ** #57534E / 13px / 600 **text, ** 1px #E7E5E4 **border, ** 6px **radius, ** 6px 12px **padding, ** bg #10B9811A, border #10B981, text #059669 **active.
+** #F5F5F4 **background, ** #57534E / 13px / 600 **text, ** 1px #E7E5E4 **border, ** 6px **radius, ** 6px 12px **padding, ** bg #ED1C241A, border #ED1C24, text #ED1C24 **active.
 #### Status Chip
-** bg #10B9811A, text #059669, border #10B98133 **on track, ** bg #F59E0B1A, text #D97706, border #F59E0B33 **at risk, ** bg #EF44441A, text #DC2626, border #EF444433 **over budget.
+** bg #10B9811A, text #059669, border #10B98133 **on track, ** bg #F59E0B1A, text #D97706, border #F59E0B33 **at risk, ** bg #ED1C241A, text #ED1C24, border #ED1C2433 **over budget.
 
 ### Lists
 #### Default Item
-** 52px **height, ** 12px 16px **padding, ** 1px #E7E5E4 **divider, ** bg #F5F5F4 **hover, ** bg #10B9810D, left 3px #10B981 **selected, ** 16px / 400 / #1C1917 **font.
+** 52px **height, ** 12px 16px **padding, ** 1px #E7E5E4 **divider, ** bg #F5F5F4 **hover, ** bg #ED1C240D, left 3px #ED1C24 **selected, ** 16px / 400 / #1C1917 **font.
 
 ### Checkboxes
-** 20px **size, ** 1.5px #D6D3D1 **border, ** 6px **radius, ** bg #10B981, border #10B981, white checkmark **checked, ** bg #10B981, white dash **indeterminate, ** 50% opacity, disabled cursor **disabled, ** 16px / 400 / #1C1917, 10px gap **label.
+** 20px **size, ** 1.5px #D6D3D1 **border, ** 6px **radius, ** bg #ED1C24, border #ED1C24, white checkmark **checked, ** bg #ED1C24, white dash **indeterminate, ** 50% opacity, disabled cursor **disabled, ** 16px / 400 / #1C1917, 10px gap **label.
 
 ### Radio Buttons
-** 20px **size, ** 1.5px #D6D3D1 **border, ** border #10B981, inner dot #10B981 (10px) **selected, ** 50% opacity, disabled cursor **disabled, ** 16px / 400 / #1C1917, 10px gap **label.
+** 20px **size, ** 1.5px #D6D3D1 **border, ** border #ED1C24, inner dot #ED1C24 (10px) **selected, ** 50% opacity, disabled cursor **disabled, ** 16px / 400 / #1C1917, 10px gap **label.
 
 ### Tooltips
 ** #1C1917 **background, ** #FAFAFA / 13px / 400 **text, ** 8px 12px **padding, ** 8px **radius, ** 260px **max width, ** 6px, same background **arrow, ** 400ms show, 100ms hide **delay.
