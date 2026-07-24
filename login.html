@@ -34,7 +34,13 @@
     from { opacity: 0; transform: translateY(16px); }
     to { opacity: 1; transform: translateY(0); }
   }
-  .login-icon { font-size: 52px; margin-bottom: 20px; }
+  .login-logo {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+    margin-bottom: 20px;
+    border-radius: 16px;
+  }
   .login-card h2 {
     font-size: 24px;
     font-weight: 700;
@@ -109,7 +115,7 @@
 <body>
 
 <div class="login-card">
-  <div class="login-icon">🔐</div>
+  <img src="/logo.webp" alt="لوگو" class="login-logo">
   <h2>ورود به سیستم</h2>
   <div class="login-subtitle">مدیریت کمپین دیجیتال مارکتینگ</div>
   <div class="login-error" id="loginError">نام کاربری یا رمز عبور اشتباه است</div>
