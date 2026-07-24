@@ -1,7 +1,7 @@
 :root {
     /* Brand Color System */
     --ink: #1C1917;
-    --paper: #FAFFFE;
+    --paper: #F0F0FA;
     --accent: #ED1C24;
     --accent-light: #FEF2F2;
     --accent-hover: #c41820;
@@ -19,7 +19,7 @@
     --danger-light: #FEF2F2;
     --tag-ld: #1D1C74;
     --tag-cs: #10B981;
-    --row-hover: #F5F5F4;
+    --row-hover: #E8E8F5;
     --surface: #FFFFFF;
     --surface-elevated: #FFFFFF;
 
@@ -150,6 +150,7 @@
     border: none;
     background: transparent;
     transition: all 0.2s ease;
+    font-family: 'Vazirmatn', sans-serif;
   }
 
   .tab.active { background: var(--accent); color: white; box-shadow: var(--shadow-subtle); }
@@ -231,35 +232,36 @@
   .btn-icon:hover { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
 
   /* --- Stats --- */
-  .stats { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+  .stats { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
 
   .stat-card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 20px;
-    min-width: 140px;
-    flex: 1;
+    padding: 16px 20px;
+    flex: 1 1 0;
+    min-width: 0;
     box-shadow: var(--shadow-subtle);
-    transition: box-shadow 0.2s ease;
+    transition: all 0.2s ease;
+    border-right: 3px solid var(--secondary);
   }
 
-  .stat-card:hover { box-shadow: var(--shadow); }
+  .stat-card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
 
   .stat-card .label {
     font-size: 12px;
     font-weight: 600;
     color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.02em;
+    margin-bottom: 4px;
   }
 
   .stat-card .value {
-    font-size: 28px;
+    font-size: 24px;
     font-weight: 700;
     color: var(--ink);
-    margin-top: 4px;
     line-height: 1.2;
+    font-family: 'Vazirmatn', sans-serif;
   }
 
   /* --- Table --- */
@@ -607,12 +609,12 @@
 
   .dash-arrow {
     margin-right: auto;
-    font-size: 12px;
+    font-size: 10px;
     color: var(--text-muted);
     transition: transform 0.2s;
   }
 
-  .dash-arrow.open { transform: rotate(-90deg); }
+  .dash-arrow.open { transform: rotate(180deg); }
 
   .dash-collapsible-body {
     display: none;
