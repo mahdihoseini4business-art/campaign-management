@@ -20,19 +20,19 @@ BudgetZen is a warm, reassuring design system crafted for personal finance and b
 
 ## Typography
 
-- **Headline Font**: Manrope
-- **Body Font**: Nunito
-- **Mono Font**: Source Code Pro
+- **Headline Font**: Vazirmatn
+- **Body Font**: Vazirmatn
+- **Mono Font**: SF Mono, Cascadia Code, Consolas
 
-- **Display**: Manrope 36px extra-bold, 1.15 line height, 0.02em tracking
-- **Headline**: Manrope 28px bold, 1.2 line height, 0.01em tracking
-- **Subhead**: Manrope 20px semibold, 1.3 line height
-- **Body Large**: Nunito 18px regular, 1.6 line height
-- **Body**: Nunito 16px regular, 1.6 line height
-- **Body Small**: Nunito 14px regular, 1.5 line height, 0.01em tracking
-- **Caption**: Nunito 12px semibold, 1.4 line height, 0.02em tracking
-- **Overline**: Manrope 11px bold, 1.2 line height, 0.06em tracking
-- **Code**: Source Code Pro 14px regular, 1.6 line height
+- **Display**: Vazirmatn 36px extra-bold, 1.15 line height, 0.02em tracking
+- **Headline**: Vazirmatn 28px bold, 1.2 line height, 0.01em tracking
+- **Subhead**: Vazirmatn 20px semibold, 1.3 line height
+- **Body Large**: Vazirmatn 18px regular, 1.6 line height
+- **Body**: Vazirmatn 16px regular, 1.6 line height
+- **Body Small**: Vazirmatn 14px regular, 1.5 line height, 0.01em tracking
+- **Caption**: Vazirmatn 12px semibold, 1.4 line height, 0.02em tracking
+- **Overline**: Vazirmatn 11px bold, 1.2 line height, 0.06em tracking
+- **Code**: SF Mono, Cascadia Code, Consolas 14px regular, 1.6 line height
 
 ## Spacing
 

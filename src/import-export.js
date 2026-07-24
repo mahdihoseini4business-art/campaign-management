@@ -242,7 +242,6 @@ export async function doImport() {
       platformId = `auto_${Date.now()}_${Math.random().toString(36).slice(2,6)}`
     }
 
-    const phone = getValue('phone')
     const platformRaw = getValue('platform').toLowerCase()
     const platform = PLATFORM_MAP_IMPORT[platformRaw] || platformRaw || 'instagram'
     const statusRaw = getValue('status')

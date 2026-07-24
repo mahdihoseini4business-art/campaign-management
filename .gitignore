@@ -5,3 +5,4 @@ dist
 .mimocode
 .vercel
 *.xlsx
+.env*
