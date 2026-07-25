@@ -404,7 +404,7 @@ export async function doSalesImport() {
     let customer = data.customers.find(c => c.phone === phone)
     if (!customer) {
       const name = getValue('customerName') || ''
-      const id = await generateId('CS')
+      const id = generateId('CS')
       const currentUser = getCurrentUser()
       const advisor = getValue('advisor') || (currentUser ? currentUser.displayName : '')
       customer = { id, platformId: '', platform: 'instagram', name, phone, status: 'new', notes: 'خودکار ایجاد شده از ایمپورت فروش', advisor, products: [] }

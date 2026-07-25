@@ -214,7 +214,7 @@ function updatePreviewId() {
   if (document.getElementById('editCustomerId').value) return
   const phone = document.getElementById('customerPhone').value.trim()
   const type = phone ? 'CS' : 'LD'
-  document.getElementById('customerIdDisplay').value = await generateId(type)
+  document.getElementById('customerIdDisplay').value = generateId(type)
   document.getElementById('customerIdHint').textContent = phone
     ? 'شماره وارد شد → مشتری (CS)'
     : 'بدون شماره → لید (LD)'
