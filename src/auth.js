@@ -71,10 +71,48 @@ export async function seedAdmin() {
 // Login / Logout
 // ============================================
 
+const LOGIN_ATTEMPTS_KEY = 'campaign_login_attempts'
+const MAX_LOGIN_ATTEMPTS = 5
+const LOCKOUT_DURATION_MS = 5 * 60 * 1000 // 5 minutes
+
+function getLoginAttempts() {
+  try {
+    const raw = localStorage.getItem(LOGIN_ATTEMPTS_KEY)
+    if (!raw) return { count: 0, lockedUntil: 0 }
+    const data = JSON.parse(raw)
+    if (data.lockedUntil && Date.now() > data.lockedUntil) {
+      localStorage.removeItem(LOGIN_ATTEMPTS_KEY)
+      return { count: 0, lockedUntil: 0 }
+    }
+    return data
+  } catch { return { count: 0, lockedUntil: 0 } }
+}
+
+function recordFailedLogin() {
+  const attempts = getLoginAttempts()
+  attempts.count++
+  if (attempts.count >= MAX_LOGIN_ATTEMPTS) {
+    attempts.lockedUntil = Date.now() + LOCKOUT_DURATION_MS
+  }
+  localStorage.setItem(LOGIN_ATTEMPTS_KEY, JSON.stringify(attempts))
+}
+
+function resetLoginAttempts() {
+  localStorage.removeItem(LOGIN_ATTEMPTS_KEY)
+}
+
 export async function doLogin() {
   const username = toEnDigits(document.getElementById('loginUsername').value.trim())
   const password = toEnDigits(document.getElementById('loginPassword').value)
   const errorEl = document.getElementById('loginError')
+
+  const attempts = getLoginAttempts()
+  if (attempts.lockedUntil && Date.now() < attempts.lockedUntil) {
+    const remaining = Math.ceil((attempts.lockedUntil - Date.now()) / 60000)
+    errorEl.textContent = `تعداد تلاش‌ها بیش از حد مجاز است. ${remaining} دقیقه صبر کنید`
+    errorEl.classList.add('show')
+    return
+  }
 
   if (!username || !password) {
     errorEl.textContent = 'نام کاربری و رمز عبور را وارد کنید'
@@ -92,12 +130,18 @@ export async function doLogin() {
     .single()
 
   if (error || !user) {
-    errorEl.textContent = 'نام کاربری یا رمز عبور اشتباه است'
+    recordFailedLogin()
+    const remaining = getLoginAttempts()
+    const left = MAX_LOGIN_ATTEMPTS - remaining.count
+    errorEl.textContent = left > 0
+      ? `نام کاربری یا رمز عبور اشتباه است (${left} تلاش باقی‌مانده)`
+      : 'تعداد تلاش‌ها بیش از حد مجاز است. ۵ دقیقه صبر کنید'
     errorEl.classList.add('show')
     document.getElementById('loginPassword').value = ''
     return
   }
 
+  resetLoginAttempts()
   await setCurrentUser({ username: user.username, displayName: user.display_name, role: user.role, permissions: user.permissions || null })
   window.location.href = '/index.html'
 }
