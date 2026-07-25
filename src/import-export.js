@@ -225,6 +225,7 @@ export async function doImport() {
   }
 
   let imported = 0, skipped = 0
+  const newCustomers = []
 
   for (const row of importData.rows) {
     const getValue = (fieldKey) => {
@@ -256,16 +257,17 @@ export async function doImport() {
     const type = phone ? 'CS' : 'LD'
     const currentUser = getCurrentUser()
     const advisor = getValue('advisor') || (currentUser ? currentUser.displayName : '')
-    data.customers.push({
+    const newCustomer = {
       id: await generateId(type), platformId, platform,
       name: getValue('name'), phone, status,
       notes: getValue('notes'), advisor, products: []
-    })
+    }
+    data.customers.push(newCustomer)
+    newCustomers.push(newCustomer)
     imported++
   }
 
   // Save all imported customers to Supabase
-  const newCustomers = data.customers.slice(-imported)
   for (const c of newCustomers) {
     await saveCustomerToDB(c)
   }
