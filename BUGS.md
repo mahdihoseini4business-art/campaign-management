@@ -1,8 +1,7 @@
 # گزارش جامع باگ‌های پروژه Campaign Management
 
 > **تاریخ آخرین بررسی:** ۱۴۰۵/۰۵/۰۳  
-> **تعداد کل باگ‌ها:** ۸۸  
-> **فیکس شده:** ۳۲ باگ
+> **تعداد کل باگ‌ها:** ۷۸
 
 ---
 
@@ -14,45 +13,6 @@
 | متوسط (Medium) | ۴ | ۱۱ | ۱۰ | ۸ | ۰ | ۳۳ |
 | پایین (Low) | ۳ | ۵ | ۱۰ | ۱۰ | ۲ | ۳۰ |
 | **جمع** | **۷** | **۲۴** | **۲۰** | **۲۴** | **۳** | **۷۸** |
-
----
-
-## باگ‌های فیکس شده ✅
-
-| باگ | توضیح | کامیت |
-|---|---|---|
-| SEC-C1 | اضافه کردن HMAC signature به session | `37d9042` |
-| SEC-C2/C3 | اضافه کردن escapeAttr برای onclick handlers | `6d36c03` |
-| SEC-C4 | حذف ریست رمز عبور admin در هر لود | `1677749` |
-| SEC-H5 | حذف override رمز admin (بخشی از SEC-C4) | `1677749` |
-| SEC-H2 | escapeHtml اکنون escapeAttr رو هم پوشش میده | `6d36c03` |
-| DATA-C1 | بررسی خطا در حذف پیگیری‌ها قبل از حذف مشتری | `60d8490` |
-| DATA-C2 | propagate کردن خطاهای loadData | `3eb4327` |
-| DATA-C3 | تغییر generateId به async با کوئری مستقیم دیتابیس | `ab9f1ad` |
-| DATA-C4/QC-C1 | اضافه کردن catch به init() + نمایش پیام خطا | `8ea5b87` |
-| DATA-L6 | generateId اکنون شناسه تکراری تولید نمی‌کنه | `ab9f1ad` |
-| DATA-M8 | حذف non-atomic اصلاح شد (بخشی از DATA-C1) | `60d8490` |
-| UX-C1 | حذف display:flex تناقضی از loading overlay | `2110221` |
-| UX-C2 | مخفی کردن loading overlay قبل از redirect | `2110221` |
-| SEC-H1 | اضافه کردن محدودیت تعداد تلاش لاگین | `f38ee40` |
-| SEC-H3 | اضافه کردن اعتبارسنجی رمز عبور | `1078d1b` |
-| SEC-H4 | استفاده از secret key در salt رمز عبور | `506444c` |
-| QC-H3 | sort آرایه با کپی به جای in-place | `aba7b82` |
-| QC-L3 | حذف `isAdmin()` کد مرده | — |
-| UX-H1 | حذف `user-scalable=no` از index.html و login.html | `a]` |
-| UX-H2 | اضافه کردن try-catch به لاگین + غیرفعال کردن دکمه | `a]` |
-| UX-H3 | اضافه کردن try/finally به saveCustomer برای غیرفعال کردن دکمه | `a]` |
-| UX-H4 | اضافه کردن `for` به تمام label فیلدها | `a]` |
-| UX-H5 | اصلاح Toast flicker با clearTimeout و reflow | `a]` |
-| QC-H2 | اضافه کردن null check به switchTab | `a]` |
-| QC-M1 | اضافه کردن throw به deleteUserFromDB | `a]` |
-| QC-M4 | حذف await غیرضروری از renderFollowups | `a]` |
-| QC-M5 | کش کردن getAllSales در داشبرد | `a]` |
-| QC-M6 | کش کردن getRows در exportTabXLSX | `a]` |
-| QC-L2 | حذف formatInput/unformatInput مرده از utils | `a]` |
-| QC-L8 | اضافه کردن backtick به escapeHtml | `a]` |
-| QC-L11 | اضافه کردن null-check به showToast | `a]` |
-| QC-L13 | اصلاح formatInput برای پشتیبانی عدد منفی | `a]` |
 
 ---
 
