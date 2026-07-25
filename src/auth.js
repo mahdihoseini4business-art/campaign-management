@@ -192,6 +192,8 @@ export async function addUser() {
 
   if (!username) { showToast('نام کاربری را وارد کنید'); return }
   if (!password) { showToast('رمز عبور را وارد کنید'); return }
+  if (password.length < 6) { showToast('رمز عبور باید حداقل ۶ کاراکتر باشد'); return }
+  if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) { showToast('رمز عبور باید شامل حروف و اعداد باشد'); return }
 
   const users = await getUsers()
   if (users.find(u => u.username === username)) {
