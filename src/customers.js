@@ -263,7 +263,9 @@ export async function saveCustomer() {
 
     const type = phone ? 'CS' : 'LD'
     const id = await generateId(type)
-    data.customers.push({ id, platformId, platform, name, phone, status, notes, advisor, nextFollowupDate: '', products: [] })
+    const newCustomer = { id, platformId, platform, name, phone, status, notes, advisor, nextFollowupDate: '', products: [] }
+    await saveCustomerToDB(newCustomer)
+    data.customers.push(newCustomer)
   } else {
     const dupById = platformId && data.customers.find(c => c.id !== editId && c.platformId && c.platformId.toLowerCase() === platformId.toLowerCase())
     const dupByPhone = phone && data.customers.find(c => c.id !== editId && c.phone && c.phone === phone)
@@ -317,15 +319,17 @@ export async function saveCustomer() {
     }
   }
 
-  const targetId = editId || data.customers[data.customers.length - 1].id
-  const targetCustomer = data.customers.find(c => c.id === targetId)
-  if (targetCustomer) {
-    try {
-      await saveCustomerToDB(targetCustomer)
-    } catch (e) {
-      console.error('saveCustomer error:', e)
-      showToast('خطا در ذخیره مشتری')
-      return
+  // For new customers, save was already done above. For edits, save now.
+  if (editId) {
+    const targetCustomer = data.customers.find(c => c.id === editId)
+    if (targetCustomer) {
+      try {
+        await saveCustomerToDB(targetCustomer)
+      } catch (e) {
+        console.error('saveCustomer error:', e)
+        showToast('خطا در ذخیره مشتری')
+        return
+      }
     }
   }
   await renderCustomers()
@@ -519,10 +523,15 @@ export async function setNextFollowup(customerId) {
   const idx = data.customers.findIndex(c => c.id === customerId)
   if (idx !== -1) {
     data.customers[idx].nextFollowupDate = date
-    await saveCustomerToDB(data.customers[idx])
-    await renderCustomers()
-    openCustomerDetail(customerId)
-    showToast('تاریخ پیگیری تنظیم شد')
+    try {
+      await saveCustomerToDB(data.customers[idx])
+      await renderCustomers()
+      openCustomerDetail(customerId)
+      showToast('تاریخ پیگیری تنظیم شد')
+    } catch (e) {
+      console.error('setNextFollowup error:', e)
+      showToast('خطا در ذخیره تاریخ پیگیری')
+    }
   }
 }
 
@@ -531,10 +540,15 @@ export async function clearNextFollowup(customerId) {
   const idx = data.customers.findIndex(c => c.id === customerId)
   if (idx !== -1) {
     data.customers[idx].nextFollowupDate = ''
-    await saveCustomerToDB(data.customers[idx])
-    await renderCustomers()
-    openCustomerDetail(customerId)
-    showToast('تاریخ پیگیری حذف شد')
+    try {
+      await saveCustomerToDB(data.customers[idx])
+      await renderCustomers()
+      openCustomerDetail(customerId)
+      showToast('تاریخ پیگیری حذف شد')
+    } catch (e) {
+      console.error('clearNextFollowup error:', e)
+      showToast('خطا در حذف تاریخ پیگیری')
+    }
   }
 }
 
