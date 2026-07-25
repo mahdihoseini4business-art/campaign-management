@@ -2,7 +2,7 @@
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1D1C74">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -35,21 +35,21 @@
         <div style="font-size:14px;font-weight:600;margin-bottom:12px;">افزودن کاربر جدید</div>
         <div class="form-row">
           <div class="form-group">
-            <label>نام کاربری <span class="required">*</span></label>
+            <label for="newUsername">نام کاربری <span class="required">*</span></label>
             <input type="text" class="form-input" id="newUsername" placeholder="نام کاربری">
           </div>
           <div class="form-group">
-            <label>رمز عبور <span class="required">*</span></label>
+            <label for="newPassword">رمز عبور <span class="required">*</span></label>
             <input type="password" class="form-input" id="newPassword" placeholder="رمز عبور">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>نام نمایشی</label>
+            <label for="newDisplayName">نام نمایشی</label>
             <input type="text" class="form-input" id="newDisplayName" placeholder="نام کامل">
           </div>
           <div class="form-group">
-            <label>سطح دسترسی</label>
+            <label for="newRole">سطح دسترسی</label>
             <select class="form-select" id="newRole">
               <option value="user">کاربر عادی</option>
               <option value="admin">مدیر سیستم</option>
@@ -331,16 +331,16 @@
     <div class="modal-body">
       <input type="hidden" id="editCustomerId">
       <div class="form-group">
-        <label>شناسه</label>
+        <label for="customerIdDisplay">شناسه</label>
         <input type="text" class="form-input" id="customerIdDisplay" readonly style="background: #f8f9fa; font-family: monospace;">
         <div class="form-hint" id="customerIdHint">خودکار تولید می‌شود</div>
       </div>
       <div class="form-group">
-        <label>ایدی پلتفرم</label>
+        <label for="customerPlatformId">ایدی پلتفرم</label>
         <input type="text" class="form-input" id="customerPlatformId" placeholder="اختیاری - مثلاً: ali_98">
       </div>
       <div class="form-group">
-        <label>پلتفرم <span class="required">*</span></label>
+        <label for="customerPlatform">پلتفرم <span class="required">*</span></label>
         <select class="form-select" id="customerPlatform">
           <option value="instagram">اینستاگرام</option>
           <option value="telegram">تلگرام</option>
@@ -348,11 +348,11 @@
         </select>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>نام</label><input type="text" class="form-input" id="customerName" placeholder="اختیاری"></div>
-        <div class="form-group"><label>شماره تماس</label><input type="text" class="form-input" id="customerPhone" placeholder="اختیاری" dir="ltr" style="text-align: left;"></div>
+        <div class="form-group"><label for="customerName">نام</label><input type="text" class="form-input" id="customerName" placeholder="اختیاری"></div>
+        <div class="form-group"><label for="customerPhone">شماره تماس</label><input type="text" class="form-input" id="customerPhone" placeholder="اختیاری" dir="ltr" style="text-align: left;"></div>
       </div>
       <div class="form-group">
-        <label>وضعیت</label>
+        <label for="customerStatus">وضعیت</label>
         <select class="form-select" id="customerStatus">
           <option value="new">جدید</option>
           <option value="contacted">تماس گرفته شده</option>
@@ -365,8 +365,8 @@
           <option value="cancelled">منصرف شده</option>
         </select>
       </div>
-      <div class="form-group"><label>توضیحات</label><textarea class="form-textarea" id="customerNotes" placeholder="توضیحات اضافه..."></textarea></div>
-      <div class="form-group"><label>کارشناس مسئول</label><select class="form-select" id="customerAdvisor"></select></div>
+      <div class="form-group"><label for="customerNotes">توضیحات</label><textarea class="form-textarea" id="customerNotes" placeholder="توضیحات اضافه..."></textarea></div>
+      <div class="form-group"><label for="customerAdvisor">کارشناس مسئول</label><select class="form-select" id="customerAdvisor"></select></div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="window.appCloseCustomerModal()">انصراف</button>
@@ -385,28 +385,28 @@
     <div class="modal-body">
       <input type="hidden" id="editFollowupIndex">
       <div class="form-group">
-        <label>مشتری <span class="required">*</span></label>
+        <label for="followupCustomer">مشتری <span class="required">*</span></label>
         <select class="form-select" id="followupCustomer"><option value="">انتخاب کنید...</option></select>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>تاریخ پیگیری <span class="required">*</span></label><input type="text" class="form-input" id="followupDate" placeholder="تاریخ پیگیری" data-jdp></div>
-        <div class="form-group"><label>پیگیری بعدی</label><input type="text" class="form-input" id="followupNextDate" placeholder="پیگیری بعدی" data-jdp></div>
+        <div class="form-group"><label for="followupDate">تاریخ پیگیری <span class="required">*</span></label><input type="text" class="form-input" id="followupDate" placeholder="تاریخ پیگیری" data-jdp></div>
+        <div class="form-group"><label for="followupNextDate">پیگیری بعدی</label><input type="text" class="form-input" id="followupNextDate" placeholder="پیگیری بعدی" data-jdp></div>
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label>نوع پیگیری <span class="required">*</span></label>
+          <label for="followupType">نوع پیگیری <span class="required">*</span></label>
           <select class="form-select" id="followupType">
             <option value="دایرکت">دایرکت</option><option value="تماس">تماس</option><option value="کامنت">کامنت</option><option value="پیام">پیام</option>
           </select>
         </div>
         <div class="form-group">
-          <label>نتیجه</label>
+          <label for="followupResult">نتیجه</label>
           <select class="form-select" id="followupResult">
             <option value="پاسخ داد">پاسخ داد</option><option value="صحبت شد">صحبت شد</option><option value="ارسال قیمت">ارسال قیمت</option><option value="ارسال اطلاعات">ارسال اطلاعات</option><option value="پیگیری">پیگیری</option><option value="پاسخ نداد">پاسخ نداد</option>
           </select>
         </div>
       </div>
-      <div class="form-group"><label>توضیحات</label><textarea class="form-textarea" id="followupNotes" placeholder="توضیحات این پیگیری..."></textarea></div>
+      <div class="form-group"><label for="followupNotes">توضیحات</label><textarea class="form-textarea" id="followupNotes" placeholder="توضیحات این پیگیری..."></textarea></div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="window.appCloseFollowupModal()">انصراف</button>

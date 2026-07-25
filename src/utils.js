@@ -34,11 +34,16 @@ export function escapeAttr(str) {
   return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+let toastTimer = null
+
 export function showToast(msg) {
   const t = document.getElementById('toast')
+  if (toastTimer) clearTimeout(toastTimer)
   t.textContent = msg
+  t.classList.remove('show')
+  void t.offsetWidth // force reflow
   t.classList.add('show')
-  setTimeout(() => t.classList.remove('show'), 2500)
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2500)
 }
 
 // ============================================

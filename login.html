@@ -2,7 +2,7 @@
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1D1C74">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -121,11 +121,11 @@
   <div class="login-error" id="loginError">نام کاربری یا رمز عبور اشتباه است</div>
   <form id="loginForm" onsubmit="return false;">
     <div class="form-group">
-      <label>نام کاربری</label>
+      <label for="loginUsername">نام کاربری</label>
       <input type="text" class="form-input" id="loginUsername" placeholder="نام کاربری" autofocus autocomplete="username">
     </div>
     <div class="form-group">
-      <label>رمز عبور</label>
+      <label for="loginPassword">رمز عبور</label>
       <input type="password" class="form-input" id="loginPassword" placeholder="رمز عبور" autocomplete="current-password">
     </div>
     <button type="submit" class="btn-login" id="loginBtn">ورود</button>
@@ -166,7 +166,8 @@
     loginBtn.textContent = 'در حال ورود...'
     loginBtn.disabled = true
 
-    const hash = await hashPassword(password, username)
+    try {
+      const hash = await hashPassword(password, username)
     const { data: user, error } = await supabase
       .from('users')
       .select('*')
@@ -185,6 +186,12 @@
 
     await setCurrentUser({ username: user.username, displayName: user.display_name, role: user.role, permissions: user.permissions || null })
     window.location.href = '/index.html'
+    } catch (e) {
+      errorEl.textContent = 'خطا در اتصال به سرور'
+      errorEl.classList.add('show')
+      loginBtn.textContent = 'ورود'
+      loginBtn.disabled = false
+    }
   }
 
   loginForm.addEventListener('submit', (e) => { e.preventDefault(); doLogin() })

@@ -1,8 +1,8 @@
 # گزارش جامع باگ‌های پروژه Campaign Management
 
 > **تاریخ آخرین بررسی:** ۱۴۰۵/۰۵/۰۳  
-> **تعداد کل باگ‌ها:** ۱۰۲  
-> **فیکس شده:** ۱۸ باگ
+> **تعداد کل باگ‌ها:** ۹۷  
+> **فیکس شده:** ۲۳ باگ
 
 ---
 
@@ -10,10 +10,10 @@
 
 | اولویت | امنیتی | داده‌ای | رابط کاربری | دسترسی‌پذیری | کیفیت کد | جمع |
 |--------|--------|---------|-------------|--------------|----------|-----|
-| بالا (High) | ۰ | ۸ | ۵ | ۶ | ۲ | ۲۱ |
+| بالا (High) | ۰ | ۸ | ۰ | ۶ | ۲ | ۱۶ |
 | متوسط (Medium) | ۴ | ۱۱ | ۱۰ | ۸ | ۶ | ۳۹ |
 | پایین (Low) | ۳ | ۵ | ۱۰ | ۱۰ | ۱۴ | ۴۲ |
-| **جمع** | **۷** | **۲۴** | **۲۵** | **۲۴** | **۲۲** | **۱۰۲** |
+| **جمع** | **۷** | **۲۴** | **۲۰** | **۲۴** | **۲۲** | **۹۷** |
 
 ---
 
@@ -39,6 +39,11 @@
 | SEC-H4 | استفاده از secret key در salt رمز عبور | `506444c` |
 | QC-H3 | sort آرایه با کپی به جای in-place | `aba7b82` |
 | QC-L3 | حذف `isAdmin()` کد مرده | — |
+| UX-H1 | حذف `user-scalable=no` از index.html و login.html | `a]` |
+| UX-H2 | اضافه کردن try-catch به لاگین + غیرفعال کردن دکمه | `a]` |
+| UX-H3 | اضافه کردن try/finally به saveCustomer برای غیرفعال کردن دکمه | `a]` |
+| UX-H4 | اضافه کردن `for` به تمام label فیلدها | `a]` |
+| UX-H5 | اصلاح Toast flicker با clearTimeout و reflow | `a]` |
 
 ---
 
@@ -175,24 +180,6 @@
 ---
 
 ## دسته ۳: باگ‌های رابط کاربری (UX/UI)
-
-### بالا (High)
-
-#### UX-H1 — `user-scalable=no` مانع زوم موبایل میشه
-- **فایل:** `index.html` خط ۵
-
-#### UX-H2 — دکمه لاگین هنگام async غیرفعال نمیشه
-- **فایل:** `src/auth.js` خطوط ۸۰-۱۱۱
-
-#### UX-H3 — دکمه‌های ذخیره هنگام async غیرفعال نمیشن
-- **فایل:** `src/customers.js`، `src/followups.js`
-
-#### UX-H4 — فیلدهای فرم label ندارن (forms associations)
-- **فایل:** `index.html` خطوط ۳۳-۴۱
-
-#### UX-H5 — Toast بدون clear timer — flicker
-- **فایل:** `src/utils.js` خطوط ۳۲-۳۷
-- **توضیح:** اگه دو بار پشت سر هم صدا زده بشه، تایمر اول باعث ناپدید شدن زودهنگام میشه.
 
 ### متوسط (Medium)
 
@@ -367,8 +354,7 @@
 4. **DATA-H7** — catch خطا در saveCustomerToDB
 
 ### بهبود (backlog)
-1. **UX-H3** — Button disable during async
-2. **UX-M1** — Sort indicator
-3. **A11Y-H1** — Tab ARIA pattern
-4. **A11Y-H3** — Modal focus trap
-5. **QC-H1** — Reduce window exposure
+1. **UX-M1** — Sort indicator
+2. **A11Y-H1** — Tab ARIA pattern
+3. **A11Y-H3** — Modal focus trap
+4. **QC-H1** — Reduce window exposure

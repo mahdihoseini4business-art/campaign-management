@@ -226,6 +226,10 @@ export function closeCustomerModal() {
 }
 
 export async function saveCustomer() {
+  const saveBtn = document.querySelector('#customerModal .btn-primary')
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'در حال ذخیره...' }
+
+  try {
   const data = getData()
   const editId = document.getElementById('editCustomerId').value
   const platformId = document.getElementById('customerPlatformId').value.trim()
@@ -321,6 +325,12 @@ export async function saveCustomer() {
   await renderCustomers()
   closeCustomerModal()
   showToast(editId ? 'مشتری ویرایش شد' : 'مشتری جدید اضافه شد')
+  } catch (e) {
+    console.error('saveCustomer error:', e)
+    showToast('خطا در ذخیره مشتری')
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'ذخیره' }
+  }
 }
 
 export function editCustomer(id) {
