@@ -1,5 +1,5 @@
 import { getData } from './data.js'
-import { toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr } from './utils.js'
+import { toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr } from './utils.js'
 
 const PLATFORM_LABELS = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' }
 const PLATFORM_CLASSES = { instagram: 'platform-ig', telegram: 'platform-tg', whatsapp: 'platform-wa' }
@@ -43,6 +43,10 @@ function getFilteredSales() {
   const search = toEnDigits(document.getElementById('searchSales').value || '').toLowerCase()
   let allSales = getAllSales()
 
+  const currentUser = getCurrentUser()
+  const isAdmin = currentUser && currentUser.role === 'admin'
+  const myName = currentUser ? currentUser.displayName : ''
+
   if (search) {
     allSales = allSales.filter(s =>
       s.customerId.toLowerCase().includes(search) ||
@@ -55,6 +59,9 @@ function getFilteredSales() {
   allSales = allSales.filter(s => {
     if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
+    // Non-admin users only see their own records
+    const customer = data.customers.find(c => c.id === s.customerId)
+    if (!isAdmin && myName && customer && (customer.advisor || '') !== myName) return false
     return true
   })
 

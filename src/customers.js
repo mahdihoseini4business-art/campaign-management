@@ -19,6 +19,10 @@ export async function renderCustomers() {
   const advisorFilter = document.getElementById('filterAdvisor').value
 
   // Render customers immediately (don't wait for users)
+  const currentUser = getCurrentUser()
+  const isAdmin = currentUser && currentUser.role === 'admin'
+  const myName = currentUser ? currentUser.displayName : ''
+
   const filtered = data.customers.filter(c => {
     if (!c.id.toLowerCase().includes(search) &&
       !c.name.toLowerCase().includes(search) &&
@@ -28,6 +32,8 @@ export async function renderCustomers() {
     const isLD = c.id.startsWith('LD')
     if (isCS && !hasPermission('customers_cs')) return false
     if (isLD && !hasPermission('customers_ld')) return false
+    // Non-admin users only see their own records
+    if (!isAdmin && myName && (c.advisor || '') !== myName) return false
     if (advisorFilter && (c.advisor || '') !== advisorFilter) return false
     return true
   })

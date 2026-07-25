@@ -113,29 +113,24 @@
       <button class="btn" onclick="window.appClearDashFilter()">پاک کردن فیلتر</button>
     </div>
 
-    <div class="stats" style="margin-bottom:20px;">
+    <div class="dashboard-stats">
       <div class="stat-card"><div class="label">کل مشتریان</div><div class="value" id="dash-total-customers">0</div></div>
+      <div class="stat-card highlight"><div class="label">مشتریان من</div><div class="value" style="color:var(--accent)" id="dash-my-customers">0</div></div>
       <div class="stat-card"><div class="label">لیدها</div><div class="value" style="color:var(--tag-ld)" id="dash-total-leads">0</div></div>
       <div class="stat-card"><div class="label">مشتریان</div><div class="value" style="color:var(--tag-cs)" id="dash-total-cs">0</div></div>
-      <div class="stat-card"><div class="label">تعداد پیگیری‌ها</div><div class="value" style="color:var(--accent)" id="dash-total-followups">0</div></div>
-    </div>
 
-    <div class="stats" style="margin-bottom:20px;">
+      <div class="stat-card"><div class="label">تعداد پیگیری‌ها</div><div class="value" style="color:var(--accent)" id="dash-total-followups">0</div></div>
       <div class="stat-card"><div class="label">پیگیری عقب افتاده</div><div class="value" style="color:var(--danger)" id="dash-overdue-followup">0</div></div>
       <div class="stat-card"><div class="label">پیگیری نزدیک (۳ روز)</div><div class="value" style="color:var(--success)" id="dash-soon-followup">0</div></div>
       <div class="stat-card"><div class="label">پیگیری تنظیم شده</div><div class="value" style="color:var(--warning)" id="dash-set-followup">0</div></div>
-      <div class="stat-card"><div class="label">بدون تاریخ پیگیری</div><div class="value" id="dash-no-followup">0</div></div>
-    </div>
 
-    <div class="stats" style="margin-bottom:20px;">
+      <div class="stat-card"><div class="label">بدون تاریخ پیگیری</div><div class="value" id="dash-no-followup">0</div></div>
       <div class="stat-card"><div class="label">تعداد کل فروش</div><div class="value" id="dash-sales-count">0</div></div>
       <div class="stat-card"><div class="label">فروش نقد</div><div class="value" style="color:var(--success)" id="dash-sales-cash">۰</div></div>
       <div class="stat-card"><div class="label">بیعانه‌ها</div><div class="value" style="color:var(--warning)" id="dash-sales-deposit">۰</div></div>
-      <div class="stat-card"><div class="label">مانده حساب‌ها</div><div class="value" style="color:var(--danger)" id="dash-sales-balance">۰</div></div>
-    </div>
 
-    <div class="stats" style="margin-bottom:24px;">
-      <div class="stat-card" style="flex:2;"><div class="label">جمع کل مبلغ فروش</div><div class="value" style="color:var(--accent);font-size:30px;" id="dash-sales-total">۰</div></div>
+      <div class="stat-card"><div class="label">مانده حساب‌ها</div><div class="value" style="color:var(--danger)" id="dash-sales-balance">۰</div></div>
+      <div class="stat-card highlight"><div class="label">جمع کل مبلغ فروش</div><div class="value" style="color:var(--accent);font-size:24px;" id="dash-sales-total">۰</div></div>
       <div class="stat-card"><div class="label">تعداد مشتریان فعال</div><div class="value" style="color:var(--accent)" id="dash-active-customers">0</div></div>
       <div class="stat-card"><div class="label">میانگین مبلغ فروش</div><div class="value" style="color:var(--text)" id="dash-avg-sale">۰</div></div>
     </div>

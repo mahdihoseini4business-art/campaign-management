@@ -1,5 +1,5 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB } from './data.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, getCurrentUser } from './utils.js'
 import { openCustomerDetail } from './customers.js'
 
 // ============================================
@@ -11,12 +11,18 @@ export function renderFollowups() {
   const tbody = document.getElementById('followupBody')
   const search = toEnDigits(document.getElementById('searchFollowups').value).toLowerCase()
 
+  const currentUser = getCurrentUser()
+  const isAdmin = currentUser && currentUser.role === 'admin'
+  const myName = currentUser ? currentUser.displayName : ''
+
   const filtered = data.followups.filter(f => {
     const customer = data.customers.find(c => c.id === f.customerId)
     const name = customer ? customer.name : ''
     if (customer) {
       if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
       if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
+      // Non-admin users only see their own records
+      if (!isAdmin && myName && (customer.advisor || '') !== myName) return false
     }
     return f.customerId.toLowerCase().includes(search) ||
       name.toLowerCase().includes(search) ||

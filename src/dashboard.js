@@ -1,5 +1,5 @@
 import { getData } from './data.js'
-import { hasPermission, formatNumber, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr } from './utils.js'
+import { hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr } from './utils.js'
 import { getAllSales } from './sales.js'
 
 let dashCharts = {}
@@ -31,19 +31,35 @@ export function renderDashboard() {
     return dNum >= dateFromNum && dNum <= dateToNum
   }
 
+  const currentUser = getCurrentUser()
+  const isAdmin = currentUser && currentUser.role === 'admin'
+  const myName = currentUser ? currentUser.displayName : ''
+
+  function isMyRecord(c) {
+    if (isAdmin) return true
+    if (!myName) return true
+    return (c.advisor || '') === myName
+  }
+
   // General stats
   document.getElementById('dash-total-customers').textContent = data.customers.filter(c => {
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false
     return true
   }).length
-  document.getElementById('dash-total-leads').textContent = data.customers.filter(c => c.id.startsWith('LD') && hasPermission('customers_ld')).length
-  document.getElementById('dash-total-cs').textContent = data.customers.filter(c => c.id.startsWith('CS') && hasPermission('customers_cs')).length
+  document.getElementById('dash-my-customers').textContent = data.customers.filter(c => {
+    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false
+    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false
+    return isMyRecord(c)
+  }).length
+  document.getElementById('dash-total-leads').textContent = data.customers.filter(c => c.id.startsWith('LD') && hasPermission('customers_ld') && isMyRecord(c)).length
+  document.getElementById('dash-total-cs').textContent = data.customers.filter(c => c.id.startsWith('CS') && hasPermission('customers_cs') && isMyRecord(c)).length
   document.getElementById('dash-total-followups').textContent = data.followups.filter(f => {
     const customer = data.customers.find(c => c.id === f.customerId)
     if (customer) {
       if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
       if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
+      if (!isMyRecord(customer)) return false
     }
     if (!inDateRange(f.date)) return false
     return true
@@ -58,6 +74,7 @@ export function renderDashboard() {
   data.customers.forEach(c => {
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
     if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
+    if (!isMyRecord(c)) return
     if (c.nextFollowupDate) {
       if (!inDateRange(c.nextFollowupDate)) return
       const dNum = jalaliToNum(c.nextFollowupDate)
@@ -80,6 +97,8 @@ export function renderDashboard() {
   const allSales = getAllSales().filter(s => {
     if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
+    const customer = data.customers.find(c => c.id === s.customerId)
+    if (customer && !isMyRecord(customer)) return false
     if ((dateFrom || dateTo) && s.settlementDate && !inDateRange(s.settlementDate)) return false
     return true
   })
@@ -100,6 +119,7 @@ export function renderDashboard() {
   const activeCustomers = data.customers.filter(c => {
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false
+    if (!isMyRecord(c)) return false
     return c.products && c.products.length > 0
   })
   document.getElementById('dash-active-customers').textContent = activeCustomers.length
