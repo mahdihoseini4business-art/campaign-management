@@ -94,6 +94,7 @@ export async function renderCustomers() {
     }
 
     return `<tr class="${nextFollowupClass}">
+      <td><input type="checkbox" data-id="${escapeAttr(c.id)}" onchange="window.appToggleRowSelect('customers', '${escapeAttr(c.id)}', this.checked)"></td>
       <td><span class="id-badge ${idClass}">${escapeHtml(c.id)}</span></td>
       <td>${platformIdHtml}</td>
       <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>

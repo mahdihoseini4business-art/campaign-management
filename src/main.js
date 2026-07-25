@@ -7,6 +7,7 @@ import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, e
 import { renderSales, sortSales } from './sales.js'
 import { renderDashboard, toggleDashSection, clearDashFilter } from './dashboard.js'
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, initSalesImportListeners } from './import-export.js'
+import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection } from './bulk.js'
 
 // ============================================
 // Tab Switching
@@ -139,6 +140,10 @@ window.appRenderDashboard = renderDashboard
 window.appRenderCustomers = renderCustomers
 window.appRenderFollowups = renderFollowups
 window.appRenderSales = renderSales
+window.appToggleSelectAll = toggleSelectAll
+window.appToggleRowSelect = toggleRowSelect
+window.appExecuteBulkAction = executeBulkAction
+window.appClearSelection = clearSelection
 window.appFormatInput = (el) => {
   let raw = el.value.replace(/[^\d]/g, '')
   el.value = raw ? Number(raw).toLocaleString('en-US') : ''
@@ -210,6 +215,11 @@ async function init() {
     position: 'center',
     persianDigits: false
   })
+
+  // Bulk action listeners
+  document.getElementById('bulkActionCustomers')?.addEventListener('change', () => executeBulkAction('customers'))
+  document.getElementById('bulkActionFollowups')?.addEventListener('change', () => executeBulkAction('followups'))
+  document.getElementById('bulkActionSales')?.addEventListener('change', () => executeBulkAction('sales'))
 
   // Render all
   try { await renderCustomers() } catch (e) { console.error('renderCustomers error:', e) }

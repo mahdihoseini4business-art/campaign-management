@@ -41,6 +41,7 @@ export function renderFollowups() {
     const name = customer ? customer.name : '—'
 
     return `<tr>
+      <td><input type="checkbox" data-id="${escapeAttr(realIndex)}" onchange="window.appToggleRowSelect('followups', '${escapeAttr(realIndex)}', this.checked)"></td>
       <td><span class="id-badge ${f.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="font-size:11px;cursor:pointer;" onclick="window.appOpenCustomerDetail('${escapeAttr(f.customerId)}')">${escapeHtml(f.customerId)}</span></td>
       <td>${escapeHtml(name)}</td>
       <td style="font-family:monospace;font-size:13px;">${escapeHtml(f.date)}</td>

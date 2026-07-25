@@ -86,6 +86,7 @@ function renderSalesRows(allSales) {
     }
 
     return `<tr class="${rowClass}">
+      <td><input type="checkbox" data-id="${escapeAttr(s.customerId)}" onchange="window.appToggleRowSelect('sales', '${escapeAttr(s.customerId)}', this.checked)"></td>
       <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="window.appOpenCustomerDetail('${escapeAttr(s.customerId)}')">${escapeHtml(s.customerId)}</span></td>
       <td>${escapeHtml(s.customerName)}</td>
       <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${escapeHtml(s.customerPhone) || '—'}</td>

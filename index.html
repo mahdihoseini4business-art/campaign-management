@@ -198,6 +198,11 @@
     </div>
 
     <div class="toolbar">
+      <select class="form-select" id="bulkActionCustomers" style="width:180px;display:none;">
+        <option value="">عملیات دسته‌جمعی...</option>
+        <option value="delete">حذف انتخاب شده‌ها</option>
+      </select>
+      <span id="bulkCountCustomers" style="display:none;font-size:13px;color:var(--text-muted);"></span>
       <input type="text" class="search-box" placeholder="جستجو..." id="searchCustomers" oninput="window.appRenderCustomers()">
       <select class="form-select" id="filterAdvisor" style="width:150px;" onchange="window.appRenderCustomers()">
         <option value="">همه کارشناسان</option>
@@ -212,6 +217,7 @@
       <table>
         <thead>
           <tr>
+            <th style="width:40px;"><input type="checkbox" id="selectAllCustomers" onchange="window.appToggleSelectAll('customers', this.checked)"></th>
             <th onclick="window.appSortCustomersHeader('id')">شناسه</th>
             <th onclick="window.appSortCustomersHeader('platformId')">ایدی پلتفرم</th>
             <th onclick="window.appSortCustomersHeader('platform')">پلتفرم</th>
@@ -239,6 +245,11 @@
   <!-- شیت پیگیری -->
   <div class="sheet" id="sheet-followups">
     <div class="toolbar">
+      <select class="form-select" id="bulkActionFollowups" style="width:180px;display:none;">
+        <option value="">عملیات دسته‌جمعی...</option>
+        <option value="delete">حذف انتخاب شده‌ها</option>
+      </select>
+      <span id="bulkCountFollowups" style="display:none;font-size:13px;color:var(--text-muted);"></span>
       <input type="text" class="search-box" placeholder="جستجو..." id="searchFollowups" oninput="window.appRenderFollowups()">
       <button class="btn" onclick="if(window.appHasPermission('followups_export'))window.appExportTabCSV('followups')">خروجی CSV</button>
       <button class="btn" onclick="if(window.appHasPermission('followups_export'))window.appExportTabXLSX('followups')">خروجی Excel</button>
@@ -249,6 +260,7 @@
       <table>
         <thead>
           <tr>
+            <th style="width:40px;"><input type="checkbox" id="selectAllFollowups" onchange="window.appToggleSelectAll('followups', this.checked)"></th>
             <th onclick="window.appSortFollowupsHeader('customerId')">شناسه</th>
             <th onclick="window.appSortFollowupsHeader('customerName')">نام</th>
             <th onclick="window.appSortFollowupsHeader('date')">تاریخ</th>
@@ -275,6 +287,11 @@
     </div>
 
     <div class="toolbar">
+      <select class="form-select" id="bulkActionSales" style="width:180px;display:none;">
+        <option value="">عملیات دسته‌جمعی...</option>
+        <option value="delete">حذف انتخاب شده‌ها</option>
+      </select>
+      <span id="bulkCountSales" style="display:none;font-size:13px;color:var(--text-muted);"></span>
       <input type="text" class="search-box" placeholder="جستجو (نام، شماره، محصول)..." id="searchSales" oninput="window.appRenderSales()">
       <button class="btn" onclick="if(window.appHasPermission('sales_export'))window.appExportTabCSV('sales')">خروجی CSV</button>
       <button class="btn" onclick="if(window.appHasPermission('sales_export'))window.appExportTabXLSX('sales')">خروجی Excel</button>
@@ -285,6 +302,7 @@
       <table>
         <thead>
           <tr>
+            <th style="width:40px;"><input type="checkbox" id="selectAllSales" onchange="window.appToggleSelectAll('sales', this.checked)"></th>
             <th onclick="window.appSortSalesHeader('customerId')">شناسه مشتری</th>
             <th onclick="window.appSortSalesHeader('customerName')">نام مشتری</th>
             <th onclick="window.appSortSalesHeader('customerPhone')">شماره موبایل</th>
