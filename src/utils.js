@@ -159,48 +159,37 @@ export function hasPermission(key) {
 
 const SESSION_KEY = 'campaign_manager_session'
 const SESSION_EXPIRY_HOURS = 24 // Session expires after 24 hours
-const SESSION_SECRET = 'c4mp_m4n4g3r_s3ss10n_s1gn'
 
-async function signSession(data) {
-  const encoder = new TextEncoder()
-  const key = await crypto.subtle.importKey('raw', encoder.encode(SESSION_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(JSON.stringify(data)))
-  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('')
-}
+let cachedUser = null
 
-export async function getCurrentUser() {
+export function getCurrentUser() {
+  if (cachedUser) return cachedUser
   try {
     const raw = localStorage.getItem(SESSION_KEY)
     if (raw) {
-      const envelope = JSON.parse(raw)
-      // Check if session has expired
-      if (envelope.expiresAt && Date.now() > envelope.expiresAt) {
+      const session = JSON.parse(raw)
+      if (session.expiresAt && Date.now() > session.expiresAt) {
         localStorage.removeItem(SESSION_KEY)
         return null
       }
-      // Verify session signature
-      const expectedSig = await signSession(envelope.data)
-      if (envelope.sig !== expectedSig) {
-        localStorage.removeItem(SESSION_KEY)
-        return null
-      }
-      return envelope.data
+      cachedUser = session
+      return session
     }
   } catch (e) {}
   return null
 }
 
-export async function setCurrentUser(user) {
-  const data = { ...user }
-  const envelope = {
-    data,
+export function setCurrentUser(user) {
+  const session = {
+    ...user,
     expiresAt: Date.now() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
   }
-  envelope.sig = await signSession(data)
-  localStorage.setItem(SESSION_KEY, JSON.stringify(envelope))
+  cachedUser = session
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
 }
 
 export function clearCurrentUser() {
+  cachedUser = null
   localStorage.removeItem(SESSION_KEY)
 }
 
