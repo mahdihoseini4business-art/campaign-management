@@ -2,14 +2,16 @@ import { supabase } from './supabase.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, hasPermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS } from './utils.js'
 
 // ============================================
-// Password Hashing (SHA-256)
+// Password Hashing (PBKDF2)
 // ============================================
+
+const HASH_SECRET = import.meta.env.VITE_HASH_SECRET || 'c4mp_m4n4g3r_s3cr3t_k3y_2024'
 
 export async function hashPassword(pw, username) {
   const encoder = new TextEncoder()
   const data = encoder.encode(pw)
-  // Use PBKDF2 with per-user salt for better security
-  const salt = encoder.encode('campaign_manager_' + (username || 'default') + '_salt')
+  // PBKDF2 with per-user salt derived from username + secret
+  const salt = encoder.encode(HASH_SECRET + ':' + (username || 'default') + ':salt')
   const keyMaterial = await crypto.subtle.importKey('raw', data, 'PBKDF2', false, ['deriveBits'])
   const hash = await crypto.subtle.deriveBits(
     { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
