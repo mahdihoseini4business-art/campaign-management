@@ -108,6 +108,18 @@ export async function deleteCustomerFromDB(id) {
 // followups don't have a stable primary key in the app,
 // so we use customer_id + date + type as a soft key
 export async function saveFollowupToDB(followup) {
+  // Check for duplicate (same customer + date + type)
+  const { data: existing } = await supabase.from('followups')
+    .select('id')
+    .eq('customer_id', followup.customerId)
+    .eq('date', followup.date)
+    .eq('type', followup.type)
+    .limit(1)
+
+  if (existing && existing.length > 0) {
+    throw new Error('پیگیری تکراری وجود دارد')
+  }
+
   const { data: inserted, error } = await supabase.from('followups').insert({
     customer_id: followup.customerId,
     date: followup.date,
