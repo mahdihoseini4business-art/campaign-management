@@ -23,8 +23,9 @@ function switchTab(tab, el) {
   document.querySelectorAll('.sheet').forEach(s => s.classList.remove('active'))
   if (el) el.classList.add('active')
   else document.querySelector(`.tab-${tab}`)?.classList.add('active')
-  document.getElementById('sheet-' + tab).classList.add('active')
-  document.getElementById('profileDropdown').classList.remove('active')
+  const sheet = document.getElementById('sheet-' + tab)
+  if (sheet) sheet.classList.add('active')
+  document.getElementById('profileDropdown')?.classList.remove('active')
   if (tab === 'dashboard') renderDashboard()
   if (tab === 'sales') renderSales()
 }

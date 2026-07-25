@@ -170,7 +170,7 @@ export async function deleteFollowup(index) {
         return
       }
       data.followups.splice(index, 1)
-      await renderFollowups()
+      renderFollowups()
       closeDeleteModal()
       showToast('پیگیری حذف شد')
     } catch (e) {

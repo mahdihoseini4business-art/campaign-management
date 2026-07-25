@@ -198,7 +198,8 @@ function renderDashCharts(dateFromNum, dateToNum) {
   })
 
   const salesStatus = { 'تکمیل': 0, 'بیعانه': 0 }
-  getAllSales().forEach(s => {
+  const chartSales = getAllSales()
+  chartSales.forEach(s => {
     if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return
     if (!inChartDateRange(s.settlementDate)) return
@@ -214,7 +215,7 @@ function renderDashCharts(dateFromNum, dateToNum) {
   })
 
   const productSales = {}
-  getAllSales().forEach(s => {
+  chartSales.forEach(s => {
     if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return
     if (!inChartDateRange(s.settlementDate)) return

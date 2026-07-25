@@ -16,17 +16,23 @@ export function formatNumber(n) {
 }
 
 export function formatInput(el) {
-  let raw = el.value.replace(/[^\d]/g, '')
+  let raw = el.value.replace(/[^\d-]/g, '')
+  // Handle negative sign at the beginning
+  if (raw.startsWith('-')) {
+    raw = '-' + raw.replace(/-/g, '')
+  } else {
+    raw = raw.replace(/-/g, '')
+  }
   el.value = raw ? Number(raw).toLocaleString('en-US') : ''
 }
 
 export function unformatInput(el) {
-  return el.value.replace(/[^\d]/g, '')
+  return el.value.replace(/[^\d-]/g, '')
 }
 
 export function escapeHtml(str) {
   if (!str) return ''
-  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/`/g, '&#96;')
 }
 
 export function escapeAttr(str) {
@@ -38,6 +44,7 @@ let toastTimer = null
 
 export function showToast(msg) {
   const t = document.getElementById('toast')
+  if (!t) return
   if (toastTimer) clearTimeout(toastTimer)
   t.textContent = msg
   t.classList.remove('show')

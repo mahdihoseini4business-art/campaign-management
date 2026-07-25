@@ -83,10 +83,11 @@ export function exportTabXLSX(tab) {
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
 
-  const ws = XLSX.utils.aoa_to_sheet([cfg.headers, ...cfg.getRows()])
+  const rows = cfg.getRows()
+  const ws = XLSX.utils.aoa_to_sheet([cfg.headers, ...rows])
 
   const colWidths = cfg.headers.map((h, i) => {
-    const maxLen = Math.max(h.length, ...cfg.getRows().map(r => String(r[i] || '').length))
+    const maxLen = Math.max(h.length, ...rows.map(r => String(r[i] || '').length))
     return { wch: Math.min(Math.max(maxLen + 2, 10), 30) }
   })
   ws['!cols'] = colWidths

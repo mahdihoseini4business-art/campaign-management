@@ -1,8 +1,8 @@
 # گزارش جامع باگ‌های پروژه Campaign Management
 
 > **تاریخ آخرین بررسی:** ۱۴۰۵/۰۵/۰۳  
-> **تعداد کل باگ‌ها:** ۹۷  
-> **فیکس شده:** ۲۳ باگ
+> **تعداد کل باگ‌ها:** ۸۸  
+> **فیکس شده:** ۳۲ باگ
 
 ---
 
@@ -10,10 +10,10 @@
 
 | اولویت | امنیتی | داده‌ای | رابط کاربری | دسترسی‌پذیری | کیفیت کد | جمع |
 |--------|--------|---------|-------------|--------------|----------|-----|
-| بالا (High) | ۰ | ۸ | ۰ | ۶ | ۲ | ۱۶ |
-| متوسط (Medium) | ۴ | ۱۱ | ۱۰ | ۸ | ۶ | ۳۹ |
-| پایین (Low) | ۳ | ۵ | ۱۰ | ۱۰ | ۱۴ | ۴۲ |
-| **جمع** | **۷** | **۲۴** | **۲۰** | **۲۴** | **۲۲** | **۹۷** |
+| بالا (High) | ۰ | ۸ | ۰ | ۶ | ۱ | ۱۵ |
+| متوسط (Medium) | ۴ | ۱۱ | ۱۰ | ۸ | ۰ | ۳۳ |
+| پایین (Low) | ۳ | ۵ | ۱۰ | ۱۰ | ۲ | ۳۰ |
+| **جمع** | **۷** | **۲۴** | **۲۰** | **۲۴** | **۳** | **۷۸** |
 
 ---
 
@@ -44,6 +44,15 @@
 | UX-H3 | اضافه کردن try/finally به saveCustomer برای غیرفعال کردن دکمه | `a]` |
 | UX-H4 | اضافه کردن `for` به تمام label فیلدها | `a]` |
 | UX-H5 | اصلاح Toast flicker با clearTimeout و reflow | `a]` |
+| QC-H2 | اضافه کردن null check به switchTab | `a]` |
+| QC-M1 | اضافه کردن throw به deleteUserFromDB | `a]` |
+| QC-M4 | حذف await غیرضروری از renderFollowups | `a]` |
+| QC-M5 | کش کردن getAllSales در داشبرد | `a]` |
+| QC-M6 | کش کردن getRows در exportTabXLSX | `a]` |
+| QC-L2 | حذف formatInput/unformatInput مرده از utils | `a]` |
+| QC-L8 | اضافه کردن backtick به escapeHtml | `a]` |
+| QC-L11 | اضافه کردن null-check به showToast | `a]` |
+| QC-L13 | اصلاح formatInput برای پشتیبانی عدد منفی | `a]` |
 
 ---
 
@@ -303,43 +312,16 @@
 #### QC-H1 — `window` بیش از حد暴露 شده (~۵۰ تابع)
 - **فایل:** `src/main.js` خطوط ۹۰-۱۵۴
 
-#### QC-H2 — `switchTab()` null check نداره
-- **فایل:** `src/main.js` خط ۲۵
-
-### متوسط (Medium)
-
-#### QC-M1 — `deleteUserFromDB()` خطا رو سکوت می‌کنه
-- **فایل:** `src/auth.js` خطوط ۴۵-۴۸
-
-#### QC-M2 — `saveUser()` false برمی‌گردونه نه throw
-- **فایل:** `src/auth.js` خطوط ۳۶-۴۳
-
-#### QC-M3 — `checkSession()` redirect side-effect داره
-- **فایل:** `src/auth.js` خطوط ۱۱۶-۱۲۴
-
-#### QC-M4 — `renderFollowups()` await غیرضروری داره
-- **فایل:** `src/followups.js` خط ۱۶۶
-
-#### QC-M5 — `getAllSales()` سه بار در داشبرد صدا زده میشه
-- **فایل:** `src/dashboard.js` خطوط ۸۰، ۱۸۱، ۱۹۷
-
-#### QC-M6 — `exportTabXLSX` getRows دو بار صدا زده میشه
-- **فایل:** `src/import-export.js` خطوط ۸۶-۹۱
-
 ### پایین (Low)
 
 #### QC-L1 — ثابت‌های تکراری در فایل‌های مختلف
-#### QC-L2 — کد مرده: `formatInput` و `unformatInput` (بازرسی نیاز)
 #### QC-L4 — فیلتر تاریخ در داشبرد vs تب فروش متفاوته
 #### QC-L5 — توابع داخلی بیش از حد export شدن
 #### QC-L6 — state loading در async وجود نداره
 #### QC-L7 — CDN خارجی بدون fallback
-#### QC-L8 — `escapeHtml` backtick رو escape نمی‌کنه
 #### QC-L9 — تبدیل digit جهانی ممکنه با ویجت‌ها تداخل کنه
 #### QC-L10 — `initDigitConversion()` قبل از auth اجرا میشه
-#### QC-L11 — `showToast()` null-check نداره
 #### QC-L12 — `formatNumber()` edge case با چند نقطه
-#### QC-L13 — `formatInput()` علامت منفی رو حذف می‌کنه
 #### QC-L14 — `jalaliAddDays()` after year rollover leap year اشتباهه
 #### QC-L15 — `getTodayJalaliStr()` timezone hack شکننده‌ست
 
@@ -357,4 +339,4 @@
 1. **UX-M1** — Sort indicator
 2. **A11Y-H1** — Tab ARIA pattern
 3. **A11Y-H3** — Modal focus trap
-4. **QC-H1** — Reduce window exposure
+4. **QC-H1** — کاهش expose کردن window

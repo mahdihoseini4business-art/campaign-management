@@ -46,7 +46,10 @@ export async function saveUser(user) {
 
 export async function deleteUserFromDB(username) {
   const { error } = await supabase.from('users').delete().eq('username', username)
-  if (error) console.error('deleteUser error:', error)
+  if (error) {
+    console.error('deleteUser error:', error)
+    throw error
+  }
 }
 
 // ============================================
