@@ -8,7 +8,6 @@ dist
 sms-docs.md
 DESIGN.md
 OTP-SETUP-GUIDE.md
-supabase/.temp
 
 # Secrets — never commit real credentials (SEC-M4)
 .env
@@ -16,3 +15,12 @@ supabase/.temp
 !.env.example
 .env.local
 .env.*.local
+
+# Supabase CLI ephemeral / local-only (never commit)
+supabase/.temp/
+supabase/.branches/
+supabase/.env
+supabase/.env.*
+supabase/**/.env
+supabase/**/node_modules/
+supabase/**/.deno/
