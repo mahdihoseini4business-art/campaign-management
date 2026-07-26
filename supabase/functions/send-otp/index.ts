@@ -123,7 +123,7 @@ serve(async (req) => {
     } else {
       console.error('SMS send failed:', smsResult)
       return new Response(
-        JSON.stringify({ success: false, error: 'خطا در ارسال پیامک', details: smsResult }),
+        JSON.stringify({ success: false, error: 'خطا در ارسال پیامک' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
