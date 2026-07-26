@@ -195,7 +195,7 @@ function renderImportMapping() {
       <div class="import-map-row">
         <span class="excel-col" title="${h}">${h || '(خالی)'}</span>
         <span class="arrow">←</span>
-        <select onchange="window.appSetImportMapping(${i}, this.value)">
+        <select onchange="app.setImportMapping(${i}, this.value)">
           <option value="">— نادیده گرفتن —</option>
           ${IMPORT_FIELDS.map(f => `<option value="${f.key}" ${selected === f.key ? 'selected' : ''}>${f.label}</option>`).join('')}
         </select>
@@ -360,7 +360,7 @@ function renderSalesImportMapping() {
       <div class="import-map-row">
         <span class="excel-col" title="${h}">${h || '(خالی)'}</span>
         <span class="arrow">←</span>
-        <select onchange="window.appSetSalesImportMapping(${i}, this.value)">
+        <select onchange="app.setSalesImportMapping(${i}, this.value)">
           <option value="">— نادیده گرفتن —</option>
           ${SALES_IMPORT_FIELDS.map(f => `<option value="${f.key}" ${selected === f.key ? 'selected' : ''}>${f.label}${f.required ? ' *' : ''}</option>`).join('')}
         </select>

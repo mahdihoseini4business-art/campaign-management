@@ -100,7 +100,7 @@ export async function renderCustomers() {
     }
 
     return `<tr class="${nextFollowupClass}">
-      <td><input type="checkbox" data-id="${escapeAttr(c.id)}" onchange="window.appToggleRowSelect('customers', '${escapeAttr(c.id)}', this.checked)"></td>
+      <td><input type="checkbox" data-id="${escapeAttr(c.id)}" onchange="app.toggleRowSelect('customers', '${escapeAttr(c.id)}', this.checked)"></td>
       <td><span class="id-badge ${idClass}">${escapeHtml(c.id)}</span></td>
       <td>${platformIdHtml}</td>
       <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>
@@ -114,9 +114,9 @@ export async function renderCustomers() {
       <td class="notes-cell" title="${escapeHtml(lastNote || c.notes)}">${escapeHtml(lastNote || c.notes) || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td>
         <div class="actions-cell">
-          <button class="btn-icon" title="پنل مشتری" onclick="window.appOpenCustomerDetail('${escapeAttr(c.id)}')" style="color:var(--accent);">👤</button>
-          <button class="btn-icon" title="ویرایش" onclick="window.appEditCustomer('${escapeAttr(c.id)}')">✏</button>
-          <button class="btn-icon" title="حذف" onclick="window.appDeleteCustomer('${escapeAttr(c.id)}')">🗑</button>
+          <button class="btn-icon" title="پنل مشتری" onclick="app.openCustomerDetail('${escapeAttr(c.id)}')" style="color:var(--accent);">👤</button>
+          <button class="btn-icon" title="ویرایش" onclick="app.editCustomer('${escapeAttr(c.id)}')">✏</button>
+          <button class="btn-icon" title="حذف" onclick="app.deleteCustomer('${escapeAttr(c.id)}')">🗑</button>
         </div>
       </td>
     </tr>`
@@ -403,7 +403,7 @@ export async function openCustomerDetail(id) {
       <div class="detail-field">
         <span class="detail-label">کارشناس مسئول</span>
         <span class="detail-value">
-          <select class="form-select" id="detailAdvisor" style="width:auto;display:inline-block;" onchange="window.appUpdateCustomerAdvisor('${c.id}', this.value)">
+          <select class="form-select" id="detailAdvisor" style="width:auto;display:inline-block;" onchange="app.updateCustomerAdvisor('${c.id}', this.value)">
             ${detailUsers.map(u => `<option value="${escapeHtml(u.display_name)}" ${u.display_name === c.advisor ? 'selected' : ''}>${escapeHtml(u.display_name)}</option>`).join('')}
           </select>
         </span>
@@ -440,8 +440,8 @@ export async function openCustomerDetail(id) {
         </div>
         <div style="display:flex;gap:6px;align-items:center;">
           <input type="text" id="detailFollowupDate" placeholder="تاریخ پیگیری" data-jdp style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:150px;">
-          <button class="btn btn-sm btn-primary" onclick="window.appSetNextFollowup('${escapeAttr(c.id)}')">ذخیره</button>
-          ${c.nextFollowupDate ? `<button class="btn btn-sm" onclick="window.appClearNextFollowup('${escapeAttr(c.id)}')" style="color:var(--danger);">حذف</button>` : ''}
+          <button class="btn btn-sm btn-primary" onclick="app.setNextFollowup('${escapeAttr(c.id)}')">ذخیره</button>
+          ${c.nextFollowupDate ? `<button class="btn btn-sm" onclick="app.clearNextFollowup('${escapeAttr(c.id)}')" style="color:var(--danger);">حذف</button>` : ''}
         </div>
       </div>
     </div>
@@ -449,7 +449,7 @@ export async function openCustomerDetail(id) {
     <div class="detail-products" style="margin-bottom:20px;">
       <div style="font-size:14px;font-weight:600;margin-bottom:12px;">محصولات</div>
       <div id="detailProductsList"></div>
-      <button class="btn btn-sm" style="margin-top:8px;" onclick="window.appAddProductRow('${escapeAttr(c.id)}')">+ افزودن محصول</button>
+      <button class="btn btn-sm" style="margin-top:8px;" onclick="app.addProductRow('${escapeAttr(c.id)}')">+ افزودن محصول</button>
     </div>
 
     <div class="detail-timeline-title">
@@ -502,7 +502,7 @@ export async function openCustomerDetail(id) {
           </select>
         </div>
         <div class="form-group" style="margin-bottom:0;">
-          <button class="btn btn-primary" style="width:100%;" onclick="window.appAddQuickNote('${escapeAttr(c.id)}')">ثبت</button>
+          <button class="btn btn-primary" style="width:100%;" onclick="app.addQuickNote('${escapeAttr(c.id)}')">ثبت</button>
         </div>
       </div>
     </div>
@@ -628,12 +628,12 @@ export function renderProducts(customerId) {
 
     let priceHtml = ''
     if (isCompleted) {
-      priceHtml = `<input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت" value="${p.price ? formatNumber(p.price) : ''}" oninput="window.appFormatInput(this)" onblur="window.appSaveProductField('${customerId}', ${i}, 'price', window.appUnformatInput(this))">`
+      priceHtml = `<input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" onblur="app.saveProductField('${customerId}', ${i}, 'price', app.unformatInput(this))">`
     } else if (p.status === 'بیعانه') {
       priceHtml = `
-        <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="بیعانه" value="${p.deposit ? formatNumber(p.deposit) : ''}" oninput="window.appFormatInput(this)" onblur="window.appSaveProductField('${customerId}', ${i}, 'deposit', window.appUnformatInput(this))">
-        <input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت کل" value="${p.price ? formatNumber(p.price) : ''}" oninput="window.appFormatInput(this)" onblur="window.appSaveProductField('${customerId}', ${i}, 'price', window.appUnformatInput(this))">
-        <input type="text" class="product-settlement" placeholder="تاریخ تسویه" data-jdp value="${p.settlementDate || ''}" onchange="window.appUpdateProduct('${customerId}', ${i}, 'settlementDate', this.value)">
+        <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="بیعانه" value="${p.deposit ? formatNumber(p.deposit) : ''}" oninput="app.formatInput(this)" onblur="app.saveProductField('${customerId}', ${i}, 'deposit', app.unformatInput(this))">
+        <input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت کل" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" onblur="app.saveProductField('${customerId}', ${i}, 'price', app.unformatInput(this))">
+        <input type="text" class="product-settlement" placeholder="تاریخ تسویه" data-jdp value="${p.settlementDate || ''}" onchange="app.updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">
       `
     }
 
@@ -645,15 +645,15 @@ export function renderProducts(customerId) {
 
     return `
       <div class="product-row">
-        <select class="product-name" onchange="window.appUpdateProduct('${customerId}', ${i}, 'name', this.value)">
+        <select class="product-name" onchange="app.updateProduct('${customerId}', ${i}, 'name', this.value)">
           ${PRODUCTS.map(pr => `<option value="${pr}" ${p.name === pr ? 'selected' : ''}>${pr}</option>`).join('')}
         </select>
-        <select class="product-status" onchange="window.appUpdateProduct('${customerId}', ${i}, 'status', this.value)">
+        <select class="product-status" onchange="app.updateProduct('${customerId}', ${i}, 'status', this.value)">
           ${PRODUCT_STATUSES.map(s => `<option value="${s}" ${p.status === s ? 'selected' : ''}>${s}</option>`).join('')}
         </select>
         ${priceHtml}
         ${balanceHtml}
-        <button class="btn-remove-product" onclick="window.appRemoveProduct('${escapeAttr(customerId)}', ${i})" title="حذف">✕</button>
+        <button class="btn-remove-product" onclick="app.removeProduct('${escapeAttr(customerId)}', ${i})" title="حذف">✕</button>
       </div>
     `
   }).join('')

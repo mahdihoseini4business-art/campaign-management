@@ -86,82 +86,79 @@ function sortFollowups(field) {
 }
 
 // ============================================
-// Expose to window (for inline onclick handlers)
+// Single app namespace (QC-H1: avoid polluting window)
 // ============================================
 
-window.appOpenCustomerDetail = openCustomerDetail
-window.appEditCustomer = editCustomer
-window.appDeleteCustomer = deleteCustomer
-window.appOpenCustomerModal = openCustomerModal
-window.appSaveCustomer = saveCustomer
-window.appCloseCustomerModal = closeCustomerModal
-window.appOpenFollowupModal = openFollowupModal
-window.appSaveFollowup = saveFollowup
-window.appCloseFollowupModal = closeFollowupModal
-window.appEditFollowup = editFollowup
-window.appDeleteFollowup = deleteFollowup
-window.appSetNextFollowup = setNextFollowup
-window.appClearNextFollowup = clearNextFollowup
-window.appAddQuickNote = addQuickNote
-window.appUpdateCustomerAdvisor = updateCustomerAdvisor
-window.appAddProductRow = addProductRow
-window.appSaveProductField = saveProductField
-window.appUpdateProduct = updateProduct
-window.appRemoveProduct = removeProduct
-window.appCloseDetailModal = closeDetailModal
-window.appCloseDeleteModal = closeDeleteModal
-window.appExportTabCSV = exportTabCSV
-window.appExportTabXLSX = exportTabXLSX
-window.appOpenImportModal = openImportModal
-window.appCloseImportModal = closeImportModal
-window.appDoImport = doImport
-window.appSetImportMapping = setImportMapping
-window.appOpenSalesImportModal = openSalesImportModal
-window.appCloseSalesImportModal = closeSalesImportModal
-window.appDoSalesImport = doSalesImport
-window.appSetSalesImportMapping = setSalesImportMapping
-window.appDoLogin = doLogin
-window.appShowToast = showToast
-window.appHasPermission = hasPermission
-window.appDoLogout = doLogout
-window.appOpenSettingsModal = openSettingsModal
-window.appCloseSettingsModal = closeSettingsModal
-window.appAddUser = addUser
-window.appDeleteUser = deleteUser
-window.appSaveUserPermissions = saveUserPermissions
-window.appTogglePermCheckbox = togglePermCheckbox
-window.appToggleProfileMenu = toggleProfileMenu
-window.appSwitchTab = switchTab
-window.appSortCustomers = sortCustomers
-window.appSortFollowups = sortFollowups
-window.appSortSales = sortSales
-window.appToggleDashSection = toggleDashSection
-window.appClearDashFilter = clearDashFilter
-window.appRenderDashboard = renderDashboard
-window.appRenderCustomers = renderCustomers
-window.appRenderFollowups = renderFollowups
-window.appRenderSales = renderSales
-window.appToggleSelectAll = toggleSelectAll
-window.appToggleRowSelect = toggleRowSelect
-window.appExecuteBulkAction = executeBulkAction
-window.appClearSelection = clearSelection
-window.appFormatInput = (el) => {
-  let raw = el.value.replace(/[^\d]/g, '')
-  el.value = raw ? Number(raw).toLocaleString('en-US') : ''
+const app = {
+  openCustomerDetail,
+  editCustomer,
+  deleteCustomer,
+  openCustomerModal,
+  saveCustomer,
+  closeCustomerModal,
+  openFollowupModal,
+  saveFollowup,
+  closeFollowupModal,
+  editFollowup,
+  deleteFollowup,
+  setNextFollowup,
+  clearNextFollowup,
+  addQuickNote,
+  updateCustomerAdvisor,
+  addProductRow,
+  saveProductField,
+  updateProduct,
+  removeProduct,
+  closeDetailModal,
+  closeDeleteModal,
+  exportTabCSV,
+  exportTabXLSX,
+  openImportModal,
+  closeImportModal,
+  doImport,
+  setImportMapping,
+  openSalesImportModal,
+  closeSalesImportModal,
+  doSalesImport,
+  setSalesImportMapping,
+  doLogin,
+  showToast,
+  hasPermission,
+  doLogout,
+  openSettingsModal,
+  closeSettingsModal,
+  addUser,
+  deleteUser,
+  saveUserPermissions,
+  togglePermCheckbox,
+  toggleProfileMenu,
+  switchTab,
+  sortCustomers,
+  sortFollowups,
+  sortSales,
+  toggleDashSection,
+  clearDashFilter,
+  renderDashboard,
+  renderCustomers,
+  renderFollowups,
+  renderSales,
+  toggleSelectAll,
+  toggleRowSelect,
+  executeBulkAction,
+  clearSelection,
+  formatInput: (el) => {
+    let raw = el.value.replace(/[^\d]/g, '')
+    el.value = raw ? Number(raw).toLocaleString('en-US') : ''
+  },
+  unformatInput: (el) => el.value.replace(/[^\d]/g, ''),
+  sortCustomersHeader: (field) => sortCustomers(field),
+  sortFollowupsHeader: (field) => sortFollowups(field),
+  sortSalesHeader: (field) => sortSales(field),
+  debugListUsers,
+  debugCreateTestUser
 }
-window.appUnformatInput = (el) => el.value.replace(/[^\d]/g, '')
 
-// ============================================
-// Sort header onclick mapping
-// ============================================
-
-window.appSortCustomersHeader = (field) => sortCustomers(field)
-window.appSortFollowupsHeader = (field) => sortFollowups(field)
-window.appSortSalesHeader = (field) => sortSales(field)
-
-// Debug helpers (for testing in browser console)
-window.appDebugListUsers = debugListUsers
-window.appDebugCreateTestUser = debugCreateTestUser
+window.app = app
 
 // ============================================
 // Init

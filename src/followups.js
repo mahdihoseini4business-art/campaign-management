@@ -47,8 +47,8 @@ export function renderFollowups() {
     const followupId = f.id || `idx_${data.followups.indexOf(f)}`
 
     return `<tr>
-      <td><input type="checkbox" data-id="${escapeAttr(followupId)}" onchange="window.appToggleRowSelect('followups', '${escapeAttr(followupId)}', this.checked)"></td>
-      <td><span class="id-badge ${f.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="font-size:11px;cursor:pointer;" onclick="window.appOpenCustomerDetail('${escapeAttr(f.customerId)}')">${escapeHtml(f.customerId)}</span></td>
+      <td><input type="checkbox" data-id="${escapeAttr(followupId)}" onchange="app.toggleRowSelect('followups', '${escapeAttr(followupId)}', this.checked)"></td>
+      <td><span class="id-badge ${f.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="font-size:11px;cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(f.customerId)}')">${escapeHtml(f.customerId)}</span></td>
       <td>${escapeHtml(name)}</td>
       <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(f.date)}</td>
       <td>${escapeHtml(f.type)}</td>
@@ -57,8 +57,8 @@ export function renderFollowups() {
       <td class="notes-cell" title="${escapeHtml(f.notes)}">${escapeHtml(f.notes) || '—'}</td>
       <td>
         <div class="actions-cell">
-          <button class="btn-icon" title="ویرایش" onclick="window.appEditFollowup('${escapeAttr(followupId)}')">✏</button>
-          <button class="btn-icon" title="حذف" onclick="window.appDeleteFollowup('${escapeAttr(followupId)}')">🗑</button>
+          <button class="btn-icon" title="ویرایش" onclick="app.editFollowup('${escapeAttr(followupId)}')">✏</button>
+          <button class="btn-icon" title="حذف" onclick="app.deleteFollowup('${escapeAttr(followupId)}')">🗑</button>
         </div>
       </td>
     </tr>`

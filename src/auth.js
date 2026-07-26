@@ -311,7 +311,7 @@ export async function renderUsersList() {
           <div style="display:flex;flex-wrap:wrap;gap:4px 12px;">
             ${g.keys.map(k => `
               <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:${perms[k] ? '#d1e7dd' : '#f8f9fa'};">
-                <input type="checkbox" data-perm-user="${u.username}" data-perm-key="${k}" ${perms[k] ? 'checked' : ''} onchange="window.appTogglePermCheckbox(this)" style="width:14px;height:14px;">
+                <input type="checkbox" data-perm-user="${u.username}" data-perm-key="${k}" ${perms[k] ? 'checked' : ''} onchange="app.togglePermCheckbox(this)" style="width:14px;height:14px;">
                 ${ALL_PERMISSIONS[k]}
               </label>
             `).join('')}
@@ -326,12 +326,12 @@ export async function renderUsersList() {
             <div class="user-name">${escapeHtml(userDisplayName)} ${isCurrentUser ? '<span style="font-size:11px;color:var(--accent);">(شما)</span>' : ''}</div>
             <div class="user-role">📱 ${escapeHtml(userPhone)} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${userRole}</span></div>
           </div>
-          ${!isAdminUser ? `<button class="btn-icon" title="حذف" onclick="window.appDeleteUser('${escapeAttr(u.username)}')" style="color:var(--danger);">🗑</button>` : ''}
+          ${!isAdminUser ? `<button class="btn-icon" title="حذف" onclick="app.deleteUser('${escapeAttr(u.username)}')" style="color:var(--danger);">🗑</button>` : ''}
         </div>
         ${!isAdminUser ? `
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
           ${permsHtml}
-          <button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="window.appSaveUserPermissions('${escapeAttr(u.username)}')">ذخیره دسترسی‌ها</button>
+          <button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="app.saveUserPermissions('${escapeAttr(u.username)}')">ذخیره دسترسی‌ها</button>
         </div>
         ` : ''}
       </div>
