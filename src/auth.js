@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, hasPermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS } from './utils.js'
 
 // ============================================
 // Password Hashing (PBKDF2)
@@ -195,14 +195,60 @@ export function doLogout() {
   window.location.href = '/login.html'
 }
 
-export function checkSession() {
-  const user = getCurrentUser()
-  if (user) {
-    return user
+/**
+ * Restore signed session, then revalidate role/permissions from Supabase (SEC-M1, SEC-M2).
+ * Client session is never trusted as the source of truth for privileges.
+ */
+export async function checkSession() {
+  const localUser = await restoreSession()
+  if (!localUser) {
+    window.location.href = '/login.html'
+    return null
   }
-  // No session - redirect to login
-  window.location.href = '/login.html'
-  return null
+
+  const refreshed = await refreshSessionFromServer(localUser)
+  if (!refreshed) {
+    clearCurrentUser()
+    window.location.href = '/login.html'
+    return null
+  }
+
+  return refreshed
+}
+
+/** Pull latest role/permissions from DB; reject deleted/unknown users. */
+export async function refreshSessionFromServer(localUser) {
+  try {
+    let query = supabase.from('users').select('username, first_name, last_name, phone, display_name, role, permissions')
+
+    if (localUser.username) {
+      query = query.eq('username', localUser.username)
+    } else if (localUser.phone) {
+      query = query.eq('phone', localUser.phone)
+    } else {
+      return null
+    }
+
+    const { data: rows, error } = await query.limit(1)
+    if (error || !rows || rows.length === 0) {
+      console.error('refreshSessionFromServer: user not found', error)
+      return null
+    }
+
+    const user = rows[0]
+    return await setCurrentUser({
+      username: user.username,
+      displayName: user.display_name || `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+      firstName: user.first_name,
+      lastName: user.last_name,
+      phone: user.phone,
+      role: user.role,
+      permissions: user.permissions || null
+    })
+  } catch (e) {
+    console.error('refreshSessionFromServer error:', e)
+    return null
+  }
 }
 
 // ============================================

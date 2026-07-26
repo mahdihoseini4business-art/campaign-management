@@ -418,7 +418,7 @@
 
 <script type="module">
   import { supabase } from './src/supabase.js'
-  import { setCurrentUser, toEnDigits } from './src/utils.js'
+  import { setCurrentUser, restoreSession, toEnDigits } from './src/utils.js'
   import { sendOTP, verifyOTP } from './src/sms.js'
 
   // State
@@ -426,16 +426,10 @@
   let resendInterval = null
   let resendTimeout = 120 // 2 minutes in seconds
 
-  // Check if already logged in
-  const session = localStorage.getItem('campaign_manager_session')
-  if (session) {
-    try {
-      const parsed = JSON.parse(session)
-      if (parsed.expiresAt && Date.now() < parsed.expiresAt) {
-        window.location.href = '/index.html'
-      }
-    } catch (e) {}
-  }
+  // Check if already logged in (signed session only)
+  restoreSession().then(user => {
+    if (user) window.location.href = '/index.html'
+  })
 
   // ============================================
   // Step 1: Send OTP

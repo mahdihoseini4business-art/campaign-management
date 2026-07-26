@@ -266,8 +266,8 @@ async function init() {
   const loadingOverlay = document.getElementById('loadingOverlay')
   if (loadingOverlay) loadingOverlay.style.display = 'flex'
 
-  // Check session - redirect to login if not authenticated
-  const user = checkSession()
+  // Check session - verify signature + revalidate privileges from server
+  const user = await checkSession()
   if (!user) {
     if (loadingOverlay) loadingOverlay.style.display = 'none'
     return

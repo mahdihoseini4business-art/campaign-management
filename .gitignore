@@ -1,13 +1,18 @@
-.env
 node_modules
 .DS_Store
 dist
 .mimocode
 .vercel
 *.xlsx
-.env*
 *-logs.txt
 sms-docs.md
 DESIGN.md
 OTP-SETUP-GUIDE.md
 supabase/.temp
+
+# Secrets — never commit real credentials (SEC-M4)
+.env
+.env.*
+!.env.example
+.env.local
+.env.*.local

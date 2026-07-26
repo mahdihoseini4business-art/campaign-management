@@ -166,38 +166,92 @@ export function hasPermission(key) {
 }
 
 // ============================================
-// Session (localStorage - client-side only)
+// Session (signed localStorage + server revalidation)
 // ============================================
 
 const SESSION_KEY = 'campaign_manager_session'
-const SESSION_EXPIRY_HOURS = 24 // Session expires after 24 hours
+const SESSION_EXPIRY_HOURS = 24
+const SESSION_SECRET = import.meta.env.VITE_HASH_SECRET || 'c4mp_m4n4g3r_s3cr3t_k3y_2024'
 
 let cachedUser = null
 
-export function getCurrentUser() {
-  if (cachedUser) return cachedUser
-  try {
-    const raw = localStorage.getItem(SESSION_KEY)
-    if (raw) {
-      const session = JSON.parse(raw)
-      if (session.expiresAt && Date.now() > session.expiresAt) {
-        localStorage.removeItem(SESSION_KEY)
-        return null
-      }
-      cachedUser = session
-      return session
-    }
-  } catch (e) {}
-  return null
+function stableStringify(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  const keys = Object.keys(value).sort()
+  return `{${keys.map(k => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`
 }
 
-export function setCurrentUser(user) {
-  const session = {
-    ...user,
-    expiresAt: Date.now() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
+async function signSessionPayload(payload) {
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(SESSION_SECRET),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(stableStringify(payload)))
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** Sync read of verified in-memory session (call restoreSession first). */
+export function getCurrentUser() {
+  return cachedUser
+}
+
+/** Verify HMAC envelope from localStorage and hydrate cache (SEC-M2). */
+export async function restoreSession() {
+  cachedUser = null
+  try {
+    const raw = localStorage.getItem(SESSION_KEY)
+    if (!raw) return null
+
+    const envelope = JSON.parse(raw)
+    if (!envelope || !envelope.data || !envelope.sig || !envelope.expiresAt) {
+      localStorage.removeItem(SESSION_KEY)
+      return null
+    }
+
+    if (Date.now() > envelope.expiresAt) {
+      localStorage.removeItem(SESSION_KEY)
+      return null
+    }
+
+    const payload = { data: envelope.data, expiresAt: envelope.expiresAt }
+    const expectedSig = await signSessionPayload(payload)
+    if (envelope.sig !== expectedSig) {
+      localStorage.removeItem(SESSION_KEY)
+      return null
+    }
+
+    cachedUser = { ...envelope.data, expiresAt: envelope.expiresAt }
+    return cachedUser
+  } catch (e) {
+    localStorage.removeItem(SESSION_KEY)
+    cachedUser = null
+    return null
   }
-  cachedUser = session
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+}
+
+export async function setCurrentUser(user) {
+  const data = {
+    username: user.username,
+    displayName: user.displayName,
+    firstName: user.firstName || null,
+    lastName: user.lastName || null,
+    phone: user.phone || null,
+    role: user.role,
+    permissions: user.permissions || null
+  }
+  const expiresAt = Date.now() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
+  const payload = { data, expiresAt }
+  const sig = await signSessionPayload(payload)
+  const envelope = { ...payload, sig }
+
+  cachedUser = { ...data, expiresAt }
+  localStorage.setItem(SESSION_KEY, JSON.stringify(envelope))
+  return cachedUser
 }
 
 export function clearCurrentUser() {
