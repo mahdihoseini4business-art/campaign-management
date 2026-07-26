@@ -76,18 +76,18 @@
   </div>
   <div class="header-actions">
     <div class="profile-menu">
-      <button class="btn btn-icon" onclick="app.toggleProfileMenu()" title="پروفایل">👤</button>
-      <div class="profile-dropdown" id="profileDropdown">
-        <div class="profile-dropdown-item" onclick="app.switchTab('dashboard', document.querySelector('.tab-dashboard'))">
+      <button class="btn btn-icon" id="profileMenuBtn" onclick="app.toggleProfileMenu()" title="پروفایل" aria-haspopup="menu" aria-expanded="false" aria-controls="profileDropdown">👤</button>
+      <div class="profile-dropdown" id="profileDropdown" role="menu" aria-labelledby="profileMenuBtn" hidden>
+        <div class="profile-dropdown-item" role="menuitem" tabindex="-1" onclick="app.switchTab('dashboard', document.querySelector('.tab-dashboard'))">
           <span>داشبرد</span>
         </div>
-        <div class="profile-dropdown-item" onclick="app.showToast('پروفایل - به زودی')">
+        <div class="profile-dropdown-item" role="menuitem" tabindex="-1" onclick="app.showToast('پروفایل - به زودی')">
           <span>پروفایل</span>
         </div>
-        <div class="profile-dropdown-item" onclick="app.openSettingsModal()">
+        <div class="profile-dropdown-item" role="menuitem" tabindex="-1" onclick="app.openSettingsModal()">
           <span>تنظیمات</span>
         </div>
-        <div class="profile-dropdown-item" style="border-top:1px solid var(--border);color:var(--danger);" onclick="app.doLogout()">
+        <div class="profile-dropdown-item" role="menuitem" tabindex="-1" style="border-top:1px solid var(--border);color:var(--danger);" onclick="app.doLogout()">
           <span>خروج</span>
         </div>
       </div>
@@ -96,15 +96,15 @@
 </div>
 
 <div class="content">
-  <div class="tabs">
-    <button class="tab tab-dashboard" onclick="app.switchTab('dashboard', this)">داشبرد</button>
-    <button class="tab active" onclick="app.switchTab('customers', this)">لیست مشتریان</button>
-    <button class="tab" onclick="app.switchTab('followups', this)">تاریخچه پیگیری</button>
-    <button class="tab" onclick="app.switchTab('sales', this)">فروش‌ها</button>
+  <div class="tabs" role="tablist" aria-label="بخش‌های اصلی">
+    <button class="tab tab-dashboard" role="tab" id="tab-dashboard" aria-controls="sheet-dashboard" aria-selected="false" tabindex="-1" onclick="app.switchTab('dashboard', this)">داشبرد</button>
+    <button class="tab active" role="tab" id="tab-customers" aria-controls="sheet-customers" aria-selected="true" tabindex="0" onclick="app.switchTab('customers', this)">لیست مشتریان</button>
+    <button class="tab" role="tab" id="tab-followups" aria-controls="sheet-followups" aria-selected="false" tabindex="-1" onclick="app.switchTab('followups', this)">تاریخچه پیگیری</button>
+    <button class="tab" role="tab" id="tab-sales" aria-controls="sheet-sales" aria-selected="false" tabindex="-1" onclick="app.switchTab('sales', this)">فروش‌ها</button>
   </div>
 
   <!-- شیت داشبرد -->
-  <div class="sheet" id="sheet-dashboard">
+  <div class="sheet" id="sheet-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" hidden>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
       <div style="font-size:16px;font-weight:600;">فیلتر تاریخ:</div>
       <input type="text" class="form-input" id="dashDateFrom" placeholder="از تاریخ" data-jdp style="width:150px;">
@@ -182,7 +182,7 @@
   </div>
 
   <!-- شیت مشتریان -->
-  <div class="sheet active" id="sheet-customers">
+  <div class="sheet active" id="sheet-customers" role="tabpanel" aria-labelledby="tab-customers">
     <div class="stats">
       <div class="stat-card"><div class="label">کل مشتریان</div><div class="value" id="stat-total">0</div></div>
       <div class="stat-card"><div class="label">لید جدید</div><div class="value" style="color: var(--tag-ld)" id="stat-ld">0</div></div>
@@ -238,7 +238,7 @@
   </div>
 
   <!-- شیت پیگیری -->
-  <div class="sheet" id="sheet-followups">
+  <div class="sheet" id="sheet-followups" role="tabpanel" aria-labelledby="tab-followups" hidden>
     <div class="toolbar">
       <select class="form-select" id="bulkActionFollowups" style="width:180px;display:none;">
         <option value="">عملیات دسته‌جمعی...</option>
@@ -272,7 +272,7 @@
   </div>
 
   <!-- شیت فروش‌ها -->
-  <div class="sheet" id="sheet-sales">
+  <div class="sheet" id="sheet-sales" role="tabpanel" aria-labelledby="tab-sales" hidden>
     <div class="stats">
       <div class="stat-card"><div class="label">تعداد کل فروش</div><div class="value" id="stat-sales-count">0</div></div>
       <div class="stat-card"><div class="label">فروش نقد (تکمیل)</div><div class="value" style="color: var(--success)" id="stat-sales-cash">۰</div></div>

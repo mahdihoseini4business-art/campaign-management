@@ -403,16 +403,86 @@ export function applyPermissions() {
 // ============================================
 
 export function toggleProfileMenu() {
-  document.getElementById('profileDropdown').classList.toggle('active')
+  const dropdown = document.getElementById('profileDropdown')
+  const btn = document.getElementById('profileMenuBtn')
+  if (!dropdown) return
+
+  const willOpen = !dropdown.classList.contains('active')
+  dropdown.classList.toggle('active', willOpen)
+  dropdown.hidden = !willOpen
+  btn?.setAttribute('aria-expanded', willOpen ? 'true' : 'false')
+
+  if (willOpen) {
+    const items = dropdown.querySelectorAll('[role="menuitem"]')
+    items.forEach(item => { item.tabIndex = -1 })
+    if (items[0]) {
+      items[0].tabIndex = 0
+      items[0].focus()
+    }
+  } else {
+    btn?.focus()
+  }
+}
+
+function closeProfileMenu() {
+  const dropdown = document.getElementById('profileDropdown')
+  const btn = document.getElementById('profileMenuBtn')
+  if (!dropdown) return
+  dropdown.classList.remove('active')
+  dropdown.hidden = true
+  btn?.setAttribute('aria-expanded', 'false')
 }
 
 export function initProfileMenu() {
   document.addEventListener('click', function (e) {
     const menu = document.querySelector('.profile-menu')
     if (menu && !menu.contains(e.target)) {
-      document.getElementById('profileDropdown').classList.remove('active')
+      closeProfileMenu()
     }
   })
-  // Prevent profile menu clicks from triggering modal close
+
   document.querySelector('.profile-menu')?.addEventListener('click', e => e.stopPropagation())
+
+  const btn = document.getElementById('profileMenuBtn')
+  const dropdown = document.getElementById('profileDropdown')
+  if (!btn || !dropdown) return
+
+  btn.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      if (!dropdown.classList.contains('active')) toggleProfileMenu()
+      else dropdown.querySelector('[role="menuitem"]')?.focus()
+    }
+    if (e.key === 'Escape') closeProfileMenu()
+  })
+
+  dropdown.addEventListener('keydown', (e) => {
+    const items = [...dropdown.querySelectorAll('[role="menuitem"]')]
+    const idx = items.indexOf(document.activeElement)
+
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      closeProfileMenu()
+      btn.focus()
+      return
+    }
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (!items.length) return
+      const next = e.key === 'ArrowDown'
+        ? items[(idx + 1) % items.length]
+        : items[(idx - 1 + items.length) % items.length]
+      items.forEach(item => { item.tabIndex = -1 })
+      next.tabIndex = 0
+      next.focus()
+      return
+    }
+
+    if ((e.key === 'Enter' || e.key === ' ') && idx >= 0) {
+      e.preventDefault()
+      items[idx].click()
+      closeProfileMenu()
+    }
+  })
 }

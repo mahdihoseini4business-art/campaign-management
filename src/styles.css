@@ -122,6 +122,12 @@
   .profile-dropdown-item:last-child { border-radius: 0 0 var(--radius) var(--radius); }
 
   .profile-dropdown-item:hover { background: var(--accent-light); color: var(--accent); }
+  .profile-dropdown-item:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+    background: var(--accent-light);
+    color: var(--accent);
+  }
 
   /* --- Main Content --- */
   .content { padding: 24px; max-width: 1400px; margin: 0 auto; }

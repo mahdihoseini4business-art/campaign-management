@@ -19,13 +19,36 @@ function switchTab(tab, el) {
     return
   }
 
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'))
-  document.querySelectorAll('.sheet').forEach(s => s.classList.remove('active'))
-  if (el) el.classList.add('active')
-  else document.querySelector(`.tab-${tab}`)?.classList.add('active')
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.remove('active')
+    t.setAttribute('aria-selected', 'false')
+    t.setAttribute('tabindex', '-1')
+  })
+  document.querySelectorAll('.sheet').forEach(s => {
+    s.classList.remove('active')
+    s.hidden = true
+  })
+
+  const activeTab = el || document.querySelector(`.tab-${tab}`) || document.getElementById(`tab-${tab}`)
+  if (activeTab) {
+    activeTab.classList.add('active')
+    activeTab.setAttribute('aria-selected', 'true')
+    activeTab.setAttribute('tabindex', '0')
+  }
+
   const sheet = document.getElementById('sheet-' + tab)
-  if (sheet) sheet.classList.add('active')
-  document.getElementById('profileDropdown')?.classList.remove('active')
+  if (sheet) {
+    sheet.classList.add('active')
+    sheet.hidden = false
+  }
+
+  const dropdown = document.getElementById('profileDropdown')
+  if (dropdown) {
+    dropdown.classList.remove('active')
+    dropdown.hidden = true
+    document.getElementById('profileMenuBtn')?.setAttribute('aria-expanded', 'false')
+  }
+
   if (tab === 'dashboard') renderDashboard()
   if (tab === 'sales') renderSales()
 }
@@ -203,6 +226,34 @@ async function init() {
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
       document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'))
+    }
+  })
+
+  // Tablist keyboard navigation (A11Y-H1)
+  document.querySelector('.tabs')?.addEventListener('keydown', (e) => {
+    const tabs = [...document.querySelectorAll('.tab:not([style*="display: none"])')]
+    const idx = tabs.indexOf(document.activeElement)
+    if (idx < 0) return
+
+    let nextIdx = -1
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault()
+      // RTL: ArrowLeft moves forward visually
+      const delta = e.key === 'ArrowLeft' ? 1 : -1
+      nextIdx = (idx + delta + tabs.length) % tabs.length
+    } else if (e.key === 'Home') {
+      e.preventDefault()
+      nextIdx = 0
+    } else if (e.key === 'End') {
+      e.preventDefault()
+      nextIdx = tabs.length - 1
+    }
+
+    if (nextIdx >= 0) {
+      const tab = tabs[nextIdx]
+      const name = tab.id?.replace(/^tab-/, '') || tab.className.match(/tab-(\w+)/)?.[1]
+      if (name) switchTab(name, tab)
+      tab.focus()
     }
   })
 
