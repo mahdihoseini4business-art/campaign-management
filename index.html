@@ -150,13 +150,13 @@
       </div>
     </div>
 
-    <div class="dash-collapsible" onclick="app.toggleDashSection('overdue')">
+    <div class="dash-collapsible" id="dash-overdue-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="dash-overdue-body" onclick="app.toggleDashSection('overdue')">
       <span style="color:var(--danger);">⚠️</span>
       <span>پیگیری‌های عقب افتاده</span>
       <span class="dash-badge" id="dash-overdue-badge" style="background:var(--danger);color:white;">0</span>
-      <span class="dash-arrow" id="dash-arrow-overdue">🔽</span>
+      <span class="dash-arrow" id="dash-arrow-overdue" aria-hidden="true">🔽</span>
     </div>
-    <div class="dash-collapsible-body" id="dash-overdue-body">
+    <div class="dash-collapsible-body" id="dash-overdue-body" role="region" aria-labelledby="dash-overdue-toggle">
       <div class="table-wrapper">
         <table>
           <thead><tr><th>شناسه</th><th>نام</th><th>شماره</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
@@ -165,13 +165,13 @@
       </div>
     </div>
 
-    <div class="dash-collapsible" onclick="app.toggleDashSection('soon')" style="margin-top:8px;">
+    <div class="dash-collapsible" id="dash-soon-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="dash-soon-body" onclick="app.toggleDashSection('soon')" style="margin-top:8px;">
       <span style="color:var(--success);">✅</span>
       <span>پیگیری‌های نزدیک (۳ روز آینده)</span>
       <span class="dash-badge" id="dash-soon-badge" style="background:var(--success);color:white;">0</span>
-      <span class="dash-arrow" id="dash-arrow-soon">🔽</span>
+      <span class="dash-arrow" id="dash-arrow-soon" aria-hidden="true">🔽</span>
     </div>
-    <div class="dash-collapsible-body" id="dash-soon-body">
+    <div class="dash-collapsible-body" id="dash-soon-body" role="region" aria-labelledby="dash-soon-toggle">
       <div class="table-wrapper">
         <table>
           <thead><tr><th>شناسه</th><th>نام</th><th>شماره</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>

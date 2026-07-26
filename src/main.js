@@ -184,6 +184,75 @@ const app = {
 window.app = app
 
 // ============================================
+// Modal focus trap (A11Y-H3)
+// ============================================
+
+const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+const modalFocusMemory = new WeakMap()
+
+function getFocusableElements(container) {
+  return [...container.querySelectorAll(FOCUSABLE_SELECTOR)].filter(el => {
+    if (el.closest('[hidden]')) return false
+    if (el.getAttribute('aria-hidden') === 'true') return false
+    return el.offsetParent !== null || el === document.activeElement
+  })
+}
+
+function activateModalTrap(overlay) {
+  const dialog = overlay.querySelector('.modal') || overlay
+  modalFocusMemory.set(overlay, document.activeElement)
+
+  if (!dialog.hasAttribute('role')) dialog.setAttribute('role', 'dialog')
+  dialog.setAttribute('aria-modal', 'true')
+
+  const focusable = getFocusableElements(dialog)
+  ;(focusable[0] || dialog).focus()
+
+  function onKeyDown(e) {
+    if (e.key !== 'Tab') return
+    const items = getFocusableElements(dialog)
+    if (!items.length) {
+      e.preventDefault()
+      return
+    }
+    const first = items[0]
+    const last = items[items.length - 1]
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
+
+  overlay._focusTrapHandler = onKeyDown
+  overlay.addEventListener('keydown', onKeyDown)
+}
+
+function deactivateModalTrap(overlay) {
+  if (overlay._focusTrapHandler) {
+    overlay.removeEventListener('keydown', overlay._focusTrapHandler)
+    delete overlay._focusTrapHandler
+  }
+  const prev = modalFocusMemory.get(overlay)
+  modalFocusMemory.delete(overlay)
+  if (prev && typeof prev.focus === 'function') {
+    try { prev.focus() } catch (_) {}
+  }
+}
+
+function initModalFocusTrap() {
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    const observer = new MutationObserver(() => {
+      if (overlay.classList.contains('active')) activateModalTrap(overlay)
+      else deactivateModalTrap(overlay)
+    })
+    observer.observe(overlay, { attributes: true, attributeFilter: ['class'] })
+  })
+}
+
+// ============================================
 // Init
 // ============================================
 
@@ -214,6 +283,19 @@ async function init() {
   if (loadingOverlay) loadingOverlay.style.display = 'none'
 
   applyPermissions()
+
+  // Modal accessibility: focus trap + aria (A11Y-H3)
+  initModalFocusTrap()
+
+  // Dashboard collapsible keyboard support (A11Y-H4)
+  document.querySelectorAll('.dash-collapsible[role="button"]').forEach(el => {
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        el.click()
+      }
+    })
+  })
 
   // Modal close on overlay click
   document.querySelectorAll('.modal-overlay').forEach(overlay => {

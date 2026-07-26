@@ -11,8 +11,12 @@ let dashCharts = {}
 export function toggleDashSection(section) {
   const body = document.getElementById(`dash-${section}-body`)
   const arrow = document.getElementById(`dash-arrow-${section}`)
-  body.classList.toggle('open')
-  arrow.classList.toggle('open')
+  const toggle = document.getElementById(`dash-${section}-toggle`)
+  if (!body) return
+
+  const isOpen = body.classList.toggle('open')
+  arrow?.classList.toggle('open', isOpen)
+  toggle?.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
 }
 
 export function renderDashboard() {
