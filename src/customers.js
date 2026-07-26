@@ -593,7 +593,7 @@ export function closeDetailModal() {
 // Product Management
 // ============================================
 
-const PRODUCTS = ['آنلاین چینی', 'حضوری چینی', 'کتاب']
+const PRODUCTS = ['آنلاین چینی', 'حضوری چینی', 'کتاب', 'کره ای حضوری', 'کره ای آنلاین', 'حضوری فرمان', 'آنلاین فرمان', 'دوره زبان فنی', 'دوره GDS', 'آنلاین داخلی', 'تنظیم موتور', 'دیاگ لانچ', 'دیاگ I700', 'دیاگ blu', 'دیاگ newlite', 'تست باکس شبکه']
 const PRODUCT_STATUSES = ['تکمیل', 'بیعانه']
 
 export function getProducts(customerId) {
