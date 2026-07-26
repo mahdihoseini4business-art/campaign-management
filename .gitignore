@@ -6,3 +6,8 @@ dist
 .vercel
 *.xlsx
 .env*
+*-logs.txt
+sms-docs.md
+DESIGN.md
+OTP-SETUP-GUIDE.md
+supabase/.temp
