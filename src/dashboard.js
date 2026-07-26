@@ -135,7 +135,7 @@ export function renderDashboard() {
     overdueBody.innerHTML = overdueList.map(c => `<tr style="background:#fff8f0;">
       <td><span class="id-badge ${c.id.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="window.appOpenCustomerDetail('${escapeAttr(c.id)}')">${escapeHtml(c.id)}</span></td>
       <td>${escapeHtml(c.name || c.platformId)}</td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${escapeHtml(c.phone) || '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(c.phone) || '—'}</td>
       <td><span class="settlement-badge settlement-overdue-badge">⚠ ${c.nextFollowupDate}</span></td>
       <td style="text-align:center;">${(c.products || []).length}</td>
     </tr>`).join('')
@@ -149,7 +149,7 @@ export function renderDashboard() {
     soonBody.innerHTML = soonList.map(c => `<tr style="background:#f0fff4;">
       <td><span class="id-badge ${c.id.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="window.appOpenCustomerDetail('${escapeAttr(c.id)}')">${escapeHtml(c.id)}</span></td>
       <td>${escapeHtml(c.name || c.platformId)}</td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${escapeHtml(c.phone) || '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(c.phone) || '—'}</td>
       <td><span class="settlement-badge settlement-soon-badge">${c.nextFollowupDate}</span></td>
       <td style="text-align:center;">${(c.products || []).length}</td>
     </tr>`).join('')

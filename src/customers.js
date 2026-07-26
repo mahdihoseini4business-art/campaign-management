@@ -65,8 +65,8 @@ export async function renderCustomers() {
         : c.platform === 'whatsapp' ? `https://wa.me/${encodeURIComponent(c.phone || c.platformId)}`
           : ''
     const platformIdHtml = platformUrl
-      ? `<a href="${platformUrl}" target="_blank" rel="noopener" style="font-family:monospace;font-size:13px;color:var(--accent);text-decoration:none;border-bottom:1px dashed var(--accent);">${escapeHtml(c.platformId)}</a>`
-      : `<span style="font-family:monospace;font-size:13px;">${escapeHtml(c.platformId)}</span>`
+      ? `<a href="${platformUrl}" target="_blank" rel="noopener" style="font-family:'Vazirmatn',sans-serif;font-size:13px;color:var(--accent);text-decoration:none;border-bottom:1px dashed var(--accent);">${escapeHtml(c.platformId)}</a>`
+      : `<span style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(c.platformId)}</span>`
 
     const followupCount = data.followups.filter(f => f.customerId === c.id).length
     let countClass = 'followup-none'
@@ -95,7 +95,7 @@ export async function renderCustomers() {
         nextFollowupHtml = `<span class="settlement-badge settlement-soon-badge">${c.nextFollowupDate}</span>`
         nextFollowupClass = 'settlement-soon'
       } else {
-        nextFollowupHtml = `<span style="font-family:monospace;font-size:13px;">${c.nextFollowupDate}</span>`
+        nextFollowupHtml = `<span style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${c.nextFollowupDate}</span>`
       }
     }
 
@@ -410,7 +410,7 @@ export async function openCustomerDetail(id) {
       </div>
       <div class="detail-field">
         <span class="detail-label">ایدی پلتفرم</span>
-        <span class="detail-value" style="font-family:monospace;">${escapeHtml(c.platformId)}</span>
+        <span class="detail-value" style="font-family:'Vazirmatn',sans-serif;">${escapeHtml(c.platformId)}</span>
       </div>
       <div class="detail-field">
         <span class="detail-label">پلتفرم</span>
@@ -434,7 +434,7 @@ export async function openCustomerDetail(id) {
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
         <div>
           <div style="font-size:13px;font-weight:600;margin-bottom:2px;">تاریخ پیگیری بعدی</div>
-          <div style="font-size:13px;color:${c.nextFollowupDate ? 'var(--accent)' : 'var(--text-muted)'}; font-family:monospace;">
+          <div style="font-size:13px;color:${c.nextFollowupDate ? 'var(--accent)' : 'var(--text-muted)'}; font-family:'Vazirmatn',sans-serif;">
             ${c.nextFollowupDate || 'تنظیم نشده'}
           </div>
         </div>

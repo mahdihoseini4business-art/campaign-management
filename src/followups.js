@@ -50,7 +50,7 @@ export function renderFollowups() {
       <td><input type="checkbox" data-id="${escapeAttr(followupId)}" onchange="window.appToggleRowSelect('followups', '${escapeAttr(followupId)}', this.checked)"></td>
       <td><span class="id-badge ${f.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="font-size:11px;cursor:pointer;" onclick="window.appOpenCustomerDetail('${escapeAttr(f.customerId)}')">${escapeHtml(f.customerId)}</span></td>
       <td>${escapeHtml(name)}</td>
-      <td style="font-family:monospace;font-size:13px;">${escapeHtml(f.date)}</td>
+      <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(f.date)}</td>
       <td>${escapeHtml(f.type)}</td>
       <td>${escapeHtml(f.result)}</td>
       <td style="font-size:13px;">${escapeHtml(f.nextDate) || '—'}</td>

@@ -169,7 +169,7 @@
     text-align: center;
     font-size: 24px;
     font-weight: 700;
-    font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+    font-family: 'Vazirmatn', sans-serif;
     border: 2px solid #D6D3D1;
     border-radius: 12px;
     outline: none;
@@ -624,9 +624,6 @@
   }
 
   function formatPhoneDisplay(phone) {
-    if (phone.length === 11) {
-      return `${phone.slice(0, 4)} ${phone.slice(4, 7)} ${phone.slice(7)}`
-    }
     return phone
   }
 

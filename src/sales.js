@@ -88,7 +88,7 @@ function renderSalesRows(allSales) {
         settlementHtml = `<span class="settlement-badge settlement-soon-badge">${s.settlementDate}</span>`
         rowClass = 'settlement-soon'
       } else {
-        settlementHtml = `<span style="font-family:monospace;">${s.settlementDate}</span>`
+        settlementHtml = `<span style="font-family:'Vazirmatn',sans-serif;">${s.settlementDate}</span>`
       }
     }
 
@@ -96,13 +96,13 @@ function renderSalesRows(allSales) {
       <td><input type="checkbox" data-id="${escapeAttr(s.customerId)}" onchange="window.appToggleRowSelect('sales', '${escapeAttr(s.customerId)}', this.checked)"></td>
       <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="window.appOpenCustomerDetail('${escapeAttr(s.customerId)}')">${escapeHtml(s.customerId)}</span></td>
       <td>${escapeHtml(s.customerName)}</td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;font-size:13px;">${escapeHtml(s.customerPhone) || '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(s.customerPhone) || '—'}</td>
       <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${escapeHtml(pLabel)}</span></td>
       <td>${escapeHtml(s.productName)}</td>
       <td><span style="color:${statusColor};font-weight:600;">${escapeHtml(s.status)}</span></td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.price > 0 ? formatNumber(s.price) : '—'}</td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;">${s.deposit > 0 ? formatNumber(s.deposit) : '—'}</td>
-      <td style="direction:ltr;text-align:right;font-family:monospace;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? formatNumber(s.balance) : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.price > 0 ? formatNumber(s.price) : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.deposit > 0 ? formatNumber(s.deposit) : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? formatNumber(s.balance) : '—'}</td>
       <td style="font-size:12px;">${settlementHtml}</td>
     </tr>`
   }).join('')
