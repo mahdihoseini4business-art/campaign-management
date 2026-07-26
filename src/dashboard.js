@@ -1,5 +1,5 @@
 import { getData } from './data.js'
-import { hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr } from './utils.js'
+import { hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr, ownsCustomer } from './utils.js'
 import { getAllSales } from './sales.js'
 
 let dashCharts = {}
@@ -37,12 +37,10 @@ export function renderDashboard() {
 
   const currentUser = getCurrentUser()
   const isAdmin = currentUser && currentUser.role === 'admin'
-  const myName = currentUser ? currentUser.displayName : ''
 
   function isMyRecord(c) {
     if (isAdmin) return true
-    if (!myName) return true
-    return (c.advisor || '') === myName
+    return ownsCustomer(c, currentUser)
   }
 
   // General stats

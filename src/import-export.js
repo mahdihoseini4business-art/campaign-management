@@ -1,5 +1,6 @@
 import { getData, saveCustomerToDB, generateId } from './data.js'
-import { toEnDigits, showToast, getCurrentUser } from './utils.js'
+import { toEnDigits, showToast, getCurrentUser, resolveAdvisor } from './utils.js'
+import { getUsersSafe } from './auth.js'
 import { renderCustomers } from './customers.js'
 import { renderSales } from './sales.js'
 
@@ -226,6 +227,7 @@ export async function doImport() {
 
   let imported = 0, skipped = 0
   const newCustomers = []
+  const users = await getUsersSafe()
 
   for (const row of importData.rows) {
     const getValue = (fieldKey) => {
@@ -252,15 +254,16 @@ export async function doImport() {
     const existById = data.customers.find(c => c.platformId.toLowerCase() === platformId.toLowerCase())
     const existByPhone = phone && data.customers.find(c => c.phone && c.phone === phone)
 
-    if (existById || existByPhone) { skipped++; return }
+    if (existById || existByPhone) { skipped++; continue }
 
     const type = phone ? 'CS' : 'LD'
     const currentUser = getCurrentUser()
-    const advisor = getValue('advisor') || (currentUser ? currentUser.displayName : '')
+    const advisorRaw = getValue('advisor') || (currentUser ? (currentUser.phone || currentUser.displayName) : '')
+    const { advisor, advisorPhone } = resolveAdvisor(advisorRaw, users)
     const newCustomer = {
       id: await generateId(type), platformId, platform,
       name: getValue('name'), phone, status,
-      notes: getValue('notes'), advisor, products: []
+      notes: getValue('notes'), advisor, advisorPhone, products: []
     }
     data.customers.push(newCustomer)
     newCustomers.push(newCustomer)
@@ -390,6 +393,7 @@ export async function doSalesImport() {
   }
 
   let imported = 0, skipped = 0, created = 0
+  const users = await getUsersSafe()
 
   for (const row of salesImportData.rows) {
     const getValue = (fieldKey) => {
@@ -409,8 +413,9 @@ export async function doSalesImport() {
       const name = getValue('customerName') || ''
       const id = await generateId('CS')
       const currentUser = getCurrentUser()
-      const advisor = getValue('advisor') || (currentUser ? currentUser.displayName : '')
-      customer = { id, platformId: '', platform: 'instagram', name, phone, status: 'new', notes: 'خودکار ایجاد شده از ایمپورت فروش', advisor, nextFollowupDate: '', products: [] }
+      const advisorRaw = getValue('advisor') || (currentUser ? (currentUser.phone || currentUser.displayName) : '')
+      const { advisor, advisorPhone } = resolveAdvisor(advisorRaw, users)
+      customer = { id, platformId: '', platform: 'instagram', name, phone, status: 'new', notes: 'خودکار ایجاد شده از ایمپورت فروش', advisor, advisorPhone, nextFollowupDate: '', products: [] }
       data.customers.push(customer)
       created++
     }

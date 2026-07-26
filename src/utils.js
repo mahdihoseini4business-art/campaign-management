@@ -165,6 +165,60 @@ export function hasPermission(key) {
   return user.permissions && user.permissions[key] === true
 }
 
+/** Normalize Iranian mobile to digits starting with 09… */
+export function normalizePhone(phone) {
+  let p = toEnDigits(String(phone || '').replace(/[\s\-()]/g, ''))
+  if (p.startsWith('+98')) p = '0' + p.slice(3)
+  else if (p.startsWith('98') && p.length >= 12) p = '0' + p.slice(2)
+  else if (p.length === 10 && p.startsWith('9')) p = '0' + p
+  return p
+}
+
+export function userDisplayName(u) {
+  if (!u) return ''
+  return u.display_name || u.displayName ||
+    `${u.first_name || u.firstName || ''} ${u.last_name || u.lastName || ''}`.trim() ||
+    u.username || ''
+}
+
+/**
+ * Ownership is keyed by advisorPhone (stable). Falls back to display-name
+ * match only for legacy rows not yet backfilled.
+ */
+export function ownsCustomer(customer, user = getCurrentUser()) {
+  if (!user || !customer) return false
+  if (user.role === 'admin') return true
+
+  const myPhone = normalizePhone(user.phone)
+  const ownerPhone = normalizePhone(customer.advisorPhone)
+  if (myPhone && ownerPhone) return myPhone === ownerPhone
+
+  const myName = (user.displayName || '').trim()
+  const advisorName = (customer.advisor || '').trim()
+  if (myName && advisorName) return myName === advisorName
+  return false
+}
+
+/** Resolve advisor display name + phone from a phone value and users list */
+export function resolveAdvisor(advisorPhoneOrName, users = []) {
+  const raw = String(advisorPhoneOrName || '').trim()
+  const asPhone = normalizePhone(raw)
+  let user = null
+  if (asPhone && /^09\d{9}$/.test(asPhone)) {
+    user = users.find(u => normalizePhone(u.phone) === asPhone)
+  }
+  if (!user && raw) {
+    user = users.find(u => userDisplayName(u) === raw)
+  }
+  if (user) {
+    return { advisorPhone: normalizePhone(user.phone), advisor: userDisplayName(user) }
+  }
+  if (asPhone && /^09\d{9}$/.test(asPhone)) {
+    return { advisorPhone: asPhone, advisor: raw }
+  }
+  return { advisorPhone: '', advisor: raw }
+}
+
 // ============================================
 // Session (signed localStorage + server revalidation)
 // ============================================

@@ -1,5 +1,6 @@
 import { supabase } from './supabase.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS } from './utils.js'
+import { ADMIN_PHONE } from './config.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName } from './utils.js'
 
 // ============================================
 // Password Hashing (PBKDF2)
@@ -27,7 +28,8 @@ export async function hashPassword(pw, username) {
 // ============================================
 
 export async function debugListUsers() {
-  const users = await getUsers()
+  let users = []
+  try { users = await getUsers() } catch (e) { console.error(e); return [] }
   console.table(users.map(u => ({
     username: u.username,
     first_name: u.first_name,
@@ -40,8 +42,10 @@ export async function debugListUsers() {
 }
 
 export async function debugCreateTestUser(phone = '09123456789', firstName = 'تست', lastName = 'کاربر') {
-  const users = await getUsers()
-  if (users.find(u => u.phone === phone)) {
+  phone = normalizePhone(phone)
+  let users = []
+  try { users = await getUsers() } catch (e) { console.error(e); return }
+  if (users.find(u => normalizePhone(u.phone) === phone)) {
     console.log('کاربر با این شماره وجود دارد')
     return
   }
@@ -66,9 +70,18 @@ export async function getUsers() {
   const { data, error } = await supabase.from('users').select('*')
   if (error) {
     console.error('getUsers error:', error)
-    return []
+    throw error
   }
   return data || []
+}
+
+/** Like getUsers but returns [] on error (for non-critical UI). */
+export async function getUsersSafe() {
+  try {
+    return await getUsers()
+  } catch {
+    return []
+  }
 }
 
 export async function saveUser(user) {
@@ -93,22 +106,54 @@ export async function deleteUserFromDB(username) {
 // ============================================
 
 export async function seedAdmin() {
-  const users = await getUsers()
+  // Never seed if we cannot read users (e.g. RLS/network) — empty [] used to
+  // falsely trigger creating a new admin and orphaning ownership links.
+  let users
+  try {
+    users = await getUsers()
+  } catch (e) {
+    console.error('seedAdmin skipped: cannot load users', e)
+    return
+  }
 
-  if (users.length === 0) {
-    // Create default admin user with phone for OTP login
-    // NOTE: Change the phone number in production!
+  const adminPhone = normalizePhone(ADMIN_PHONE)
+
+  // Ensure a stable admin row keyed by username; do not wipe others
+  const existingAdmin = users.find(u => u.username === 'admin')
+  if (existingAdmin) {
+    // Keep phone stable if missing
+    if (!existingAdmin.phone && adminPhone) {
+      await saveUser({ ...existingAdmin, phone: adminPhone })
+    }
+    return
+  }
+
+  if (users.length > 0) {
+    // Table has users but no admin — create admin without touching others
     await saveUser({
       username: 'admin',
       first_name: 'مدیر',
       last_name: 'سیستم',
-      phone: '09123456789',
+      phone: adminPhone,
       display_name: 'مدیر سیستم',
       role: 'admin',
       permissions: null
     })
-    console.log('Default admin created. Phone: 09123456789')
+    console.log('Admin user created with phone:', adminPhone)
+    return
   }
+
+  // Truly empty users table
+  await saveUser({
+    username: 'admin',
+    first_name: 'مدیر',
+    last_name: 'سیستم',
+    phone: adminPhone,
+    display_name: 'مدیر سیستم',
+    role: 'admin',
+    permissions: null
+  })
+  console.log('Default admin created. Phone:', adminPhone)
 }
 
 // ============================================
@@ -186,7 +231,15 @@ export async function doLogin() {
   }
 
   resetLoginAttempts()
-  await setCurrentUser({ username: user.username, displayName: user.display_name, role: user.role, permissions: user.permissions || null })
+  await setCurrentUser({
+    username: user.username,
+    displayName: user.display_name,
+    firstName: user.first_name,
+    lastName: user.last_name,
+    phone: user.phone,
+    role: user.role,
+    permissions: user.permissions || null
+  })
   window.location.href = '/index.html'
 }
 
@@ -277,7 +330,7 @@ export function closeSettingsModal() {
 export async function addUser() {
   const firstName = document.getElementById('newFirstName').value.trim()
   const lastName = document.getElementById('newLastName').value.trim()
-  const phone = toEnDigits(document.getElementById('newPhone').value.trim())
+  const phone = normalizePhone(document.getElementById('newPhone').value.trim())
   const role = document.getElementById('newRole').value
 
   // اعتبارسنجی
@@ -287,14 +340,20 @@ export async function addUser() {
     showToast('شماره موبایل صحیح نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹)'); return
   }
 
-  // بررسی تکراری بودن شماره
-  const users = await getUsers()
-  if (users.find(u => u.phone === phone)) {
+  // بررسی تکراری بودن شماره — phone is the stable identity
+  let users
+  try {
+    users = await getUsers()
+  } catch (e) {
+    showToast('خطا در خواندن لیست کاربران')
+    return
+  }
+  if (users.find(u => normalizePhone(u.phone) === phone)) {
     showToast('این شماره موبایل قبلاً ثبت شده')
     return
   }
 
-  // ذخیره کاربر
+  // ذخیره کاربر — username derived from phone so recreate keeps same key
   const displayName = `${firstName} ${lastName}`
   try {
     await saveUser({
@@ -335,7 +394,15 @@ export async function deleteUser(username) {
 }
 
 export async function renderUsersList() {
-  const users = await getUsers()
+  let users = []
+  try {
+    users = await getUsers()
+  } catch (e) {
+    console.error('renderUsersList error:', e)
+    document.getElementById('settingsUsersList').innerHTML =
+      '<div style="color:var(--danger);font-size:13px;">خطا در بارگذاری کاربران</div>'
+    return
+  }
   const container = document.getElementById('settingsUsersList')
   const currentUser = getCurrentUser()
 
@@ -345,7 +412,7 @@ export async function renderUsersList() {
     const perms = u.permissions || getDefaultPermissions()
 
     // نمایش نام کاربر
-    const userDisplayName = u.display_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username
+    const userDisplay = userDisplayName(u) || u.username
     const userPhone = u.phone || '—'
     const userRole = u.role === 'admin' ? 'مدیر' : 'کاربر'
 
@@ -369,7 +436,7 @@ export async function renderUsersList() {
       <div class="settings-user-row" style="flex-direction:column;align-items:stretch;">
         <div style="display:flex;align-items:center;gap:10px;">
           <div class="user-info">
-            <div class="user-name">${escapeHtml(userDisplayName)} ${isCurrentUser ? '<span style="font-size:11px;color:var(--accent);">(شما)</span>' : ''}</div>
+            <div class="user-name">${escapeHtml(userDisplay)} ${isCurrentUser ? '<span style="font-size:11px;color:var(--accent);">(شما)</span>' : ''}</div>
             <div class="user-role">📱 ${escapeHtml(userPhone)} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${userRole}</span></div>
           </div>
           ${!isAdminUser ? `<button class="btn-icon" title="حذف" onclick="app.deleteUser('${escapeAttr(u.username)}')" style="color:var(--danger);">🗑</button>` : ''}

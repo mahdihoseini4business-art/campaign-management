@@ -36,6 +36,7 @@ export async function loadData() {
     status: c.status || 'new',
     notes: c.notes || '',
     advisor: c.advisor || '',
+    advisorPhone: c.advisor_phone || '',
     nextFollowupDate: c.next_followup_date || '',
     products: c.products || []
   }))
@@ -80,6 +81,7 @@ export async function saveCustomerToDB(customer) {
     status: customer.status || 'new',
     notes: customer.notes || '',
     advisor: customer.advisor || '',
+    advisor_phone: customer.advisorPhone || '',
     next_followup_date: customer.nextFollowupDate || '',
     products: customer.products || []
   }
@@ -208,4 +210,35 @@ export async function generateId(type) {
   const nextNum = await getNextIdNumber(prefix)
   await saveSetting(`id_counter_${prefix}`, nextNum)
   return prefix + String(nextNum).padStart(4, '0')
+}
+
+/**
+ * Fill missing advisorPhone from users.display_name match (legacy rows).
+ * Persists updates so ownership survives user recreation by phone.
+ */
+export async function backfillAdvisorPhones(users) {
+  if (!users || !users.length) return { updated: 0 }
+
+  const byName = new Map()
+  users.forEach(u => {
+    const name = (u.display_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || '').trim()
+    const phone = (u.phone || '').trim()
+    if (name && phone) byName.set(name, phone)
+  })
+
+  let updated = 0
+  for (const c of data.customers) {
+    if (c.advisorPhone) continue
+    if (!c.advisor) continue
+    const phone = byName.get(c.advisor.trim())
+    if (!phone) continue
+    c.advisorPhone = phone
+    try {
+      await saveCustomerToDB(c)
+      updated++
+    } catch (e) {
+      console.error('backfillAdvisorPhones error for', c.id, e)
+    }
+  }
+  return { updated }
 }

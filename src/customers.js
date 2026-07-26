@@ -1,6 +1,6 @@
 import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId } from './data.js'
-import { getUsers } from './auth.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali } from './utils.js'
+import { getUsersSafe } from './auth.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer, resolveAdvisor, normalizePhone, userDisplayName } from './utils.js'
 
 const STATUS_LABELS = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
 const PLATFORM_LABELS = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' }
@@ -21,7 +21,6 @@ export async function renderCustomers() {
   // Render customers immediately (don't wait for users)
   const currentUser = getCurrentUser()
   const isAdmin = currentUser && currentUser.role === 'admin'
-  const myName = currentUser ? currentUser.displayName : ''
 
   const filtered = data.customers.filter(c => {
     if (!c.id.toLowerCase().includes(search) &&
@@ -32,9 +31,9 @@ export async function renderCustomers() {
     const isLD = c.id.startsWith('LD')
     if (isCS && !hasPermission('customers_cs')) return false
     if (isLD && !hasPermission('customers_ld')) return false
-    // Non-admin users only see their own records
-    if (!isAdmin && myName && (c.advisor || '') !== myName) return false
-    if (advisorFilter && (c.advisor || '') !== advisorFilter) return false
+    // Non-admin users only see records owned by their phone
+    if (!isAdmin && !ownsCustomer(c, currentUser)) return false
+    if (advisorFilter && normalizePhone(c.advisorPhone) !== normalizePhone(advisorFilter)) return false
     return true
   })
 
@@ -131,9 +130,11 @@ async function updateAdvisorDropdown() {
   const advisorSelect = document.getElementById('filterAdvisor')
   if (!advisorSelect) return
   const currentVal = advisorSelect.value
-  let users = []
-  try { users = await getUsers() } catch (e) { console.error('getUsers error:', e) }
-  advisorSelect.innerHTML = '<option value="">همه کارشناسان</option>' + users.map(u => `<option value="${escapeHtml(u.display_name)}">${escapeHtml(u.display_name)}</option>`).join('')
+  const users = await getUsersSafe()
+  advisorSelect.innerHTML = '<option value="">همه کارشناسان</option>' + users
+    .filter(u => u.phone)
+    .map(u => `<option value="${escapeAttr(normalizePhone(u.phone))}">${escapeHtml(userDisplayName(u))}</option>`)
+    .join('')
   advisorSelect.value = currentVal
 }
 
@@ -181,9 +182,12 @@ export async function openCustomerModal(editId) {
   const modal = document.getElementById('customerModal')
   const title = document.getElementById('customerModalTitle')
   const currentUser = getCurrentUser()
-  const users = await getUsers()
+  const users = await getUsersSafe()
   const advisorSelect = document.getElementById('customerAdvisor')
-  advisorSelect.innerHTML = users.map(u => `<option value="${escapeHtml(u.display_name)}">${escapeHtml(u.display_name)}</option>`).join('')
+  advisorSelect.innerHTML = users
+    .filter(u => u.phone)
+    .map(u => `<option value="${escapeAttr(normalizePhone(u.phone))}">${escapeHtml(userDisplayName(u))}</option>`)
+    .join('')
 
   if (editId) {
     const c = data.customers.find(x => x.id === editId)
@@ -198,7 +202,8 @@ export async function openCustomerModal(editId) {
     document.getElementById('customerPhone').value = c.phone
     document.getElementById('customerStatus').value = c.status
     document.getElementById('customerNotes').value = c.notes
-    advisorSelect.value = c.advisor || (currentUser ? currentUser.displayName : '')
+    const selectedPhone = c.advisorPhone || (currentUser ? currentUser.phone : '')
+    advisorSelect.value = normalizePhone(selectedPhone)
   } else {
     title.textContent = 'مشتری جدید'
     document.getElementById('editCustomerId').value = ''
@@ -209,7 +214,7 @@ export async function openCustomerModal(editId) {
     document.getElementById('customerPhone').value = ''
     document.getElementById('customerStatus').value = 'new'
     document.getElementById('customerNotes').value = ''
-    advisorSelect.value = currentUser ? currentUser.displayName : ''
+    advisorSelect.value = currentUser?.phone ? normalizePhone(currentUser.phone) : ''
     updatePreviewId()
   }
 
@@ -237,6 +242,7 @@ export async function saveCustomer() {
 
   try {
   const data = getData()
+  const users = await getUsersSafe()
   const editId = document.getElementById('editCustomerId').value
   const platformId = document.getElementById('customerPlatformId').value.trim()
   const platform = document.getElementById('customerPlatform').value
@@ -244,7 +250,8 @@ export async function saveCustomer() {
   const phone = document.getElementById('customerPhone').value.trim()
   const status = document.getElementById('customerStatus').value
   const notes = document.getElementById('customerNotes').value.trim()
-  const advisor = document.getElementById('customerAdvisor').value
+  const advisorSelectValue = document.getElementById('customerAdvisor').value
+  const { advisor, advisorPhone } = resolveAdvisor(advisorSelectValue, users)
 
   if (!editId) {
     const existById = platformId && data.customers.find(c => c.platformId && c.platformId.toLowerCase() === platformId.toLowerCase())
@@ -263,7 +270,7 @@ export async function saveCustomer() {
 
     const type = phone ? 'CS' : 'LD'
     const id = await generateId(type)
-    const newCustomer = { id, platformId, platform, name, phone, status, notes, advisor, nextFollowupDate: '', products: [] }
+    const newCustomer = { id, platformId, platform, name, phone, status, notes, advisor, advisorPhone, nextFollowupDate: '', products: [] }
     await saveCustomerToDB(newCustomer)
     data.customers.push(newCustomer)
   } else {
@@ -278,14 +285,15 @@ export async function saveCustomer() {
       const oldCustomer = data.customers[idx]
       const wasLD = oldCustomer.id.startsWith('LD')
       const nowHasPhone = phone && phone.length > 0
+      const advisorFields = { advisor, advisorPhone }
 
       if (wasLD && nowHasPhone) {
         const newId = await generateId('CS')
         try {
-          await saveCustomerToDB({ ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor })
+          await saveCustomerToDB({ ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, ...advisorFields })
           await updateFollowupsCustomerId(oldCustomer.id, newId)
           await saveSetting('convertedCount', (data.convertedCount || 0) + 1)
-          data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor }
+          data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, ...advisorFields }
           data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
           data.convertedCount = (data.convertedCount || 0) + 1
           await renderCustomers()
@@ -301,9 +309,9 @@ export async function saveCustomer() {
       if (!wasLD && !nowHasPhone && oldCustomer.id.startsWith('CS')) {
         const newId = await generateId('LD')
         try {
-          await saveCustomerToDB({ ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor })
+          await saveCustomerToDB({ ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, ...advisorFields })
           await updateFollowupsCustomerId(oldCustomer.id, newId)
-          data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, advisor }
+          data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, ...advisorFields }
           data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
           await renderCustomers()
           closeCustomerModal()
@@ -315,7 +323,7 @@ export async function saveCustomer() {
         return
       }
 
-      data.customers[idx] = { ...oldCustomer, platformId, platform, name, phone, status, notes, advisor }
+      data.customers[idx] = { ...oldCustomer, platformId, platform, name, phone, status, notes, ...advisorFields }
     }
   }
 
@@ -386,7 +394,7 @@ export async function openCustomerDetail(id) {
   const platformLabel = PLATFORM_LABELS[c.platform] || c.platform
   const statusLabel = STATUS_LABELS[c.status] || c.status
 
-  const detailUsers = await getUsers()
+  const detailUsers = await getUsersSafe()
 
   document.getElementById('detailTitle').textContent = `پنل مشتری — ${c.name || c.platformId}`
 
@@ -403,8 +411,12 @@ export async function openCustomerDetail(id) {
       <div class="detail-field">
         <span class="detail-label">کارشناس مسئول</span>
         <span class="detail-value">
-          <select class="form-select" id="detailAdvisor" style="width:auto;display:inline-block;" onchange="app.updateCustomerAdvisor('${c.id}', this.value)">
-            ${detailUsers.map(u => `<option value="${escapeHtml(u.display_name)}" ${u.display_name === c.advisor ? 'selected' : ''}>${escapeHtml(u.display_name)}</option>`).join('')}
+          <select class="form-select" id="detailAdvisor" style="width:auto;display:inline-block;" onchange="app.updateCustomerAdvisor('${escapeAttr(c.id)}', this.value)">
+            ${detailUsers.filter(u => u.phone).map(u => {
+              const phone = normalizePhone(u.phone)
+              const selected = phone === normalizePhone(c.advisorPhone) ? 'selected' : ''
+              return `<option value="${escapeAttr(phone)}" ${selected}>${escapeHtml(userDisplayName(u))}</option>`
+            }).join('')}
           </select>
         </span>
       </div>
@@ -574,14 +586,21 @@ export async function addQuickNote(customerId) {
   showToast('توضیحات ثبت شد')
 }
 
-export async function updateCustomerAdvisor(customerId, advisor) {
+export async function updateCustomerAdvisor(customerId, advisorPhoneValue) {
   const data = getData()
   const c = data.customers.find(x => x.id === customerId)
-  if (c) {
-    c.advisor = advisor
+  if (!c) return
+  const users = await getUsersSafe()
+  const { advisor, advisorPhone } = resolveAdvisor(advisorPhoneValue, users)
+  c.advisor = advisor
+  c.advisorPhone = advisorPhone
+  try {
     await saveCustomerToDB(c)
     await renderCustomers()
     showToast('کارشناس مسئول تغییر کرد')
+  } catch (e) {
+    console.error('updateCustomerAdvisor error:', e)
+    showToast('خطا در ذخیره کارشناس')
   }
 }
 
