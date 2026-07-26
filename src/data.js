@@ -177,13 +177,35 @@ export async function saveSetting(key, value) {
 // Generate next ID
 // ============================================
 
+// High-water mark so deleted IDs are never reused (DATA-H3)
+async function getNextIdNumber(prefix) {
+  const counterKey = `id_counter_${prefix}`
+
+  const [{ data: settingsRows }, { data: rows }] = await Promise.all([
+    supabase.from('app_settings').select('value').eq('key', counterKey).limit(1),
+    supabase.from('customers').select('id').like('id', prefix + '%')
+  ])
+
+  const stored = settingsRows?.[0]?.value != null ? parseInt(settingsRows[0].value, 10) : 0
+  const existingIds = (rows || [])
+    .map(c => parseInt(c.id.slice(2), 10))
+    .filter(n => !isNaN(n))
+  const maxExisting = existingIds.length > 0 ? Math.max(...existingIds) : 0
+
+  // Never go below the highest ID ever issued or still present
+  return Math.max(stored || 0, maxExisting) + 1
+}
+
+/** Preview next ID without consuming it */
+export async function peekNextId(type) {
+  const prefix = type === 'CS' ? 'CS' : 'LD'
+  const nextNum = await getNextIdNumber(prefix)
+  return prefix + String(nextNum).padStart(4, '0')
+}
+
 export async function generateId(type) {
   const prefix = type === 'CS' ? 'CS' : 'LD'
-  // Query DB directly to avoid stale in-memory data
-  const { data: rows } = await supabase.from('customers').select('id').like('id', prefix + '%')
-  const existingIds = (rows || [])
-    .map(c => parseInt(c.id.slice(2)))
-    .filter(n => !isNaN(n))
-  const nextNum = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1
+  const nextNum = await getNextIdNumber(prefix)
+  await saveSetting(`id_counter_${prefix}`, nextNum)
   return prefix + String(nextNum).padStart(4, '0')
 }

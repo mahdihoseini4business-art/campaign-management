@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId } from './data.js'
+import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId } from './data.js'
 import { getUsers } from './auth.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali } from './utils.js'
 
@@ -217,11 +217,11 @@ export async function openCustomerModal(editId) {
   document.getElementById('customerPlatformId').focus()
 }
 
-function updatePreviewId() {
+async function updatePreviewId() {
   if (document.getElementById('editCustomerId').value) return
   const phone = document.getElementById('customerPhone').value.trim()
   const type = phone ? 'CS' : 'LD'
-  document.getElementById('customerIdDisplay').value = generateId(type)
+  document.getElementById('customerIdDisplay').value = await peekNextId(type)
   document.getElementById('customerIdHint').textContent = phone
     ? 'شماره وارد شد → مشتری (CS)'
     : 'بدون شماره → لید (LD)'

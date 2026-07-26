@@ -391,7 +391,7 @@ export async function doSalesImport() {
 
   let imported = 0, skipped = 0, created = 0
 
-  salesImportData.rows.forEach(row => {
+  for (const row of salesImportData.rows) {
     const getValue = (fieldKey) => {
       const colIdx = mapping[fieldKey]
       if (colIdx === undefined || colIdx === null) return ''
@@ -399,18 +399,18 @@ export async function doSalesImport() {
     }
 
     const phone = getValue('phone')
-    if (!phone) { skipped++; return }
+    if (!phone) { skipped++; continue }
 
     const productName = getValue('productName')
-    if (!productName) { skipped++; return }
+    if (!productName) { skipped++; continue }
 
     let customer = data.customers.find(c => c.phone === phone)
     if (!customer) {
       const name = getValue('customerName') || ''
-      const id = generateId('CS')
+      const id = await generateId('CS')
       const currentUser = getCurrentUser()
       const advisor = getValue('advisor') || (currentUser ? currentUser.displayName : '')
-      customer = { id, platformId: '', platform: 'instagram', name, phone, status: 'new', notes: 'خودکار ایجاد شده از ایمپورت فروش', advisor, products: [] }
+      customer = { id, platformId: '', platform: 'instagram', name, phone, status: 'new', notes: 'خودکار ایجاد شده از ایمپورت فروش', advisor, nextFollowupDate: '', products: [] }
       data.customers.push(customer)
       created++
     }
@@ -424,11 +424,11 @@ export async function doSalesImport() {
     const isDuplicate = customer.products.some(p =>
       p.name === productName && p.status === status && (parseFloat(p.price) || 0) === price
     )
-    if (isDuplicate) { skipped++; return }
+    if (isDuplicate) { skipped++; continue }
 
     customer.products.push({ name: productName, status, price: String(price), deposit: String(deposit), settlementDate })
     imported++
-  })
+  }
 
   // Save all affected customers to Supabase
   const affectedCustomers = [...new Set(data.customers.filter(c => c.products.length > 0).map(c => c.id))]
