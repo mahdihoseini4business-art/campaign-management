@@ -358,11 +358,11 @@
       <label for="phoneNumber">شماره موبایل</label>
       <div class="phone-input-wrapper">
         <input type="tel" class="phone-input" id="phoneNumber"
-               placeholder="912 345 6789"
+               placeholder="09123456789"
                inputmode="tel"
                maxlength="11"
                autocomplete="tel">
-        <div class="phone-prefix">🇮🇷 ۰۹</div>
+        <div class="phone-prefix">🇮🇷</div>
       </div>
     </div>
 
@@ -376,7 +376,7 @@
   <div id="step2" style="display:none;">
     <h2>کد تأیید را وارد کنید</h2>
     <div class="otp-info">
-      کد ۶ رقمی به شماره<br>
+      کد ۴ رقمی به شماره<br>
       <strong class="otp-phone-mask" id="otpPhoneDisplay"></strong><br>
       ارسال شد
     </div>
@@ -489,8 +489,8 @@
     const successEl = document.getElementById('success2')
     const verifyBtn = document.getElementById('verifyOtpBtn')
 
-    if (code.length !== 6) {
-      errorEl.textContent = 'لطفاً کد ۶ رقمی را کامل وارد کنید'
+    if (code.length !== 4) {
+      errorEl.textContent = 'لطفاً کد ۴ رقمی را کامل وارد کنید'
       errorEl.classList.add('show')
       return
     }
