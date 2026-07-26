@@ -23,6 +23,42 @@ export async function hashPassword(pw, username) {
 }
 
 // ============================================
+// Debug Helper (for testing in browser console)
+// ============================================
+
+export async function debugListUsers() {
+  const users = await getUsers()
+  console.table(users.map(u => ({
+    username: u.username,
+    first_name: u.first_name,
+    last_name: u.last_name,
+    phone: u.phone,
+    role: u.role,
+    display_name: u.display_name
+  })))
+  return users
+}
+
+export async function debugCreateTestUser(phone = '09123456789', firstName = 'تست', lastName = 'کاربر') {
+  const users = await getUsers()
+  if (users.find(u => u.phone === phone)) {
+    console.log('کاربر با این شماره وجود دارد')
+    return
+  }
+
+  await saveUser({
+    username: `user_${phone}`,
+    first_name: firstName,
+    last_name: lastName,
+    phone,
+    display_name: `${firstName} ${lastName}`,
+    role: 'user',
+    permissions: getDefaultPermissions()
+  })
+  console.log(`کاربر تست با شماره ${phone} ایجاد شد`)
+}
+
+// ============================================
 // User CRUD (Supabase)
 // ============================================
 
@@ -58,17 +94,20 @@ export async function deleteUserFromDB(username) {
 
 export async function seedAdmin() {
   const users = await getUsers()
-  const adminHash = await hashPassword('admin123', 'admin')
 
   if (users.length === 0) {
-    // Create admin only if no users exist
+    // Create default admin user with phone for OTP login
+    // NOTE: Change the phone number in production!
     await saveUser({
       username: 'admin',
-      password_hash: adminHash,
+      first_name: 'مدیر',
+      last_name: 'سیستم',
+      phone: '09123456789',
       display_name: 'مدیر سیستم',
       role: 'admin',
       permissions: null
     })
+    console.log('Default admin created. Phone: 09123456789')
   }
 }
 
