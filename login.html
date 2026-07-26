@@ -394,8 +394,6 @@
       <input type="tel" class="otp-input" maxlength="1" inputmode="numeric" data-index="1">
       <input type="tel" class="otp-input" maxlength="1" inputmode="numeric" data-index="2">
       <input type="tel" class="otp-input" maxlength="1" inputmode="numeric" data-index="3">
-      <input type="tel" class="otp-input" maxlength="1" inputmode="numeric" data-index="4">
-      <input type="tel" class="otp-input" maxlength="1" inputmode="numeric" data-index="5">
     </div>
 
     <button type="button" class="btn-login" id="verifyOtpBtn" onclick="handleVerifyOTP()" disabled>
@@ -670,12 +668,12 @@
       e.preventDefault()
       const pastedData = e.clipboardData.getData('text').replace(/[^0-9]/g, '')
 
-      if (pastedData.length >= 6) {
-        for (let i = 0; i < 6 && i < pastedData.length; i++) {
+      if (pastedData.length >= 4) {
+        for (let i = 0; i < 4 && i < pastedData.length; i++) {
           otpInputs[i].value = pastedData[i]
           otpInputs[i].classList.add('filled')
         }
-        otpInputs[5].focus()
+        otpInputs[3].focus()
         updateVerifyButton()
       }
     })
@@ -689,7 +687,7 @@
   function updateVerifyButton() {
     const code = Array.from(otpInputs).map(input => input.value).join('')
     const verifyBtn = document.getElementById('verifyOtpBtn')
-    verifyBtn.disabled = code.length !== 6
+    verifyBtn.disabled = code.length !== 4
   }
 
   // ============================================

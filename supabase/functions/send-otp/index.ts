@@ -62,8 +62,8 @@ serve(async (req) => {
       )
     }
 
-    // تولید کد ۶ رقمی تصادفی
-    const code = Math.floor(100000 + Math.random() * 900000).toString()
+    // تولید کد ۴ رقمی تصادفی
+    const code = Math.floor(1000 + Math.random() * 9000).toString()
 
     // ذخیره OTP در دیتابیس
     const { error: insertError } = await supabase

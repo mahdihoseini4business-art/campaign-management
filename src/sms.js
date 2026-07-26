@@ -29,7 +29,7 @@ export async function sendOTP(phone) {
 /**
  * تأیید کد OTP
  * @param {string} phone - شماره موبایل
- * @param {string} code - کد ۶ رقمی
+ * @param {string} code - کد ۴ رقمی
  * @returns {Promise<{success: boolean, user?: object, error?: string, locked?: boolean}>}
  */
 export async function verifyOTP(phone, code) {

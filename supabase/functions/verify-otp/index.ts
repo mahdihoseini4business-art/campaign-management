@@ -26,9 +26,9 @@ serve(async (req) => {
       )
     }
 
-    if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
+    if (!code || code.length !== 4 || !/^\d{4}$/.test(code)) {
       return new Response(
-        JSON.stringify({ success: false, error: 'کد تأیید باید ۶ رقمی باشد' }),
+        JSON.stringify({ success: false, error: 'کد تأیید باید ۴ رقمی باشد' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
