@@ -351,7 +351,7 @@
   .platform-wa { background: #25D366; }
 
   .status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
-  .status-new { background: #e9ecef; color: var(--text-muted); }
+  .status-new { background: #e9ecef; color: #495057; }
   .status-contacted { background: #cce5ff; color: #084298; }
   .status-chatting { background: #d0bfff; color: #581c87; }
   .status-interested { background: #fff3cd; color: #664d03; }
@@ -359,7 +359,7 @@
   .status-followup_done { background: #b6effb; color: #055160; }
   .status-converting { background: #f8d7da; color: #842029; }
   .status-purchased { background: #d1e7dd; color: #0f5132; }
-  .status-cancelled { background: #e9ecef; color: #6c757d; text-decoration: line-through; }
+  .status-cancelled { background: #e9ecef; color: #495057; text-decoration: line-through; }
 
   .notes-cell {
     max-width: 180px;
