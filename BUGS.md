@@ -1,7 +1,7 @@
 # گزارش جامع باگ‌های پروژه Campaign Management
 
-> **تاریخ آخرین بررسی:** ۱۴۰۵/۰۵/۰۳  
-> **تعداد کل باگ‌ها:** ۵۸
+> **تاریخ آخرین بررسی:** ۱۴۰۵/۰۵/۰۴  
+> **تعداد کل باگ‌ها:** ۶۳
 
 ---
 
@@ -10,9 +10,9 @@
 | اولویت | امنیتی | داده‌ای | رابط کاربری | دسترسی‌پذیری | کیفیت کد | جمع |
 |--------|--------|---------|-------------|--------------|----------|-----|
 | بالا (High) | ۰ | ۰ | ۰ | ۰ | ۰ | ۰ |
-| متوسط (Medium) | ۰ | ۱۱ | ۱۰ | ۸ | ۰ | ۲۹ |
-| پایین (Low) | ۳ | ۵ | ۱۰ | ۱۰ | ۲ | ۳۰ |
-| **جمع** | **۳** | **۲۳** | **۲۰** | **۱۸** | **۲** | **۶۶** |
+| متوسط (Medium) | ۰ | ۱۱ | ۱۰ | ۵ | ۰ | ۲۶ |
+| پایین (Low) | ۳ | ۵ | ۱۰ | ۹ | ۱۰ | ۳۷ |
+| **جمع** | **۳** | **۱۶** | **۲۰** | **۱۴** | **۱۰** | **۶۳** |
 
 ---
 
@@ -149,17 +149,8 @@
 
 ### متوسط (Medium)
 
-#### A11Y-M1 — `user-scalable=no` در صفحه لاگین
-- **فایل:** `login.html` خط ۵
-
 #### A11Y-M2 — Error message `role="alert"` نداره
 - **فایل:** `login.html` خط ۱۲۱
-
-#### A11Y-M3 — Label فیلدها `for` attribute نداره
-- **فایل:** `login.html` خطوط ۱۱۹-۱۲۳
-
-#### A11Y-M4 — Modal `aria-modal="true"` و `role="dialog"` نداره
-- **فایل:** `index.html`
 
 #### A11Y-M5 — جدول‌ها `<caption>` یا `aria-label` ندارن
 - **فایل:** `index.html`
@@ -183,7 +174,6 @@
 #### A11Y-L6 — `:focus-visible` styles نداره
 #### A11Y-L7 — Scrollbar مخفی در تب‌ها مشکل‌سازه
 #### A11Y-L8 — `margin-right: auto` در RTL اشتباهه
-#### A11Y-L9 — Status badge contrast AA نداره
 #### A11Y-L10 — نداشتن `<noscript>` fallback
 
 ---
@@ -211,5 +201,5 @@
 1. **UX-M1** — Sort indicator
 2. **DATA-M1** — تبدیل LD↔CS بدون rollback
 3. **DATA-M2** — deleteCustomer روی مشتری ناموجود کرش می‌کنه
-4. **A11Y-M4** — Modal aria-modal/dialog
-5. **A11Y-M7** — :focus-visible styles
+4. **A11Y-M7** — :focus-visible styles
+5. **A11Y-M2** — Error message role="alert"
