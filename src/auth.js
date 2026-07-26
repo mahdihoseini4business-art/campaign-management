@@ -176,9 +176,9 @@ export async function openSettingsModal() {
     showToast('فقط مدیر سیستم به تنظیمات دسترسی دارد')
     return
   }
-  document.getElementById('newUsername').value = ''
-  document.getElementById('newPassword').value = ''
-  document.getElementById('newDisplayName').value = ''
+  document.getElementById('newFirstName').value = ''
+  document.getElementById('newLastName').value = ''
+  document.getElementById('newPhone').value = ''
   document.getElementById('newRole').value = 'user'
   await renderUsersList()
   document.getElementById('settingsModal').classList.add('active')
@@ -190,28 +190,34 @@ export function closeSettingsModal() {
 }
 
 export async function addUser() {
-  const username = toEnDigits(document.getElementById('newUsername').value.trim())
-  const password = toEnDigits(document.getElementById('newPassword').value)
-  const displayName = document.getElementById('newDisplayName').value.trim()
+  const firstName = document.getElementById('newFirstName').value.trim()
+  const lastName = document.getElementById('newLastName').value.trim()
+  const phone = toEnDigits(document.getElementById('newPhone').value.trim())
   const role = document.getElementById('newRole').value
 
-  if (!username) { showToast('نام کاربری را وارد کنید'); return }
-  if (!password) { showToast('رمز عبور را وارد کنید'); return }
-  if (password.length < 6) { showToast('رمز عبور باید حداقل ۶ کاراکتر باشد'); return }
-  if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) { showToast('رمز عبور باید شامل حروف و اعداد باشد'); return }
+  // اعتبارسنجی
+  if (!firstName) { showToast('نام را وارد کنید'); return }
+  if (!lastName) { showToast('نام خانوادگی را وارد کنید'); return }
+  if (!phone || !/^09\d{9}$/.test(phone)) {
+    showToast('شماره موبایل صحیح نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹)'); return
+  }
 
+  // بررسی تکراری بودن شماره
   const users = await getUsers()
-  if (users.find(u => u.username === username)) {
-    showToast('این نام کاربری قبلاً ثبت شده')
+  if (users.find(u => u.phone === phone)) {
+    showToast('این شماره موبایل قبلاً ثبت شده')
     return
   }
 
-  const hash = await hashPassword(password, username)
+  // ذخیره کاربر
+  const displayName = `${firstName} ${lastName}`
   try {
     await saveUser({
-      username,
-      password_hash: hash,
-      display_name: displayName || username,
+      username: `user_${phone}`,
+      first_name: firstName,
+      last_name: lastName,
+      phone,
+      display_name: displayName,
       role,
       permissions: role === 'admin' ? null : getDefaultPermissions()
     })
@@ -253,6 +259,11 @@ export async function renderUsersList() {
     const isAdminUser = u.username === 'admin'
     const perms = u.permissions || getDefaultPermissions()
 
+    // نمایش نام کاربر
+    const userDisplayName = u.display_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username
+    const userPhone = u.phone || '—'
+    const userRole = u.role === 'admin' ? 'مدیر' : 'کاربر'
+
     const permsHtml = (u.role === 'admin')
       ? '<div style="font-size:12px;color:var(--accent);margin-top:6px;">دسترسی کامل (مدیر)</div>'
       : PERMISSION_GROUPS.map(g => `
@@ -273,8 +284,8 @@ export async function renderUsersList() {
       <div class="settings-user-row" style="flex-direction:column;align-items:stretch;">
         <div style="display:flex;align-items:center;gap:10px;">
           <div class="user-info">
-            <div class="user-name">${escapeHtml(u.display_name || u.username)} ${isCurrentUser ? '<span style="font-size:11px;color:var(--accent);">(شما)</span>' : ''}</div>
-            <div class="user-role">@${u.username} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${u.role === 'admin' ? 'مدیر' : 'کاربر'}</span></div>
+            <div class="user-name">${escapeHtml(userDisplayName)} ${isCurrentUser ? '<span style="font-size:11px;color:var(--accent);">(شما)</span>' : ''}</div>
+            <div class="user-role">📱 ${escapeHtml(userPhone)} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${userRole}</span></div>
           </div>
           ${!isAdminUser ? `<button class="btn-icon" title="حذف" onclick="window.appDeleteUser('${escapeAttr(u.username)}')" style="color:var(--danger);">🗑</button>` : ''}
         </div>
