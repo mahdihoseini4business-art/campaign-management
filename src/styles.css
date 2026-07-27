@@ -349,6 +349,13 @@
   .platform-ig { background: #E1306C; }
   .platform-tg { background: #0088cc; }
   .platform-wa { background: #25D366; }
+  .platform-web { background: #2563EB; }
+  .platform-bale { background: #00A884; }
+  .platform-eitaa { background: #F59E0B; }
+  .platform-goftino { background: #6366F1; }
+  .platform-carno { background: #1D1C74; }
+  .platform-rubika { background: #A855F7; }
+  .platform-referral { background: #78716C; }
 
   .status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
   .status-new { background: #e9ecef; color: #495057; }

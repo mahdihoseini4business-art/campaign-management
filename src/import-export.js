@@ -1,5 +1,5 @@
 import { getData, saveCustomerToDB, generateId } from './data.js'
-import { toEnDigits, showToast, getCurrentUser, resolveAdvisor } from './utils.js'
+import { toEnDigits, showToast, getCurrentUser, resolveAdvisor, PLATFORM_LABELS, PLATFORM_MAP_IMPORT } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers } from './customers.js'
 import { renderSales } from './sales.js'
@@ -15,9 +15,8 @@ const EXPORT_CONFIG = {
     getRows: () => {
       const data = getData()
       const statusMap = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
-      const platformMap = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' }
       return data.customers.map(c => [
-        c.id, c.platformId || '', platformMap[c.platform] || c.platform, c.name, c.phone, statusMap[c.status] || c.status, c.advisor || '', c.nextFollowupDate || '', c.notes
+        c.id, c.platformId || '', PLATFORM_LABELS[c.platform] || c.platform, c.name, c.phone, statusMap[c.status] || c.status, c.advisor || '', c.nextFollowupDate || '', c.notes
       ])
     }
   },
@@ -37,7 +36,6 @@ const EXPORT_CONFIG = {
     headers: ['شناسه مشتری', 'نام مشتری', 'شماره موبایل', 'پلتفرم', 'محصول', 'وضعیت', 'مبلغ کل', 'بیعانه', 'مانده', 'تاریخ تسویه', 'کارشناس'],
     getRows: () => {
       const data = getData()
-      const platformMap = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' }
       // Import getAllSales inline to avoid circular dependency
       const sales = []
       data.customers.forEach(c => {
@@ -56,7 +54,7 @@ const EXPORT_CONFIG = {
       return sales.map(s => {
         const cust = data.customers.find(c => c.id === s.customerId)
         return [
-          s.customerId, s.customerName, s.customerPhone, platformMap[s.platform] || s.platform,
+          s.customerId, s.customerName, s.customerPhone, PLATFORM_LABELS[s.platform] || s.platform,
           s.productName, s.status, s.price || '', s.deposit || '', s.balance || '', s.settlementDate || '', cust ? (cust.advisor || '') : ''
         ]
       })
@@ -112,12 +110,6 @@ const IMPORT_FIELDS = [
   { key: 'notes', label: 'توضیحات' },
   { key: 'advisor', label: 'کارشناس' },
 ]
-
-const PLATFORM_MAP_IMPORT = {
-  'اینستاگرام': 'instagram', 'instagram': 'instagram', 'اینستا': 'instagram', 'insta': 'instagram',
-  'تلگرام': 'telegram', 'telegram': 'telegram', 'tg': 'telegram',
-  'واتساپ': 'whatsapp', 'whatsapp': 'whatsapp', 'wa': 'whatsapp',
-}
 
 const STATUS_MAP_IMPORT = {
   'جدید': 'new', 'جديد': 'new',

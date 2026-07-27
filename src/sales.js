@@ -1,8 +1,5 @@
 import { getData } from './data.js'
-import { toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, ownsCustomer } from './utils.js'
-
-const PLATFORM_LABELS = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' }
-const PLATFORM_CLASSES = { instagram: 'platform-ig', telegram: 'platform-tg', whatsapp: 'platform-wa' }
+import { toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, ownsCustomer, PLATFORM_LABELS, PLATFORM_CLASSES } from './utils.js'
 
 // ============================================
 // Sales Data

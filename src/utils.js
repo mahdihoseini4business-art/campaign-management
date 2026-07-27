@@ -2,6 +2,76 @@
 // Utility Functions
 // ============================================
 
+/** Customer lead-source platforms (value → Persian label) */
+export const PLATFORM_LABELS = {
+  instagram: 'اینستاگرام',
+  telegram: 'تلگرام',
+  whatsapp: 'واتساپ',
+  website: 'سایت',
+  bale: 'بله',
+  eitaa: 'ایتا',
+  goftino: 'گفتینو',
+  carno_leads: 'کارنو لیدز',
+  rubika: 'روبیکا',
+  referral: 'ارجاعی',
+}
+
+/** CSS class for platform color dots */
+export const PLATFORM_CLASSES = {
+  instagram: 'platform-ig',
+  telegram: 'platform-tg',
+  whatsapp: 'platform-wa',
+  website: 'platform-web',
+  bale: 'platform-bale',
+  eitaa: 'platform-eitaa',
+  goftino: 'platform-goftino',
+  carno_leads: 'platform-carno',
+  rubika: 'platform-rubika',
+  referral: 'platform-referral',
+}
+
+/** Map Persian/English import aliases → canonical platform key */
+export const PLATFORM_MAP_IMPORT = {
+  'اینستاگرام': 'instagram', instagram: 'instagram', 'اینستا': 'instagram', insta: 'instagram',
+  'تلگرام': 'telegram', telegram: 'telegram', tg: 'telegram',
+  'واتساپ': 'whatsapp', whatsapp: 'whatsapp', wa: 'whatsapp',
+  'سایت': 'website', website: 'website', site: 'website', web: 'website',
+  'بله': 'bale', bale: 'bale',
+  'ایتا': 'eitaa', eitaa: 'eitaa', eita: 'eitaa',
+  'گفتینو': 'goftino', goftino: 'goftino',
+  'کارنو لیدز': 'carno_leads', 'کارنولیدز': 'carno_leads', carno_leads: 'carno_leads', 'carno leads': 'carno_leads', carno: 'carno_leads',
+  'روبیکا': 'rubika', rubika: 'rubika',
+  'ارجاعی': 'referral', referral: 'referral', referred: 'referral',
+}
+
+/** Build a profile/chat URL when the platform supports one; otherwise ''. */
+export function getPlatformUrl(platform, platformId, phone) {
+  const id = (platformId || '').trim()
+  if (!id && platform !== 'whatsapp') return ''
+
+  switch (platform) {
+    case 'instagram':
+      return `https://instagram.com/${encodeURIComponent(id.replace(/^@/, ''))}`
+    case 'telegram':
+      return `https://telegram.me/${encodeURIComponent(id.replace(/^@/, ''))}`
+    case 'whatsapp': {
+      const raw = String(phone || id).replace(/\D/g, '')
+      if (!raw) return ''
+      const intl = raw.startsWith('0') ? `98${raw.slice(1)}` : raw
+      return `https://wa.me/${encodeURIComponent(intl)}`
+    }
+    case 'website':
+      if (/^https?:\/\//i.test(id)) return id
+      return `https://${id}`
+    case 'bale':
+      return `https://ble.ir/${encodeURIComponent(id.replace(/^@/, ''))}`
+    case 'eitaa':
+      return `https://eitaa.com/${encodeURIComponent(id.replace(/^@/, ''))}`
+    default:
+      return ''
+  }
+}
+
 export function toEnDigits(str) {
   return String(str).replace(/[\u06F0-\u06F9\u0660-\u0669]/g, ch =>
     String.fromCharCode(ch.charCodeAt(0) + (ch >= '\u06F0' ? -1728 : -1584))

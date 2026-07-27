@@ -1,10 +1,8 @@
 import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId } from './data.js'
 import { getUsersSafe } from './auth.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer, resolveAdvisor, normalizePhone, userDisplayName } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer, resolveAdvisor, normalizePhone, userDisplayName, PLATFORM_LABELS, PLATFORM_CLASSES, getPlatformUrl } from './utils.js'
 
 const STATUS_LABELS = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
-const PLATFORM_LABELS = { instagram: 'اینستاگرام', telegram: 'تلگرام', whatsapp: 'واتساپ' }
-const PLATFORM_CLASSES = { instagram: 'platform-ig', telegram: 'platform-tg', whatsapp: 'platform-wa' }
 const STATUS_CLASSES = { new: 'status-new', contacted: 'status-contacted', chatting: 'status-chatting', interested: 'status-interested', sent: 'status-sent', followup_done: 'status-followup_done', converting: 'status-converting', purchased: 'status-purchased', cancelled: 'status-cancelled' }
 
 // ============================================
@@ -59,10 +57,7 @@ export async function renderCustomers() {
     const statusClass = STATUS_CLASSES[c.status] || 'status-new'
     const statusLabel = STATUS_LABELS[c.status] || c.status
 
-    const platformUrl = c.platform === 'instagram' ? `https://instagram.com/${encodeURIComponent(c.platformId)}`
-      : c.platform === 'telegram' ? `https://telegram.me/${encodeURIComponent(c.platformId)}`
-        : c.platform === 'whatsapp' ? `https://wa.me/${encodeURIComponent(c.phone || c.platformId)}`
-          : ''
+    const platformUrl = getPlatformUrl(c.platform, c.platformId, c.phone)
     const platformIdHtml = platformUrl
       ? `<a href="${platformUrl}" target="_blank" rel="noopener" style="font-family:'Vazirmatn',sans-serif;font-size:13px;color:var(--accent);text-decoration:none;border-bottom:1px dashed var(--accent);">${escapeHtml(c.platformId)}</a>`
       : `<span style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(c.platformId)}</span>`
