@@ -148,16 +148,17 @@ export function renderSales() {
     return aNum - bNum
   })
 
-  const totalSales = allSales
-  const cashSales = totalSales.filter(s => s.status === 'تکمیل')
-  const depositSales = totalSales.filter(s => s.status === 'بیعانه')
+  // Stats exclude accounting-rejected payments (still shown in the table for follow-up)
+  const countable = allSales.filter(s => s.paymentStatus !== 'rejected')
+  const cashSales = countable.filter(s => s.status === 'تکمیل')
+  const depositSales = countable.filter(s => s.status === 'بیعانه')
 
   const totalCash = cashSales.reduce((sum, s) => sum + s.price, 0)
   const totalDeposit = depositSales.reduce((sum, s) => sum + s.deposit, 0)
   const totalBalance = depositSales.reduce((sum, s) => sum + s.balance, 0)
-  const totalAll = totalSales.reduce((sum, s) => sum + s.price, 0)
+  const totalAll = countable.reduce((sum, s) => sum + s.price, 0)
 
-  document.getElementById('stat-sales-count').textContent = totalSales.length
+  document.getElementById('stat-sales-count').textContent = countable.length
   document.getElementById('stat-sales-cash').textContent = formatNumber(totalCash) + ' ریال'
   document.getElementById('stat-sales-deposit').textContent = formatNumber(totalDeposit) + ' ریال'
   document.getElementById('stat-sales-balance').textContent = formatNumber(totalBalance) + ' ریال'
