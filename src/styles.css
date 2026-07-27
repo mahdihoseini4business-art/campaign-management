@@ -819,6 +819,52 @@
     margin-top: 6px;
   }
 
+  .form-error {
+    font-size: 13px;
+    color: var(--danger);
+    margin-top: 6px;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+
+  .form-input.is-invalid,
+  .form-select.is-invalid {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 3px rgba(237, 28, 36, 0.12);
+  }
+
+  .form-hint.is-warning {
+    color: #b45309;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+
+  .form-hint.is-info {
+    color: var(--accent);
+    background: #f0f4ff;
+    border: 1px solid #c7d2fe;
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+
+  .row-other-owner {
+    background: #fafaf9;
+  }
+
+  .owner-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #78716c;
+    background: #f5f5f4;
+    border: 1px solid #e7e5e4;
+    border-radius: 6px;
+    padding: 1px 6px;
+    margin-right: 4px;
+  }
+
   /* --- Empty State --- */
   .empty-state {
     text-align: center;

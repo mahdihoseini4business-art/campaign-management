@@ -1,5 +1,5 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB } from './data.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canAccessCustomer, getCurrentUser, ownsCustomer } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canManageCustomer, getCurrentUser, ownsCustomer, normalizePhone } from './utils.js'
 import { openCustomerDetail } from './customers.js'
 
 // ============================================
@@ -77,7 +77,7 @@ export function openFollowupModal(editFollowupId) {
   const select = document.getElementById('followupCustomer')
 
   select.innerHTML = '<option value="">انتخاب کنید...</option>' +
-    data.customers.filter(c => canAccessCustomer(c)).map(c =>
+    data.customers.filter(c => canViewCustomer(c)).map(c =>
       `<option value="${c.id}">${c.id} — ${escapeHtml(c.name || c.platformId)}</option>`
     ).join('')
 
@@ -126,7 +126,7 @@ export async function saveFollowup() {
   if (!date) { showToast('تاریخ پیگیری را وارد کنید'); return }
 
   const customer = data.customers.find(c => c.id === customerId)
-  if (!customer || !canAccessCustomer(customer)) {
+  if (!customer || !canViewCustomer(customer)) {
     showToast('شما به این مشتری دسترسی ندارید')
     return
   }
@@ -145,7 +145,7 @@ export async function saveFollowup() {
       return
     }
   } else {
-    const newFollowup = { customerId, date, nextDate, type, result, notes }
+    const newFollowup = { customerId, date, nextDate, type, result, notes, createdByPhone: normalizePhone(getCurrentUser()?.phone || '') }
     try {
       const id = await saveFollowupToDB(newFollowup)
       newFollowup.id = id

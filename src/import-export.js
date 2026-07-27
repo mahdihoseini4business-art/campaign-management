@@ -1,5 +1,5 @@
 import { getData, saveCustomerToDB, generateId } from './data.js'
-import { toEnDigits, showToast, getCurrentUser, resolveAdvisor, PLATFORM_LABELS, PLATFORM_MAP_IMPORT, requirePermission, canAccessCustomer } from './utils.js'
+import { toEnDigits, showToast, getCurrentUser, resolveAdvisor, PLATFORM_LABELS, PLATFORM_MAP_IMPORT, requirePermission, canViewCustomer } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers } from './customers.js'
 import { renderSales } from './sales.js'
@@ -15,7 +15,7 @@ const EXPORT_CONFIG = {
     getRows: () => {
       const data = getData()
       const statusMap = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
-      return data.customers.filter(c => canAccessCustomer(c)).map(c => [
+      return data.customers.filter(c => canViewCustomer(c)).map(c => [
         c.id, c.platformId || '', PLATFORM_LABELS[c.platform] || c.platform, c.name, c.phone, statusMap[c.status] || c.status, c.advisor || '', c.nextFollowupDate || '', c.notes
       ])
     }
@@ -27,7 +27,7 @@ const EXPORT_CONFIG = {
       const data = getData()
       return data.followups.filter(f => {
         const c = data.customers.find(x => x.id === f.customerId)
-        return c && canAccessCustomer(c)
+        return c && canViewCustomer(c)
       }).map(f => {
         const c = data.customers.find(x => x.id === f.customerId)
         return [f.customerId, c ? c.name : '', f.date, f.type, f.result, f.nextDate, f.notes]
@@ -41,7 +41,7 @@ const EXPORT_CONFIG = {
       const data = getData()
       // Import getAllSales inline to avoid circular dependency
       const sales = []
-      data.customers.filter(c => canAccessCustomer(c)).forEach(c => {
+      data.customers.filter(c => canViewCustomer(c)).forEach(c => {
         if (c.products) {
           c.products.forEach(p => {
             const price = parseFloat(p.price) || 0

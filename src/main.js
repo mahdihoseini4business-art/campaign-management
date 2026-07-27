@@ -2,7 +2,7 @@ import './styles.css'
 import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum, showToast, escapeAttr } from './utils.js'
 import { getData, loadData, backfillAdvisorPhones } from './data.js'
 import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser } from './auth.js'
-import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, addProductRow, saveProductField, updateProduct, removeProduct } from './customers.js'
+import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, addProductRow, saveProductField, updateProduct, removeProduct, onCustomerPhoneInput } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup } from './followups.js'
 import { renderSales, sortSales } from './sales.js'
 import { renderDashboard, toggleDashSection, clearDashFilter } from './dashboard.js'
@@ -119,6 +119,7 @@ const app = {
   openCustomerModal,
   saveCustomer,
   closeCustomerModal,
+  onCustomerPhoneInput,
   openFollowupModal,
   saveFollowup,
   closeFollowupModal,

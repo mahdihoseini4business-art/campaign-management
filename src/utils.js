@@ -188,6 +188,80 @@ export function jalaliAddDays(dateStr, days) {
   return y * 10000 + m * 100 + d
 }
 
+/** Current Jalali date + time in Asia/Tehran, e.g. "1404/04/15 14:30" */
+export function getNowJalaliDateTime() {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tehran' }))
+  const j = toJalali(now)
+  const date = `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.day).padStart(2, '0')}`
+  const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  return { date, time, dateTime: `${date} ${time}` }
+}
+
+/** Extract Jalali YYYY/MM/DD from "1404/04/15" or "1404/04/15 14:30" */
+export function jalaliDatePart(dateStr) {
+  if (!dateStr) return ''
+  return toEnDigits(String(dateStr)).trim().split(/\s+/)[0] || ''
+}
+
+export function activityDateNum(dateStr) {
+  return jalaliToNum(jalaliDatePart(dateStr))
+}
+
+/** Activities = followups + sales with soldAt */
+export function getCustomerActivities(customer, followups = []) {
+  if (!customer) return []
+  const acts = []
+
+  followups.filter(f => f.customerId === customer.id).forEach(f => {
+    const dateNum = activityDateNum(f.date)
+    if (dateNum === 99999999) return
+    acts.push({
+      kind: 'followup',
+      dateStr: f.date,
+      dateNum,
+      byPhone: normalizePhone(f.createdByPhone || customer.advisorPhone),
+      label: 'پیگیری'
+    })
+  })
+
+  ;(customer.products || []).forEach(p => {
+    if (!p.soldAt) return
+    const dateNum = activityDateNum(p.soldAt)
+    if (dateNum === 99999999) return
+    acts.push({
+      kind: 'sale',
+      dateStr: p.soldAt,
+      dateNum,
+      byPhone: normalizePhone(p.soldByPhone || customer.advisorPhone),
+      label: 'فروش'
+    })
+  })
+
+  acts.sort((a, b) => b.dateNum - a.dateNum)
+  return acts
+}
+
+export function getLastActivity(customer, followups = []) {
+  return getCustomerActivities(customer, followups)[0] || null
+}
+
+/** True if another user logged followup/sale within the last `days` days (rolling). */
+export function hasRecentActivityByOther(customer, followups, userPhone, days = 30) {
+  const myPhone = normalizePhone(userPhone)
+  const cutoff = jalaliAddDays(getTodayJalaliStr(), -days)
+  return getCustomerActivities(customer, followups).some(a =>
+    a.dateNum >= cutoff && a.byPhone && a.byPhone !== myPhone
+  )
+}
+
+export function findCustomerByPhone(phone, customers, excludeId = null) {
+  const n = normalizePhone(phone)
+  if (!n || !/^09\d{9}$/.test(n)) return null
+  return (customers || []).find(c =>
+    (!excludeId || c.id !== excludeId) && normalizePhone(c.phone) === n
+  ) || null
+}
+
 // ============================================
 // Permission System
 // ============================================
@@ -276,13 +350,24 @@ export function ownsCustomer(customer, user = getCurrentUser()) {
   return false
 }
 
-/** Whether the current user may view this customer (LD/CS type + ownership). */
-export function canAccessCustomer(customer, user = getCurrentUser()) {
+/** View by LD/CS permission (search / collaboration). */
+export function canViewCustomer(customer, user = getCurrentUser()) {
   if (!user || !customer) return false
   if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
   if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
-  if (user.role !== 'admin' && !ownsCustomer(customer, user)) return false
   return true
+}
+
+/** Edit core fields / delete / change owner: owner or admin. */
+export function canManageCustomer(customer, user = getCurrentUser()) {
+  if (!canViewCustomer(customer, user)) return false
+  if (user.role === 'admin') return true
+  return ownsCustomer(customer, user)
+}
+
+/** @deprecated use canViewCustomer / canManageCustomer */
+export function canAccessCustomer(customer, user = getCurrentUser()) {
+  return canManageCustomer(customer, user)
 }
 
 /** Resolve advisor display name + phone from a phone value and users list */

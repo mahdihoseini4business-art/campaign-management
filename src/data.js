@@ -48,7 +48,8 @@ export async function loadData() {
     type: f.type || '',
     result: f.result || '',
     nextDate: f.next_date || '',
-    notes: f.notes || ''
+    notes: f.notes || '',
+    createdByPhone: f.created_by_phone || ''
   }))
 
   // Load settings (convertedCount)
@@ -128,7 +129,8 @@ export async function saveFollowupToDB(followup) {
     type: followup.type,
     result: followup.result,
     next_date: followup.nextDate,
-    notes: followup.notes
+    notes: followup.notes,
+    created_by_phone: followup.createdByPhone || null
   }).select('id').single()
   if (error) throw new Error('خطا در درج پیگیری: ' + error.message)
   return inserted ? inserted.id : null
@@ -136,14 +138,18 @@ export async function saveFollowupToDB(followup) {
 
 export async function updateFollowupInDB(followup) {
   if (!followup.id) return
-  const { error } = await supabase.from('followups').update({
+  const row = {
     customer_id: followup.customerId,
     date: followup.date,
     type: followup.type,
     result: followup.result,
     next_date: followup.nextDate,
     notes: followup.notes
-  }).eq('id', followup.id)
+  }
+  if (followup.createdByPhone !== undefined) {
+    row.created_by_phone = followup.createdByPhone || null
+  }
+  const { error } = await supabase.from('followups').update(row).eq('id', followup.id)
   if (error) throw new Error('خطا در ویرایش پیگیری: ' + error.message)
 }
 
