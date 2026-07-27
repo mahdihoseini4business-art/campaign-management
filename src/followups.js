@@ -1,5 +1,6 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB } from './data.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canManageCustomer, getCurrentUser, ownsCustomer, normalizePhone } from './utils.js'
+import { paginateList, renderPaginationBar } from './pagination.js'
 import { openCustomerDetail } from './customers.js'
 
 // ============================================
@@ -36,10 +37,13 @@ export function renderFollowups() {
           <p>اولین پیگیری رو ثبت کنید</p>
         </div>
       </td></tr>`
+    renderPaginationBar('followupPagination', 'followups', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
     return
   }
 
-  tbody.innerHTML = filtered.map((f) => {
+  const page = paginateList('followups', filtered, search)
+
+  tbody.innerHTML = page.items.map((f) => {
     const customer = data.customers.find(c => c.id === f.customerId)
     const name = customer ? customer.name : '—'
     const followupId = f.id || `idx_${data.followups.indexOf(f)}`
@@ -63,6 +67,8 @@ export function renderFollowups() {
       </td>
     </tr>`
   }).join('')
+
+  renderPaginationBar('followupPagination', 'followups', page)
 }
 
 // ============================================

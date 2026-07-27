@@ -11,6 +11,7 @@ import {
   getProductPayments, getPaymentEntryStatus, isProductCountableInSales, getWorstPaymentStatus,
   isPaymentFilled, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS
 } from './utils.js'
+import { paginateList, renderPaginationBar } from './pagination.js'
 
 const STATUS_LABELS = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
 const STATUS_CLASSES = { new: 'status-new', contacted: 'status-contacted', chatting: 'status-chatting', interested: 'status-interested', sent: 'status-sent', followup_done: 'status-followup_done', converting: 'status-converting', purchased: 'status-purchased', cancelled: 'status-cancelled' }
@@ -64,13 +65,17 @@ export async function renderCustomers() {
           <p>مشتری جدید اضافه کنید</p>
         </div>
       </td></tr>`
+    renderPaginationBar('customerPagination', 'customers', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
     updateStats()
     // Still update advisor dropdown in background
     updateAdvisorDropdown()
     return
   }
 
-  tbody.innerHTML = filtered.map(c => {
+  const filterSig = `${search}|${advisorFilter}`
+  const page = paginateList('customers', filtered, filterSig)
+
+  tbody.innerHTML = page.items.map(c => {
     const idClass = c.id.startsWith('CS') ? 'id-cs' : 'id-ld'
     const platformClass = PLATFORM_CLASSES[c.platform] || ''
     const platformLabel = PLATFORM_LABELS[c.platform] || c.platform
@@ -139,6 +144,7 @@ export async function renderCustomers() {
     </tr>`
   }).join('')
 
+  renderPaginationBar('customerPagination', 'customers', page)
   updateStats()
   // Update advisor dropdown in background (non-blocking)
   updateAdvisorDropdown()

@@ -5,6 +5,7 @@ import {
   ensureProductPayments, syncProductStatus, getPaymentEntryStatus,
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS
 } from './utils.js'
+import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSales } from './sales.js'
 import { renderProducts } from './customers.js'
 
@@ -96,10 +97,14 @@ export function renderAccounting() {
           <p>فیلتر یا جستجو را تغییر دهید</p>
         </div>
       </td></tr>`
+    renderPaginationBar('accountingPagination', 'accounting', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
     return
   }
 
-  tbody.innerHTML = payments.map(p => {
+  const filterSig = `${accountingFilter}|${search}`
+  const page = paginateList('accounting', payments, filterSig)
+
+  tbody.innerHTML = page.items.map(p => {
     const statusLabel = PAYMENT_STATUS_LABELS[p.paymentStatus] || p.paymentStatus
     const actions = p.paymentStatus === 'pending'
       ? `<button class="btn btn-sm btn-approve" onclick="app.approvePayment('${escapeAttr(p.customerId)}', ${p.productIndex}, ${p.paymentIndex})">تأیید</button>
@@ -123,6 +128,8 @@ export function renderAccounting() {
       </td>
     </tr>`
   }).join('')
+
+  renderPaginationBar('accountingPagination', 'accounting', page)
 }
 
 async function updatePaymentEntry(customerId, productIndex, paymentIndex, patch) {

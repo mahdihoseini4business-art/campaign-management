@@ -9,6 +9,7 @@ import { renderAccounting, setAccountingFilter, approvePayment, openRejectPaymen
 import { renderDashboard, toggleDashSection, clearDashFilter } from './dashboard.js'
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, initSalesImportListeners } from './import-export.js'
 import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection } from './bulk.js'
+import { setPage } from './pagination.js'
 
 // ============================================
 // Tab Switching
@@ -110,6 +111,18 @@ function sortFollowups(field) {
   renderFollowups()
 }
 
+function goToPage(key, page) {
+  if (page < 1) return
+  setPage(key, page)
+  const renderers = {
+    customers: renderCustomers,
+    followups: renderFollowups,
+    sales: renderSales,
+    accounting: renderAccounting
+  }
+  renderers[key]?.()
+}
+
 // ============================================
 // Single app namespace (QC-H1: avoid polluting window)
 // ============================================
@@ -174,6 +187,7 @@ const app = {
   renderSales,
   renderAccounting,
   setAccountingFilter,
+  goToPage,
   approvePayment,
   openRejectPaymentModal,
   closeRejectPaymentModal,

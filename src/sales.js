@@ -7,6 +7,7 @@ import {
   getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
   productHasRejectedPayment, getProductPayments
 } from './utils.js'
+import { paginateList, renderPaginationBar } from './pagination.js'
 
 // ============================================
 // Sales Data
@@ -145,21 +146,34 @@ function renderSalesRows(allSales) {
 
 export function renderSales() {
   const tbody = document.getElementById('salesBody')
+  const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
 
   let allSales = getFilteredSales()
 
-  allSales.sort((a, b) => {
-    const aRej = a.hasRejected ? 0 : 1
-    const bRej = b.hasRejected ? 0 : 1
-    if (aRej !== bRej) return aRej - bRej
+  if (salesSortState.field) {
+    allSales.sort((a, b) => {
+      let va = a[salesSortState.field], vb = b[salesSortState.field]
+      if (salesSortState.field === 'settlementDate') {
+        va = jalaliToNum(va)
+        vb = jalaliToNum(vb)
+      }
+      if (typeof va === 'number') return salesSortState.asc ? va - vb : vb - va
+      return salesSortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa')
+    })
+  } else {
+    allSales.sort((a, b) => {
+      const aRej = a.hasRejected ? 0 : 1
+      const bRej = b.hasRejected ? 0 : 1
+      if (aRej !== bRej) return aRej - bRej
 
-    const aNum = a.settlementDate ? jalaliToNum(a.settlementDate) : 99999999
-    const bNum = b.settlementDate ? jalaliToNum(b.settlementDate) : 99999999
-    const aOverdue = aNum < getTodayJalaliNum() && a.settlementDate ? 0 : 1
-    const bOverdue = bNum < getTodayJalaliNum() && b.settlementDate ? 0 : 1
-    if (aOverdue !== bOverdue) return aOverdue - bOverdue
-    return aNum - bNum
-  })
+      const aNum = a.settlementDate ? jalaliToNum(a.settlementDate) : 99999999
+      const bNum = b.settlementDate ? jalaliToNum(b.settlementDate) : 99999999
+      const aOverdue = aNum < getTodayJalaliNum() && a.settlementDate ? 0 : 1
+      const bOverdue = bNum < getTodayJalaliNum() && b.settlementDate ? 0 : 1
+      if (aOverdue !== bOverdue) return aOverdue - bOverdue
+      return aNum - bNum
+    })
+  }
 
   const countable = allSales.filter(s => s.countable)
   const cashSales = countable.filter(s => s.status === 'تکمیل')
@@ -185,10 +199,13 @@ export function renderSales() {
           <p>از پنل مشتریان محصول اضافه کنید</p>
         </div>
       </td></tr>`
+    renderPaginationBar('salesPagination', 'sales', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
     return
   }
 
-  tbody.innerHTML = renderSalesRows(allSales)
+  const page = paginateList('sales', allSales, search)
+  tbody.innerHTML = renderSalesRows(page.items)
+  renderPaginationBar('salesPagination', 'sales', page)
 }
 
 let salesSortState = { field: null, asc: true }
@@ -196,18 +213,5 @@ let salesSortState = { field: null, asc: true }
 export function sortSales(field) {
   if (salesSortState.field === field) salesSortState.asc = !salesSortState.asc
   else { salesSortState.field = field; salesSortState.asc = true }
-
-  const allSales = getFilteredSales()
-  allSales.sort((a, b) => {
-    let va = a[field], vb = b[field]
-    if (field === 'settlementDate') {
-      va = jalaliToNum(va)
-      vb = jalaliToNum(vb)
-    }
-    if (typeof va === 'number') return salesSortState.asc ? va - vb : vb - va
-    return salesSortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa')
-  })
-
-  const tbody = document.getElementById('salesBody')
-  tbody.innerHTML = renderSalesRows(allSales)
+  renderSales()
 }
