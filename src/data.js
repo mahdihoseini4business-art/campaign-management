@@ -38,7 +38,8 @@ export async function loadData() {
     advisor: c.advisor || '',
     advisorPhone: c.advisor_phone || '',
     nextFollowupDate: c.next_followup_date || '',
-    products: c.products || []
+    products: c.products || [],
+    createdAt: c.created_at || null
   }))
 
   data.followups = (followupsRes.data || []).map(f => ({

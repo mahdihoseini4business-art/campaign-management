@@ -8,8 +8,9 @@ import {
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
   getNowJalaliDateTime, PAYMENT_STATUS_LABELS, createPayment,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
-  getProductPayments, getPaymentEntryStatus, isProductCountableInSales, getWorstPaymentStatus,
-  isPaymentFilled, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS
+  getProductPayments, getPaymentEntryStatus, getWorstPaymentStatus,
+  isPaymentFilled, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS,
+  computeCustomerLrfm
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -427,7 +428,7 @@ export async function saveCustomer() {
 
     const type = phone ? 'CS' : 'LD'
     const id = await generateId(type)
-    const newCustomer = { id, platformId, platform, name, phone, status, notes, advisor, advisorPhone, nextFollowupDate: '', products: [] }
+    const newCustomer = { id, platformId, platform, name, phone, status, notes, advisor, advisorPhone, nextFollowupDate: '', products: [], createdAt: new Date().toISOString() }
     await saveCustomerToDB(newCustomer)
     data.customers.push(newCustomer)
   } else {
@@ -614,15 +615,7 @@ export async function openCustomerDetail(id) {
   const customerFollowups = data.followups.filter(f => f.customerId === id)
   const idClass = c.id.startsWith('CS') ? 'id-cs' : 'id-ld'
   const platformLabel = PLATFORM_LABELS[c.platform] || c.platform
-  const statusLabel = STATUS_LABELS[c.status] || c.status
-
-  const purchaseTotal = (c.products || [])
-    .filter(p => isProductCountableInSales(p))
-    .reduce((sum, p) => {
-      ensureProductPayments(p)
-      syncProductStatus(p)
-      return sum + (parseFloat(p.price) || 0)
-    }, 0)
+  const lrfm = computeCustomerLrfm(c, data.followups)
 
   const detailUsers = await getUsersSafe()
 
@@ -646,43 +639,70 @@ export async function openCustomerDetail(id) {
         </div>`
     : ''
 
+  const fmtDays = (n) => (n == null ? '—' : `${formatNumber(n)} روز`)
+  const fmtMoney = (n) => `${formatNumber(n || 0)} ریال`
+
   let html = `
     <div class="detail-info">
       <div class="detail-field">
-        <span class="detail-label">شناسه</span>
-        <span class="detail-value"><span class="id-badge ${idClass}">${escapeHtml(c.id)}</span></span>
-      </div>
-      <div class="detail-field">
-        <span class="detail-label">وضعیت</span>
-        <span class="detail-value">${escapeHtml(statusLabel)}</span>
-      </div>
-      <div class="detail-field">
-        <span class="detail-label">کارشناس مسئول</span>
-        <span class="detail-value">${advisorHtml}</span>
-      </div>
-      <div class="detail-field">
-        <span class="detail-label">ایدی پلتفرم</span>
-        <span class="detail-value" style="font-family:'Vazirmatn',sans-serif;">${escapeHtml(c.platformId)}</span>
-      </div>
-      <div class="detail-field">
-        <span class="detail-label">پلتفرم</span>
-        <span class="detail-value">${escapeHtml(platformLabel)}</span>
-      </div>
-      <div class="detail-field">
         <span class="detail-label">نام</span>
         <span class="detail-value">${escapeHtml(c.name) || '—'}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">شناسه</span>
+        <span class="detail-value"><span class="id-badge ${idClass}">${escapeHtml(c.id)}</span></span>
       </div>
       <div class="detail-field">
         <span class="detail-label">شماره تماس</span>
         <span class="detail-value" style="direction:ltr;text-align:right;">${escapeHtml(c.phone) || '—'}</span>
       </div>
       <div class="detail-field">
-        <span class="detail-label">مجموع خریدها</span>
-        <span class="detail-value" id="detailPurchaseTotal" style="font-family:'Vazirmatn',sans-serif;font-weight:700;color:var(--accent);">${formatNumber(purchaseTotal)} ریال</span>
+        <span class="detail-label">کارشناس مسئول</span>
+        <span class="detail-value">${advisorHtml}</span>
       </div>
-      <div class="detail-field full">
-        <span class="detail-label">توضیحات</span>
-        <span class="detail-value">${escapeHtml(c.notes) || '—'}</span>
+      <div class="detail-field">
+        <span class="detail-label">پلتفرم</span>
+        <span class="detail-value">${escapeHtml(platformLabel)}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">ایدی پلتفرم</span>
+        <span class="detail-value" style="font-family:'Vazirmatn',sans-serif;">${escapeHtml(c.platformId)}</span>
+      </div>
+    </div>
+
+    <div class="detail-rfm">
+      <div class="detail-rfm-title">شاخص‌های LRFM</div>
+      <div class="rfm-table-wrap">
+        <table class="rfm-table">
+          <thead>
+            <tr>
+              <th title="Length — طول مدت ارتباط">L</th>
+              <th title="Recency — آخرین پیگیری">R</th>
+              <th title="Frequency — میانگین فاصله ارتباط">F</th>
+              <th title="Monetary — مجموع پرداختی‌ها">M</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <span class="rfm-metric-label">طول مدت ارتباط</span>
+                <span class="rfm-metric-value">${fmtDays(lrfm.L)}</span>
+              </td>
+              <td>
+                <span class="rfm-metric-label">آخرین پیگیری</span>
+                <span class="rfm-metric-value" style="font-family:'Vazirmatn',sans-serif;">${escapeHtml(lrfm.R) || '—'}</span>
+              </td>
+              <td>
+                <span class="rfm-metric-label">میانگین فاصله ارتباط</span>
+                <span class="rfm-metric-value">${fmtDays(lrfm.F)}</span>
+              </td>
+              <td>
+                <span class="rfm-metric-label">مجموع پرداختی‌ها</span>
+                <span class="rfm-metric-value">${fmtMoney(lrfm.M)}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -888,12 +908,6 @@ export function renderProducts(customerId) {
   if (!container) return
   const products = getProducts(customerId)
   const canEdit = hasPermission('customers_add')
-
-  const purchaseTotal = products
-    .filter(p => isProductCountableInSales(p))
-    .reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0)
-  const totalEl = document.getElementById('detailPurchaseTotal')
-  if (totalEl) totalEl.textContent = `${formatNumber(purchaseTotal)} ریال`
 
   if (products.length === 0) {
     container.innerHTML = '<div style="font-size:13px;color:var(--text-muted);padding:8px 0;">محصولی ثبت نشده</div>'

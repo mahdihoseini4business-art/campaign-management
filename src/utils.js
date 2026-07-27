@@ -177,15 +177,113 @@ export function getTodayJalaliNum() {
   return jalaliToNum(getTodayJalaliStr())
 }
 
+export function isJalaliLeap(y) {
+  return ((y + 2346) % 33) % 4 === 1
+}
+
 export function jalaliAddDays(dateStr, days) {
   const parts = dateStr.split('/').map(Number)
   let y = parts[0], m = parts[1], d = parts[2] + days
   // Jalali leap year check: Esfand has 30 days in leap years
-  const isLeap = ((y + 2346) % 33) % 4 === 1
-  const daysInMonth = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, isLeap ? 30 : 29]
+  const daysInMonth = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, isJalaliLeap(y) ? 30 : 29]
   while (d > daysInMonth[m - 1]) { d -= daysInMonth[m - 1]; m++; if (m > 12) { m = 1; y++; } }
   while (d <= 0) { m--; if (m < 1) { m = 12; y--; } d += daysInMonth[m - 1] }
   return y * 10000 + m * 100 + d
+}
+
+/** Day-serial for Jalali YYYY/MM/DD (relative diffs are exact). */
+function jalaliDaySerial(dateStr) {
+  const part = jalaliDatePart(dateStr)
+  const num = jalaliToNum(part)
+  if (num === 99999999) return null
+  const y = Math.floor(num / 10000)
+  const m = Math.floor((num % 10000) / 100)
+  const d = num % 100
+  let days = 0
+  for (let yy = 1; yy < y; yy++) days += isJalaliLeap(yy) ? 366 : 365
+  const dim = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, isJalaliLeap(y) ? 30 : 29]
+  for (let mm = 1; mm < m; mm++) days += dim[mm - 1]
+  return days + d
+}
+
+/** Difference in whole days: to − from. Null if either date invalid. */
+export function jalaliDiffDays(fromStr, toStr) {
+  const a = jalaliDaySerial(fromStr)
+  const b = jalaliDaySerial(toStr)
+  if (a == null || b == null) return null
+  return b - a
+}
+
+/** ISO / Date → Jalali YYYY/MM/DD in Asia/Tehran */
+export function gregorianToJalaliStr(input) {
+  if (!input) return ''
+  const d = input instanceof Date ? input : new Date(input)
+  if (Number.isNaN(d.getTime())) return ''
+  const tehran = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Tehran' }))
+  const j = toJalali(tehran)
+  return `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.day).padStart(2, '0')}`
+}
+
+/**
+ * LRFM metrics for customer panel:
+ * L = days since first entry into the program
+ * R = last follow-up date (Jalali string)
+ * F = average days between consecutive follow-up dates
+ * M = sum of approved payments
+ */
+export function computeCustomerLrfm(customer, followups = []) {
+  const empty = { L: null, R: '', F: null, M: 0 }
+  if (!customer) return empty
+
+  let monetary = 0
+  ;(customer.products || []).forEach(p => {
+    ensureProductPayments(p)
+    monetary += getApprovedPaid(p)
+  })
+
+  const customerFollowups = followups.filter(f => f.customerId === customer.id)
+  const followupDates = customerFollowups
+    .map(f => jalaliDatePart(f.date))
+    .filter(d => jalaliToNum(d) !== 99999999)
+    .sort((a, b) => jalaliToNum(a) - jalaliToNum(b))
+
+  const uniqueFollowupNums = []
+  const uniqueFollowupDates = []
+  followupDates.forEach(d => {
+    const n = jalaliToNum(d)
+    if (uniqueFollowupNums[uniqueFollowupNums.length - 1] === n) return
+    uniqueFollowupNums.push(n)
+    uniqueFollowupDates.push(d)
+  })
+
+  let freqAvg = null
+  if (uniqueFollowupDates.length >= 2) {
+    let sum = 0
+    for (let i = 1; i < uniqueFollowupDates.length; i++) {
+      sum += jalaliDiffDays(uniqueFollowupDates[i - 1], uniqueFollowupDates[i]) || 0
+    }
+    freqAvg = Math.round(sum / (uniqueFollowupDates.length - 1))
+  }
+
+  const lastFollowup = uniqueFollowupDates.length
+    ? uniqueFollowupDates[uniqueFollowupDates.length - 1]
+    : ''
+
+  let entryJalali = customer.createdAt ? gregorianToJalaliStr(customer.createdAt) : ''
+  if (!entryJalali || jalaliToNum(entryJalali) === 99999999) {
+    const acts = getCustomerActivities(customer, followups)
+    if (acts.length) {
+      const earliest = acts.reduce((min, a) => (a.dateNum < min.dateNum ? a : min), acts[0])
+      entryJalali = jalaliDatePart(earliest.dateStr)
+    }
+  }
+
+  let lengthDays = null
+  if (entryJalali && jalaliToNum(entryJalali) !== 99999999) {
+    lengthDays = Math.max(0, jalaliDiffDays(entryJalali, getTodayJalaliStr()) ?? 0)
+  }
+
+  return { L: lengthDays, R: lastFollowup, F: freqAvg, M: monetary }
 }
 
 /** Current Jalali date + time in Asia/Tehran, e.g. "1404/04/15 14:30" */
