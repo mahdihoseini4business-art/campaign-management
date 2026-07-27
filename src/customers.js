@@ -892,6 +892,7 @@ export function renderProducts(customerId) {
           ${p.settlementDate ? `<span style="font-size:12px;color:var(--text-muted);">${escapeHtml(p.settlementDate)}</span>` : ''}
           ${balanceHtml}
           ${p.soldAt ? `<span style="font-size:11px;color:var(--text-muted);">ثبت: ${escapeHtml(p.soldAt)}</span>` : ''}
+          ${p.depositorName ? `<span style="font-size:11px;color:var(--text-muted);">واریزکننده: ${escapeHtml(p.depositorName)}</span>` : ''}
         </div>
       `
     }
@@ -923,9 +924,10 @@ export function renderProducts(customerId) {
         </select>
         ${priceHtml}
         ${balanceHtml}
-        <div style="display:flex;gap:4px;align-items:center;">
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
           <input type="text" class="product-settlement" placeholder="تاریخ فروش" data-jdp value="${p.soldAt ? p.soldAt.split(' ')[0] : ''}" onchange="app.updateProduct('${customerId}', ${i}, 'soldAtDate', this.value)" style="max-width:110px;font-size:12px;">
           <input type="time" class="product-settlement" value="${p.soldAt && p.soldAt.includes(' ') ? p.soldAt.split(' ')[1] : ''}" onchange="app.updateProduct('${customerId}', ${i}, 'soldAtTime', this.value)" style="max-width:80px;font-size:12px;">
+          <input type="text" class="product-settlement" placeholder="نام واریزکننده" value="${escapeAttr(p.depositorName || '')}" onblur="app.updateProduct('${customerId}', ${i}, 'depositorName', this.value)" style="min-width:120px;font-size:12px;">
         </div>
         <button class="btn-remove-product" onclick="app.removeProduct('${escapeAttr(customerId)}', ${i})" title="حذف">✕</button>
       </div>
@@ -941,16 +943,31 @@ export async function addProductRow(customerId) {
   products.push({
     name: PRODUCTS[0], status: PRODUCT_STATUSES[0], price: '', deposit: '', settlementDate: '',
     soldAt: dateTime,
-    soldByPhone: normalizePhone(user?.phone || '')
+    soldByPhone: normalizePhone(user?.phone || ''),
+    depositorName: '',
+    paymentStatus: 'pending',
+    paymentRejectReason: '',
+    paymentReviewedAt: '',
+    paymentReviewedBy: ''
   })
   await setProducts(customerId, products)
   renderProducts(customerId)
 }
 
+function resetPaymentForReview(product) {
+  product.paymentStatus = 'pending'
+  product.paymentRejectReason = ''
+  product.paymentReviewedAt = ''
+  product.paymentReviewedBy = ''
+}
+
+const PAYMENT_SENSITIVE_FIELDS = new Set(['price', 'deposit', 'status', 'soldAtDate', 'soldAtTime', 'depositorName', 'soldAt'])
+
 export async function saveProductField(customerId, index, field, value) {
   const products = getProducts(customerId)
   if (products[index]) {
     products[index][field] = value
+    if (PAYMENT_SENSITIVE_FIELDS.has(field)) resetPaymentForReview(products[index])
     await setProducts(customerId, products)
   }
 }
@@ -970,6 +987,7 @@ export async function updateProduct(customerId, index, field, value) {
     if (field === 'status' && value === 'تکمیل') {
       products[index].deposit = ''
     }
+    if (PAYMENT_SENSITIVE_FIELDS.has(field)) resetPaymentForReview(products[index])
     await setProducts(customerId, products)
     renderProducts(customerId)
   }

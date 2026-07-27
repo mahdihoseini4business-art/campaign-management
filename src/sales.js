@@ -1,5 +1,9 @@
 import { getData } from './data.js'
-import { toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser, jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, ownsCustomer, PLATFORM_LABELS, PLATFORM_CLASSES } from './utils.js'
+import {
+  toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser,
+  jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, ownsCustomer,
+  PLATFORM_LABELS, PLATFORM_CLASSES, getPaymentAmount, getPaymentStatus, PAYMENT_STATUS_LABELS
+} from './utils.js'
 
 // ============================================
 // Sales Data
@@ -10,12 +14,13 @@ export function getAllSales() {
   const sales = []
   data.customers.forEach(c => {
     if (c.products) {
-      c.products.forEach(p => {
+      c.products.forEach((p, productIndex) => {
         const price = parseFloat(p.price) || 0
         const deposit = parseFloat(p.deposit) || 0
         const balance = price - deposit
         sales.push({
           customerId: c.id,
+          productIndex,
           customerName: c.name || c.platformId,
           customerPhone: c.phone || '',
           platform: c.platform,
@@ -24,7 +29,12 @@ export function getAllSales() {
           price,
           deposit,
           balance,
-          settlementDate: p.settlementDate || ''
+          settlementDate: p.settlementDate || '',
+          soldAt: p.soldAt || '',
+          depositorName: p.depositorName || '',
+          paymentAmount: getPaymentAmount(p),
+          paymentStatus: getPaymentStatus(p),
+          paymentRejectReason: p.paymentRejectReason || ''
         })
       })
     }
@@ -49,7 +59,8 @@ function getFilteredSales() {
       s.customerId.toLowerCase().includes(search) ||
       s.customerName.toLowerCase().includes(search) ||
       s.customerPhone.includes(search) ||
-      s.productName.toLowerCase().includes(search)
+      s.productName.toLowerCase().includes(search) ||
+      (s.depositorName || '').toLowerCase().includes(search)
     )
   }
 
@@ -89,6 +100,16 @@ function renderSalesRows(allSales) {
       }
     }
 
+    if (s.paymentStatus === 'rejected') {
+      rowClass = (rowClass + ' payment-rejected-row').trim()
+    }
+
+    const payLabel = PAYMENT_STATUS_LABELS[s.paymentStatus] || s.paymentStatus
+    let paymentHtml = `<span class="payment-badge payment-${s.paymentStatus}">${escapeHtml(payLabel)}</span>`
+    if (s.paymentStatus === 'rejected' && s.paymentRejectReason) {
+      paymentHtml += `<div class="payment-reject-reason" title="${escapeAttr(s.paymentRejectReason)}">${escapeHtml(s.paymentRejectReason)}</div>`
+    }
+
     return `<tr class="${rowClass}">
       <td>${canBulkDelete ? `<input type="checkbox" data-id="${escapeAttr(s.customerId)}" onchange="app.toggleRowSelect('sales', '${escapeAttr(s.customerId)}', this.checked)">` : ''}</td>
       <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(s.customerId)}')">${escapeHtml(s.customerId)}</span></td>
@@ -101,6 +122,9 @@ function renderSalesRows(allSales) {
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.deposit > 0 ? formatNumber(s.deposit) : '—'}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? formatNumber(s.balance) : '—'}</td>
       <td style="font-size:12px;">${settlementHtml}</td>
+      <td style="font-family:'Vazirmatn',sans-serif;font-size:12px;direction:ltr;text-align:right;">${escapeHtml(s.soldAt) || '—'}</td>
+      <td>${escapeHtml(s.depositorName) || '—'}</td>
+      <td>${paymentHtml}</td>
     </tr>`
   }).join('')
 }
@@ -110,7 +134,12 @@ export function renderSales() {
 
   let allSales = getFilteredSales()
 
+  // Rejected payments first (for advisor follow-up), then overdue settlement, then date
   allSales.sort((a, b) => {
+    const aRej = a.paymentStatus === 'rejected' ? 0 : 1
+    const bRej = b.paymentStatus === 'rejected' ? 0 : 1
+    if (aRej !== bRej) return aRej - bRej
+
     const aNum = a.settlementDate ? jalaliToNum(a.settlementDate) : 99999999
     const bNum = b.settlementDate ? jalaliToNum(b.settlementDate) : 99999999
     const aOverdue = aNum < getTodayJalaliNum() && a.settlementDate ? 0 : 1
@@ -136,7 +165,7 @@ export function renderSales() {
 
   if (allSales.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="10">
+      <tr><td colspan="14">
         <div class="empty-state">
           <div class="icon">🛒</div>
           <h3>فروشی ثبت نشده</h3>

@@ -500,6 +500,7 @@ export function applyPermissions() {
     else if (text === 'لیست مشتریان') permKey = 'customers_view'
     else if (text === 'تاریخچه پیگیری') permKey = 'followups_view'
     else if (text === 'فروش‌ها') permKey = 'sales_view'
+    else if (text === 'حسابداری') permKey = 'accounting'
     if (permKey && !hasPermission(permKey)) {
       t.style.display = 'none'
     } else {

@@ -101,6 +101,7 @@
     <button class="tab active" role="tab" id="tab-customers" aria-controls="sheet-customers" aria-selected="true" tabindex="0" onclick="app.switchTab('customers', this)">لیست مشتریان</button>
     <button class="tab" role="tab" id="tab-followups" aria-controls="sheet-followups" aria-selected="false" tabindex="-1" onclick="app.switchTab('followups', this)">تاریخچه پیگیری</button>
     <button class="tab" role="tab" id="tab-sales" aria-controls="sheet-sales" aria-selected="false" tabindex="-1" onclick="app.switchTab('sales', this)">فروش‌ها</button>
+    <button class="tab" role="tab" id="tab-accounting" aria-controls="sheet-accounting" aria-selected="false" tabindex="-1" data-perm="accounting" onclick="app.switchTab('accounting', this)">حسابداری</button>
   </div>
 
   <!-- شیت داشبرد -->
@@ -308,9 +309,50 @@
             <th onclick="app.sortSalesHeader('deposit')">بیعانه</th>
             <th onclick="app.sortSalesHeader('balance')">مانده</th>
             <th onclick="app.sortSalesHeader('settlementDate')">تاریخ تسویه</th>
+            <th>تاریخ واریز</th>
+            <th>نام واریزکننده</th>
+            <th>وضعیت واریزی</th>
           </tr>
         </thead>
         <tbody id="salesBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- شیت حسابداری -->
+  <div class="sheet" id="sheet-accounting" role="tabpanel" aria-labelledby="tab-accounting" hidden>
+    <div class="stats">
+      <div class="stat-card"><div class="label">در انتظار تأیید</div><div class="value" style="color:var(--warning)" id="stat-acc-pending">0</div></div>
+      <div class="stat-card"><div class="label">تأیید شده</div><div class="value" style="color:var(--success)" id="stat-acc-approved">0</div></div>
+      <div class="stat-card"><div class="label">رد شده</div><div class="value" style="color:var(--danger)" id="stat-acc-rejected">0</div></div>
+    </div>
+
+    <div class="toolbar" style="gap:10px;flex-wrap:wrap;">
+      <div class="accounting-filters">
+        <button type="button" class="btn accounting-filter-btn active" data-filter="pending" onclick="app.setAccountingFilter('pending')">در انتظار تأیید</button>
+        <button type="button" class="btn accounting-filter-btn" data-filter="approved" onclick="app.setAccountingFilter('approved')">تأیید شده‌ها</button>
+        <button type="button" class="btn accounting-filter-btn" data-filter="rejected" onclick="app.setAccountingFilter('rejected')">رد شده‌ها</button>
+      </div>
+      <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchAccounting" oninput="app.renderAccounting()">
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>شناسه</th>
+            <th>مشتری</th>
+            <th>شماره</th>
+            <th>کارشناس</th>
+            <th>محصول</th>
+            <th>نوع پرداخت</th>
+            <th>مبلغ</th>
+            <th>تاریخ و ساعت</th>
+            <th>نام واریزکننده</th>
+            <th>وضعیت / عملیات</th>
+          </tr>
+        </thead>
+        <tbody id="accountingBody"></tbody>
       </table>
     </div>
   </div>
@@ -430,6 +472,26 @@
     <div class="modal-footer">
       <button class="btn" onclick="app.closeDeleteModal()">انصراف</button>
       <button class="btn btn-danger" id="deleteConfirmBtn">حذف</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال رد واریزی -->
+<div class="modal-overlay" id="rejectPaymentModal">
+  <div class="modal" style="max-width: 440px;">
+    <div class="modal-header">
+      <h2>رد واریزی</h2>
+      <button class="modal-close" onclick="app.closeRejectPaymentModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="rejectPaymentReason">دلیل رد <span class="required">*</span></label>
+        <textarea class="form-textarea" id="rejectPaymentReason" placeholder="مثلاً مبلغ با گردش بانکی مطابقت ندارد..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeRejectPaymentModal()">انصراف</button>
+      <button class="btn btn-danger" onclick="app.confirmRejectPayment()">رد واریزی</button>
     </div>
   </div>
 </div>

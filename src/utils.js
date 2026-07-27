@@ -282,6 +282,7 @@ export const ALL_PERMISSIONS = {
   sales_view: 'مشاهده فروش‌ها',
   sales_import: 'ایمپورت فروش',
   sales_export: 'خروجی فروش‌ها',
+  accounting: 'تأیید واریزی‌ها (حسابداری)',
   settings: 'مدیریت کاربران'
 }
 
@@ -290,14 +291,45 @@ export const PERMISSION_GROUPS = [
   { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_delete', 'customers_import', 'customers_export'] },
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_import', 'sales_export'] },
+  { label: 'حسابداری', keys: ['accounting'] },
   { label: 'سیستم', keys: ['settings'] }
 ]
+
+export const PAYMENT_STATUS = {
+  pending: 'pending',
+  approved: 'approved',
+  rejected: 'rejected'
+}
+
+export const PAYMENT_STATUS_LABELS = {
+  pending: 'در انتظار تأیید',
+  approved: 'تأیید شده',
+  rejected: 'رد شده'
+}
+
+/** مبلغ قابل تأیید حسابداری: بیعانه → deposit، تکمیل → price */
+export function getPaymentAmount(product) {
+  if (!product) return 0
+  if (product.status === 'بیعانه') return parseFloat(product.deposit) || 0
+  return parseFloat(product.price) || 0
+}
+
+/**
+ * وضعیت واریزی. رکوردهای قدیمی بدون فیلد → approved
+ * تا صف حسابداری از دادهٔ تاریخی پر نشود. فروش‌های جدید همیشه pending می‌شوند.
+ */
+export function getPaymentStatus(product) {
+  if (!product) return PAYMENT_STATUS.approved
+  if (!product.paymentStatus) return PAYMENT_STATUS.approved
+  return product.paymentStatus
+}
 
 export function getDefaultPermissions() {
   const p = {}
   Object.keys(ALL_PERMISSIONS).forEach(k => p[k] = true)
   p.customers_delete = false
   p.followups_delete = false
+  p.accounting = false
   p.settings = false
   return p
 }

@@ -434,7 +434,18 @@ export async function doSalesImport() {
     )
     if (isDuplicate) { skipped++; continue }
 
-    customer.products.push({ name: productName, status, price: String(price), deposit: String(deposit), settlementDate })
+    customer.products.push({
+      name: productName,
+      status,
+      price: String(price),
+      deposit: String(deposit),
+      settlementDate,
+      depositorName: '',
+      paymentStatus: 'pending',
+      paymentRejectReason: '',
+      paymentReviewedAt: '',
+      paymentReviewedBy: ''
+    })
     imported++
   }
 

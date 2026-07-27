@@ -5,6 +5,7 @@ import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSetti
 import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, addProductRow, saveProductField, updateProduct, removeProduct, onCustomerPhoneInput } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup } from './followups.js'
 import { renderSales, sortSales } from './sales.js'
+import { renderAccounting, setAccountingFilter, approvePayment, openRejectPaymentModal, closeRejectPaymentModal, confirmRejectPayment } from './accounting.js'
 import { renderDashboard, toggleDashSection, clearDashFilter } from './dashboard.js'
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, initSalesImportListeners } from './import-export.js'
 import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection } from './bulk.js'
@@ -14,7 +15,7 @@ import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection } f
 // ============================================
 
 function switchTab(tab, el) {
-  const permMap = { dashboard: 'dashboard', customers: 'customers_view', followups: 'followups_view', sales: 'sales_view' }
+  const permMap = { dashboard: 'dashboard', customers: 'customers_view', followups: 'followups_view', sales: 'sales_view', accounting: 'accounting' }
   if (permMap[tab] && !hasPermission(permMap[tab])) {
     return
   }
@@ -51,6 +52,7 @@ function switchTab(tab, el) {
 
   if (tab === 'dashboard') renderDashboard()
   if (tab === 'sales') renderSales()
+  if (tab === 'accounting') renderAccounting()
 }
 
 // ============================================
@@ -166,6 +168,12 @@ const app = {
   renderCustomers,
   renderFollowups,
   renderSales,
+  renderAccounting,
+  setAccountingFilter,
+  approvePayment,
+  openRejectPaymentModal,
+  closeRejectPaymentModal,
+  confirmRejectPayment,
   toggleSelectAll,
   toggleRowSelect,
   executeBulkAction,
