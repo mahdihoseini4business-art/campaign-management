@@ -6,9 +6,10 @@ import {
   getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer,
   resolveAdvisor, normalizePhone, userDisplayName, PLATFORM_LABELS, PLATFORM_CLASSES,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
-  getNowJalaliDateTime, getPaymentStatus, PAYMENT_STATUS_LABELS, createPayment,
+  getNowJalaliDateTime, PAYMENT_STATUS_LABELS, createPayment,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
-  getProductPayments, getPaymentEntryStatus, isProductCountableInSales, getWorstPaymentStatus
+  getProductPayments, getPaymentEntryStatus, isProductCountableInSales, getWorstPaymentStatus,
+  isPaymentFilled, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS
 } from './utils.js'
 
 const STATUS_LABELS = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
@@ -876,7 +877,6 @@ export async function setProducts(customerId, products) {
     await saveCustomerToDB(data.customers[idx])
   }
 }
-
 export function renderProducts(customerId) {
   const container = document.getElementById('detailProductsList')
   if (!container) return
@@ -900,9 +900,12 @@ export function renderProducts(customerId) {
     const balance = getProductBalance(p)
     const pays = getProductPayments(p)
     const worst = getWorstPaymentStatus(p)
+    const closed = isInvoiceClosed(p)
+    const priceLocked = isProductPriceLocked(p)
     const statusLabel = p.status || 'بیعانه'
     const statusColor = statusLabel === 'تکمیل' ? 'var(--success)' : 'var(--warning)'
-    const rowRejected = worst === 'rejected' ? ' product-row-rejected' : ''
+    const blockClass = ['product-block', worst === 'rejected' ? 'is-rejected' : '', closed ? 'is-closed' : ''].filter(Boolean).join(' ')
+    const closedBadge = closed ? '<span class="invoice-closed-badge">فاکتور بسته شده</span>' : ''
 
     const paymentsHtml = pays.map((pay, pi) => {
       const payStatus = getPaymentEntryStatus(pay)
@@ -911,63 +914,70 @@ export function renderProducts(customerId) {
         ? `<span class="payment-reject-reason" title="${escapeAttr(pay.paymentRejectReason)}">${escapeHtml(pay.paymentRejectReason)}</span>`
         : ''
       const badge = `<span class="payment-badge payment-${payStatus}">${escapeHtml(payLabel)}</span>${rejectHint}`
+      const canDeletePay = canEdit && payStatus !== PAYMENT_STATUS.approved
+      const payEditable = canEdit && payStatus !== PAYMENT_STATUS.approved
+      const incomplete = canEdit && !isPaymentFilled(pay)
 
-      if (!canEdit) {
+      if (!payEditable) {
         return `
-          <div class="payment-entry">
-            <span style="font-size:12px;font-weight:600;">واریز ${pi + 1}</span>
-            <span style="font-size:13px;direction:ltr;">${pay.amount ? formatNumber(pay.amount) : '—'}</span>
-            <span style="font-size:12px;color:var(--text-muted);">${escapeHtml(pay.soldAt || '—')}</span>
-            <span style="font-size:12px;">${escapeHtml(pay.depositorName || '—')}</span>
+          <div class="product-row payment-row">
+            <span class="payment-index">واریز ${pi + 1}</span>
+            <span class="product-price" style="direction:ltr;">${pay.amount ? formatNumber(pay.amount) : '—'}</span>
+            <span class="product-settlement" style="direction:ltr;">${escapeHtml(pay.soldAt || '—')}</span>
+            <span style="font-size:13px;">${escapeHtml(pay.depositorName || '—')}</span>
             ${badge}
           </div>`
       }
 
       return `
-        <div class="payment-entry">
-          <span style="font-size:12px;font-weight:600;min-width:52px;">واریز ${pi + 1}</span>
-          <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="مبلغ" value="${pay.amount ? formatNumber(pay.amount) : ''}" oninput="app.formatInput(this)" onblur="app.savePaymentField('${customerId}', ${i}, ${pi}, 'amount', app.unformatInput(this))">
-          <input type="text" class="product-settlement" placeholder="تاریخ" data-jdp value="${pay.soldAt ? pay.soldAt.split(' ')[0] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtDate', this.value)" style="max-width:110px;font-size:12px;">
-          <input type="time" class="product-settlement" value="${pay.soldAt && pay.soldAt.includes(' ') ? pay.soldAt.split(' ')[1] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtTime', this.value)" style="max-width:80px;font-size:12px;">
-          <input type="text" class="product-settlement" placeholder="نام واریزکننده" value="${escapeAttr(pay.depositorName || '')}" onblur="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'depositorName', this.value)" style="min-width:120px;font-size:12px;">
+        <div class="product-row payment-row${incomplete ? ' is-incomplete' : ''}">
+          <span class="payment-index">واریز ${pi + 1}</span>
+          <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="مبلغ واریز *" value="${pay.amount ? formatNumber(pay.amount) : ''}" oninput="app.formatInput(this)" onblur="app.savePaymentField('${customerId}', ${i}, ${pi}, 'amount', app.unformatInput(this))">
+          <input type="text" class="product-settlement" placeholder="تاریخ *" data-jdp value="${pay.soldAt ? pay.soldAt.split(' ')[0] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtDate', this.value)">
+          <input type="time" class="product-settlement" value="${pay.soldAt && pay.soldAt.includes(' ') ? pay.soldAt.split(' ')[1] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtTime', this.value)">
+          <input type="text" class="product-settlement product-depositor" placeholder="نام واریزکننده *" value="${escapeAttr(pay.depositorName || '')}" onblur="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'depositorName', this.value)">
           ${badge}
+          ${canDeletePay ? `<button type="button" class="btn-remove-product" title="حذف واریز" onclick="app.removeProductPayment('${escapeAttr(customerId)}', ${i}, ${pi})">✕</button>` : ''}
         </div>`
     }).join('')
 
-    const addPayBtn = (canEdit && balance > 0)
-      ? `<button class="btn btn-sm" style="margin-top:6px;" onclick="app.addProductPayment('${escapeAttr(customerId)}', ${i})">+ ثبت واریز بعدی (مانده: ${formatNumber(balance)})</button>`
-      : (canEdit
-        ? `<button class="btn btn-sm" style="margin-top:6px;" onclick="app.addProductPayment('${escapeAttr(customerId)}', ${i})">+ ثبت واریز</button>`
-        : '')
-
-    if (!canEdit) {
-      return `
-        <div class="product-card${rowRejected}">
-          <div class="product-card-head">
-            <span style="font-size:14px;font-weight:600;">${escapeHtml(p.name || '—')}</span>
-            <span style="color:${statusColor};font-weight:600;">${escapeHtml(statusLabel)}</span>
-            <span style="font-size:13px;">قیمت: ${price ? formatNumber(price) : '—'}</span>
-            <span style="font-size:13px;">پرداخت‌شده: ${approved ? formatNumber(approved) : '—'}</span>
-            ${balance > 0 ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : ''}
-            ${p.settlementDate ? `<span style="font-size:12px;color:var(--text-muted);">تسویه: ${escapeHtml(p.settlementDate)}</span>` : ''}
-          </div>
-          <div class="payment-list">${paymentsHtml || '<div style="font-size:12px;color:var(--text-muted);">واریزی ثبت نشده</div>'}</div>
-        </div>`
+    let addPayBtn = ''
+    if (canEdit && !closed) {
+      const filled = areProductPaymentsFilled(p)
+      const needsPrice = !price
+      const disabled = !filled || needsPrice
+      const title = needsPrice
+        ? 'ابتدا قیمت کل را ثبت کنید'
+        : (!filled ? 'ابتدا فیلدهای واریزهای فعلی را کامل کنید' : `مانده: ${formatNumber(balance)}`)
+      addPayBtn = `<button type="button" class="btn btn-sm" style="margin-top:8px;" ${disabled ? 'disabled' : ''} title="${escapeAttr(title)}" onclick="app.addProductPayment('${escapeAttr(customerId)}', ${i})">+ ثبت واریز بعدی${balance > 0 ? ` (مانده: ${formatNumber(balance)})` : ''}</button>`
     }
 
-    return `
-      <div class="product-card${rowRejected}">
-        <div class="product-card-head">
-          <select class="product-name" onchange="app.updateProduct('${customerId}', ${i}, 'name', this.value)">
+    const priceHtml = (!canEdit || priceLocked)
+      ? `<span class="product-price-locked" title="قیمت کل قفل شده">قیمت کل: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${price ? formatNumber(price) : '—'}</b></span>`
+      : `<input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت کل *" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" onblur="app.saveProductField('${customerId}', ${i}, 'price', app.unformatInput(this))">`
+
+    const settlementHtml = canEdit && !closed
+      ? `<input type="text" class="product-settlement" placeholder="تاریخ تسویه" data-jdp value="${p.settlementDate || ''}" onchange="app.updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">`
+      : (p.settlementDate ? `<span style="font-size:12px;color:var(--text-muted);">تسویه: ${escapeHtml(p.settlementDate)}</span>` : '')
+
+    const nameHtml = canEdit && !closed
+      ? `<select class="product-name" onchange="app.updateProduct('${customerId}', ${i}, 'name', this.value)">
             ${PRODUCTS.map(pr => `<option value="${pr}" ${p.name === pr ? 'selected' : ''}>${pr}</option>`).join('')}
-          </select>
-          <span style="color:${statusColor};font-weight:600;font-size:13px;">${escapeHtml(statusLabel)}</span>
-          <input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت کل" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" onblur="app.saveProductField('${customerId}', ${i}, 'price', app.unformatInput(this))">
-          <input type="text" class="product-settlement" placeholder="تاریخ تسویه" data-jdp value="${p.settlementDate || ''}" onchange="app.updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">
-          <span style="font-size:12px;">پرداخت‌شده: <b>${approved ? formatNumber(approved) : '۰'}</b></span>
-          ${balance > 0 ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : '<span style="font-size:12px;color:var(--success);">تسویه کامل</span>'}
+          </select>`
+      : `<span style="font-size:14px;font-weight:600;">${escapeHtml(p.name || '—')}</span>`
+
+    return `
+      <div class="${blockClass}">
+        <div class="product-row product-head-row">
+          ${nameHtml}
+          <span class="product-status-label" style="color:${statusColor};">${escapeHtml(statusLabel)}</span>
+          ${priceHtml}
+          ${settlementHtml}
+          <span class="product-meta">پرداخت‌شده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${approved ? formatNumber(approved) : '۰'}</b></span>
+          ${balance > 0 && !closed ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : ''}
+          ${closedBadge}
         </div>
-        <div class="payment-list">${paymentsHtml || '<div style="font-size:12px;color:var(--text-muted);padding:4px 0;">هنوز واریزی ثبت نشده</div>'}</div>
+        <div class="payment-list">${paymentsHtml || '<div class="payment-empty">هنوز واریزی ثبت نشده</div>'}</div>
         ${addPayBtn}
       </div>`
   }).join('')
@@ -982,12 +992,14 @@ export async function addProductRow(customerId) {
   const products = getProducts(customerId)
   const user = getCurrentUser()
   const firstPay = createPayment({
-    soldByPhone: normalizePhone(user?.phone || '')
+    soldByPhone: normalizePhone(user?.phone || ''),
+    depositorName: ''
   })
   products.push({
     name: PRODUCTS[0],
     status: 'بیعانه',
     price: '',
+    priceLocked: false,
     deposit: '',
     settlementDate: '',
     soldByPhone: normalizePhone(user?.phone || ''),
@@ -1004,17 +1016,53 @@ export async function addProductPayment(customerId, productIndex) {
   const product = products[productIndex]
   if (!product) return
   ensureProductPayments(product)
+  syncProductStatus(product)
+
+  if (isInvoiceClosed(product)) {
+    showToast('فاکتور این محصول بسته شده و امکان ثبت واریز جدید نیست')
+    return
+  }
+  if (!(parseFloat(product.price) || 0)) {
+    showToast('ابتدا قیمت کل محصول را ثبت کنید')
+    return
+  }
+  if (!areProductPaymentsFilled(product)) {
+    showToast('ابتدا فیلدهای واریزهای فعلی را کامل کنید')
+    return
+  }
+
   const user = getCurrentUser()
   const balance = getProductBalance(product)
   const suggested = balance > 0 ? String(balance) : ''
   product.payments.push(createPayment({
     amount: suggested,
-    soldByPhone: normalizePhone(user?.phone || '')
+    soldByPhone: normalizePhone(user?.phone || ''),
+    depositorName: ''
   }))
   syncProductStatus(product)
   await setProducts(customerId, products)
   renderProducts(customerId)
   showToast('واریز جدید اضافه شد — در انتظار تأیید حسابداری')
+}
+
+export async function removeProductPayment(customerId, productIndex, paymentIndex) {
+  if (!requirePermission('customers_add')) return
+  const products = getProducts(customerId)
+  const product = products[productIndex]
+  if (!product) return
+  ensureProductPayments(product)
+  const pay = product.payments[paymentIndex]
+  if (!pay) return
+  if (getPaymentEntryStatus(pay) === PAYMENT_STATUS.approved) {
+    showToast('واریز تأییدشده قابل حذف نیست')
+    return
+  }
+  if (!window.confirm('این واریز حذف شود؟')) return
+  product.payments.splice(paymentIndex, 1)
+  syncProductStatus(product)
+  await setProducts(customerId, products)
+  renderProducts(customerId)
+  showToast('واریز حذف شد')
 }
 
 function resetPaymentEntry(pay) {
@@ -1026,22 +1074,43 @@ function resetPaymentEntry(pay) {
 
 export async function saveProductField(customerId, index, field, value) {
   const products = getProducts(customerId)
-  if (products[index]) {
-    products[index][field] = value
-    syncProductStatus(products[index])
-    await setProducts(customerId, products)
-    renderProducts(customerId)
+  const product = products[index]
+  if (!product) return
+
+  if (field === 'price') {
+    if (isProductPriceLocked(product) && (parseFloat(product.price) || 0) > 0) {
+      showToast('قیمت کل پس از ثبت قابل تغییر نیست')
+      renderProducts(customerId)
+      return
+    }
+    const num = parseFloat(value) || 0
+    if (num <= 0) {
+      showToast('قیمت کل را وارد کنید')
+      return
+    }
+    product.price = String(num)
+    product.priceLocked = true
+  } else {
+    product[field] = value
   }
+
+  syncProductStatus(product)
+  await setProducts(customerId, products)
+  renderProducts(customerId)
 }
 
 export async function updateProduct(customerId, index, field, value) {
   const products = getProducts(customerId)
-  if (products[index]) {
-    products[index][field] = value
-    syncProductStatus(products[index])
-    await setProducts(customerId, products)
-    renderProducts(customerId)
+  const product = products[index]
+  if (!product) return
+  if (isInvoiceClosed(product) && field !== 'settlementDate') {
+    showToast('فاکتور بسته شده و قابل ویرایش نیست')
+    return
   }
+  product[field] = value
+  syncProductStatus(product)
+  await setProducts(customerId, products)
+  renderProducts(customerId)
 }
 
 export async function savePaymentField(customerId, productIndex, paymentIndex, field, value) {
@@ -1052,6 +1121,10 @@ export async function savePaymentField(customerId, productIndex, paymentIndex, f
   ensureProductPayments(product)
   const pay = product.payments[paymentIndex]
   if (!pay) return
+  if (getPaymentEntryStatus(pay) === PAYMENT_STATUS.approved) {
+    showToast('واریز تأییدشده قابل ویرایش نیست')
+    return
+  }
   pay[field] = value
   resetPaymentEntry(pay)
   syncProductStatus(product)
@@ -1067,6 +1140,10 @@ export async function updatePaymentField(customerId, productIndex, paymentIndex,
   ensureProductPayments(product)
   const pay = product.payments[paymentIndex]
   if (!pay) return
+  if (getPaymentEntryStatus(pay) === PAYMENT_STATUS.approved) {
+    showToast('واریز تأییدشده قابل ویرایش نیست')
+    return
+  }
 
   if (field === 'soldAtDate') {
     const oldTime = (pay.soldAt || '').split(' ')[1] || ''
@@ -1086,3 +1163,4 @@ export async function updatePaymentField(customerId, productIndex, paymentIndex,
 export async function removeProduct(customerId, index) {
   showToast('پس از ثبت محصول، امکان حذف وجود ندارد')
 }
+

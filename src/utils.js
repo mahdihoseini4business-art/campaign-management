@@ -403,12 +403,53 @@ export function getProductBalance(product) {
   return Math.max(0, price - getApprovedPaid(product))
 }
 
+/** Amount / date / time / depositor all present */
+export function isPaymentFilled(payment) {
+  if (!payment) return false
+  const amount = parseFloat(payment.amount) || 0
+  const soldAt = toEnDigits(String(payment.soldAt || '')).trim()
+  const parts = soldAt.split(/\s+/)
+  const hasDate = !!(parts[0] && parts[0].split('/').length === 3)
+  const hasTime = !!(parts[1] && /^\d{1,2}:\d{2}/.test(parts[1]))
+  const depositor = String(payment.depositorName || '').trim()
+  return amount > 0 && hasDate && hasTime && !!depositor
+}
+
+export function areProductPaymentsFilled(product) {
+  const pays = getProductPayments(product)
+  if (pays.length === 0) return true
+  return pays.every(isPaymentFilled)
+}
+
+/** Price locked once a positive total was saved */
+export function isProductPriceLocked(product) {
+  if (!product) return false
+  if (product.priceLocked === true) return true
+  return (parseFloat(product.price) || 0) > 0
+}
+
+/**
+ * Invoice closed: total price set, approved payments cover it,
+ * and every payment is approved (no pending/rejected left).
+ */
+export function isInvoiceClosed(product) {
+  ensureProductPayments(product)
+  const price = parseFloat(product?.price) || 0
+  if (price <= 0) return false
+  const pays = getProductPayments(product)
+  if (pays.length === 0) return false
+  if (getApprovedPaid(product) < price) return false
+  return pays.every(p => getPaymentEntryStatus(p) === PAYMENT_STATUS.approved)
+}
+
 /** Auto status from approved payments vs total price. */
 export function syncProductStatus(product) {
   ensureProductPayments(product)
   const price = parseFloat(product.price) || 0
+  if (price > 0) product.priceLocked = true
   const approved = getApprovedPaid(product)
   product.status = (price > 0 && approved >= price) ? 'تکمیل' : 'بیعانه'
+  product.invoiceClosed = isInvoiceClosed(product)
   // Keep legacy deposit mirror for exports/older code paths
   product.deposit = String(approved || '')
   const pays = product.payments || []

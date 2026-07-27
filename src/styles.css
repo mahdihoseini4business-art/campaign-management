@@ -509,6 +509,20 @@
   }
 
   /* --- Product Section --- */
+  .product-block {
+    margin-bottom: 12px;
+  }
+
+  .product-block.is-rejected .product-head-row {
+    background: var(--danger-light);
+    border-color: #fca5a5;
+  }
+
+  .product-block.is-closed .product-head-row {
+    background: var(--success-light);
+    border-color: #86efac;
+  }
+
   .product-row {
     display: flex;
     gap: 10px;
@@ -521,53 +535,82 @@
     flex-wrap: wrap;
   }
 
-  .product-row-rejected {
-    background: #fef2f2;
-    border-color: #fca5a5;
-  }
-
-  .product-card {
-    background: #F5F5F4;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px 14px;
-    margin-bottom: 12px;
-  }
-
-  .product-card.product-row-rejected {
-    background: #fef2f2;
-    border-color: #fca5a5;
-  }
-
-  .product-card-head {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: 10px;
+  .product-head-row {
+    margin-bottom: 0;
   }
 
   .payment-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding-top: 4px;
-    border-top: 1px dashed var(--border);
+    gap: 0;
+    margin-top: 8px;
+    padding-right: 8px;
+    border-right: 2px solid var(--border);
   }
 
-  .payment-entry {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+  .payment-row {
+    background: var(--surface);
+    margin-bottom: 8px;
+  }
+
+  .payment-row.is-incomplete {
+    border-color: var(--warning);
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.12);
+  }
+
+  .payment-index {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    min-width: 52px;
+  }
+
+  .payment-empty {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 8px 4px;
+  }
+
+  .product-status-label {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .product-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .product-price-locked {
+    font-size: 13px;
+    color: var(--text);
+    padding: 8px 12px;
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+  }
+
+  .invoice-closed-badge {
+    display: inline-flex;
     align-items: center;
-    padding: 8px 10px;
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #047857;
+    background: var(--success-light);
+    border: 1px solid #86efac;
+    border-radius: var(--radius-sm);
+    padding: 4px 10px;
+  }
+
+  .product-row-rejected {
+    background: #fef2f2;
+    border-color: #fca5a5;
   }
 
   .product-row select,
-  .product-row input {
+  .product-row input,
+  .product-block select,
+  .product-block input {
     padding: 10px 12px;
     border: 1.5px solid #D6D3D1;
     border-radius: var(--radius);
@@ -575,19 +618,34 @@
     font-family: inherit;
     outline: none;
     transition: all 0.2s ease;
+    background: var(--surface);
   }
 
   .product-row select:focus,
-  .product-row input:focus {
+  .product-row input:focus,
+  .product-block select:focus,
+  .product-block input:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px rgba(237,28,36,0.15);
   }
 
-  .product-row .product-name { min-width: 140px; }
+  .product-row .product-name,
+  .product-block .product-name { min-width: 140px; }
   .product-row .product-status { min-width: 100px; }
-  .product-row .product-price { min-width: 120px; direction: ltr; text-align: left; }
-  .product-row .product-deposit { min-width: 120px; direction: ltr; text-align: left; }
-  .product-row .product-settlement { min-width: 130px; direction: ltr; text-align: left; font-size: 12px; }
+  .product-row .product-price,
+  .product-block .product-price { min-width: 120px; direction: ltr; text-align: left; }
+  .product-row .product-deposit,
+  .product-block .product-deposit { min-width: 120px; direction: ltr; text-align: left; }
+  .product-row .product-settlement,
+  .product-block .product-settlement { min-width: 110px; direction: ltr; text-align: left; font-size: 12px; }
+  .product-row .product-depositor,
+  .product-block .product-depositor { min-width: 140px; }
+
+  .product-block .btn:disabled,
+  .product-block .btn[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
 
   /* Force Vazirmatn font on all number inputs and displays */
   input[type="number"],
