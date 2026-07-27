@@ -1,5 +1,5 @@
 import { getData, saveCustomerToDB, generateId } from './data.js'
-import { toEnDigits, showToast, getCurrentUser, resolveAdvisor, PLATFORM_LABELS, PLATFORM_MAP_IMPORT } from './utils.js'
+import { toEnDigits, showToast, getCurrentUser, resolveAdvisor, PLATFORM_LABELS, PLATFORM_MAP_IMPORT, requirePermission, canAccessCustomer } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers } from './customers.js'
 import { renderSales } from './sales.js'
@@ -15,7 +15,7 @@ const EXPORT_CONFIG = {
     getRows: () => {
       const data = getData()
       const statusMap = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
-      return data.customers.map(c => [
+      return data.customers.filter(c => canAccessCustomer(c)).map(c => [
         c.id, c.platformId || '', PLATFORM_LABELS[c.platform] || c.platform, c.name, c.phone, statusMap[c.status] || c.status, c.advisor || '', c.nextFollowupDate || '', c.notes
       ])
     }
@@ -25,7 +25,10 @@ const EXPORT_CONFIG = {
     headers: ['شناسه مشتری', 'نام مشتری', 'تاریخ', 'نوع', 'نتیجه', 'پیگیری بعدی', 'توضیحات'],
     getRows: () => {
       const data = getData()
-      return data.followups.map(f => {
+      return data.followups.filter(f => {
+        const c = data.customers.find(x => x.id === f.customerId)
+        return c && canAccessCustomer(c)
+      }).map(f => {
         const c = data.customers.find(x => x.id === f.customerId)
         return [f.customerId, c ? c.name : '', f.date, f.type, f.result, f.nextDate, f.notes]
       })
@@ -38,7 +41,7 @@ const EXPORT_CONFIG = {
       const data = getData()
       // Import getAllSales inline to avoid circular dependency
       const sales = []
-      data.customers.forEach(c => {
+      data.customers.filter(c => canAccessCustomer(c)).forEach(c => {
         if (c.products) {
           c.products.forEach(p => {
             const price = parseFloat(p.price) || 0
@@ -63,6 +66,8 @@ const EXPORT_CONFIG = {
 }
 
 export function exportTabCSV(tab) {
+  const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export' }[tab]
+  if (exportPerm && !requirePermission(exportPerm)) return
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
 
@@ -79,6 +84,8 @@ export function exportTabCSV(tab) {
 }
 
 export function exportTabXLSX(tab) {
+  const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export' }[tab]
+  if (exportPerm && !requirePermission(exportPerm)) return
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
 
@@ -126,6 +133,7 @@ const STATUS_MAP_IMPORT = {
 let importData = { headers: [], rows: [], mapping: {} }
 
 export function openImportModal() {
+  if (!requirePermission('customers_import')) return
   importData = { headers: [], rows: [], mapping: {} }
   document.getElementById('importStep1').style.display = ''
   document.getElementById('importStep2').style.display = 'none'
@@ -210,6 +218,7 @@ export function setImportMapping(colIndex, fieldKey) {
 }
 
 export async function doImport() {
+  if (!requirePermission('customers_import')) return
   const data = getData()
   const mapping = importData.mapping
   if (Object.keys(mapping).length === 0) {
@@ -295,6 +304,7 @@ const SALES_STATUS_MAP = {
 let salesImportData = { headers: [], rows: [], mapping: {} }
 
 export function openSalesImportModal() {
+  if (!requirePermission('sales_import')) return
   salesImportData = { headers: [], rows: [], mapping: {} }
   document.getElementById('salesImportMapping').style.display = 'none'
   document.getElementById('salesImportMapping').innerHTML = ''
@@ -377,6 +387,7 @@ export function setSalesImportMapping(colIndex, fieldKey) {
 }
 
 export async function doSalesImport() {
+  if (!requirePermission('sales_import')) return
   const data = getData()
   const mapping = salesImportData.mapping
   if (!mapping.phone && mapping.phone !== 0) {

@@ -78,7 +78,7 @@
     <div class="profile-menu">
       <button class="btn btn-icon" id="profileMenuBtn" onclick="app.toggleProfileMenu()" title="پروفایل" aria-haspopup="menu" aria-expanded="false" aria-controls="profileDropdown">👤</button>
       <div class="profile-dropdown" id="profileDropdown" role="menu" aria-labelledby="profileMenuBtn" hidden>
-        <div class="profile-dropdown-item" role="menuitem" tabindex="-1" onclick="app.switchTab('dashboard', document.querySelector('.tab-dashboard'))">
+        <div class="profile-dropdown-item" role="menuitem" tabindex="-1" data-perm="dashboard" onclick="app.switchTab('dashboard', document.querySelector('.tab-dashboard'))">
           <span>داشبرد</span>
         </div>
         <div class="profile-dropdown-item" role="menuitem" tabindex="-1" onclick="app.showToast('پروفایل - به زودی')">
@@ -202,17 +202,17 @@
       <select class="form-select" id="filterAdvisor" style="width:150px;" onchange="app.renderCustomers()">
         <option value="">همه کارشناسان</option>
       </select>
-      <button class="btn" onclick="if(app.hasPermission('customers_export'))app.exportTabCSV('customers')">خروجی CSV</button>
-      <button class="btn" onclick="if(app.hasPermission('customers_export'))app.exportTabXLSX('customers')">خروجی Excel</button>
-      <button class="btn" onclick="if(app.hasPermission('customers_import'))app.openImportModal()">ایمپورت اکسل</button>
-      <button class="btn btn-primary" onclick="if(app.hasPermission('customers_add'))app.openCustomerModal()">+ مشتری جدید</button>
+      <button class="btn" data-perm="customers_export" onclick="app.exportTabCSV('customers')">خروجی CSV</button>
+      <button class="btn" data-perm="customers_export" onclick="app.exportTabXLSX('customers')">خروجی Excel</button>
+      <button class="btn" data-perm="customers_import" onclick="app.openImportModal()">ایمپورت اکسل</button>
+      <button class="btn btn-primary" data-perm="customers_add" onclick="app.openCustomerModal()">+ مشتری جدید</button>
     </div>
 
     <div class="table-wrapper">
       <table>
         <thead>
           <tr>
-            <th style="width:40px;"><input type="checkbox" id="selectAllCustomers" onchange="app.toggleSelectAll('customers', this.checked)"></th>
+            <th style="width:40px;" data-perm="customers_delete"><input type="checkbox" id="selectAllCustomers" onchange="app.toggleSelectAll('customers', this.checked)"></th>
             <th onclick="app.sortCustomersHeader('id')">شناسه</th>
             <th onclick="app.sortCustomersHeader('platformId')">ایدی پلتفرم</th>
             <th onclick="app.sortCustomersHeader('platform')">پلتفرم</th>
@@ -246,16 +246,16 @@
       </select>
       <span id="bulkCountFollowups" style="display:none;font-size:13px;color:var(--text-muted);"></span>
       <input type="text" class="search-box" placeholder="جستجو..." id="searchFollowups" oninput="app.renderFollowups()">
-      <button class="btn" onclick="if(app.hasPermission('followups_export'))app.exportTabCSV('followups')">خروجی CSV</button>
-      <button class="btn" onclick="if(app.hasPermission('followups_export'))app.exportTabXLSX('followups')">خروجی Excel</button>
-      <button class="btn btn-primary" onclick="if(app.hasPermission('followups_add'))app.openFollowupModal()">+ پیگیری جدید</button>
+      <button class="btn" data-perm="followups_export" onclick="app.exportTabCSV('followups')">خروجی CSV</button>
+      <button class="btn" data-perm="followups_export" onclick="app.exportTabXLSX('followups')">خروجی Excel</button>
+      <button class="btn btn-primary" data-perm="followups_add" onclick="app.openFollowupModal()">+ پیگیری جدید</button>
     </div>
 
     <div class="table-wrapper">
       <table>
         <thead>
           <tr>
-            <th style="width:40px;"><input type="checkbox" id="selectAllFollowups" onchange="app.toggleSelectAll('followups', this.checked)"></th>
+            <th style="width:40px;" data-perm="followups_delete"><input type="checkbox" id="selectAllFollowups" onchange="app.toggleSelectAll('followups', this.checked)"></th>
             <th onclick="app.sortFollowupsHeader('customerId')">شناسه</th>
             <th onclick="app.sortFollowupsHeader('customerName')">نام</th>
             <th onclick="app.sortFollowupsHeader('date')">تاریخ</th>
@@ -288,16 +288,16 @@
       </select>
       <span id="bulkCountSales" style="display:none;font-size:13px;color:var(--text-muted);"></span>
       <input type="text" class="search-box" placeholder="جستجو (نام، شماره، محصول)..." id="searchSales" oninput="app.renderSales()">
-      <button class="btn" onclick="if(app.hasPermission('sales_export'))app.exportTabCSV('sales')">خروجی CSV</button>
-      <button class="btn" onclick="if(app.hasPermission('sales_export'))app.exportTabXLSX('sales')">خروجی Excel</button>
-      <button class="btn btn-primary" onclick="if(app.hasPermission('sales_import'))app.openSalesImportModal()">ایمپورت فروش از اکسل</button>
+      <button class="btn" data-perm="sales_export" onclick="app.exportTabCSV('sales')">خروجی CSV</button>
+      <button class="btn" data-perm="sales_export" onclick="app.exportTabXLSX('sales')">خروجی Excel</button>
+      <button class="btn btn-primary" data-perm="sales_import" onclick="app.openSalesImportModal()">ایمپورت فروش از اکسل</button>
     </div>
 
     <div class="table-wrapper">
       <table>
         <thead>
           <tr>
-            <th style="width:40px;"><input type="checkbox" id="selectAllSales" onchange="app.toggleSelectAll('sales', this.checked)"></th>
+            <th style="width:40px;" data-perm="customers_add"><input type="checkbox" id="selectAllSales" onchange="app.toggleSelectAll('sales', this.checked)"></th>
             <th onclick="app.sortSalesHeader('customerId')">شناسه مشتری</th>
             <th onclick="app.sortSalesHeader('customerName')">نام مشتری</th>
             <th onclick="app.sortSalesHeader('customerPhone')">شماره موبایل</th>

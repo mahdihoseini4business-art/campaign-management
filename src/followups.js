@@ -1,5 +1,5 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB } from './data.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, getCurrentUser, ownsCustomer } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canAccessCustomer, getCurrentUser, ownsCustomer } from './utils.js'
 import { openCustomerDetail } from './customers.js'
 
 // ============================================
@@ -43,9 +43,11 @@ export function renderFollowups() {
     const customer = data.customers.find(c => c.id === f.customerId)
     const name = customer ? customer.name : '—'
     const followupId = f.id || `idx_${data.followups.indexOf(f)}`
+    const canEdit = hasPermission('followups_add')
+    const canDelete = hasPermission('followups_delete')
 
     return `<tr>
-      <td><input type="checkbox" data-id="${escapeAttr(followupId)}" onchange="app.toggleRowSelect('followups', '${escapeAttr(followupId)}', this.checked)"></td>
+      <td>${canDelete ? `<input type="checkbox" data-id="${escapeAttr(followupId)}" onchange="app.toggleRowSelect('followups', '${escapeAttr(followupId)}', this.checked)">` : ''}</td>
       <td><span class="id-badge ${f.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="font-size:11px;cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(f.customerId)}')">${escapeHtml(f.customerId)}</span></td>
       <td>${escapeHtml(name)}</td>
       <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(f.date)}</td>
@@ -55,8 +57,8 @@ export function renderFollowups() {
       <td class="notes-cell" title="${escapeHtml(f.notes)}">${escapeHtml(f.notes) || '—'}</td>
       <td>
         <div class="actions-cell">
-          <button class="btn-icon" title="ویرایش" onclick="app.editFollowup('${escapeAttr(followupId)}')">✏</button>
-          <button class="btn-icon" title="حذف" onclick="app.deleteFollowup('${escapeAttr(followupId)}')">🗑</button>
+          ${canEdit ? `<button class="btn-icon" title="ویرایش" onclick="app.editFollowup('${escapeAttr(followupId)}')">✏</button>` : ''}
+          ${canDelete ? `<button class="btn-icon" title="حذف" onclick="app.deleteFollowup('${escapeAttr(followupId)}')">🗑</button>` : ''}
         </div>
       </td>
     </tr>`
@@ -68,13 +70,14 @@ export function renderFollowups() {
 // ============================================
 
 export function openFollowupModal(editFollowupId) {
+  if (!requirePermission('followups_add')) return
   const data = getData()
   const modal = document.getElementById('followupModal')
   const title = document.getElementById('followupModalTitle')
   const select = document.getElementById('followupCustomer')
 
   select.innerHTML = '<option value="">انتخاب کنید...</option>' +
-    data.customers.map(c =>
+    data.customers.filter(c => canAccessCustomer(c)).map(c =>
       `<option value="${c.id}">${c.id} — ${escapeHtml(c.name || c.platformId)}</option>`
     ).join('')
 
@@ -109,6 +112,7 @@ export function closeFollowupModal() {
 }
 
 export async function saveFollowup() {
+  if (!requirePermission('followups_add')) return
   const data = getData()
   const editFollowupId = document.getElementById('editFollowupIndex').value
   const customerId = document.getElementById('followupCustomer').value
@@ -120,6 +124,12 @@ export async function saveFollowup() {
 
   if (!customerId) { showToast('مشتری را انتخاب کنید'); return }
   if (!date) { showToast('تاریخ پیگیری را وارد کنید'); return }
+
+  const customer = data.customers.find(c => c.id === customerId)
+  if (!customer || !canAccessCustomer(customer)) {
+    showToast('شما به این مشتری دسترسی ندارید')
+    return
+  }
 
   if (editFollowupId) {
     const existing = data.followups.find(x => String(x.id) === String(editFollowupId) || `idx_${data.followups.indexOf(x)}` === editFollowupId)
@@ -153,10 +163,12 @@ export async function saveFollowup() {
 }
 
 export function editFollowup(followupId) {
+  if (!requirePermission('followups_add')) return
   openFollowupModal(followupId)
 }
 
 export async function deleteFollowup(followupId) {
+  if (!requirePermission('followups_delete')) return
   const data = getData()
   const f = data.followups.find(x => String(x.id) === String(followupId) || `idx_${data.followups.indexOf(x)}` === followupId)
   if (!f) { showToast('پیگیری یافت نشد'); return }

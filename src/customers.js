@@ -1,6 +1,6 @@
 import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId } from './data.js'
 import { getUsersSafe } from './auth.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer, resolveAdvisor, normalizePhone, userDisplayName, PLATFORM_LABELS, PLATFORM_CLASSES, getPlatformUrl } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canAccessCustomer, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer, resolveAdvisor, normalizePhone, userDisplayName, PLATFORM_LABELS, PLATFORM_CLASSES, getPlatformUrl } from './utils.js'
 
 const STATUS_LABELS = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
 const STATUS_CLASSES = { new: 'status-new', contacted: 'status-contacted', chatting: 'status-chatting', interested: 'status-interested', sent: 'status-sent', followup_done: 'status-followup_done', converting: 'status-converting', purchased: 'status-purchased', cancelled: 'status-cancelled' }
@@ -56,6 +56,8 @@ export async function renderCustomers() {
     const platformLabel = PLATFORM_LABELS[c.platform] || c.platform
     const statusClass = STATUS_CLASSES[c.status] || 'status-new'
     const statusLabel = STATUS_LABELS[c.status] || c.status
+    const canEdit = hasPermission('customers_add')
+    const canDelete = hasPermission('customers_delete')
 
     const platformUrl = getPlatformUrl(c.platform, c.platformId, c.phone)
     const platformIdHtml = platformUrl
@@ -94,7 +96,7 @@ export async function renderCustomers() {
     }
 
     return `<tr class="${nextFollowupClass}">
-      <td><input type="checkbox" data-id="${escapeAttr(c.id)}" onchange="app.toggleRowSelect('customers', '${escapeAttr(c.id)}', this.checked)"></td>
+      <td>${canDelete ? `<input type="checkbox" data-id="${escapeAttr(c.id)}" onchange="app.toggleRowSelect('customers', '${escapeAttr(c.id)}', this.checked)">` : ''}</td>
       <td><span class="id-badge ${idClass}">${escapeHtml(c.id)}</span></td>
       <td>${platformIdHtml}</td>
       <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>
@@ -109,8 +111,8 @@ export async function renderCustomers() {
       <td>
         <div class="actions-cell">
           <button class="btn-icon" title="پنل مشتری" onclick="app.openCustomerDetail('${escapeAttr(c.id)}')" style="color:var(--accent);">👤</button>
-          <button class="btn-icon" title="ویرایش" onclick="app.editCustomer('${escapeAttr(c.id)}')">✏</button>
-          <button class="btn-icon" title="حذف" onclick="app.deleteCustomer('${escapeAttr(c.id)}')">🗑</button>
+          ${canEdit ? `<button class="btn-icon" title="ویرایش" onclick="app.editCustomer('${escapeAttr(c.id)}')">✏</button>` : ''}
+          ${canDelete ? `<button class="btn-icon" title="حذف" onclick="app.deleteCustomer('${escapeAttr(c.id)}')">🗑</button>` : ''}
         </div>
       </td>
     </tr>`
@@ -173,6 +175,7 @@ export function updateStats() {
 // ============================================
 
 export async function openCustomerModal(editId) {
+  if (!requirePermission('customers_add')) return
   const data = getData()
   const modal = document.getElementById('customerModal')
   const title = document.getElementById('customerModalTitle')
@@ -232,6 +235,7 @@ export function closeCustomerModal() {
 }
 
 export async function saveCustomer() {
+  if (!requirePermission('customers_add')) return
   const saveBtn = document.querySelector('#customerModal .btn-primary')
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'در حال ذخیره...' }
 
@@ -347,10 +351,12 @@ export async function saveCustomer() {
 }
 
 export function editCustomer(id) {
+  if (!requirePermission('customers_add')) return
   openCustomerModal(id)
 }
 
 export function deleteCustomer(id) {
+  if (!requirePermission('customers_delete')) return
   const data = getData()
   const customer = data.customers.find(c => c.id === id)
   document.getElementById('deleteMessage').textContent =
@@ -383,6 +389,13 @@ export async function openCustomerDetail(id) {
   const data = getData()
   const c = data.customers.find(x => x.id === id)
   if (!c) return
+  if (!canAccessCustomer(c)) {
+    showToast('شما به این مشتری دسترسی ندارید')
+    return
+  }
+
+  const canEdit = hasPermission('customers_add')
+  const canAddFollowup = hasPermission('followups_add')
 
   const customerFollowups = data.followups.filter(f => f.customerId === id)
   const idClass = c.id.startsWith('CS') ? 'id-cs' : 'id-ld'
@@ -392,6 +405,24 @@ export async function openCustomerDetail(id) {
   const detailUsers = await getUsersSafe()
 
   document.getElementById('detailTitle').textContent = `پنل مشتری — ${c.name || c.platformId}`
+
+  const advisorHtml = canEdit
+    ? `<select class="form-select" id="detailAdvisor" style="width:auto;display:inline-block;" onchange="app.updateCustomerAdvisor('${escapeAttr(c.id)}', this.value)">
+            ${detailUsers.filter(u => u.phone).map(u => {
+              const phone = normalizePhone(u.phone)
+              const selected = phone === normalizePhone(c.advisorPhone) ? 'selected' : ''
+              return `<option value="${escapeAttr(phone)}" ${selected}>${escapeHtml(userDisplayName(u))}</option>`
+            }).join('')}
+          </select>`
+    : escapeHtml(c.advisor || '—')
+
+  const followupDateControls = canEdit
+    ? `<div style="display:flex;gap:6px;align-items:center;">
+          <input type="text" id="detailFollowupDate" placeholder="تاریخ پیگیری" data-jdp style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:150px;">
+          <button class="btn btn-sm btn-primary" onclick="app.setNextFollowup('${escapeAttr(c.id)}')">ذخیره</button>
+          ${c.nextFollowupDate ? `<button class="btn btn-sm" onclick="app.clearNextFollowup('${escapeAttr(c.id)}')" style="color:var(--danger);">حذف</button>` : ''}
+        </div>`
+    : ''
 
   let html = `
     <div class="detail-info">
@@ -405,15 +436,7 @@ export async function openCustomerDetail(id) {
       </div>
       <div class="detail-field">
         <span class="detail-label">کارشناس مسئول</span>
-        <span class="detail-value">
-          <select class="form-select" id="detailAdvisor" style="width:auto;display:inline-block;" onchange="app.updateCustomerAdvisor('${escapeAttr(c.id)}', this.value)">
-            ${detailUsers.filter(u => u.phone).map(u => {
-              const phone = normalizePhone(u.phone)
-              const selected = phone === normalizePhone(c.advisorPhone) ? 'selected' : ''
-              return `<option value="${escapeAttr(phone)}" ${selected}>${escapeHtml(userDisplayName(u))}</option>`
-            }).join('')}
-          </select>
-        </span>
+        <span class="detail-value">${advisorHtml}</span>
       </div>
       <div class="detail-field">
         <span class="detail-label">ایدی پلتفرم</span>
@@ -445,18 +468,14 @@ export async function openCustomerDetail(id) {
             ${c.nextFollowupDate || 'تنظیم نشده'}
           </div>
         </div>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <input type="text" id="detailFollowupDate" placeholder="تاریخ پیگیری" data-jdp style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:150px;">
-          <button class="btn btn-sm btn-primary" onclick="app.setNextFollowup('${escapeAttr(c.id)}')">ذخیره</button>
-          ${c.nextFollowupDate ? `<button class="btn btn-sm" onclick="app.clearNextFollowup('${escapeAttr(c.id)}')" style="color:var(--danger);">حذف</button>` : ''}
-        </div>
+        ${followupDateControls}
       </div>
     </div>
 
     <div class="detail-products" style="margin-bottom:20px;">
       <div style="font-size:14px;font-weight:600;margin-bottom:12px;">محصولات</div>
       <div id="detailProductsList"></div>
-      <button class="btn btn-sm" style="margin-top:8px;" onclick="app.addProductRow('${escapeAttr(c.id)}')">+ افزودن محصول</button>
+      ${canEdit ? `<button class="btn btn-sm" style="margin-top:8px;" onclick="app.addProductRow('${escapeAttr(c.id)}')">+ افزودن محصول</button>` : ''}
     </div>
 
     <div class="detail-timeline-title">
@@ -485,7 +504,8 @@ export async function openCustomerDetail(id) {
     html += `</div>`
   }
 
-  html += `
+  if (canAddFollowup) {
+    html += `
     <div class="detail-add-note" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;">افزودن توضیحات جدید</div>
       <textarea class="form-textarea" id="detailQuickNote" placeholder="توضیحات جدید را اینجا بنویسید..." style="min-height:60px;margin-bottom:8px;"></textarea>
@@ -514,6 +534,7 @@ export async function openCustomerDetail(id) {
       </div>
     </div>
   `
+  }
 
   document.getElementById('detailBody').innerHTML = html
   document.getElementById('detailModal').classList.add('active')
@@ -521,6 +542,7 @@ export async function openCustomerDetail(id) {
 }
 
 export async function setNextFollowup(customerId) {
+  if (!requirePermission('customers_add')) return
   const data = getData()
   const input = document.getElementById('detailFollowupDate')
   const date = input.value.trim()
@@ -543,6 +565,7 @@ export async function setNextFollowup(customerId) {
 }
 
 export async function clearNextFollowup(customerId) {
+  if (!requirePermission('customers_add')) return
   const data = getData()
   const idx = data.customers.findIndex(c => c.id === customerId)
   if (idx !== -1) {
@@ -560,6 +583,7 @@ export async function clearNextFollowup(customerId) {
 }
 
 export async function addQuickNote(customerId) {
+  if (!requirePermission('followups_add')) return
   const data = getData()
   const textarea = document.getElementById('detailQuickNote')
   const notes = textarea.value.trim()
@@ -582,9 +606,11 @@ export async function addQuickNote(customerId) {
 }
 
 export async function updateCustomerAdvisor(customerId, advisorPhoneValue) {
+  if (!requirePermission('customers_add')) return
   const data = getData()
   const c = data.customers.find(x => x.id === customerId)
   if (!c) return
+  if (!canAccessCustomer(c)) { showToast('شما به این مشتری دسترسی ندارید'); return }
   const users = await getUsersSafe()
   const { advisor, advisorPhone } = resolveAdvisor(advisorPhoneValue, users)
   c.advisor = advisor
@@ -617,6 +643,7 @@ export function getProducts(customerId) {
 }
 
 export async function setProducts(customerId, products) {
+  if (!requirePermission('customers_add')) return
   const data = getData()
   const idx = data.customers.findIndex(c => c.id === customerId)
   if (idx !== -1) {
@@ -629,6 +656,7 @@ export function renderProducts(customerId) {
   const container = document.getElementById('detailProductsList')
   if (!container) return
   const products = getProducts(customerId)
+  const canEdit = hasPermission('customers_add')
 
   if (products.length === 0) {
     container.innerHTML = '<div style="font-size:13px;color:var(--text-muted);padding:8px 0;">محصولی ثبت نشده</div>'
@@ -639,6 +667,24 @@ export function renderProducts(customerId) {
     const isCompleted = p.status === 'تکمیل'
     const price = parseFloat(p.price) || 0
     const deposit = parseFloat(p.deposit) || 0
+
+    if (!canEdit) {
+      let balanceHtml = ''
+      if (p.status === 'بیعانه' && price > 0) {
+        const bal = price - deposit
+        balanceHtml = `<span class="product-balance ${bal > 0 ? 'negative' : ''}">مانده: ${formatNumber(bal)}</span>`
+      }
+      return `
+        <div class="product-row" style="opacity:0.95;">
+          <span style="font-size:13px;min-width:120px;">${escapeHtml(p.name || '—')}</span>
+          <span style="font-size:13px;">${escapeHtml(p.status || '—')}</span>
+          <span style="font-size:13px;">${p.price ? formatNumber(p.price) : '—'}</span>
+          ${p.status === 'بیعانه' ? `<span style="font-size:13px;">بیعانه: ${p.deposit ? formatNumber(p.deposit) : '—'}</span>` : ''}
+          ${p.settlementDate ? `<span style="font-size:12px;color:var(--text-muted);">${escapeHtml(p.settlementDate)}</span>` : ''}
+          ${balanceHtml}
+        </div>
+      `
+    }
 
     let priceHtml = ''
     if (isCompleted) {
@@ -674,6 +720,7 @@ export function renderProducts(customerId) {
 }
 
 export async function addProductRow(customerId) {
+  if (!requirePermission('customers_add')) return
   const products = getProducts(customerId)
   products.push({ name: PRODUCTS[0], status: PRODUCT_STATUSES[0], price: '', deposit: '', settlementDate: '' })
   await setProducts(customerId, products)
@@ -701,6 +748,7 @@ export async function updateProduct(customerId, index, field, value) {
 }
 
 export async function removeProduct(customerId, index) {
+  if (!requirePermission('customers_add')) return
   if (!window.confirm('آیا از حذف این محصول مطمئن هستید؟')) return
   const products = getProducts(customerId)
   products.splice(index, 1)

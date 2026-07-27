@@ -66,6 +66,7 @@ function getFilteredSales() {
 
 function renderSalesRows(allSales) {
   const todayNum = getTodayJalaliNum()
+  const canBulkDelete = hasPermission('customers_add')
   return allSales.map(s => {
     const pClass = PLATFORM_CLASSES[s.platform] || ''
     const pLabel = PLATFORM_LABELS[s.platform] || s.platform
@@ -89,7 +90,7 @@ function renderSalesRows(allSales) {
     }
 
     return `<tr class="${rowClass}">
-      <td><input type="checkbox" data-id="${escapeAttr(s.customerId)}" onchange="app.toggleRowSelect('sales', '${escapeAttr(s.customerId)}', this.checked)"></td>
+      <td>${canBulkDelete ? `<input type="checkbox" data-id="${escapeAttr(s.customerId)}" onchange="app.toggleRowSelect('sales', '${escapeAttr(s.customerId)}', this.checked)">` : ''}</td>
       <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(s.customerId)}')">${escapeHtml(s.customerId)}</span></td>
       <td>${escapeHtml(s.customerName)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(s.customerPhone) || '—'}</td>

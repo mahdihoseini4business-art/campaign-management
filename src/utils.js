@@ -235,6 +235,13 @@ export function hasPermission(key) {
   return user.permissions && user.permissions[key] === true
 }
 
+/** Guard for actions — shows toast and returns false when denied. */
+export function requirePermission(key) {
+  if (hasPermission(key)) return true
+  showToast('شما به این بخش دسترسی ندارید')
+  return false
+}
+
 /** Normalize Iranian mobile to digits starting with 09… */
 export function normalizePhone(phone) {
   let p = toEnDigits(String(phone || '').replace(/[\s\-()]/g, ''))
@@ -267,6 +274,15 @@ export function ownsCustomer(customer, user = getCurrentUser()) {
   const advisorName = (customer.advisor || '').trim()
   if (myName && advisorName) return myName === advisorName
   return false
+}
+
+/** Whether the current user may view this customer (LD/CS type + ownership). */
+export function canAccessCustomer(customer, user = getCurrentUser()) {
+  if (!user || !customer) return false
+  if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
+  if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
+  if (user.role !== 'admin' && !ownsCustomer(customer, user)) return false
+  return true
 }
 
 /** Resolve advisor display name + phone from a phone value and users list */

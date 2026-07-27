@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName } from './utils.js'
 
 // ============================================
 // Password Hashing (PBKDF2)
@@ -309,11 +309,7 @@ export async function refreshSessionFromServer(localUser) {
 // ============================================
 
 export async function openSettingsModal() {
-  const currentUser = getCurrentUser()
-  if (!currentUser || currentUser.role !== 'admin') {
-    showToast('فقط مدیر سیستم به تنظیمات دسترسی دارد')
-    return
-  }
+  if (!requirePermission('settings')) return
   document.getElementById('newFirstName').value = ''
   document.getElementById('newLastName').value = ''
   document.getElementById('newPhone').value = ''
@@ -328,6 +324,7 @@ export function closeSettingsModal() {
 }
 
 export async function addUser() {
+  if (!requirePermission('settings')) return
   const firstName = document.getElementById('newFirstName').value.trim()
   const lastName = document.getElementById('newLastName').value.trim()
   const phone = normalizePhone(document.getElementById('newPhone').value.trim())
@@ -374,6 +371,7 @@ export async function addUser() {
 }
 
 export async function deleteUser(username) {
+  if (!requirePermission('settings')) return
   if (username === 'admin') { showToast('امکان حذف مدیر وجود ندارد'); return }
   const currentUser = getCurrentUser()
   if (currentUser && currentUser.username === username) { showToast('امکان حذف کاربر جاری وجود ندارد'); return }
@@ -408,7 +406,7 @@ export async function renderUsersList() {
 
   container.innerHTML = users.map(u => {
     const isCurrentUser = u.username === currentUser?.username
-    const isAdminUser = u.username === 'admin'
+    const isAdminUser = u.username === 'admin' || u.role === 'admin'
     const perms = u.permissions || getDefaultPermissions()
 
     // نمایش نام کاربر
@@ -441,19 +439,25 @@ export async function renderUsersList() {
           </div>
           ${!isAdminUser ? `<button class="btn-icon" title="حذف" onclick="app.deleteUser('${escapeAttr(u.username)}')" style="color:var(--danger);">🗑</button>` : ''}
         </div>
-        ${!isAdminUser ? `
+        ${u.role !== 'admin' ? `
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
           ${permsHtml}
           <button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="app.saveUserPermissions('${escapeAttr(u.username)}')">ذخیره دسترسی‌ها</button>
         </div>
-        ` : ''}
+        ` : `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">${permsHtml}</div>`}
       </div>
     `
   }).join('')
 }
 
 export async function saveUserPermissions(username) {
+  if (!requirePermission('settings')) return
+
   const checkboxes = document.querySelectorAll(`input[data-perm-user="${username}"]`)
+  if (checkboxes.length === 0) {
+    showToast('برای کاربر مدیر نمی‌توان دسترسی جزئی ذخیره کرد')
+    return
+  }
   const permissions = {}
   checkboxes.forEach(cb => {
     permissions[cb.dataset.permKey] = cb.checked
@@ -468,6 +472,11 @@ export async function saveUserPermissions(username) {
     console.error('saveUserPermissions error:', error)
     showToast('خطا در ذخیره دسترسی‌ها')
   } else {
+    const current = getCurrentUser()
+    if (current && current.username === username && current.role !== 'admin') {
+      setCurrentUser({ ...current, permissions })
+      applyPermissions()
+    }
     showToast('دسترسی‌ها ذخیره شد')
   }
 }
@@ -498,10 +507,15 @@ export function applyPermissions() {
     }
   })
 
+  document.querySelectorAll('[data-perm]').forEach(el => {
+    const key = el.getAttribute('data-perm')
+    if (!key) return
+    el.style.display = hasPermission(key) ? '' : 'none'
+  })
+
   const settingsItem = document.querySelector('.profile-dropdown-item[onclick*="openSettingsModal"]')
-  const currentUser = getCurrentUser()
-  if (settingsItem && (!currentUser || currentUser.role !== 'admin')) {
-    settingsItem.style.display = 'none'
+  if (settingsItem) {
+    settingsItem.style.display = hasPermission('settings') ? '' : 'none'
   }
 
   const activeTab = document.querySelector('.tab.active')

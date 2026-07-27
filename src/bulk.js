@@ -1,16 +1,23 @@
 import { getData, deleteCustomerFromDB, deleteFollowupFromDB, saveCustomerToDB } from './data.js'
-import { showToast } from './utils.js'
+import { showToast, requirePermission, hasPermission } from './utils.js'
 import { renderCustomers } from './customers.js'
 import { renderFollowups } from './followups.js'
 import { renderSales } from './sales.js'
 
 const selectedIds = { customers: new Set(), followups: new Set(), sales: new Set() }
 
+const BULK_DELETE_PERM = {
+  customers: 'customers_delete',
+  followups: 'followups_delete',
+  sales: 'customers_add',
+}
+
 export function getSelectedIds(tab) {
   return selectedIds[tab]
 }
 
 export function toggleSelectAll(tab, checked) {
+  if (BULK_DELETE_PERM[tab] && !hasPermission(BULK_DELETE_PERM[tab])) return
   const tbody = getTabBody(tab)
   if (!tbody) return
   const checkboxes = tbody.querySelectorAll('input[type="checkbox"]')
@@ -27,6 +34,7 @@ export function toggleSelectAll(tab, checked) {
 }
 
 export function toggleRowSelect(tab, id, checked) {
+  if (BULK_DELETE_PERM[tab] && !hasPermission(BULK_DELETE_PERM[tab])) return
   if (checked) {
     selectedIds[tab].add(id)
   } else {
@@ -82,6 +90,11 @@ export function executeBulkAction(tab) {
   }
 
   if (action === 'delete') {
+    const perm = BULK_DELETE_PERM[tab]
+    if (perm && !requirePermission(perm)) {
+      actionEl.value = ''
+      return
+    }
     bulkDelete(tab, [...ids])
   }
 
