@@ -526,6 +526,46 @@
     border-color: #fca5a5;
   }
 
+  .product-card {
+    background: #F5F5F4;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+
+  .product-card.product-row-rejected {
+    background: #fef2f2;
+    border-color: #fca5a5;
+  }
+
+  .product-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .payment-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px dashed var(--border);
+  }
+
+  .payment-entry {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 10px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
   .product-row select,
   .product-row input {
     padding: 10px 12px;

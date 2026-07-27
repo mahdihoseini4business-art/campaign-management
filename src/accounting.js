@@ -2,36 +2,43 @@ import { getData, saveCustomerToDB } from './data.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
   requirePermission, getCurrentUser, normalizePhone, getNowJalaliDateTime,
-  getPaymentAmount, getPaymentStatus, PAYMENT_STATUS, PAYMENT_STATUS_LABELS
+  ensureProductPayments, syncProductStatus, getPaymentEntryStatus,
+  PAYMENT_STATUS, PAYMENT_STATUS_LABELS
 } from './utils.js'
 import { renderSales } from './sales.js'
+import { renderProducts } from './customers.js'
 
 let accountingFilter = 'pending' // pending | approved | rejected
-let rejectTarget = null // { customerId, productIndex }
+let rejectTarget = null // { customerId, productIndex, paymentIndex }
 
 export function getAllPayments() {
   const data = getData()
   const payments = []
   data.customers.forEach(c => {
-    ;(c.products || []).forEach((p, productIndex) => {
-      const amount = getPaymentAmount(p)
-      if (amount <= 0) return
-      payments.push({
-        customerId: c.id,
-        productIndex,
-        customerName: c.name || c.platformId || c.id,
-        customerPhone: c.phone || '',
-        advisor: c.advisor || '',
-        advisorPhone: c.advisorPhone || '',
-        productName: p.name || '',
-        productStatus: p.status || '',
-        amount,
-        soldAt: p.soldAt || '',
-        depositorName: p.depositorName || '',
-        paymentStatus: getPaymentStatus(p),
-        paymentRejectReason: p.paymentRejectReason || '',
-        paymentReviewedAt: p.paymentReviewedAt || '',
-        paymentReviewedBy: p.paymentReviewedBy || ''
+    ;(c.products || []).forEach((product, productIndex) => {
+      ensureProductPayments(product)
+      syncProductStatus(product)
+      ;(product.payments || []).forEach((pay, paymentIndex) => {
+        const amount = parseFloat(pay.amount) || 0
+        if (amount <= 0) return
+        payments.push({
+          customerId: c.id,
+          productIndex,
+          paymentIndex,
+          customerName: c.name || c.platformId || c.id,
+          customerPhone: c.phone || '',
+          advisor: c.advisor || '',
+          advisorPhone: c.advisorPhone || '',
+          productName: product.name || '',
+          productStatus: product.status || '',
+          amount,
+          soldAt: pay.soldAt || '',
+          depositorName: pay.depositorName || '',
+          paymentStatus: getPaymentEntryStatus(pay),
+          paymentRejectReason: pay.paymentRejectReason || '',
+          paymentReviewedAt: pay.paymentReviewedAt || '',
+          paymentReviewedBy: pay.paymentReviewedBy || ''
+        })
       })
     })
   })
@@ -69,7 +76,6 @@ export function renderAccounting() {
     )
   }
 
-  // Newest soldAt first (string compare works for Jalali YYYY/MM/DD HH:mm)
   payments.sort((a, b) => String(b.soldAt || '').localeCompare(String(a.soldAt || ''), 'fa'))
 
   const all = getAllPayments()
@@ -96,8 +102,8 @@ export function renderAccounting() {
   tbody.innerHTML = payments.map(p => {
     const statusLabel = PAYMENT_STATUS_LABELS[p.paymentStatus] || p.paymentStatus
     const actions = p.paymentStatus === 'pending'
-      ? `<button class="btn btn-sm btn-approve" onclick="app.approvePayment('${escapeAttr(p.customerId)}', ${p.productIndex})">تأیید</button>
-         <button class="btn btn-sm btn-reject" onclick="app.openRejectPaymentModal('${escapeAttr(p.customerId)}', ${p.productIndex})">رد</button>`
+      ? `<button class="btn btn-sm btn-approve" onclick="app.approvePayment('${escapeAttr(p.customerId)}', ${p.productIndex}, ${p.paymentIndex})">تأیید</button>
+         <button class="btn btn-sm btn-reject" onclick="app.openRejectPaymentModal('${escapeAttr(p.customerId)}', ${p.productIndex}, ${p.paymentIndex})">رد</button>`
       : (p.paymentStatus === 'rejected'
         ? `<span style="font-size:12px;color:var(--danger);">${escapeHtml(p.paymentRejectReason || '—')}</span>`
         : `<span style="font-size:12px;color:var(--text-muted);">${escapeHtml(p.paymentReviewedAt || '—')}</span>`)
@@ -119,24 +125,31 @@ export function renderAccounting() {
   }).join('')
 }
 
-async function updatePaymentFields(customerId, productIndex, patch) {
+async function updatePaymentEntry(customerId, productIndex, paymentIndex, patch) {
   const data = getData()
   const customer = data.customers.find(c => c.id === customerId)
   if (!customer || !customer.products || !customer.products[productIndex]) {
     showToast('واریزی یافت نشد')
     return false
   }
-  Object.assign(customer.products[productIndex], patch)
+  const product = customer.products[productIndex]
+  ensureProductPayments(product)
+  if (!product.payments[paymentIndex]) {
+    showToast('واریزی یافت نشد')
+    return false
+  }
+  Object.assign(product.payments[paymentIndex], patch)
+  syncProductStatus(product)
   await saveCustomerToDB(customer)
   return true
 }
 
-export async function approvePayment(customerId, productIndex) {
+export async function approvePayment(customerId, productIndex, paymentIndex) {
   if (!requirePermission('accounting')) return
   const user = getCurrentUser()
   const { dateTime } = getNowJalaliDateTime()
   try {
-    const ok = await updatePaymentFields(customerId, productIndex, {
+    const ok = await updatePaymentEntry(customerId, productIndex, paymentIndex, {
       paymentStatus: PAYMENT_STATUS.approved,
       paymentRejectReason: '',
       paymentReviewedAt: dateTime,
@@ -146,15 +159,16 @@ export async function approvePayment(customerId, productIndex) {
     showToast('واریزی تأیید شد')
     renderAccounting()
     renderSales()
+    try { renderProducts(customerId) } catch (_) { /* detail panel may be closed */ }
   } catch (e) {
     console.error('approvePayment error:', e)
     showToast('خطا در تأیید واریزی')
   }
 }
 
-export function openRejectPaymentModal(customerId, productIndex) {
+export function openRejectPaymentModal(customerId, productIndex, paymentIndex) {
   if (!requirePermission('accounting')) return
-  rejectTarget = { customerId, productIndex }
+  rejectTarget = { customerId, productIndex, paymentIndex }
   const modal = document.getElementById('rejectPaymentModal')
   const reason = document.getElementById('rejectPaymentReason')
   if (reason) reason.value = ''
@@ -177,9 +191,9 @@ export async function confirmRejectPayment() {
   }
   const user = getCurrentUser()
   const { dateTime } = getNowJalaliDateTime()
-  const { customerId, productIndex } = rejectTarget
+  const { customerId, productIndex, paymentIndex } = rejectTarget
   try {
-    const ok = await updatePaymentFields(customerId, productIndex, {
+    const ok = await updatePaymentEntry(customerId, productIndex, paymentIndex, {
       paymentStatus: PAYMENT_STATUS.rejected,
       paymentRejectReason: reason,
       paymentReviewedAt: dateTime,
@@ -190,6 +204,7 @@ export async function confirmRejectPayment() {
     showToast('واریزی رد شد')
     renderAccounting()
     renderSales()
+    try { renderProducts(customerId) } catch (_) { /* detail panel may be closed */ }
   } catch (e) {
     console.error('confirmRejectPayment error:', e)
     showToast('خطا در رد واریزی')

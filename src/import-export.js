@@ -1,5 +1,5 @@
 import { getData, saveCustomerToDB, generateId } from './data.js'
-import { toEnDigits, showToast, getCurrentUser, resolveAdvisor, PLATFORM_LABELS, PLATFORM_MAP_IMPORT, requirePermission, canViewCustomer } from './utils.js'
+import { toEnDigits, showToast, getCurrentUser, resolveAdvisor, PLATFORM_LABELS, PLATFORM_MAP_IMPORT, requirePermission, canViewCustomer, ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance, isProductCountableInSales } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers } from './customers.js'
 import { renderSales } from './sales.js'
@@ -44,12 +44,15 @@ const EXPORT_CONFIG = {
       data.customers.filter(c => canViewCustomer(c)).forEach(c => {
         if (c.products) {
           c.products.forEach(p => {
+            ensureProductPayments(p)
+            syncProductStatus(p)
+            if (!isProductCountableInSales(p)) return
             const price = parseFloat(p.price) || 0
-            const deposit = parseFloat(p.deposit) || 0
+            const deposit = getApprovedPaid(p)
             sales.push({
               customerId: c.id, customerName: c.name || c.platformId, customerPhone: c.phone || '',
               platform: c.platform, productName: p.name, status: p.status, price, deposit,
-              balance: price - deposit, settlementDate: p.settlementDate || ''
+              balance: getProductBalance(p), settlementDate: p.settlementDate || ''
             })
           })
         }
@@ -440,11 +443,16 @@ export async function doSalesImport() {
       price: String(price),
       deposit: String(deposit),
       settlementDate,
-      depositorName: '',
-      paymentStatus: 'pending',
-      paymentRejectReason: '',
-      paymentReviewedAt: '',
-      paymentReviewedBy: ''
+      payments: [{
+        id: `pay_import_${Date.now()}_${imported}`,
+        amount: String(status === 'بیعانه' ? (deposit || price) : price),
+        soldAt: settlementDate || '',
+        depositorName: '',
+        paymentStatus: 'pending',
+        paymentRejectReason: '',
+        paymentReviewedAt: '',
+        paymentReviewedBy: ''
+      }]
     })
     imported++
   }

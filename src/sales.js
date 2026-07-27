@@ -2,7 +2,10 @@ import { getData } from './data.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser,
   jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, ownsCustomer,
-  PLATFORM_LABELS, PLATFORM_CLASSES, getPaymentAmount, getPaymentStatus, PAYMENT_STATUS_LABELS
+  PLATFORM_LABELS, PLATFORM_CLASSES, PAYMENT_STATUS_LABELS,
+  ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
+  getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
+  productHasRejectedPayment, getProductPayments
 } from './utils.js'
 
 // ============================================
@@ -15,9 +18,13 @@ export function getAllSales() {
   data.customers.forEach(c => {
     if (c.products) {
       c.products.forEach((p, productIndex) => {
+        ensureProductPayments(p)
+        syncProductStatus(p)
         const price = parseFloat(p.price) || 0
-        const deposit = parseFloat(p.deposit) || 0
-        const balance = price - deposit
+        const deposit = getApprovedPaid(p)
+        const balance = getProductBalance(p)
+        const pays = getProductPayments(p)
+        const lastPay = pays[pays.length - 1]
         sales.push({
           customerId: c.id,
           productIndex,
@@ -30,11 +37,15 @@ export function getAllSales() {
           deposit,
           balance,
           settlementDate: p.settlementDate || '',
-          soldAt: p.soldAt || '',
-          depositorName: p.depositorName || '',
-          paymentAmount: getPaymentAmount(p),
-          paymentStatus: getPaymentStatus(p),
-          paymentRejectReason: p.paymentRejectReason || ''
+          soldAt: lastPay?.soldAt || p.soldAt || '',
+          depositorName: pays.length > 1
+            ? `${pays.length} واریز`
+            : (lastPay?.depositorName || p.depositorName || ''),
+          paymentCount: pays.length,
+          paymentStatus: getWorstPaymentStatus(p),
+          paymentRejectReason: getLatestRejectReason(p),
+          hasRejected: productHasRejectedPayment(p),
+          countable: isProductCountableInSales(p)
         })
       })
     }
@@ -100,13 +111,16 @@ function renderSalesRows(allSales) {
       }
     }
 
-    if (s.paymentStatus === 'rejected') {
+    if (s.hasRejected) {
       rowClass = (rowClass + ' payment-rejected-row').trim()
     }
 
     const payLabel = PAYMENT_STATUS_LABELS[s.paymentStatus] || s.paymentStatus
     let paymentHtml = `<span class="payment-badge payment-${s.paymentStatus}">${escapeHtml(payLabel)}</span>`
-    if (s.paymentStatus === 'rejected' && s.paymentRejectReason) {
+    if (s.paymentCount > 1) {
+      paymentHtml += `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${s.paymentCount} واریز</div>`
+    }
+    if (s.hasRejected && s.paymentRejectReason) {
       paymentHtml += `<div class="payment-reject-reason" title="${escapeAttr(s.paymentRejectReason)}">${escapeHtml(s.paymentRejectReason)}</div>`
     }
 
@@ -134,10 +148,9 @@ export function renderSales() {
 
   let allSales = getFilteredSales()
 
-  // Rejected payments first (for advisor follow-up), then overdue settlement, then date
   allSales.sort((a, b) => {
-    const aRej = a.paymentStatus === 'rejected' ? 0 : 1
-    const bRej = b.paymentStatus === 'rejected' ? 0 : 1
+    const aRej = a.hasRejected ? 0 : 1
+    const bRej = b.hasRejected ? 0 : 1
     if (aRej !== bRej) return aRej - bRej
 
     const aNum = a.settlementDate ? jalaliToNum(a.settlementDate) : 99999999
@@ -148,8 +161,7 @@ export function renderSales() {
     return aNum - bNum
   })
 
-  // Stats exclude accounting-rejected payments (still shown in the table for follow-up)
-  const countable = allSales.filter(s => s.paymentStatus !== 'rejected')
+  const countable = allSales.filter(s => s.countable)
   const cashSales = countable.filter(s => s.status === 'تکمیل')
   const depositSales = countable.filter(s => s.status === 'بیعانه')
 
@@ -178,10 +190,6 @@ export function renderSales() {
 
   tbody.innerHTML = renderSalesRows(allSales)
 }
-
-// ============================================
-// Sales Sort
-// ============================================
 
 let salesSortState = { field: null, asc: true }
 

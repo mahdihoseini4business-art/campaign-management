@@ -6,7 +6,9 @@ import {
   getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer,
   resolveAdvisor, normalizePhone, userDisplayName, PLATFORM_LABELS, PLATFORM_CLASSES,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
-  getNowJalaliDateTime, getPaymentStatus, PAYMENT_STATUS_LABELS
+  getNowJalaliDateTime, getPaymentStatus, PAYMENT_STATUS_LABELS, createPayment,
+  ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
+  getProductPayments, getPaymentEntryStatus, isProductCountableInSales, getWorstPaymentStatus
 } from './utils.js'
 
 const STATUS_LABELS = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
@@ -175,13 +177,9 @@ export function updateStats() {
     if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
     if (c.products) {
       c.products.forEach(p => {
-        const price = parseFloat(p.price) || 0
-        const deposit = parseFloat(p.deposit) || 0
-        if (p.status === 'تکمیل') {
-          totalPaid += price
-        } else if (p.status === 'بیعانه') {
-          totalPaid += deposit
-        }
+        ensureProductPayments(p)
+        syncProductStatus(p)
+        totalPaid += getApprovedPaid(p)
       })
     }
   })
@@ -612,8 +610,12 @@ export async function openCustomerDetail(id) {
   const statusLabel = STATUS_LABELS[c.status] || c.status
 
   const purchaseTotal = (c.products || [])
-    .filter(p => getPaymentStatus(p) !== 'rejected')
-    .reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0)
+    .filter(p => isProductCountableInSales(p))
+    .reduce((sum, p) => {
+      ensureProductPayments(p)
+      syncProductStatus(p)
+      return sum + (parseFloat(p.price) || 0)
+    }, 0)
 
   const detailUsers = await getUsersSafe()
 
@@ -851,12 +853,17 @@ export function closeDetailModal() {
 // ============================================
 
 const PRODUCTS = ['آنلاین چینی', 'حضوری چینی', 'کتاب', 'کره ای حضوری', 'کره ای آنلاین', 'حضوری فرمان', 'آنلاین فرمان', 'دوره زبان فنی', 'دوره GDS', 'آنلاین داخلی', 'تنظیم موتور', 'دیاگ لانچ', 'دیاگ I700', 'دیاگ blu', 'دیاگ newlite', 'تست باکس شبکه']
-const PRODUCT_STATUSES = ['تکمیل', 'بیعانه']
+const PRODUCT_STATUSES = ['تکمیل', 'بیعانه'] // kept for legacy references
 
 export function getProducts(customerId) {
   const data = getData()
   const c = data.customers.find(x => x.id === customerId)
-  return (c && c.products) ? c.products : []
+  if (!c || !c.products) return []
+  c.products.forEach(p => {
+    ensureProductPayments(p)
+    syncProductStatus(p)
+  })
+  return c.products
 }
 
 export async function setProducts(customerId, products) {
@@ -864,6 +871,7 @@ export async function setProducts(customerId, products) {
   const data = getData()
   const idx = data.customers.findIndex(c => c.id === customerId)
   if (idx !== -1) {
+    products.forEach(p => syncProductStatus(p))
     data.customers[idx].products = products
     await saveCustomerToDB(data.customers[idx])
   }
@@ -876,7 +884,7 @@ export function renderProducts(customerId) {
   const canEdit = hasPermission('customers_add')
 
   const purchaseTotal = products
-    .filter(p => getPaymentStatus(p) !== 'rejected')
+    .filter(p => isProductCountableInSales(p))
     .reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0)
   const totalEl = document.getElementById('detailPurchaseTotal')
   if (totalEl) totalEl.textContent = `${formatNumber(purchaseTotal)} ریال`
@@ -887,132 +895,192 @@ export function renderProducts(customerId) {
   }
 
   container.innerHTML = products.map((p, i) => {
-    const isCompleted = p.status === 'تکمیل'
     const price = parseFloat(p.price) || 0
-    const deposit = parseFloat(p.deposit) || 0
-    const payStatus = getPaymentStatus(p)
-    const payLabel = PAYMENT_STATUS_LABELS[payStatus] || payStatus
-    const rejectHint = (payStatus === 'rejected' && p.paymentRejectReason)
-      ? `<span class="payment-reject-reason" title="${escapeAttr(p.paymentRejectReason)}">${escapeHtml(p.paymentRejectReason)}</span>`
-      : ''
-    const payBadge = `<span class="payment-badge payment-${payStatus}">${escapeHtml(payLabel)}</span>${rejectHint}`
-    const rowClass = payStatus === 'rejected' ? 'product-row product-row-rejected' : 'product-row'
+    const approved = getApprovedPaid(p)
+    const balance = getProductBalance(p)
+    const pays = getProductPayments(p)
+    const worst = getWorstPaymentStatus(p)
+    const statusLabel = p.status || 'بیعانه'
+    const statusColor = statusLabel === 'تکمیل' ? 'var(--success)' : 'var(--warning)'
+    const rowRejected = worst === 'rejected' ? ' product-row-rejected' : ''
+
+    const paymentsHtml = pays.map((pay, pi) => {
+      const payStatus = getPaymentEntryStatus(pay)
+      const payLabel = PAYMENT_STATUS_LABELS[payStatus] || payStatus
+      const rejectHint = (payStatus === 'rejected' && pay.paymentRejectReason)
+        ? `<span class="payment-reject-reason" title="${escapeAttr(pay.paymentRejectReason)}">${escapeHtml(pay.paymentRejectReason)}</span>`
+        : ''
+      const badge = `<span class="payment-badge payment-${payStatus}">${escapeHtml(payLabel)}</span>${rejectHint}`
+
+      if (!canEdit) {
+        return `
+          <div class="payment-entry">
+            <span style="font-size:12px;font-weight:600;">واریز ${pi + 1}</span>
+            <span style="font-size:13px;direction:ltr;">${pay.amount ? formatNumber(pay.amount) : '—'}</span>
+            <span style="font-size:12px;color:var(--text-muted);">${escapeHtml(pay.soldAt || '—')}</span>
+            <span style="font-size:12px;">${escapeHtml(pay.depositorName || '—')}</span>
+            ${badge}
+          </div>`
+      }
+
+      return `
+        <div class="payment-entry">
+          <span style="font-size:12px;font-weight:600;min-width:52px;">واریز ${pi + 1}</span>
+          <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="مبلغ" value="${pay.amount ? formatNumber(pay.amount) : ''}" oninput="app.formatInput(this)" onblur="app.savePaymentField('${customerId}', ${i}, ${pi}, 'amount', app.unformatInput(this))">
+          <input type="text" class="product-settlement" placeholder="تاریخ" data-jdp value="${pay.soldAt ? pay.soldAt.split(' ')[0] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtDate', this.value)" style="max-width:110px;font-size:12px;">
+          <input type="time" class="product-settlement" value="${pay.soldAt && pay.soldAt.includes(' ') ? pay.soldAt.split(' ')[1] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtTime', this.value)" style="max-width:80px;font-size:12px;">
+          <input type="text" class="product-settlement" placeholder="نام واریزکننده" value="${escapeAttr(pay.depositorName || '')}" onblur="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'depositorName', this.value)" style="min-width:120px;font-size:12px;">
+          ${badge}
+        </div>`
+    }).join('')
+
+    const addPayBtn = (canEdit && balance > 0)
+      ? `<button class="btn btn-sm" style="margin-top:6px;" onclick="app.addProductPayment('${escapeAttr(customerId)}', ${i})">+ ثبت واریز بعدی (مانده: ${formatNumber(balance)})</button>`
+      : (canEdit
+        ? `<button class="btn btn-sm" style="margin-top:6px;" onclick="app.addProductPayment('${escapeAttr(customerId)}', ${i})">+ ثبت واریز</button>`
+        : '')
 
     if (!canEdit) {
-      let balanceHtml = ''
-      if (p.status === 'بیعانه' && price > 0) {
-        const bal = price - deposit
-        balanceHtml = `<span class="product-balance ${bal > 0 ? 'negative' : ''}">مانده: ${formatNumber(bal)}</span>`
-      }
       return `
-        <div class="${rowClass}" style="opacity:0.95;">
-          <span style="font-size:13px;min-width:120px;">${escapeHtml(p.name || '—')}</span>
-          <span style="font-size:13px;">${escapeHtml(p.status || '—')}</span>
-          <span style="font-size:13px;">${p.price ? formatNumber(p.price) : '—'}</span>
-          ${p.status === 'بیعانه' ? `<span style="font-size:13px;">بیعانه: ${p.deposit ? formatNumber(p.deposit) : '—'}</span>` : ''}
-          ${p.settlementDate ? `<span style="font-size:12px;color:var(--text-muted);">${escapeHtml(p.settlementDate)}</span>` : ''}
-          ${balanceHtml}
-          ${p.soldAt ? `<span style="font-size:11px;color:var(--text-muted);">ثبت: ${escapeHtml(p.soldAt)}</span>` : ''}
-          ${p.depositorName ? `<span style="font-size:11px;color:var(--text-muted);">واریزکننده: ${escapeHtml(p.depositorName)}</span>` : ''}
-          ${payBadge}
-        </div>
-      `
-    }
-
-    let priceHtml = ''
-    if (isCompleted) {
-      priceHtml = `<input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" onblur="app.saveProductField('${customerId}', ${i}, 'price', app.unformatInput(this))">`
-    } else if (p.status === 'بیعانه') {
-      priceHtml = `
-        <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="بیعانه" value="${p.deposit ? formatNumber(p.deposit) : ''}" oninput="app.formatInput(this)" onblur="app.saveProductField('${customerId}', ${i}, 'deposit', app.unformatInput(this))">
-        <input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت کل" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" onblur="app.saveProductField('${customerId}', ${i}, 'price', app.unformatInput(this))">
-        <input type="text" class="product-settlement" placeholder="تاریخ تسویه" data-jdp value="${p.settlementDate || ''}" onchange="app.updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">
-      `
-    }
-
-    let balanceHtml = ''
-    if (p.status === 'بیعانه' && price > 0) {
-      const bal = price - deposit
-      balanceHtml = `<span class="product-balance ${bal > 0 ? 'negative' : ''}">مانده: ${formatNumber(bal)}</span>`
+        <div class="product-card${rowRejected}">
+          <div class="product-card-head">
+            <span style="font-size:14px;font-weight:600;">${escapeHtml(p.name || '—')}</span>
+            <span style="color:${statusColor};font-weight:600;">${escapeHtml(statusLabel)}</span>
+            <span style="font-size:13px;">قیمت: ${price ? formatNumber(price) : '—'}</span>
+            <span style="font-size:13px;">پرداخت‌شده: ${approved ? formatNumber(approved) : '—'}</span>
+            ${balance > 0 ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : ''}
+            ${p.settlementDate ? `<span style="font-size:12px;color:var(--text-muted);">تسویه: ${escapeHtml(p.settlementDate)}</span>` : ''}
+          </div>
+          <div class="payment-list">${paymentsHtml || '<div style="font-size:12px;color:var(--text-muted);">واریزی ثبت نشده</div>'}</div>
+        </div>`
     }
 
     return `
-      <div class="${rowClass}">
-        <select class="product-name" onchange="app.updateProduct('${customerId}', ${i}, 'name', this.value)">
-          ${PRODUCTS.map(pr => `<option value="${pr}" ${p.name === pr ? 'selected' : ''}>${pr}</option>`).join('')}
-        </select>
-        <select class="product-status" onchange="app.updateProduct('${customerId}', ${i}, 'status', this.value)">
-          ${PRODUCT_STATUSES.map(s => `<option value="${s}" ${p.status === s ? 'selected' : ''}>${s}</option>`).join('')}
-        </select>
-        ${priceHtml}
-        ${balanceHtml}
-        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
-          <input type="text" class="product-settlement" placeholder="تاریخ فروش" data-jdp value="${p.soldAt ? p.soldAt.split(' ')[0] : ''}" onchange="app.updateProduct('${customerId}', ${i}, 'soldAtDate', this.value)" style="max-width:110px;font-size:12px;">
-          <input type="time" class="product-settlement" value="${p.soldAt && p.soldAt.includes(' ') ? p.soldAt.split(' ')[1] : ''}" onchange="app.updateProduct('${customerId}', ${i}, 'soldAtTime', this.value)" style="max-width:80px;font-size:12px;">
-          <input type="text" class="product-settlement" placeholder="نام واریزکننده" value="${escapeAttr(p.depositorName || '')}" onblur="app.updateProduct('${customerId}', ${i}, 'depositorName', this.value)" style="min-width:120px;font-size:12px;">
+      <div class="product-card${rowRejected}">
+        <div class="product-card-head">
+          <select class="product-name" onchange="app.updateProduct('${customerId}', ${i}, 'name', this.value)">
+            ${PRODUCTS.map(pr => `<option value="${pr}" ${p.name === pr ? 'selected' : ''}>${pr}</option>`).join('')}
+          </select>
+          <span style="color:${statusColor};font-weight:600;font-size:13px;">${escapeHtml(statusLabel)}</span>
+          <input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت کل" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" onblur="app.saveProductField('${customerId}', ${i}, 'price', app.unformatInput(this))">
+          <input type="text" class="product-settlement" placeholder="تاریخ تسویه" data-jdp value="${p.settlementDate || ''}" onchange="app.updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">
+          <span style="font-size:12px;">پرداخت‌شده: <b>${approved ? formatNumber(approved) : '۰'}</b></span>
+          ${balance > 0 ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : '<span style="font-size:12px;color:var(--success);">تسویه کامل</span>'}
         </div>
-        ${payBadge}
-      </div>
-    `
+        <div class="payment-list">${paymentsHtml || '<div style="font-size:12px;color:var(--text-muted);padding:4px 0;">هنوز واریزی ثبت نشده</div>'}</div>
+        ${addPayBtn}
+      </div>`
   }).join('')
+
+  if (window.jalaliDatepicker) {
+    try { window.jalaliDatepicker.startWatch({ time: false }) } catch (_) { /* ignore */ }
+  }
 }
 
 export async function addProductRow(customerId) {
   if (!requirePermission('customers_add')) return
   const products = getProducts(customerId)
-  const { dateTime } = getNowJalaliDateTime()
   const user = getCurrentUser()
-  products.push({
-    name: PRODUCTS[0], status: PRODUCT_STATUSES[0], price: '', deposit: '', settlementDate: '',
-    soldAt: dateTime,
-    soldByPhone: normalizePhone(user?.phone || ''),
-    depositorName: '',
-    paymentStatus: 'pending',
-    paymentRejectReason: '',
-    paymentReviewedAt: '',
-    paymentReviewedBy: ''
+  const firstPay = createPayment({
+    soldByPhone: normalizePhone(user?.phone || '')
   })
+  products.push({
+    name: PRODUCTS[0],
+    status: 'بیعانه',
+    price: '',
+    deposit: '',
+    settlementDate: '',
+    soldByPhone: normalizePhone(user?.phone || ''),
+    payments: [firstPay]
+  })
+  syncProductStatus(products[products.length - 1])
   await setProducts(customerId, products)
   renderProducts(customerId)
 }
 
-function resetPaymentForReview(product) {
-  product.paymentStatus = 'pending'
-  product.paymentRejectReason = ''
-  product.paymentReviewedAt = ''
-  product.paymentReviewedBy = ''
+export async function addProductPayment(customerId, productIndex) {
+  if (!requirePermission('customers_add')) return
+  const products = getProducts(customerId)
+  const product = products[productIndex]
+  if (!product) return
+  ensureProductPayments(product)
+  const user = getCurrentUser()
+  const balance = getProductBalance(product)
+  const suggested = balance > 0 ? String(balance) : ''
+  product.payments.push(createPayment({
+    amount: suggested,
+    soldByPhone: normalizePhone(user?.phone || '')
+  }))
+  syncProductStatus(product)
+  await setProducts(customerId, products)
+  renderProducts(customerId)
+  showToast('واریز جدید اضافه شد — در انتظار تأیید حسابداری')
 }
 
-const PAYMENT_SENSITIVE_FIELDS = new Set(['price', 'deposit', 'status', 'soldAtDate', 'soldAtTime', 'depositorName', 'soldAt'])
+function resetPaymentEntry(pay) {
+  pay.paymentStatus = 'pending'
+  pay.paymentRejectReason = ''
+  pay.paymentReviewedAt = ''
+  pay.paymentReviewedBy = ''
+}
 
 export async function saveProductField(customerId, index, field, value) {
   const products = getProducts(customerId)
   if (products[index]) {
     products[index][field] = value
-    if (PAYMENT_SENSITIVE_FIELDS.has(field)) resetPaymentForReview(products[index])
+    syncProductStatus(products[index])
     await setProducts(customerId, products)
+    renderProducts(customerId)
   }
 }
 
 export async function updateProduct(customerId, index, field, value) {
   const products = getProducts(customerId)
   if (products[index]) {
-    if (field === 'soldAtDate') {
-      const oldTime = (products[index].soldAt || '').split(' ')[1] || ''
-      products[index].soldAt = oldTime ? `${value} ${oldTime}` : value
-    } else if (field === 'soldAtTime') {
-      const oldDate = (products[index].soldAt || '').split(' ')[0] || ''
-      products[index].soldAt = oldDate ? `${oldDate} ${value}` : value
-    } else {
-      products[index][field] = value
-    }
-    if (field === 'status' && value === 'تکمیل') {
-      products[index].deposit = ''
-    }
-    if (PAYMENT_SENSITIVE_FIELDS.has(field)) resetPaymentForReview(products[index])
+    products[index][field] = value
+    syncProductStatus(products[index])
     await setProducts(customerId, products)
     renderProducts(customerId)
   }
+}
+
+export async function savePaymentField(customerId, productIndex, paymentIndex, field, value) {
+  if (!requirePermission('customers_add')) return
+  const products = getProducts(customerId)
+  const product = products[productIndex]
+  if (!product) return
+  ensureProductPayments(product)
+  const pay = product.payments[paymentIndex]
+  if (!pay) return
+  pay[field] = value
+  resetPaymentEntry(pay)
+  syncProductStatus(product)
+  await setProducts(customerId, products)
+  renderProducts(customerId)
+}
+
+export async function updatePaymentField(customerId, productIndex, paymentIndex, field, value) {
+  if (!requirePermission('customers_add')) return
+  const products = getProducts(customerId)
+  const product = products[productIndex]
+  if (!product) return
+  ensureProductPayments(product)
+  const pay = product.payments[paymentIndex]
+  if (!pay) return
+
+  if (field === 'soldAtDate') {
+    const oldTime = (pay.soldAt || '').split(' ')[1] || ''
+    pay.soldAt = oldTime ? `${value} ${oldTime}` : value
+  } else if (field === 'soldAtTime') {
+    const oldDate = (pay.soldAt || '').split(' ')[0] || ''
+    pay.soldAt = oldDate ? `${oldDate} ${value}` : value
+  } else {
+    pay[field] = value
+  }
+  resetPaymentEntry(pay)
+  syncProductStatus(product)
+  await setProducts(customerId, products)
+  renderProducts(customerId)
 }
 
 export async function removeProduct(customerId, index) {

@@ -225,15 +225,31 @@ export function getCustomerActivities(customer, followups = []) {
   })
 
   ;(customer.products || []).forEach(p => {
-    if (!p.soldAt) return
-    const dateNum = activityDateNum(p.soldAt)
-    if (dateNum === 99999999) return
-    acts.push({
-      kind: 'sale',
-      dateStr: p.soldAt,
-      dateNum,
-      byPhone: normalizePhone(p.soldByPhone || customer.advisorPhone),
-      label: 'فروش'
+    ensureProductPayments(p)
+    const pays = Array.isArray(p.payments) ? p.payments : []
+    if (pays.length === 0 && p.soldAt) {
+      const dateNum = activityDateNum(p.soldAt)
+      if (dateNum === 99999999) return
+      acts.push({
+        kind: 'sale',
+        dateStr: p.soldAt,
+        dateNum,
+        byPhone: normalizePhone(p.soldByPhone || customer.advisorPhone),
+        label: 'فروش'
+      })
+      return
+    }
+    pays.forEach(pay => {
+      if (!pay.soldAt) return
+      const dateNum = activityDateNum(pay.soldAt)
+      if (dateNum === 99999999) return
+      acts.push({
+        kind: 'sale',
+        dateStr: pay.soldAt,
+        dateNum,
+        byPhone: normalizePhone(pay.soldByPhone || p.soldByPhone || customer.advisorPhone),
+        label: 'فروش'
+      })
     })
   })
 
@@ -307,21 +323,136 @@ export const PAYMENT_STATUS_LABELS = {
   rejected: 'رد شده'
 }
 
-/** مبلغ قابل تأیید حسابداری: بیعانه → deposit، تکمیل → price */
-export function getPaymentAmount(product) {
-  if (!product) return 0
-  if (product.status === 'بیعانه') return parseFloat(product.deposit) || 0
-  return parseFloat(product.price) || 0
+let _paySeq = 0
+export function createPayment(overrides = {}) {
+  const { dateTime } = getNowJalaliDateTime()
+  _paySeq += 1
+  return {
+    id: `pay_${Date.now()}_${_paySeq}`,
+    amount: '',
+    soldAt: dateTime,
+    depositorName: '',
+    paymentStatus: PAYMENT_STATUS.pending,
+    paymentRejectReason: '',
+    paymentReviewedAt: '',
+    paymentReviewedBy: '',
+    soldByPhone: '',
+    ...overrides
+  }
 }
 
-/**
- * وضعیت واریزی. رکوردهای قدیمی بدون فیلد → approved
- * تا صف حسابداری از دادهٔ تاریخی پر نشود. فروش‌های جدید همیشه pending می‌شوند.
- */
+/** Migrate legacy single-payment product fields into payments[] (in-memory). */
+export function ensureProductPayments(product) {
+  if (!product) return product
+  if (Array.isArray(product.payments)) return product
+
+  const price = parseFloat(product.price) || 0
+  const deposit = parseFloat(product.deposit) || 0
+  let amount = 0
+  if (product.status === 'بیعانه' && deposit > 0) amount = deposit
+  else if (price > 0) amount = price
+  else if (deposit > 0) amount = deposit
+
+  const hasLegacy = amount > 0 || product.soldAt || product.depositorName || product.paymentStatus
+  if (hasLegacy) {
+    product.payments = [createPayment({
+      amount: amount ? String(amount) : '',
+      soldAt: product.soldAt || getNowJalaliDateTime().dateTime,
+      depositorName: product.depositorName || '',
+      paymentStatus: product.paymentStatus || PAYMENT_STATUS.approved,
+      paymentRejectReason: product.paymentRejectReason || '',
+      paymentReviewedAt: product.paymentReviewedAt || '',
+      paymentReviewedBy: product.paymentReviewedBy || '',
+      soldByPhone: product.soldByPhone || ''
+    })]
+  } else {
+    product.payments = []
+  }
+  return product
+}
+
+export function getPaymentEntryStatus(payment) {
+  if (!payment) return PAYMENT_STATUS.approved
+  if (!payment.paymentStatus) return PAYMENT_STATUS.approved
+  return payment.paymentStatus
+}
+
+export function getProductPayments(product) {
+  ensureProductPayments(product)
+  return product.payments || []
+}
+
+export function sumProductPayments(product, predicate) {
+  return getProductPayments(product).reduce((sum, pay) => {
+    if (predicate && !predicate(pay)) return sum
+    return sum + (parseFloat(pay.amount) || 0)
+  }, 0)
+}
+
+export function getApprovedPaid(product) {
+  return sumProductPayments(product, p => getPaymentEntryStatus(p) === PAYMENT_STATUS.approved)
+}
+
+/** Paid amounts that count toward sales (exclude rejected). */
+export function getCountablePaid(product) {
+  return sumProductPayments(product, p => getPaymentEntryStatus(p) !== PAYMENT_STATUS.rejected)
+}
+
+export function getProductBalance(product) {
+  const price = parseFloat(product?.price) || 0
+  return Math.max(0, price - getApprovedPaid(product))
+}
+
+/** Auto status from approved payments vs total price. */
+export function syncProductStatus(product) {
+  ensureProductPayments(product)
+  const price = parseFloat(product.price) || 0
+  const approved = getApprovedPaid(product)
+  product.status = (price > 0 && approved >= price) ? 'تکمیل' : 'بیعانه'
+  // Keep legacy deposit mirror for exports/older code paths
+  product.deposit = String(approved || '')
+  const pays = product.payments || []
+  const last = pays[pays.length - 1]
+  if (last) {
+    product.soldAt = last.soldAt || product.soldAt || ''
+    product.depositorName = last.depositorName || ''
+    product.paymentStatus = getWorstPaymentStatus(product)
+  }
+  return product
+}
+
+export function productHasRejectedPayment(product) {
+  return getProductPayments(product).some(p => getPaymentEntryStatus(p) === PAYMENT_STATUS.rejected)
+}
+
+export function isProductCountableInSales(product) {
+  const payments = getProductPayments(product)
+  if (payments.length === 0) return false
+  return payments.some(p => getPaymentEntryStatus(p) !== PAYMENT_STATUS.rejected && (parseFloat(p.amount) || 0) > 0)
+}
+
+export function getWorstPaymentStatus(product) {
+  const payments = getProductPayments(product)
+  if (payments.some(p => getPaymentEntryStatus(p) === PAYMENT_STATUS.rejected)) return PAYMENT_STATUS.rejected
+  if (payments.some(p => getPaymentEntryStatus(p) === PAYMENT_STATUS.pending)) return PAYMENT_STATUS.pending
+  if (payments.length === 0) return PAYMENT_STATUS.pending
+  return PAYMENT_STATUS.approved
+}
+
+export function getLatestRejectReason(product) {
+  const rejected = getProductPayments(product).filter(p => getPaymentEntryStatus(p) === PAYMENT_STATUS.rejected)
+  if (!rejected.length) return ''
+  return rejected[rejected.length - 1].paymentRejectReason || ''
+}
+
+/** @deprecated use getCountablePaid — kept for older call sites */
+export function getPaymentAmount(product) {
+  return getCountablePaid(product)
+}
+
+/** @deprecated use getWorstPaymentStatus */
 export function getPaymentStatus(product) {
-  if (!product) return PAYMENT_STATUS.approved
-  if (!product.paymentStatus) return PAYMENT_STATUS.approved
-  return product.paymentStatus
+  return getWorstPaymentStatus(product)
 }
 
 export function getDefaultPermissions() {
