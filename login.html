@@ -476,7 +476,11 @@
   // Step 2: Verify OTP
   // ============================================
 
+  let isVerifyingOTP = false
+
   window.handleVerifyOTP = async function() {
+    if (isVerifyingOTP) return
+
     const otpInputs = document.querySelectorAll('.otp-input')
     const code = Array.from(otpInputs).map(input => input.value).join('')
     const errorEl = document.getElementById('error2')
@@ -489,10 +493,12 @@
       return
     }
 
+    isVerifyingOTP = true
     errorEl.classList.remove('show')
     successEl.classList.remove('show')
     verifyBtn.classList.add('loading')
     verifyBtn.disabled = true
+    otpInputs.forEach(input => { input.disabled = true })
 
     try {
       const result = await verifyOTP(currentPhone, code)
@@ -527,7 +533,7 @@
         })
 
         // Clear inputs
-        otpInputs.forEach(input => { input.value = '' })
+        otpInputs.forEach(input => { input.value = ''; input.disabled = false })
         otpInputs[0].focus()
         updateVerifyButton()
       }
@@ -535,9 +541,12 @@
       console.error('Verify OTP error:', e)
       errorEl.textContent = 'خطا در اتصال به سرور'
       errorEl.classList.add('show')
+      otpInputs.forEach(input => { input.disabled = false })
     } finally {
+      isVerifyingOTP = false
       verifyBtn.classList.remove('loading')
-      verifyBtn.disabled = false
+      const codeLeft = Array.from(document.querySelectorAll('.otp-input')).map(i => i.value).join('')
+      verifyBtn.disabled = codeLeft.length !== 4
     }
   }
 
@@ -681,7 +690,12 @@
   function updateVerifyButton() {
     const code = Array.from(otpInputs).map(input => input.value).join('')
     const verifyBtn = document.getElementById('verifyOtpBtn')
-    verifyBtn.disabled = code.length !== 4
+    verifyBtn.disabled = code.length !== 4 || isVerifyingOTP
+
+    // Auto-submit as soon as all 4 digits are entered
+    if (code.length === 4 && !isVerifyingOTP) {
+      handleVerifyOTP()
+    }
   }
 
   // ============================================
