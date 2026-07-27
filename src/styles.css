@@ -521,6 +521,11 @@
     flex-wrap: wrap;
   }
 
+  .product-row-rejected {
+    background: #fef2f2;
+    border-color: #fca5a5;
+  }
+
   .product-row select,
   .product-row input {
     padding: 10px 12px;

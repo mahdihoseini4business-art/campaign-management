@@ -6,7 +6,7 @@ import {
   getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer,
   resolveAdvisor, normalizePhone, userDisplayName, PLATFORM_LABELS, PLATFORM_CLASSES,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
-  getNowJalaliDateTime
+  getNowJalaliDateTime, getPaymentStatus, PAYMENT_STATUS_LABELS
 } from './utils.js'
 
 const STATUS_LABELS = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
@@ -611,6 +611,10 @@ export async function openCustomerDetail(id) {
   const platformLabel = PLATFORM_LABELS[c.platform] || c.platform
   const statusLabel = STATUS_LABELS[c.status] || c.status
 
+  const purchaseTotal = (c.products || [])
+    .filter(p => getPaymentStatus(p) !== 'rejected')
+    .reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0)
+
   const detailUsers = await getUsersSafe()
 
   document.getElementById('detailTitle').textContent = `پنل مشتری — ${c.name || c.platformId}`
@@ -662,6 +666,10 @@ export async function openCustomerDetail(id) {
       <div class="detail-field">
         <span class="detail-label">شماره تماس</span>
         <span class="detail-value" style="direction:ltr;text-align:right;">${escapeHtml(c.phone) || '—'}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">مجموع خریدها</span>
+        <span class="detail-value" id="detailPurchaseTotal" style="font-family:'Vazirmatn',sans-serif;font-weight:700;color:var(--accent);">${formatNumber(purchaseTotal)} ریال</span>
       </div>
       <div class="detail-field full">
         <span class="detail-label">توضیحات</span>
@@ -867,6 +875,12 @@ export function renderProducts(customerId) {
   const products = getProducts(customerId)
   const canEdit = hasPermission('customers_add')
 
+  const purchaseTotal = products
+    .filter(p => getPaymentStatus(p) !== 'rejected')
+    .reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0)
+  const totalEl = document.getElementById('detailPurchaseTotal')
+  if (totalEl) totalEl.textContent = `${formatNumber(purchaseTotal)} ریال`
+
   if (products.length === 0) {
     container.innerHTML = '<div style="font-size:13px;color:var(--text-muted);padding:8px 0;">محصولی ثبت نشده</div>'
     return
@@ -876,6 +890,13 @@ export function renderProducts(customerId) {
     const isCompleted = p.status === 'تکمیل'
     const price = parseFloat(p.price) || 0
     const deposit = parseFloat(p.deposit) || 0
+    const payStatus = getPaymentStatus(p)
+    const payLabel = PAYMENT_STATUS_LABELS[payStatus] || payStatus
+    const rejectHint = (payStatus === 'rejected' && p.paymentRejectReason)
+      ? `<span class="payment-reject-reason" title="${escapeAttr(p.paymentRejectReason)}">${escapeHtml(p.paymentRejectReason)}</span>`
+      : ''
+    const payBadge = `<span class="payment-badge payment-${payStatus}">${escapeHtml(payLabel)}</span>${rejectHint}`
+    const rowClass = payStatus === 'rejected' ? 'product-row product-row-rejected' : 'product-row'
 
     if (!canEdit) {
       let balanceHtml = ''
@@ -884,7 +905,7 @@ export function renderProducts(customerId) {
         balanceHtml = `<span class="product-balance ${bal > 0 ? 'negative' : ''}">مانده: ${formatNumber(bal)}</span>`
       }
       return `
-        <div class="product-row" style="opacity:0.95;">
+        <div class="${rowClass}" style="opacity:0.95;">
           <span style="font-size:13px;min-width:120px;">${escapeHtml(p.name || '—')}</span>
           <span style="font-size:13px;">${escapeHtml(p.status || '—')}</span>
           <span style="font-size:13px;">${p.price ? formatNumber(p.price) : '—'}</span>
@@ -893,6 +914,7 @@ export function renderProducts(customerId) {
           ${balanceHtml}
           ${p.soldAt ? `<span style="font-size:11px;color:var(--text-muted);">ثبت: ${escapeHtml(p.soldAt)}</span>` : ''}
           ${p.depositorName ? `<span style="font-size:11px;color:var(--text-muted);">واریزکننده: ${escapeHtml(p.depositorName)}</span>` : ''}
+          ${payBadge}
         </div>
       `
     }
@@ -915,7 +937,7 @@ export function renderProducts(customerId) {
     }
 
     return `
-      <div class="product-row">
+      <div class="${rowClass}">
         <select class="product-name" onchange="app.updateProduct('${customerId}', ${i}, 'name', this.value)">
           ${PRODUCTS.map(pr => `<option value="${pr}" ${p.name === pr ? 'selected' : ''}>${pr}</option>`).join('')}
         </select>
@@ -929,7 +951,7 @@ export function renderProducts(customerId) {
           <input type="time" class="product-settlement" value="${p.soldAt && p.soldAt.includes(' ') ? p.soldAt.split(' ')[1] : ''}" onchange="app.updateProduct('${customerId}', ${i}, 'soldAtTime', this.value)" style="max-width:80px;font-size:12px;">
           <input type="text" class="product-settlement" placeholder="نام واریزکننده" value="${escapeAttr(p.depositorName || '')}" onblur="app.updateProduct('${customerId}', ${i}, 'depositorName', this.value)" style="min-width:120px;font-size:12px;">
         </div>
-        <button class="btn-remove-product" onclick="app.removeProduct('${escapeAttr(customerId)}', ${i})" title="حذف">✕</button>
+        ${payBadge}
       </div>
     `
   }).join('')
@@ -994,10 +1016,5 @@ export async function updateProduct(customerId, index, field, value) {
 }
 
 export async function removeProduct(customerId, index) {
-  if (!requirePermission('customers_add')) return
-  if (!window.confirm('آیا از حذف این محصول مطمئن هستید؟')) return
-  const products = getProducts(customerId)
-  products.splice(index, 1)
-  await setProducts(customerId, products)
-  renderProducts(customerId)
+  showToast('پس از ثبت محصول، امکان حذف وجود ندارد')
 }

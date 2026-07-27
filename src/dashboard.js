@@ -97,6 +97,7 @@ export function renderDashboard() {
 
   // Sales stats - include sales without settlement date when date filter is active
   const allSales = getAllSales().filter(s => {
+    if (s.paymentStatus === 'rejected') return false
     if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
     const customer = data.customers.find(c => c.id === s.customerId)
