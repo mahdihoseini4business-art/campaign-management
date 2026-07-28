@@ -1522,8 +1522,50 @@
     border-top: 1px solid var(--border);
   }
 
-  .settings-user-perms {
-    padding-top: 8px;
+  .customer-level-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .view-users-options {
+    max-height: 180px;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    padding: 4px;
+  }
+
+  .view-users-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .view-users-option:hover {
+    background: #f1f3f5;
+  }
+
+  .view-users-option input {
+    width: 14px;
+    height: 14px;
+  }
+
+  .view-users-option span:first-of-type {
+    flex: 1;
+  }
+
+  .view-users-phone {
+    color: var(--text-muted);
+    font-family: Vazirmatn, sans-serif;
+    direction: ltr;
   }
 
   .settings-user-row .user-info { flex: 1; }

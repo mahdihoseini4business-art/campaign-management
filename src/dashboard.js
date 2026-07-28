@@ -3,7 +3,8 @@ import { getUsersSafe } from './auth.js'
 import {
   hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliNum,
   jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr, ownsCustomer,
-  normalizePhone, userDisplayName, canViewOrgWideData, jalaliDiffDays, jalaliDatePart
+  normalizePhone, userDisplayName, canViewOrgWideData, jalaliDiffDays, jalaliDatePart,
+  getVisibleAdvisorPhones
 } from './utils.js'
 import { getAllSales } from './sales.js'
 
@@ -114,10 +115,11 @@ async function ensureUserFilterUI() {
   const currentUser = getCurrentUser()
   const orgWide = canViewOrgWideData()
   const users = (await getUsersSafe()).filter(u => u.phone)
-  // Admins / accountants see all advisors; sales experts only themselves
+  const visiblePhones = getVisibleAdvisorPhones(currentUser)
+  // Admins / accountants see all advisors; others see self + granted view users
   dashUsersCache = orgWide
     ? users
-    : users.filter(u => normalizePhone(u.phone) === normalizePhone(currentUser?.phone))
+    : users.filter(u => visiblePhones.has(normalizePhone(u.phone)))
 
   if (selectedAdvisorPhones == null) {
     selectedAdvisorPhones = new Set(dashUsersCache.map(u => normalizePhone(u.phone)))

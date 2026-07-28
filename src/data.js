@@ -39,7 +39,10 @@ export async function loadData() {
     advisorPhone: c.advisor_phone || '',
     nextFollowupDate: c.next_followup_date || '',
     products: c.products || [],
-    createdAt: c.created_at || null
+    createdAt: c.created_at || null,
+    customerLevel: c.customer_level || '',
+    customerLevelLocked: !!c.customer_level_locked,
+    referredByPhone: c.referred_by_phone || ''
   }))
 
   data.followups = (followupsRes.data || []).map(f => ({
@@ -112,7 +115,10 @@ export async function saveCustomerToDB(customer) {
     advisor: customer.advisor || '',
     advisor_phone: customer.advisorPhone || '',
     next_followup_date: customer.nextFollowupDate || '',
-    products: customer.products || []
+    products: customer.products || [],
+    customer_level: customer.customerLevel || '',
+    customer_level_locked: !!customer.customerLevelLocked,
+    referred_by_phone: customer.referredByPhone || ''
   }
 
   const { error } = await supabase.from('customers').upsert(row, { onConflict: 'id' })

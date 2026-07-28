@@ -4,13 +4,15 @@ import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
   canViewCustomer, canManageCustomer, getCurrentUser, formatNumber, jalaliToNum,
   getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer, isAdmin, canViewOrgWideData,
+  canViewScopedCustomer,
   resolveAdvisor, normalizePhone, userDisplayName, PLATFORM_LABELS, PLATFORM_CLASSES,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
   getNowJalaliDateTime, PAYMENT_STATUS_LABELS, createPayment,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getOperationalBalance,
   getProductPayments, getPaymentEntryStatus, getWorstPaymentStatus,
   isPaymentFilled, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS,
-  computeCustomerLrfm, isProductCountableInSales, soldAtTimePart, formatSoldAt24h, normalizeTimeTo24h
+  computeCustomerLrfm, isProductCountableInSales, soldAtTimePart, formatSoldAt24h, normalizeTimeTo24h,
+  CUSTOMER_LEVELS, formatCustomerLevel, parseCustomerLevel, resolveCustomerLevel, syncCustomerLevel
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -49,16 +51,19 @@ export async function renderCustomers() {
     if (isCS && !hasPermission('customers_cs')) return false
     if (isLD && !hasPermission('customers_ld')) return false
 
-    // Empty search → only my customers (unless org-wide / admin). Active search → whole DB.
-    if (!search && !canViewOrgWideData() && !ownsCustomer(c, currentUser)) return false
+    // Empty search → scoped customers (self + granted). Active search → whole DB.
+    if (!search && !canViewScopedCustomer(c, currentUser)) return false
 
     if (advisorFilter && normalizePhone(c.advisorPhone) !== normalizePhone(advisorFilter)) return false
     return true
   })
 
+  const showSelectCol = hasPermission('customers_delete')
+  const colCount = showSelectCol ? 13 : 12
+
   if (filtered.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="12">
+      <tr><td colspan="${colCount}">
         <div class="empty-state">
           <div class="icon">👤</div>
           <h3>مشتری‌ای یافت نشد</h3>
@@ -82,8 +87,11 @@ export async function renderCustomers() {
     const statusClass = STATUS_CLASSES[c.status] || 'status-new'
     const statusLabel = STATUS_LABELS[c.status] || c.status
     const canEdit = hasPermission('customers_add') && canManageCustomer(c, currentUser)
-    const canDelete = hasPermission('customers_delete') && canManageCustomer(c, currentUser)
-    const isMine = canViewOrgWideData() || ownsCustomer(c, currentUser)
+    const canDelete = showSelectCol && canManageCustomer(c, currentUser)
+    const isMine = ownsCustomer(c, currentUser) || canViewOrgWideData()
+    const selectCell = showSelectCol
+      ? `<td>${canDelete ? `<input type="checkbox" data-id="${escapeAttr(c.id)}" onchange="app.toggleRowSelect('customers', '${escapeAttr(c.id)}', this.checked)">` : ''}</td>`
+      : ''
 
     const platformUrl = getPlatformUrl(c.platform, c.platformId, c.phone)
     const platformIdHtml = platformUrl
@@ -122,7 +130,7 @@ export async function renderCustomers() {
     }
 
     return `<tr class="${nextFollowupClass}${isMine ? '' : ' row-other-owner'}">
-      <td>${canDelete ? `<input type="checkbox" data-id="${escapeAttr(c.id)}" onchange="app.toggleRowSelect('customers', '${escapeAttr(c.id)}', this.checked)">` : ''}</td>
+      ${selectCell}
       <td><span class="id-badge ${idClass}">${escapeHtml(c.id)}</span>${!isMine ? '<span class="owner-badge">همکار</span>' : ''}</td>
       <td>${platformIdHtml}</td>
       <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>
@@ -165,12 +173,11 @@ async function updateAdvisorDropdown() {
 export function updateStats() {
   const data = getData()
   const currentUser = getCurrentUser()
-  const orgWide = canViewOrgWideData()
 
   function inScope(c) {
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false
-    if (!orgWide && !ownsCustomer(c, currentUser)) return false
+    if (!canViewScopedCustomer(c, currentUser)) return false
     return true
   }
 
@@ -191,7 +198,7 @@ export function updateStats() {
   document.getElementById('stat-following').textContent = scoped.filter(c =>
     data.followups.some(f => f.customerId === c.id)
   ).length
-  document.getElementById('stat-converted').textContent = orgWide ? (data.convertedCount || 0) : 0
+  document.getElementById('stat-converted').textContent = canViewOrgWideData() ? (data.convertedCount || 0) : 0
 
   let totalPaid = 0
   scoped.forEach(c => {
@@ -438,7 +445,11 @@ export async function saveCustomer() {
 
     const type = phone ? 'CS' : 'LD'
     const id = await generateId(type)
-    const newCustomer = { id, platformId, platform, name, phone, status, notes, advisor, advisorPhone, nextFollowupDate: '', products: [], createdAt: new Date().toISOString() }
+    const newCustomer = {
+      id, platformId, platform, name, phone, status, notes, advisor, advisorPhone,
+      nextFollowupDate: '', products: [], createdAt: new Date().toISOString(),
+      customerLevel: '', customerLevelLocked: false, referredByPhone: ''
+    }
     await saveCustomerToDB(newCustomer)
     data.customers.push(newCustomer)
   } else {
@@ -619,13 +630,23 @@ export async function openCustomerDetail(id) {
     return
   }
 
-  const canEdit = hasPermission('customers_add')
-  const canAddFollowup = hasPermission('followups_add')
+  const canEdit = hasPermission('customers_add') && canManageCustomer(c)
+  const canAddFollowup = hasPermission('followups_add') && canManageCustomer(c)
 
   const customerFollowups = data.followups.filter(f => f.customerId === id)
   const idClass = c.id.startsWith('CS') ? 'id-cs' : 'id-ld'
   const platformLabel = PLATFORM_LABELS[c.platform] || c.platform
   const lrfm = computeCustomerLrfm(c, data.followups)
+  let levelKey = resolveCustomerLevel(c, data.customers, data.followups)
+  if (!c.customerLevelLocked) {
+    const prev = c.customerLevel || ''
+    levelKey = syncCustomerLevel(c, data.customers, data.followups)
+    if ((c.customerLevel || '') !== prev) {
+      try { await saveCustomerToDB(c) } catch (e) {
+        console.warn('auto level save skipped:', e?.message || e)
+      }
+    }
+  }
 
   const detailUsers = await getUsersSafe()
 
@@ -640,6 +661,17 @@ export async function openCustomerDetail(id) {
             }).join('')}
           </select>`
     : escapeHtml(c.advisor || '—')
+
+  const levelDisplay = formatCustomerLevel(levelKey)
+  const levelHtml = isAdmin()
+    ? `<select class="form-select" id="detailCustomerLevel" style="width:auto;display:inline-block;min-width:160px;" onchange="app.updateCustomerLevel('${escapeAttr(c.id)}', this.value)">
+          <option value="auto" ${!c.customerLevelLocked ? 'selected' : ''}>خودکار (محاسبه سیستم)</option>
+          ${Object.values(CUSTOMER_LEVELS).map(lv => `
+            <option value="${lv.key}" ${c.customerLevelLocked && levelKey === lv.key ? 'selected' : ''}>${lv.emoji} ${lv.label}</option>
+          `).join('')}
+        </select>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${c.customerLevelLocked ? 'سطح دستی — با انتخاب «خودکار» دوباره محاسبه می‌شود' : `فعلی: ${escapeHtml(levelDisplay)}`}</div>`
+    : `<span class="customer-level-badge">${escapeHtml(levelDisplay)}</span>`
 
   const followupDateControls = canEdit
     ? `<div style="display:flex;gap:6px;align-items:center;">
@@ -661,6 +693,10 @@ export async function openCustomerDetail(id) {
       <div class="detail-field">
         <span class="detail-label">شناسه</span>
         <span class="detail-value"><span class="id-badge ${idClass}">${escapeHtml(c.id)}</span></span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">سطح مشتری</span>
+        <span class="detail-value">${levelHtml}</span>
       </div>
       <div class="detail-field">
         <span class="detail-label">شماره تماس</span>
@@ -787,6 +823,7 @@ export async function openCustomerDetail(id) {
             <option value="ارسال اطلاعات">ارسال اطلاعات</option>
             <option value="پیگیری">پیگیری</option>
             <option value="پاسخ نداد">پاسخ نداد</option>
+            <option value="Happy Customer ❤️">Happy Customer ❤️</option>
           </select>
         </div>
         <div class="form-group" style="margin-bottom:0;">
@@ -812,6 +849,11 @@ function resolveUserNameByPhone(phone, users = []) {
 export async function setNextFollowup(customerId) {
   if (!requirePermission('customers_add')) return
   const data = getData()
+  const customer = data.customers.find(c => c.id === customerId)
+  if (!canManageCustomer(customer)) {
+    showToast('فقط کارشناس مسئول می‌تواند تاریخ پیگیری را تنظیم کند')
+    return
+  }
   const input = document.getElementById('detailFollowupDate')
   const date = input.value.trim()
   if (!date) { showToast('تاریخ را وارد کنید'); return }
@@ -835,6 +877,11 @@ export async function setNextFollowup(customerId) {
 export async function clearNextFollowup(customerId) {
   if (!requirePermission('customers_add')) return
   const data = getData()
+  const customer = data.customers.find(c => c.id === customerId)
+  if (!canManageCustomer(customer)) {
+    showToast('فقط کارشناس مسئول می‌تواند تاریخ پیگیری را حذف کند')
+    return
+  }
   const idx = data.customers.findIndex(c => c.id === customerId)
   if (idx !== -1) {
     data.customers[idx].nextFollowupDate = ''
@@ -853,6 +900,11 @@ export async function clearNextFollowup(customerId) {
 export async function addQuickNote(customerId) {
   if (!requirePermission('followups_add')) return
   const data = getData()
+  const customer = data.customers.find(c => c.id === customerId)
+  if (!canManageCustomer(customer)) {
+    showToast('فقط کارشناس مسئول می‌تواند برای این مشتری یادداشت ثبت کند')
+    return
+  }
   const textarea = document.getElementById('detailQuickNote')
   const notes = textarea.value.trim()
   const type = document.getElementById('detailQuickType').value
@@ -875,7 +927,7 @@ export async function addQuickNote(customerId) {
 
 export async function updateCustomerAdvisor(customerId, advisorPhoneValue) {
   if (!isAdmin()) {
-    showToast('فقط ادمین می‌تواند کارشناس مسئول را تغییر دهد')
+    showToast('فقط مدیر می‌تواند کارشناس مسئول را تغییر دهد')
     return
   }
   const data = getData()
@@ -893,6 +945,39 @@ export async function updateCustomerAdvisor(customerId, advisorPhoneValue) {
   } catch (e) {
     console.error('updateCustomerAdvisor error:', e)
     showToast('خطا در ذخیره کارشناس')
+  }
+}
+
+export async function updateCustomerLevel(customerId, levelValue) {
+  if (!isAdmin()) {
+    showToast('فقط مدیر می‌تواند سطح مشتری را تغییر دهد')
+    return
+  }
+  const data = getData()
+  const c = data.customers.find(x => x.id === customerId)
+  if (!c) return
+
+  if (levelValue === 'auto') {
+    c.customerLevelLocked = false
+    syncCustomerLevel(c, data.customers, data.followups)
+  } else {
+    const level = parseCustomerLevel(levelValue)
+    if (!level || !CUSTOMER_LEVELS[level]) {
+      showToast('سطح نامعتبر است')
+      return
+    }
+    c.customerLevel = level
+    c.customerLevelLocked = true
+  }
+
+  try {
+    await saveCustomerToDB(c)
+    await renderCustomers()
+    openCustomerDetail(customerId)
+    showToast('سطح مشتری ذخیره شد')
+  } catch (e) {
+    console.error('updateCustomerLevel error:', e)
+    showToast('خطا در ذخیره سطح مشتری')
   }
 }
 
@@ -922,11 +1007,15 @@ export async function setProducts(customerId, products) {
   if (!requirePermission('customers_add')) return
   const data = getData()
   const idx = data.customers.findIndex(c => c.id === customerId)
-  if (idx !== -1) {
-    products.forEach(p => syncProductStatus(p))
-    data.customers[idx].products = products
-    await saveCustomerToDB(data.customers[idx])
+  if (idx === -1) return
+  if (!canManageCustomer(data.customers[idx])) {
+    showToast('فقط کارشناس مسئول می‌تواند این مشتری را ویرایش کند')
+    return
   }
+  products.forEach(p => syncProductStatus(p))
+  data.customers[idx].products = products
+  syncCustomerLevel(data.customers[idx], data.customers, data.followups)
+  await saveCustomerToDB(data.customers[idx])
 }
 let detailUsersCache = []
 
@@ -934,7 +1023,9 @@ export async function renderProducts(customerId, users = null) {
   const container = document.getElementById('detailProductsList')
   if (!container) return
   const products = getProducts(customerId)
-  const canEdit = hasPermission('customers_add')
+  const data = getData()
+  const customer = data.customers.find(c => c.id === customerId)
+  const canEdit = hasPermission('customers_add') && canManageCustomer(customer)
   if (users) detailUsersCache = users
   else if (!detailUsersCache.length) {
     try { detailUsersCache = await getUsersSafe() } catch (_) { detailUsersCache = [] }
@@ -1047,6 +1138,12 @@ export async function renderProducts(customerId, users = null) {
 
 export async function addProductRow(customerId) {
   if (!requirePermission('customers_add')) return
+  const data = getData()
+  const customer = data.customers.find(c => c.id === customerId)
+  if (!canManageCustomer(customer)) {
+    showToast('فقط کارشناس مسئول می‌تواند محصول اضافه کند')
+    return
+  }
   const products = getProducts(customerId)
   const user = getCurrentUser()
   const firstPay = createPayment({

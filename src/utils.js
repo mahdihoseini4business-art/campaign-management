@@ -288,6 +288,114 @@ export function computeCustomerLrfm(customer, followups = []) {
   return { L: lengthDays, R: lastFollowup, F: freqAvg, M: monetary }
 }
 
+// ============================================
+// Customer loyalty levels
+// ============================================
+
+export const CUSTOMER_LEVELS = {
+  bronze: { key: 'bronze', label: 'برنزی', emoji: '🥉' },
+  silver: { key: 'silver', label: 'نقره‌ای', emoji: '🥈' },
+  gold: { key: 'gold', label: 'طلایی', emoji: '🥇' },
+  vip: { key: 'vip', label: 'VIP', emoji: '🎖' },
+  cip: { key: 'cip', label: 'CIP', emoji: '🏆' }
+}
+
+export function formatCustomerLevel(level) {
+  const meta = CUSTOMER_LEVELS[level]
+  if (!meta) return '—'
+  return `${meta.emoji} ${meta.label}`
+}
+
+/** Map import / UI labels → level key */
+export function parseCustomerLevel(raw) {
+  const t = toEnDigits(String(raw || '')).trim().toLowerCase()
+  if (!t) return ''
+  const cleaned = t.replace(/[🥇🥈🥉🎖🏆]/g, '').trim()
+  const map = {
+    bronze: 'bronze', 'برنزی': 'bronze', 'bronze': 'bronze',
+    silver: 'silver', 'نقره ای': 'silver', 'نقره‌ای': 'silver', 'نقره\u200cای': 'silver',
+    gold: 'gold', 'طلایی': 'gold',
+    vip: 'vip', 'وی آی پی': 'vip', 'ویایپی': 'vip',
+    cip: 'cip', 'سی آی پی': 'cip', 'سیایپی': 'cip'
+  }
+  if (map[cleaned]) return map[cleaned]
+  if (map[t]) return map[t]
+  if (t.includes('cip') || t.includes('سی آی پی') || t.includes('سیایپی')) return 'cip'
+  if (t.includes('vip') || t.includes('وی آی پی')) return 'vip'
+  if (t.includes('طلا')) return 'gold'
+  if (t.includes('نقره')) return 'silver'
+  if (t.includes('برنز')) return 'bronze'
+  return ''
+}
+
+export function countCustomerPurchases(customer) {
+  return (customer?.products || []).filter(p => {
+    ensureProductPayments(p)
+    return isProductCountableInSales(p)
+  }).length
+}
+
+export function hasInPersonPurchase(customer) {
+  return (customer?.products || []).some(p => {
+    ensureProductPayments(p)
+    if (!isProductCountableInSales(p)) return false
+    return String(p.name || '').includes('حضوری')
+  })
+}
+
+export function countCustomerReferrals(customer, allCustomers = []) {
+  const phone = normalizePhone(customer?.phone)
+  if (!phone) return 0
+  return (allCustomers || []).filter(c =>
+    c.id !== customer.id && normalizePhone(c.referredByPhone) === phone
+  ).length
+}
+
+/**
+ * Auto level rules:
+ * bronze: ≥1 purchase
+ * silver: ≥3 purchases
+ * gold: ≥5 purchases AND ≥1 year with brand
+ * vip: ≥5 purchases AND ≥1 in-person course AND ≥1 year
+ * cip: ≥5 referred customers
+ * Priority: cip > vip > gold > silver > bronze
+ */
+export function computeAutoCustomerLevel(customer, allCustomers = [], followups = []) {
+  if (!customer) return ''
+  const purchases = countCustomerPurchases(customer)
+  const days = computeCustomerLrfm(customer, followups).L
+  const oneYear = days != null && days >= 365
+  const inPerson = hasInPersonPurchase(customer)
+  const refs = countCustomerReferrals(customer, allCustomers)
+
+  if (refs >= 5) return 'cip'
+  if (purchases >= 5 && inPerson && oneYear) return 'vip'
+  if (purchases >= 5 && oneYear) return 'gold'
+  if (purchases >= 3) return 'silver'
+  if (purchases >= 1) return 'bronze'
+  return ''
+}
+
+/** Effective level: locked manual/import value, else auto. */
+export function resolveCustomerLevel(customer, allCustomers = [], followups = []) {
+  if (!customer) return ''
+  if (customer.customerLevelLocked) {
+    return parseCustomerLevel(customer.customerLevel) || customer.customerLevel || ''
+  }
+  return computeAutoCustomerLevel(customer, allCustomers, followups)
+}
+
+/** Update customer.customerLevel when not locked. Returns level. */
+export function syncCustomerLevel(customer, allCustomers = [], followups = []) {
+  if (!customer) return ''
+  if (customer.customerLevelLocked) {
+    return parseCustomerLevel(customer.customerLevel) || customer.customerLevel || ''
+  }
+  const level = computeAutoCustomerLevel(customer, allCustomers, followups)
+  customer.customerLevel = level
+  return level
+}
+
 /** Current Jalali date + time in Asia/Tehran, e.g. "1404/04/15 14:30" (24h) */
 export function getNowJalaliDateTime() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tehran' }))
@@ -682,6 +790,41 @@ export function canViewOrgWideData(user = getCurrentUser()) {
   return !!(user.permissions && user.permissions.accounting === true)
 }
 
+/** Normalize list of phones granted for extra read access. */
+export function normalizeViewUserPhones(raw) {
+  if (!raw) return []
+  let list = raw
+  if (typeof raw === 'string') {
+    try { list = JSON.parse(raw) } catch { return [] }
+  }
+  if (!Array.isArray(list)) return []
+  return [...new Set(list.map(p => normalizePhone(p)).filter(Boolean))]
+}
+
+/** Phones whose customer data this user may view: self + granted users. */
+export function getVisibleAdvisorPhones(user = getCurrentUser()) {
+  const phones = new Set()
+  if (!user) return phones
+  const self = normalizePhone(user.phone)
+  if (self) phones.add(self)
+  normalizeViewUserPhones(user.viewUserPhones ?? user.permissions?.viewUserPhones)
+    .forEach(p => phones.add(p))
+  return phones
+}
+
+/**
+ * Read access to a customer record in lists/dashboard/followups/sales.
+ * Admin/accounting → org-wide. Others → own + viewUserPhones grants (view-only for grants).
+ */
+export function canViewScopedCustomer(customer, user = getCurrentUser()) {
+  if (!user || !customer) return false
+  if (canViewOrgWideData(user)) return true
+  if (ownsCustomer(customer, user)) return true
+  const ownerPhone = normalizePhone(customer.advisorPhone)
+  if (ownerPhone && getVisibleAdvisorPhones(user).has(ownerPhone)) return true
+  return false
+}
+
 /** Permissions auto-enabled with accounting (Level-1 accountant pack). */
 export const ACCOUNTING_PERMISSION_BUNDLE = [
   'dashboard',
@@ -850,6 +993,7 @@ export async function restoreSession() {
 }
 
 export async function setCurrentUser(user) {
+  const permissions = user.permissions || null
   const data = {
     username: user.username,
     displayName: user.displayName,
@@ -857,7 +1001,8 @@ export async function setCurrentUser(user) {
     lastName: user.lastName || null,
     phone: user.phone || null,
     role: user.role,
-    permissions: user.permissions || null
+    permissions,
+    viewUserPhones: normalizeViewUserPhones(user.viewUserPhones ?? permissions?.viewUserPhones)
   }
   const expiresAt = Date.now() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
   const payload = { data, expiresAt }

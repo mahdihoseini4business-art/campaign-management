@@ -1,8 +1,67 @@
 import { getData, saveCustomerToDB, generateId } from './data.js'
-import { toEnDigits, showToast, getCurrentUser, resolveAdvisor, PLATFORM_LABELS, PLATFORM_MAP_IMPORT, requirePermission, canViewCustomer, ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance, isProductCountableInSales } from './utils.js'
+import {
+  toEnDigits, showToast, getCurrentUser, resolveAdvisor, PLATFORM_LABELS, PLATFORM_MAP_IMPORT,
+  requirePermission, canViewCustomer, ensureProductPayments, syncProductStatus, getApprovedPaid,
+  getProductBalance, isProductCountableInSales, getProductPayments, getPaymentEntryStatus,
+  PAYMENT_STATUS, PAYMENT_STATUS_LABELS, createPayment, formatSoldAt24h, normalizePhone,
+  canViewScopedCustomer, formatCustomerLevel, parseCustomerLevel, syncCustomerLevel
+} from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers } from './customers.js'
 import { renderSales } from './sales.js'
+
+// ============================================
+// Helpers
+// ============================================
+
+const CUSTOMER_STATUS_EXPORT = {
+  new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند',
+  sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل',
+  purchased: 'خرید کرد', cancelled: 'منصرف شده'
+}
+
+function autoMapColumns(headers, fields) {
+  const mapping = {}
+  const headerNorm = headers.map(h => String(h || '').trim())
+  const used = new Set()
+
+  fields.forEach(f => {
+    const labels = [f.label, ...(f.aliases || [])].filter(Boolean)
+    let idx = -1
+    for (const label of labels) {
+      idx = headerNorm.findIndex((h, i) => !used.has(i) && h === label)
+      if (idx !== -1) break
+    }
+    if (idx === -1) {
+      for (const label of labels) {
+        idx = headerNorm.findIndex((h, i) =>
+          !used.has(i) && (h.includes(label) || label.includes(h))
+        )
+        if (idx !== -1) break
+      }
+    }
+    if (idx !== -1) {
+      mapping[f.key] = idx
+      used.add(idx)
+    }
+  })
+  return mapping
+}
+
+function parseMoney(raw) {
+  return parseFloat(String(raw || '').replace(/[^\d.]/g, '')) || 0
+}
+
+const PAYMENT_STATUS_IMPORT = {
+  'در انتظار تأیید': PAYMENT_STATUS.pending,
+  'در انتظار تایید': PAYMENT_STATUS.pending,
+  pending: PAYMENT_STATUS.pending,
+  'تأیید شده': PAYMENT_STATUS.approved,
+  'تایید شده': PAYMENT_STATUS.approved,
+  approved: PAYMENT_STATUS.approved,
+  'رد شده': PAYMENT_STATUS.rejected,
+  rejected: PAYMENT_STATUS.rejected
+}
 
 // ============================================
 // Export
@@ -11,13 +70,39 @@ import { renderSales } from './sales.js'
 const EXPORT_CONFIG = {
   customers: {
     label: 'مشتریان',
-    headers: ['شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'وضعیت', 'کارشناس', 'پیگیری بعدی', 'توضیحات'],
+    headers: [
+      'شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'وضعیت', 'سطح مشتری', 'کارشناس',
+      'تعداد پیگیری', 'آخرین پیگیری', 'پیگیری بعدی', 'توضیحات'
+    ],
     getRows: () => {
       const data = getData()
-      const statusMap = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
-      return data.customers.filter(c => canViewCustomer(c)).map(c => [
-        c.id, c.platformId || '', PLATFORM_LABELS[c.platform] || c.platform, c.name, c.phone, statusMap[c.status] || c.status, c.advisor || '', c.nextFollowupDate || '', c.notes
-      ])
+      return data.customers.filter(c => canViewCustomer(c) && canViewScopedCustomer(c)).map(c => {
+        const customerFollowups = data.followups.filter(f => f.customerId === c.id)
+        const lastDate = customerFollowups.length
+          ? customerFollowups[customerFollowups.length - 1].date
+          : ''
+        const lastNote = customerFollowups.length
+          ? (customerFollowups[customerFollowups.length - 1].notes || '')
+          : ''
+        const notes = lastNote || c.notes || ''
+        const level = c.customerLevelLocked
+          ? (c.customerLevel || '')
+          : syncCustomerLevel(c, data.customers, data.followups)
+        return [
+          c.id,
+          c.platformId || '',
+          PLATFORM_LABELS[c.platform] || c.platform || '',
+          c.name || '',
+          c.phone || '',
+          CUSTOMER_STATUS_EXPORT[c.status] || c.status || '',
+          formatCustomerLevel(level) === '—' ? '' : formatCustomerLevel(level),
+          c.advisor || '',
+          customerFollowups.length,
+          lastDate,
+          c.nextFollowupDate || '',
+          notes
+        ]
+      })
     }
   },
   followups: {
@@ -27,43 +112,71 @@ const EXPORT_CONFIG = {
       const data = getData()
       return data.followups.filter(f => {
         const c = data.customers.find(x => x.id === f.customerId)
-        return c && canViewCustomer(c)
+        return c && canViewCustomer(c) && canViewScopedCustomer(c)
       }).map(f => {
         const c = data.customers.find(x => x.id === f.customerId)
-        return [f.customerId, c ? c.name : '', f.date, f.type, f.result, f.nextDate, f.notes]
+        return [
+          f.customerId,
+          c ? (c.name || '') : '',
+          f.date || '',
+          f.type || '',
+          f.result || '',
+          f.nextDate || '',
+          f.notes || ''
+        ]
       })
     }
   },
   sales: {
     label: 'فروش‌ها',
-    headers: ['شناسه مشتری', 'نام مشتری', 'شماره موبایل', 'پلتفرم', 'محصول', 'وضعیت', 'مبلغ کل', 'بیعانه', 'مانده', 'تاریخ تسویه', 'کارشناس'],
+    headers: [
+      'شناسه مشتری', 'نام مشتری', 'شماره موبایل', 'پلتفرم', 'محصول', 'وضعیت',
+      'مبلغ کل', 'پرداخت‌شده', 'مانده', 'تاریخ تسویه', 'کارشناس',
+      'مبلغ واریز', 'تاریخ واریز', 'نام واریزکننده', 'بانک مقصد', 'وضعیت واریزی'
+    ],
     getRows: () => {
       const data = getData()
-      // Import getAllSales inline to avoid circular dependency
-      const sales = []
-      data.customers.filter(c => canViewCustomer(c)).forEach(c => {
-        if (c.products) {
-          c.products.forEach(p => {
-            ensureProductPayments(p)
-            syncProductStatus(p)
-            if (!isProductCountableInSales(p)) return
-            const price = parseFloat(p.price) || 0
-            const deposit = getApprovedPaid(p)
-            sales.push({
-              customerId: c.id, customerName: c.name || c.platformId, customerPhone: c.phone || '',
-              platform: c.platform, productName: p.name, status: p.status, price, deposit,
-              balance: getProductBalance(p), settlementDate: p.settlementDate || ''
-            })
+      const rows = []
+      data.customers.filter(c => canViewCustomer(c) && canViewScopedCustomer(c)).forEach(c => {
+        ;(c.products || []).forEach(p => {
+          ensureProductPayments(p)
+          syncProductStatus(p)
+          if (!isProductCountableInSales(p)) return
+          const price = parseFloat(p.price) || 0
+          const deposit = getApprovedPaid(p)
+          const balance = getProductBalance(p)
+          const pays = getProductPayments(p).filter(pay => (parseFloat(pay.amount) || 0) > 0)
+          const base = [
+            c.id,
+            c.name || c.platformId || '',
+            c.phone || '',
+            PLATFORM_LABELS[c.platform] || c.platform || '',
+            p.name || '',
+            p.status || '',
+            price || '',
+            deposit || '',
+            balance || '',
+            p.settlementDate || '',
+            c.advisor || ''
+          ]
+          if (pays.length === 0) {
+            rows.push([...base, '', '', '', '', ''])
+            return
+          }
+          pays.forEach(pay => {
+            const status = getPaymentEntryStatus(pay)
+            rows.push([
+              ...base,
+              parseFloat(pay.amount) || '',
+              formatSoldAt24h(pay.soldAt) || pay.soldAt || '',
+              pay.depositorName || '',
+              pay.destinationBank || '',
+              PAYMENT_STATUS_LABELS[status] || status || ''
+            ])
           })
-        }
+        })
       })
-      return sales.map(s => {
-        const cust = data.customers.find(c => c.id === s.customerId)
-        return [
-          s.customerId, s.customerName, s.customerPhone, PLATFORM_LABELS[s.platform] || s.platform,
-          s.productName, s.status, s.price || '', s.deposit || '', s.balance || '', s.settlementDate || '', cust ? (cust.advisor || '') : ''
-        ]
-      })
+      return rows
     }
   }
 }
@@ -75,7 +188,7 @@ export function exportTabCSV(tab) {
   if (!cfg) return
 
   const csvContent = '\uFEFF' + [cfg.headers, ...cfg.getRows()]
-    .map(r => r.map(c => `"${String(c || '').replace(/"/g, '""')}"`).join(','))
+    .map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
     .join('\n')
 
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
@@ -96,8 +209,8 @@ export function exportTabXLSX(tab) {
   const ws = XLSX.utils.aoa_to_sheet([cfg.headers, ...rows])
 
   const colWidths = cfg.headers.map((h, i) => {
-    const maxLen = Math.max(h.length, ...rows.map(r => String(r[i] || '').length))
-    return { wch: Math.min(Math.max(maxLen + 2, 10), 30) }
+    const maxLen = Math.max(h.length, ...rows.map(r => String(r[i] ?? '').length))
+    return { wch: Math.min(Math.max(maxLen + 2, 10), 40) }
   })
   ws['!cols'] = colWidths
 
@@ -112,20 +225,24 @@ export function exportTabXLSX(tab) {
 // ============================================
 
 const IMPORT_FIELDS = [
+  { key: 'id', label: 'شناسه', aliases: ['شناسه مشتری'] },
   { key: 'platformId', label: 'ایدی پلتفرم' },
   { key: 'platform', label: 'پلتفرم' },
   { key: 'name', label: 'نام' },
-  { key: 'phone', label: 'شماره تماس' },
+  { key: 'phone', label: 'شماره تماس', aliases: ['شماره', 'شماره موبایل'] },
   { key: 'status', label: 'وضعیت' },
+  { key: 'customerLevel', label: 'سطح مشتری', aliases: ['سطح'] },
+  { key: 'referredByPhone', label: 'شماره معرف', aliases: ['معرف'] },
   { key: 'notes', label: 'توضیحات' },
   { key: 'advisor', label: 'کارشناس' },
+  { key: 'nextFollowupDate', label: 'پیگیری بعدی' },
 ]
 
 const STATUS_MAP_IMPORT = {
   'جدید': 'new', 'جديد': 'new',
   'تماس گرفته شده': 'contacted', 'تماس گرفته': 'contacted',
   'در حال چت': 'chatting',
-  'علاقمند': 'interested', 'علاقه\u200cمند': 'interested',
+  'علاقمند': 'interested', 'علاقه‌مند': 'interested', 'علاقه\u200cمند': 'interested',
   'اطلاعات ارسال شده': 'sent', 'اطلاعات ارسال': 'sent',
   'تکمیل پیگیری': 'followup_done',
   'در حال تبدیل': 'converting',
@@ -167,15 +284,7 @@ export function initImportListeners() {
 
         importData.headers = json[0].map(h => String(h || '').trim())
         importData.rows = json.slice(1).filter(r => r.some(c => c != null && String(c).trim() !== ''))
-
-        importData.mapping = {}
-        const headerLower = importData.headers.map(h => h.toLowerCase())
-        IMPORT_FIELDS.forEach(f => {
-          const idx = headerLower.findIndex(h =>
-            h === f.label || h.includes(f.label) || f.label.includes(h)
-          )
-          if (idx !== -1) importData.mapping[f.key] = idx
-        })
+        importData.mapping = autoMapColumns(importData.headers, IMPORT_FIELDS)
 
         renderImportMapping()
       } catch (err) {
@@ -240,14 +349,14 @@ export async function doImport() {
       return String(row[colIdx] || '').trim()
     }
 
-    const phone = getValue('phone')
+    const phone = toEnDigits(getValue('phone'))
+    const importId = getValue('id')
     let platformId = getValue('platformId')
     if (!platformId && phone) {
-      // Auto-generate Telegram link from phone number
       const cleanPhone = phone.replace(/^0/, '+98')
       platformId = `telegram.me/${cleanPhone}`
     } else if (!platformId) {
-      platformId = `auto_${Date.now()}_${Math.random().toString(36).slice(2,6)}`
+      platformId = `auto_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     }
 
     const platformRaw = getValue('platform').toLowerCase()
@@ -255,28 +364,61 @@ export async function doImport() {
     const statusRaw = getValue('status')
     const status = STATUS_MAP_IMPORT[statusRaw] || statusRaw || 'new'
 
-    const existById = data.customers.find(c => c.platformId.toLowerCase() === platformId.toLowerCase())
-    const existByPhone = phone && data.customers.find(c => c.phone && c.phone === phone)
+    const existById = importId && data.customers.find(c => c.id === importId)
+    const existByPlatform = data.customers.find(c =>
+      (c.platformId || '').toLowerCase() === platformId.toLowerCase()
+    )
+    const existByPhone = phone && data.customers.find(c =>
+      c.phone && (c.phone === phone || normalizePhone(c.phone) === normalizePhone(phone))
+    )
 
-    if (existById || existByPhone) { skipped++; continue }
+    if (existById || existByPlatform || existByPhone) { skipped++; continue }
 
     const type = phone ? 'CS' : 'LD'
     const currentUser = getCurrentUser()
     const advisorRaw = getValue('advisor') || (currentUser ? (currentUser.phone || currentUser.displayName) : '')
     const { advisor, advisorPhone } = resolveAdvisor(advisorRaw, users)
+    const levelRaw = getValue('customerLevel')
+    const level = parseCustomerLevel(levelRaw)
+    const referredByPhone = normalizePhone(getValue('referredByPhone'))
+
     const newCustomer = {
-      id: await generateId(type), platformId, platform,
-      name: getValue('name'), phone, status,
-      notes: getValue('notes'), advisor, advisorPhone, products: []
+      id: await generateId(type),
+      platformId,
+      platform,
+      name: getValue('name'),
+      phone,
+      status,
+      notes: getValue('notes'),
+      nextFollowupDate: getValue('nextFollowupDate') || '',
+      advisor,
+      advisorPhone,
+      products: [],
+      createdAt: new Date().toISOString(),
+      referredByPhone: referredByPhone || '',
+      customerLevel: level || '',
+      customerLevelLocked: !!level
+    }
+    if (!level) {
+      syncCustomerLevel(newCustomer, data.customers, data.followups)
     }
     data.customers.push(newCustomer)
     newCustomers.push(newCustomer)
     imported++
   }
 
-  // Save all imported customers to Supabase
   for (const c of newCustomers) {
     await saveCustomerToDB(c)
+  }
+
+  // Recompute unlocked levels (CIP may unlock after referrals imported)
+  for (const c of data.customers) {
+    if (c.customerLevelLocked) continue
+    const before = c.customerLevel || ''
+    syncCustomerLevel(c, data.customers, data.followups)
+    if ((c.customerLevel || '') !== before) {
+      await saveCustomerToDB(c)
+    }
   }
 
   closeImportModal()
@@ -289,19 +431,26 @@ export async function doImport() {
 // ============================================
 
 const SALES_IMPORT_FIELDS = [
-  { key: 'phone', label: 'شماره موبایل', required: true },
-  { key: 'customerName', label: 'نام مشتری' },
+  { key: 'customerId', label: 'شناسه مشتری', aliases: ['شناسه'] },
+  { key: 'phone', label: 'شماره موبایل', aliases: ['شماره', 'شماره تماس'], required: true },
+  { key: 'customerName', label: 'نام مشتری', aliases: ['نام'] },
+  { key: 'platform', label: 'پلتفرم' },
   { key: 'productName', label: 'محصول' },
   { key: 'status', label: 'وضعیت' },
-  { key: 'price', label: 'قیمت کل' },
-  { key: 'deposit', label: 'بیعانه' },
+  { key: 'price', label: 'مبلغ کل', aliases: ['قیمت کل'] },
+  { key: 'deposit', label: 'پرداخت‌شده', aliases: ['بیعانه'] },
   { key: 'settlementDate', label: 'تاریخ تسویه' },
   { key: 'advisor', label: 'کارشناس' },
+  { key: 'paymentAmount', label: 'مبلغ واریز' },
+  { key: 'soldAt', label: 'تاریخ واریز', aliases: ['تاریخ و ساعت'] },
+  { key: 'depositorName', label: 'نام واریزکننده' },
+  { key: 'destinationBank', label: 'بانک مقصد' },
+  { key: 'paymentStatus', label: 'وضعیت واریزی' },
 ]
 
 const SALES_STATUS_MAP = {
-  'تکمیل': 'تکمیل', 'complet': 'تکمیل', 'completed': 'تکمیل',
-  'بیعانه': 'بیعانه', 'deposit': 'بیعانه', 'partial': 'بیعانه',
+  'تکمیل': 'تکمیل', complet: 'تکمیل', completed: 'تکمیل',
+  'بیعانه': 'بیعانه', deposit: 'بیعانه', partial: 'بیعانه',
 }
 
 let salesImportData = { headers: [], rows: [], mapping: {} }
@@ -337,15 +486,7 @@ export function initSalesImportListeners() {
 
         salesImportData.headers = json[0].map(h => String(h || '').trim())
         salesImportData.rows = json.slice(1).filter(r => r.some(c => c != null && String(c).trim() !== ''))
-
-        salesImportData.mapping = {}
-        const headerLower = salesImportData.headers.map(h => h.toLowerCase())
-        SALES_IMPORT_FIELDS.forEach(f => {
-          const idx = headerLower.findIndex(h =>
-            h === f.label || h.includes(f.label) || f.label.includes(h)
-          )
-          if (idx !== -1) salesImportData.mapping[f.key] = idx
-        })
+        salesImportData.mapping = autoMapColumns(salesImportData.headers, SALES_IMPORT_FIELDS)
 
         renderSalesImportMapping()
       } catch (err) {
@@ -393,13 +534,16 @@ export async function doSalesImport() {
   if (!requirePermission('sales_import')) return
   const data = getData()
   const mapping = salesImportData.mapping
-  if (!mapping.phone && mapping.phone !== 0) {
-    showToast('ستون شماره موبایل الزامی است')
+  const hasPhone = mapping.phone !== undefined && mapping.phone !== null
+  const hasCustomerId = mapping.customerId !== undefined && mapping.customerId !== null
+  if (!hasPhone && !hasCustomerId) {
+    showToast('ستون شماره موبایل یا شناسه مشتری الزامی است')
     return
   }
 
   let imported = 0, skipped = 0, created = 0
   const users = await getUsersSafe()
+  const touched = new Set()
 
   for (const row of salesImportData.rows) {
     const getValue = (fieldKey) => {
@@ -408,66 +552,128 @@ export async function doSalesImport() {
       return String(row[colIdx] || '').trim()
     }
 
-    const phone = getValue('phone')
-    if (!phone) { skipped++; continue }
-
+    const phone = toEnDigits(getValue('phone'))
+    const customerId = getValue('customerId')
     const productName = getValue('productName')
     if (!productName) { skipped++; continue }
+    if (!phone && !customerId) { skipped++; continue }
 
-    let customer = data.customers.find(c => c.phone === phone)
+    let customer = null
+    if (customerId) customer = data.customers.find(c => c.id === customerId)
+    if (!customer && phone) {
+      customer = data.customers.find(c =>
+        c.phone && (c.phone === phone || normalizePhone(c.phone) === normalizePhone(phone))
+      )
+    }
+
     if (!customer) {
+      if (!phone) { skipped++; continue }
       const name = getValue('customerName') || ''
       const id = await generateId('CS')
       const currentUser = getCurrentUser()
       const advisorRaw = getValue('advisor') || (currentUser ? (currentUser.phone || currentUser.displayName) : '')
       const { advisor, advisorPhone } = resolveAdvisor(advisorRaw, users)
-      customer = { id, platformId: '', platform: 'instagram', name, phone, status: 'new', notes: 'خودکار ایجاد شده از ایمپورت فروش', advisor, advisorPhone, nextFollowupDate: '', products: [] }
+      const platformRaw = getValue('platform').toLowerCase()
+      const platform = PLATFORM_MAP_IMPORT[platformRaw] || platformRaw || 'instagram'
+      customer = {
+        id,
+        platformId: '',
+        platform,
+        name,
+        phone,
+        status: 'new',
+        notes: 'خودکار ایجاد شده از ایمپورت فروش',
+        advisor,
+        advisorPhone,
+        nextFollowupDate: '',
+        products: [],
+        createdAt: new Date().toISOString(),
+        customerLevel: '',
+        customerLevelLocked: false,
+        referredByPhone: ''
+      }
       data.customers.push(customer)
       created++
     }
 
     const statusRaw = getValue('status')
     const status = SALES_STATUS_MAP[statusRaw] || statusRaw || 'تکمیل'
-    const price = parseFloat(String(getValue('price')).replace(/[^\d]/g, '')) || 0
-    const deposit = parseFloat(String(getValue('deposit')).replace(/[^\d]/g, '')) || 0
+    const price = parseMoney(getValue('price'))
+    const deposit = parseMoney(getValue('deposit'))
     const settlementDate = getValue('settlementDate')
+    const soldAt = getValue('soldAt') || settlementDate || ''
+    const depositorName = getValue('depositorName')
+    const destinationBank = getValue('destinationBank')
+    const paymentStatusRaw = getValue('paymentStatus')
+    const paymentStatus = PAYMENT_STATUS_IMPORT[paymentStatusRaw]
+      || PAYMENT_STATUS_IMPORT[paymentStatusRaw.toLowerCase()]
+      || PAYMENT_STATUS.pending
+    let paymentAmount = parseMoney(getValue('paymentAmount'))
+    if (!paymentAmount) {
+      paymentAmount = status === 'بیعانه' ? (deposit || price) : (price || deposit)
+    }
+    if (!paymentAmount) { skipped++; continue }
 
-    const isDuplicate = customer.products.some(p =>
-      p.name === productName && p.status === status && (parseFloat(p.price) || 0) === price
+    if (!Array.isArray(customer.products)) customer.products = []
+
+    let product = customer.products.find(p =>
+      p.name === productName && (price <= 0 || (parseFloat(p.price) || 0) === price)
     )
-    if (isDuplicate) { skipped++; continue }
 
-    customer.products.push({
-      name: productName,
-      status,
-      price: String(price),
-      deposit: String(deposit),
-      settlementDate,
-      payments: [{
-        id: `pay_import_${Date.now()}_${imported}`,
-        amount: String(status === 'بیعانه' ? (deposit || price) : price),
-        soldAt: settlementDate || '',
-        depositorName: '',
-        paymentStatus: 'pending',
-        paymentRejectReason: '',
-        paymentReviewedAt: '',
-        paymentReviewedBy: ''
-      }]
+    const payment = createPayment({
+      amount: String(paymentAmount),
+      soldAt,
+      depositorName,
+      destinationBank,
+      paymentStatus,
+      soldByPhone: normalizePhone(getCurrentUser()?.phone || '')
     })
+
+    if (!product) {
+      product = {
+        name: productName,
+        status,
+        price: String(price || paymentAmount),
+        deposit: String(deposit || 0),
+        settlementDate,
+        priceLocked: price > 0,
+        payments: [payment]
+      }
+      ensureProductPayments(product)
+      syncProductStatus(product)
+      customer.products.push(product)
+      imported++
+      touched.add(customer.id)
+      continue
+    }
+
+    ensureProductPayments(product)
+    const dupPay = (product.payments || []).some(p =>
+      (parseFloat(p.amount) || 0) === paymentAmount &&
+      String(p.soldAt || '').trim() === String(soldAt).trim()
+    )
+    if (dupPay) { skipped++; continue }
+
+    if (price > 0) product.price = String(price)
+    if (settlementDate) product.settlementDate = settlementDate
+    if (status) product.status = status
+    product.payments.push(payment)
+    syncProductStatus(product)
     imported++
+    touched.add(customer.id)
   }
 
-  // Save all affected customers to Supabase
-  const affectedCustomers = [...new Set(data.customers.filter(c => c.products.length > 0).map(c => c.id))]
-  for (const id of affectedCustomers) {
+  for (const id of touched) {
     const c = data.customers.find(x => x.id === id)
-    if (c) await saveCustomerToDB(c)
+    if (!c) continue
+    syncCustomerLevel(c, data.customers, data.followups)
+    await saveCustomerToDB(c)
   }
 
   closeSalesImportModal()
   await renderCustomers()
   await renderSales()
-  let msg = `${imported} محصول ایمپورت شد`
+  let msg = `${imported} واریز/محصول ایمپورت شد`
   if (created > 0) msg += ` — ${created} مشتری جدید ایجاد شد`
   if (skipped > 0) msg += ` — ${skipped} ردیف رد شد`
   showToast(msg)

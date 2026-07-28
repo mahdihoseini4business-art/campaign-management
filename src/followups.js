@@ -1,5 +1,5 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB } from './data.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canManageCustomer, getCurrentUser, ownsCustomer, normalizePhone, canViewOrgWideData } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canManageCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { openCustomerDetail } from './customers.js'
 
@@ -20,16 +20,19 @@ export function renderFollowups() {
     if (customer) {
       if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
       if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
-      if (!canViewOrgWideData() && !ownsCustomer(customer, currentUser)) return false
+      if (!canViewScopedCustomer(customer, currentUser)) return false
     }
     return f.customerId.toLowerCase().includes(search) ||
       name.toLowerCase().includes(search) ||
       f.notes.toLowerCase().includes(search)
   })
 
+  const showSelectCol = hasPermission('followups_delete')
+  const colCount = showSelectCol ? 9 : 8
+
   if (filtered.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="8">
+      <tr><td colspan="${colCount}">
         <div class="empty-state">
           <div class="icon">📋</div>
           <h3>پیگیری‌ای ثبت نشده</h3>
@@ -47,10 +50,13 @@ export function renderFollowups() {
     const name = customer ? customer.name : '—'
     const followupId = f.id || `idx_${data.followups.indexOf(f)}`
     const canEdit = hasPermission('followups_add')
-    const canDelete = hasPermission('followups_delete')
+    const canDelete = showSelectCol
+    const selectCell = showSelectCol
+      ? `<td><input type="checkbox" data-id="${escapeAttr(followupId)}" onchange="app.toggleRowSelect('followups', '${escapeAttr(followupId)}', this.checked)"></td>`
+      : ''
 
     return `<tr>
-      <td>${canDelete ? `<input type="checkbox" data-id="${escapeAttr(followupId)}" onchange="app.toggleRowSelect('followups', '${escapeAttr(followupId)}', this.checked)">` : ''}</td>
+      ${selectCell}
       <td><span class="id-badge ${f.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="font-size:11px;cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(f.customerId)}')">${escapeHtml(f.customerId)}</span></td>
       <td>${escapeHtml(name)}</td>
       <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(f.date)}</td>

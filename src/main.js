@@ -1,8 +1,8 @@
 import './styles.css'
 import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum, showToast, escapeAttr } from './utils.js'
 import { getData, loadData, backfillAdvisorPhones } from './data.js'
-import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, addDestinationBank, removeDestinationBank } from './auth.js'
-import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, addProductRow, saveProductField, updateProduct, removeProduct, onCustomerPhoneInput, addProductPayment, savePaymentField, updatePaymentField, removeProductPayment, onDestinationBankSelect } from './customers.js'
+import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, addDestinationBank, removeDestinationBank, filterViewUserOptions } from './auth.js'
+import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, saveProductField, updateProduct, removeProduct, onCustomerPhoneInput, addProductPayment, savePaymentField, updatePaymentField, removeProductPayment, onDestinationBankSelect } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup } from './followups.js'
 import { renderSales, sortSales } from './sales.js'
 import { renderAccounting, setAccountingFilter, approvePayment, openRejectPaymentModal, closeRejectPaymentModal, confirmRejectPayment } from './accounting.js'
@@ -144,6 +144,7 @@ const app = {
   clearNextFollowup,
   addQuickNote,
   updateCustomerAdvisor,
+  updateCustomerLevel,
   addProductRow,
   addProductPayment,
   saveProductField,
@@ -176,6 +177,7 @@ const app = {
   saveUserPermissions,
   togglePermCheckbox,
   toggleSettingsUserRow,
+  filterViewUserOptions,
   addDestinationBank,
   removeDestinationBank,
   toggleProfileMenu,

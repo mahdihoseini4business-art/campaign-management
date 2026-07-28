@@ -1,8 +1,8 @@
 import { getData } from './data.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser,
-  jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, ownsCustomer,
-  canViewOrgWideData, formatSoldAt24h,
+  jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr,
+  canViewScopedCustomer, formatSoldAt24h,
   PLATFORM_LABELS, PLATFORM_CLASSES, PAYMENT_STATUS_LABELS,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
   getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
@@ -80,7 +80,7 @@ function getFilteredSales() {
     if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
     const customer = data.customers.find(c => c.id === s.customerId)
-    if (!canViewOrgWideData() && customer && !ownsCustomer(customer, currentUser)) return false
+    if (!canViewScopedCustomer(customer, currentUser)) return false
     return true
   })
 
@@ -89,12 +89,15 @@ function getFilteredSales() {
 
 function renderSalesRows(allSales) {
   const todayNum = getTodayJalaliNum()
-  const canBulkDelete = hasPermission('customers_add')
+  const showSelectCol = hasPermission('customers_add')
   return allSales.map(s => {
     const pClass = PLATFORM_CLASSES[s.platform] || ''
     const pLabel = PLATFORM_LABELS[s.platform] || s.platform
     const statusColor = s.status === 'تکمیل' ? 'var(--success)' : 'var(--warning)'
     const balanceClass = s.balance > 0 ? 'color:var(--danger);' : ''
+    const selectCell = showSelectCol
+      ? `<td><input type="checkbox" data-id="${escapeAttr(s.customerId)}" onchange="app.toggleRowSelect('sales', '${escapeAttr(s.customerId)}', this.checked)"></td>`
+      : ''
 
     let settlementHtml = '—'
     let rowClass = ''
@@ -126,7 +129,7 @@ function renderSalesRows(allSales) {
     }
 
     return `<tr class="${rowClass}">
-      <td>${canBulkDelete ? `<input type="checkbox" data-id="${escapeAttr(s.customerId)}" onchange="app.toggleRowSelect('sales', '${escapeAttr(s.customerId)}', this.checked)">` : ''}</td>
+      ${selectCell}
       <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(s.customerId)}')">${escapeHtml(s.customerId)}</span></td>
       <td>${escapeHtml(s.customerName)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(s.customerPhone) || '—'}</td>
@@ -191,8 +194,9 @@ export function renderSales() {
   document.getElementById('stat-sales-total').textContent = formatNumber(totalAll) + ' ریال'
 
   if (allSales.length === 0) {
+    const colCount = hasPermission('customers_add') ? 14 : 13
     tbody.innerHTML = `
-      <tr><td colspan="14">
+      <tr><td colspan="${colCount}">
         <div class="empty-state">
           <div class="icon">🛒</div>
           <h3>فروشی ثبت نشده</h3>

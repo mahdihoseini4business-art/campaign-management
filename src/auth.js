@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones } from './utils.js'
 import { getDestinationBanks, saveDestinationBanks } from './data.js'
 
 // ============================================
@@ -239,7 +239,8 @@ export async function doLogin() {
     lastName: user.last_name,
     phone: user.phone,
     role: user.role,
-    permissions: user.permissions || null
+    permissions: user.permissions || null,
+    viewUserPhones: user.permissions?.viewUserPhones
   })
   window.location.href = '/index.html'
 }
@@ -297,7 +298,8 @@ export async function refreshSessionFromServer(localUser) {
       lastName: user.last_name,
       phone: user.phone,
       role: user.role,
-      permissions: user.permissions || null
+      permissions: user.permissions || null,
+      viewUserPhones: user.permissions?.viewUserPhones
     })
   } catch (e) {
     console.error('refreshSessionFromServer error:', e)
@@ -410,6 +412,7 @@ export async function renderUsersList() {
     const isCurrentUser = u.username === currentUser?.username
     const isAdminUser = u.username === 'admin' || u.role === 'admin'
     const perms = u.permissions || getDefaultPermissions()
+    const viewPhones = new Set(normalizeViewUserPhones(perms.viewUserPhones))
 
     // نمایش نام کاربر
     const userDisplay = userDisplayName(u) || u.username
@@ -432,12 +435,41 @@ export async function renderUsersList() {
         </div>
       `).join('')
 
+    const otherUsers = users.filter(x =>
+      x.phone &&
+      normalizePhone(x.phone) !== normalizePhone(u.phone) &&
+      x.role !== 'admin' &&
+      x.username !== 'admin'
+    )
+    const viewUsersHtml = (u.role === 'admin')
+      ? ''
+      : `
+        <div class="view-users-picker" data-view-user="${escapeAttr(u.username)}" style="margin-top:14px;">
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">مشاهده داده کاربران</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">علاوه بر داده خودش، اطلاعات کاربران انتخاب‌شده را فقط می‌بیند (بدون ویرایش).</div>
+          <input type="search" class="form-input view-users-search" placeholder="جستجوی نام یا شماره..." oninput="app.filterViewUserOptions('${escapeAttr(u.username)}', this.value)" style="font-size:12px;margin-bottom:8px;">
+          <div class="view-users-options">
+            ${otherUsers.length === 0
+              ? '<div style="font-size:12px;color:var(--text-muted);">کاربر دیگری برای انتخاب نیست</div>'
+              : otherUsers.map(x => {
+                  const phone = normalizePhone(x.phone)
+                  const label = `${userDisplayName(x) || x.username} · ${phone}`
+                  const checked = viewPhones.has(phone) ? 'checked' : ''
+                  return `<label class="view-users-option" data-search="${escapeAttr(label.toLowerCase())}">
+                    <input type="checkbox" data-view-for="${escapeAttr(u.username)}" value="${escapeAttr(phone)}" ${checked}>
+                    <span>${escapeHtml(userDisplayName(x) || x.username)}</span>
+                    <span class="view-users-phone">${escapeHtml(phone)}</span>
+                  </label>`
+                }).join('')}
+          </div>
+        </div>`
+
     return `
       <div class="settings-user-row">
         <div class="settings-user-header" role="button" tabindex="0" aria-expanded="false" onclick="app.toggleSettingsUserRow(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();app.toggleSettingsUserRow(this)}">
           <div class="user-info">
             <div class="user-name">${escapeHtml(userDisplay)} ${isCurrentUser ? '<span style="font-size:11px;color:var(--accent);">(شما)</span>' : ''}</div>
-            <div class="user-role">📱 ${escapeHtml(userPhone)} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${userRole}</span></div>
+            <div class="user-role">📱 ${escapeHtml(userPhone)} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${userRole}</span>${viewPhones.size ? ` · <span style="color:var(--accent);">مشاهده ${viewPhones.size} کاربر</span>` : ''}</div>
           </div>
           ${!isAdminUser ? `<button type="button" class="btn-icon" title="حذف" onclick="event.stopPropagation();app.deleteUser('${escapeAttr(u.username)}')" style="color:var(--danger);">🗑</button>` : ''}
           <span class="settings-user-chevron" aria-hidden="true">▾</span>
@@ -446,6 +478,7 @@ export async function renderUsersList() {
           ${u.role !== 'admin' ? `
           <div class="settings-user-perms">
             ${permsHtml}
+            ${viewUsersHtml}
             <button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="app.saveUserPermissions('${escapeAttr(u.username)}')">ذخیره دسترسی‌ها</button>
           </div>
           ` : `<div class="settings-user-perms">${permsHtml}</div>`}
@@ -453,6 +486,16 @@ export async function renderUsersList() {
       </div>
     `
   }).join('')
+}
+
+export function filterViewUserOptions(username, query) {
+  const picker = document.querySelector(`.view-users-picker[data-view-user="${username}"]`)
+  if (!picker) return
+  const q = toEnDigits(String(query || '')).trim().toLowerCase()
+  picker.querySelectorAll('.view-users-option').forEach(el => {
+    const hay = el.getAttribute('data-search') || ''
+    el.style.display = !q || hay.includes(q) ? '' : 'none'
+  })
 }
 
 export function toggleSettingsUserRow(headerEl) {
@@ -532,6 +575,12 @@ export async function saveUserPermissions(username) {
     permissions[cb.dataset.permKey] = cb.checked
   })
   permissions = applyAccountingPermissionBundle(permissions)
+
+  const viewPhones = [...document.querySelectorAll(`input[data-view-for="${username}"]:checked`)]
+    .map(cb => normalizePhone(cb.value))
+    .filter(Boolean)
+  permissions.viewUserPhones = viewPhones
+
   // Keep UI in sync when accounting auto-grants related perms
   checkboxes.forEach(cb => {
     const key = cb.dataset.permKey
@@ -553,7 +602,7 @@ export async function saveUserPermissions(username) {
   } else {
     const current = getCurrentUser()
     if (current && current.username === username && current.role !== 'admin') {
-      setCurrentUser({ ...current, permissions })
+      setCurrentUser({ ...current, permissions, viewUserPhones: viewPhones })
       applyPermissions()
     }
     showToast('دسترسی‌ها ذخیره شد')

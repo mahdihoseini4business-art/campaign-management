@@ -497,7 +497,7 @@
         <div class="form-group">
           <label for="followupResult">نتیجه</label>
           <select class="form-select" id="followupResult">
-            <option value="پاسخ داد">پاسخ داد</option><option value="صحبت شد">صحبت شد</option><option value="ارسال قیمت">ارسال قیمت</option><option value="ارسال اطلاعات">ارسال اطلاعات</option><option value="پیگیری">پیگیری</option><option value="پاسخ نداد">پاسخ نداد</option>
+            <option value="پاسخ داد">پاسخ داد</option><option value="صحبت شد">صحبت شد</option><option value="ارسال قیمت">ارسال قیمت</option><option value="ارسال اطلاعات">ارسال اطلاعات</option><option value="پیگیری">پیگیری</option><option value="پاسخ نداد">پاسخ نداد</option><option value="Happy Customer ❤️">Happy Customer ❤️</option>
           </select>
         </div>
       </div>
@@ -569,8 +569,9 @@
     <div class="modal-header"><h2>ایمپورت فروش از اکسل</h2><button class="modal-close" onclick="app.closeSalesImportModal()">&times;</button></div>
     <div class="modal-body">
       <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
-        فایل اکسل باید شامل ستون‌های: <b>شماره موبایل</b>، <b>نام مشتری</b>، <b>محصول</b>، <b>وضعیت</b>، <b>قیمت کل</b>، <b>بیعانه</b>، <b>تاریخ تسویه</b> باشد.
-        <br>شماره موبایل الزامی است. اگه مشتری وجود نداشته باشد خودکار ساخته می‌شود.
+        فایل اکسپورت فروش (یا اکسل با ستون‌های مشابه) پشتیبانی می‌شود.
+        ستون‌های مهم: <b>شماره موبایل</b> یا <b>شناسه مشتری</b>، <b>محصول</b>، <b>مبلغ کل</b>، <b>مبلغ واریز</b>، <b>تاریخ واریز</b>، <b>بانک مقصد</b>، <b>نام واریزکننده</b>، <b>وضعیت واریزی</b>.
+        <br>شماره موبایل یا شناسه مشتری الزامی است. اگر مشتری وجود نداشته باشد خودکار ساخته می‌شود. چند واریز برای یک محصول در ردیف‌های جداگانه قابل ایمپورت است.
       </div>
       <div class="form-group"><label>فایل اکسل را انتخاب کنید</label><input type="file" id="salesImportFileInput" accept=".xlsx,.xls,.csv" style="font-size:13px;"></div>
       <div id="salesImportMapping" style="display:none;"></div>
