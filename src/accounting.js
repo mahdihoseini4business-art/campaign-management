@@ -3,7 +3,7 @@ import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
   requirePermission, getCurrentUser, normalizePhone, getNowJalaliDateTime,
   ensureProductPayments, syncProductStatus, getPaymentEntryStatus,
-  PAYMENT_STATUS, PAYMENT_STATUS_LABELS, formatSoldAt24h
+  PAYMENT_STATUS, PAYMENT_STATUS_LABELS, formatSoldAt24h, matchesTabSearch
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSales } from './sales.js'
@@ -71,12 +71,17 @@ export function renderAccounting() {
 
   if (search) {
     payments = payments.filter(p =>
-      p.customerId.toLowerCase().includes(search) ||
-      p.customerName.toLowerCase().includes(search) ||
-      p.customerPhone.includes(search) ||
-      (p.depositorName || '').toLowerCase().includes(search) ||
-      (p.productName || '').toLowerCase().includes(search) ||
-      (p.advisor || '').toLowerCase().includes(search)
+      matchesTabSearch(search, [
+        p.customerId,
+        p.customerName,
+        p.customerPhone,
+        p.depositorName,
+        p.productName,
+        p.advisor,
+        p.destinationBank,
+        p.soldAt,
+        p.productStatus
+      ])
     )
   }
 

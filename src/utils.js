@@ -102,6 +102,38 @@ export function unformatInput(el) {
   return el.value.replace(/[^\d-]/g, '')
 }
 
+/**
+ * Shared list-search (same behavior as accounting tab).
+ * Matches query against any of the provided field values (id, name, phone, advisor, product, depositor, …).
+ */
+export function matchesTabSearch(search, fields = []) {
+  const q = toEnDigits(String(search || '')).trim().toLowerCase()
+  if (!q) return true
+  const phoneQ = q.replace(/\D/g, '')
+  return fields.some(raw => {
+    const s = toEnDigits(String(raw ?? '')).trim().toLowerCase()
+    if (!s) return false
+    if (s.includes(q)) return true
+    if (phoneQ && normalizePhone(s).includes(phoneQ)) return true
+    return false
+  })
+}
+
+/** Collect product names + depositor names from a customer for search parity with accounting. */
+export function getCustomerSearchExtras(customer) {
+  const products = []
+  const depositors = []
+  ;(customer?.products || []).forEach(p => {
+    ensureProductPayments(p)
+    if (p.name) products.push(p.name)
+    ;(p.payments || []).forEach(pay => {
+      if (pay.depositorName) depositors.push(pay.depositorName)
+    })
+    if (p.depositorName) depositors.push(p.depositorName)
+  })
+  return { products, depositors }
+}
+
 export function escapeHtml(str) {
   if (!str) return ''
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/`/g, '&#96;')

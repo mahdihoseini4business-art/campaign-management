@@ -2,7 +2,7 @@ import { getData } from './data.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser,
   jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr,
-  canViewScopedCustomer, formatSoldAt24h,
+  canViewScopedCustomer, formatSoldAt24h, matchesTabSearch,
   PLATFORM_LABELS, PLATFORM_CLASSES, PAYMENT_STATUS_LABELS,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
   getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
@@ -32,6 +32,7 @@ export function getAllSales() {
           productIndex,
           customerName: c.name || c.platformId,
           customerPhone: c.phone || '',
+          advisor: c.advisor || '',
           platform: c.platform,
           productName: p.name,
           status: p.status,
@@ -68,11 +69,17 @@ function getFilteredSales() {
 
   if (search) {
     allSales = allSales.filter(s =>
-      s.customerId.toLowerCase().includes(search) ||
-      s.customerName.toLowerCase().includes(search) ||
-      s.customerPhone.includes(search) ||
-      s.productName.toLowerCase().includes(search) ||
-      (s.depositorName || '').toLowerCase().includes(search)
+      matchesTabSearch(search, [
+        s.customerId,
+        s.customerName,
+        s.customerPhone,
+        s.advisor,
+        s.productName,
+        s.depositorName,
+        s.status,
+        s.settlementDate,
+        s.soldAt
+      ])
     )
   }
 

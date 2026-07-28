@@ -4,7 +4,7 @@ import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
   canViewCustomer, canManageCustomer, getCurrentUser, formatNumber, jalaliToNum,
   getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer, isAdmin, canViewOrgWideData,
-  canViewScopedCustomer,
+  canViewScopedCustomer, matchesTabSearch, getCustomerSearchExtras,
   resolveAdvisor, normalizePhone, userDisplayName, PLATFORM_LABELS, PLATFORM_CLASSES,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
   getNowJalaliDateTime, PAYMENT_STATUS_LABELS, createPayment,
@@ -37,12 +37,16 @@ export async function renderCustomers() {
   const currentUser = getCurrentUser()
 
   const filtered = data.customers.filter(c => {
-    const matchesSearch = !search ||
-      c.id.toLowerCase().includes(search) ||
-      c.name.toLowerCase().includes(search) ||
-      (c.platformId || '').toLowerCase().includes(search) ||
-      (c.phone || '').includes(search) ||
-      normalizePhone(c.phone).includes(search.replace(/\D/g, ''))
+    const extras = getCustomerSearchExtras(c)
+    const matchesSearch = matchesTabSearch(search, [
+      c.id,
+      c.name,
+      c.phone,
+      c.advisor,
+      c.platformId,
+      ...extras.products,
+      ...extras.depositors
+    ])
 
     if (!matchesSearch) return false
 

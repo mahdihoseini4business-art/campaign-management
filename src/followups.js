@@ -1,5 +1,5 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB } from './data.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canManageCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canManageCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, matchesTabSearch, getCustomerSearchExtras } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { openCustomerDetail } from './customers.js'
 
@@ -22,9 +22,20 @@ export function renderFollowups() {
       if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
       if (!canViewScopedCustomer(customer, currentUser)) return false
     }
-    return f.customerId.toLowerCase().includes(search) ||
-      name.toLowerCase().includes(search) ||
-      f.notes.toLowerCase().includes(search)
+    const extras = getCustomerSearchExtras(customer)
+    return matchesTabSearch(search, [
+      f.customerId,
+      name,
+      customer?.phone,
+      customer?.advisor,
+      f.notes,
+      f.type,
+      f.result,
+      f.date,
+      f.nextDate,
+      ...extras.products,
+      ...extras.depositors
+    ])
   })
 
   const showSelectCol = hasPermission('followups_delete')
