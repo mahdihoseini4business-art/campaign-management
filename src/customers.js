@@ -632,7 +632,7 @@ export async function openCustomerDetail(id) {
 
   document.getElementById('detailTitle').textContent = `پنل مشتری — ${c.name || c.platformId}`
 
-  const advisorHtml = canEdit
+  const advisorHtml = isAdmin()
     ? `<select class="form-select" id="detailAdvisor" style="width:auto;display:inline-block;" onchange="app.updateCustomerAdvisor('${escapeAttr(c.id)}', this.value)">
             ${detailUsers.filter(u => u.phone).map(u => {
               const phone = normalizePhone(u.phone)
@@ -746,11 +746,16 @@ export async function openCustomerDetail(id) {
     html += `<div class="timeline">`
     customerFollowups.forEach(f => {
       const nextHtml = f.nextDate ? `<div class="timeline-next">پیگیری بعدی: ${f.nextDate}</div>` : ''
+      const authorName = resolveUserNameByPhone(f.createdByPhone, detailUsers)
+      const authorHtml = authorName
+        ? `<span class="record-author" title="ثبت‌کننده">👤 ${escapeHtml(authorName)}</span>`
+        : ''
       html += `
         <div class="timeline-item">
           <div class="timeline-header">
             <span class="timeline-date">${f.date}</span>
             <span class="timeline-type">${escapeHtml(f.type)}</span>
+            ${authorHtml}
           </div>
           <div class="timeline-result">${escapeHtml(f.result)}</div>
           ${f.notes ? `<div class="timeline-notes">${escapeHtml(f.notes)}</div>` : ''}
@@ -795,7 +800,14 @@ export async function openCustomerDetail(id) {
 
   document.getElementById('detailBody').innerHTML = html
   document.getElementById('detailModal').classList.add('active')
-  renderProducts(c.id)
+  renderProducts(c.id, detailUsers)
+}
+
+function resolveUserNameByPhone(phone, users = []) {
+  const p = normalizePhone(phone)
+  if (!p) return ''
+  const u = (users || []).find(x => normalizePhone(x.phone) === p)
+  return u ? userDisplayName(u) : ''
 }
 
 export async function setNextFollowup(customerId) {
@@ -863,7 +875,10 @@ export async function addQuickNote(customerId) {
 }
 
 export async function updateCustomerAdvisor(customerId, advisorPhoneValue) {
-  if (!requirePermission('customers_add')) return
+  if (!isAdmin()) {
+    showToast('فقط ادمین می‌تواند کارشناس مسئول را تغییر دهد')
+    return
+  }
   const data = getData()
   const c = data.customers.find(x => x.id === customerId)
   if (!c) return
@@ -914,11 +929,18 @@ export async function setProducts(customerId, products) {
     await saveCustomerToDB(data.customers[idx])
   }
 }
-export function renderProducts(customerId) {
+let detailUsersCache = []
+
+export async function renderProducts(customerId, users = null) {
   const container = document.getElementById('detailProductsList')
   if (!container) return
   const products = getProducts(customerId)
   const canEdit = hasPermission('customers_add')
+  if (users) detailUsersCache = users
+  else if (!detailUsersCache.length) {
+    try { detailUsersCache = await getUsersSafe() } catch (_) { detailUsersCache = [] }
+  }
+  const usersList = detailUsersCache
 
   if (products.length === 0) {
     container.innerHTML = '<div style="font-size:13px;color:var(--text-muted);padding:8px 0;">محصولی ثبت نشده</div>'
@@ -948,11 +970,15 @@ export function renderProducts(customerId) {
       const canDeletePay = canEdit && payStatus !== PAYMENT_STATUS.approved
       const payEditable = canEdit && payStatus !== PAYMENT_STATUS.approved
       const incomplete = canEdit && !isPaymentFilled(pay)
+      const sellerName = resolveUserNameByPhone(pay.soldByPhone || p.soldByPhone, usersList)
+      const sellerHtml = sellerName
+        ? `<span class="record-author" title="ثبت‌کننده فروش">👤 ${escapeHtml(sellerName)}</span>`
+        : ''
 
       if (!payEditable) {
         return `
           <div class="product-row payment-row">
-            <span class="payment-index">واریز ${pi + 1}</span>
+            <span class="payment-index">واریز ${pi + 1}${sellerHtml}</span>
             <span class="product-price" style="direction:ltr;">${pay.amount ? formatNumber(pay.amount) + ' ریال' : '—'}</span>
             <span class="product-settlement" style="direction:ltr;">${escapeHtml(pay.soldAt || '—')}</span>
             ${renderDestinationBankField(customerId, i, pi, pay, false)}
@@ -963,7 +989,7 @@ export function renderProducts(customerId) {
 
       return `
         <div class="product-row payment-row${incomplete ? ' is-incomplete' : ''}">
-          <span class="payment-index">واریز ${pi + 1}</span>
+          <span class="payment-index">واریز ${pi + 1}${sellerHtml}</span>
           <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="مبلغ واریز (ریال) *" value="${pay.amount ? formatNumber(pay.amount) : ''}" oninput="app.formatInput(this)" onblur="app.savePaymentField('${customerId}', ${i}, ${pi}, 'amount', app.unformatInput(this))" title="واحد: ریال">
           <input type="text" class="product-settlement" placeholder="تاریخ *" data-jdp value="${pay.soldAt ? pay.soldAt.split(' ')[0] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtDate', this.value)">
           <input type="time" class="product-settlement" value="${pay.soldAt && pay.soldAt.includes(' ') ? pay.soldAt.split(' ')[1] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtTime', this.value)">

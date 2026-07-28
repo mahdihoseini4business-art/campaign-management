@@ -608,6 +608,8 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
     margin-bottom: 4px;
   }
 
@@ -624,6 +626,25 @@
     background: var(--accent-light);
     color: var(--accent);
     font-weight: 500;
+  }
+
+  .record-author {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: #F5F5F4;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 1px 8px;
+    white-space: nowrap;
+  }
+
+  .payment-index .record-author {
+    margin-top: 4px;
+    display: inline-flex;
   }
 
   .timeline-result {
