@@ -1460,13 +1460,47 @@
   /* Settings Modal */
   .settings-user-row {
     display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 16px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
     background: #F5F5F4;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     margin-bottom: 10px;
+    overflow: hidden;
+  }
+
+  .settings-user-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .settings-user-header:hover {
+    background: #ECEBEA;
+  }
+
+  .settings-user-chevron {
+    color: var(--text-muted);
+    font-size: 14px;
+    transition: transform 0.15s ease;
+  }
+
+  .settings-user-row.is-open .settings-user-chevron {
+    transform: rotate(180deg);
+  }
+
+  .settings-user-body {
+    padding: 0 16px 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .settings-user-perms {
+    padding-top: 8px;
   }
 
   .settings-user-row .user-info { flex: 1; }
@@ -1479,6 +1513,37 @@
   .settings-user-row .user-role {
     font-size: 12px;
     color: var(--text-muted);
+  }
+
+  .settings-bank-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+
+  .product-bank-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 140px;
+  }
+
+  .product-bank-field select,
+  .product-bank-field input {
+    min-width: 140px;
+  }
+
+  .amount-unit-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
   }
 
   .role-badge {
@@ -1512,6 +1577,85 @@
     border-radius: var(--radius);
     padding: 16px;
     min-height: 200px;
+  }
+
+  .chart-card-wide {
+    grid-column: 1 / -1;
+    min-height: 320px;
+  }
+
+  .chart-container-tall {
+    max-height: none;
+    height: 280px;
+  }
+
+  .sales-chart-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .sales-chart-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    min-height: 1.2em;
+  }
+
+  .dash-user-filter {
+    position: relative;
+  }
+
+  .dash-user-filter-btn {
+    min-width: 160px;
+  }
+
+  .dash-user-filter-count {
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .dash-user-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 40;
+    min-width: 240px;
+    max-height: 280px;
+    overflow: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-subtle);
+    padding: 8px;
+  }
+
+  .dash-user-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+
+  .dash-user-option:hover {
+    background: #F5F5F4;
+  }
+
+  .dash-user-option-all {
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+
+  .dash-user-empty {
+    padding: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
   }
 
   .chart-card .chart-title {

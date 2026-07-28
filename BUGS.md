@@ -82,7 +82,7 @@
 #### DATA-L1 — products به صورت reference کپی میشه
 - **فایل:** `src/data.js` خط ۳۵
 
-#### DATA-L2 — `getAllSales()` سه بار در داشبرد صدا زده میشه
+#### DATA-L2 — `getAllSales()` سه بار در داشبورد صدا زده میشه
 - **فایل:** `src/dashboard.js` خطوط ۸۰، ۱۸۱، ۱۹۷
 
 #### DATA-L3 — `getAllSales()` در import-export تکراریه
@@ -183,7 +183,7 @@
 ### پایین (Low)
 
 #### QC-L1 — ثابت‌های تکراری در فایل‌های مختلف
-#### QC-L4 — فیلتر تاریخ در داشبرد vs تب فروش متفاوته
+#### QC-L4 — فیلتر تاریخ در داشبورد vs تب فروش متفاوته
 #### QC-L5 — توابع داخلی بیش از حد export شدن
 #### QC-L6 — state loading در async وجود نداره
 #### QC-L7 — CDN خارجی بدون fallback

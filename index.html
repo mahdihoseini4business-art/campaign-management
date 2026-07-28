@@ -62,6 +62,18 @@
         <div style="font-size:14px;font-weight:600;margin-bottom:12px;">لیست کاربران</div>
         <div id="settingsUsersList"></div>
       </div>
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:8px;">بانک‌های مقصد واریز</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">این لیست در فرم ثبت فروش به‌صورت دراپ‌داون نمایش داده می‌شود.</div>
+        <div class="form-row" style="align-items:flex-end;">
+          <div class="form-group" style="flex:1;margin-bottom:0;">
+            <label for="newDestinationBank">نام بانک</label>
+            <input type="text" class="form-input" id="newDestinationBank" placeholder="مثلاً ملت / سامان / ملی">
+          </div>
+          <button type="button" class="btn btn-primary" onclick="app.addDestinationBank()">افزودن</button>
+        </div>
+        <div id="settingsBanksList" style="margin-top:10px;"></div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="app.closeSettingsModal()">بستن</button>
@@ -79,7 +91,7 @@
       <button class="btn btn-icon" id="profileMenuBtn" onclick="app.toggleProfileMenu()" title="پروفایل" aria-haspopup="menu" aria-expanded="false" aria-controls="profileDropdown">👤</button>
       <div class="profile-dropdown" id="profileDropdown" role="menu" aria-labelledby="profileMenuBtn" hidden>
         <div class="profile-dropdown-item" role="menuitem" tabindex="-1" data-perm="dashboard" onclick="app.switchTab('dashboard', document.querySelector('.tab-dashboard'))">
-          <span>داشبرد</span>
+          <span>داشبورد</span>
         </div>
         <div class="profile-dropdown-item" role="menuitem" tabindex="-1" onclick="app.showToast('پروفایل - به زودی')">
           <span>پروفایل</span>
@@ -97,19 +109,31 @@
 
 <div class="content">
   <div class="tabs" role="tablist" aria-label="بخش‌های اصلی">
-    <button class="tab tab-dashboard" role="tab" id="tab-dashboard" aria-controls="sheet-dashboard" aria-selected="false" tabindex="-1" onclick="app.switchTab('dashboard', this)">داشبرد</button>
+    <button class="tab tab-dashboard" role="tab" id="tab-dashboard" aria-controls="sheet-dashboard" aria-selected="false" tabindex="-1" onclick="app.switchTab('dashboard', this)">داشبورد</button>
     <button class="tab active" role="tab" id="tab-customers" aria-controls="sheet-customers" aria-selected="true" tabindex="0" onclick="app.switchTab('customers', this)">لیست مشتریان</button>
     <button class="tab" role="tab" id="tab-followups" aria-controls="sheet-followups" aria-selected="false" tabindex="-1" onclick="app.switchTab('followups', this)">تاریخچه پیگیری</button>
     <button class="tab" role="tab" id="tab-sales" aria-controls="sheet-sales" aria-selected="false" tabindex="-1" onclick="app.switchTab('sales', this)">فروش‌ها</button>
     <button class="tab" role="tab" id="tab-accounting" aria-controls="sheet-accounting" aria-selected="false" tabindex="-1" data-perm="accounting" onclick="app.switchTab('accounting', this)">حسابداری</button>
   </div>
 
-  <!-- شیت داشبرد -->
+  <!-- شیت داشبورد -->
   <div class="sheet" id="sheet-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" hidden>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
       <div style="font-size:16px;font-weight:600;">فیلتر تاریخ:</div>
       <input type="text" class="form-input" id="dashDateFrom" placeholder="از تاریخ" data-jdp style="width:150px;">
       <input type="text" class="form-input" id="dashDateTo" placeholder="تا تاریخ" data-jdp style="width:150px;">
+      <div class="dash-user-filter" id="dashUserFilter">
+        <button type="button" class="btn dash-user-filter-btn" id="dashUserFilterBtn" onclick="app.toggleDashUserDropdown(event)">
+          کارشناسان <span class="dash-user-filter-count" id="dashUserFilterCount"></span>
+        </button>
+        <div class="dash-user-dropdown" id="dashUserDropdown" hidden>
+          <label class="dash-user-option dash-user-option-all">
+            <input type="checkbox" id="dashUserSelectAll" onchange="app.toggleDashUsersAll(this.checked)">
+            <span>همه کارشناسان</span>
+          </label>
+          <div class="dash-user-options" id="dashUserCheckboxes"></div>
+        </div>
+      </div>
       <button class="btn btn-primary" onclick="app.renderDashboard()">اعمال فیلتر</button>
       <button class="btn" onclick="app.clearDashFilter()">پاک کردن فیلتر</button>
     </div>
@@ -148,6 +172,23 @@
       <div class="chart-card">
         <div class="chart-title">فروش بر اساس محصول</div>
         <canvas id="chartProducts"></canvas>
+      </div>
+      <div class="chart-card chart-card-wide">
+        <div class="chart-title">فروش در طول زمان</div>
+        <div class="sales-chart-controls">
+          <input type="text" class="form-input" id="salesChartFrom" placeholder="از تاریخ" data-jdp style="width:140px;" onchange="app.onSalesChartControlsChange()">
+          <input type="text" class="form-input" id="salesChartTo" placeholder="تا تاریخ" data-jdp style="width:140px;" onchange="app.onSalesChartControlsChange()">
+          <select class="form-select" id="salesChartTimeframe" style="width:180px;" onchange="app.onSalesChartControlsChange()">
+            <option value="day">هر میله = ۱ روز</option>
+            <option value="week">هر میله = ۱ هفته</option>
+            <option value="month">هر میله = ۱ ماه</option>
+          </select>
+          <button type="button" class="btn btn-primary" onclick="app.applySalesChart()">اعمال نمودار</button>
+        </div>
+        <div class="sales-chart-hint" id="salesChartHint"></div>
+        <div class="chart-container chart-container-tall">
+          <canvas id="chartSalesTimeline"></canvas>
+        </div>
       </div>
     </div>
 
@@ -307,9 +348,9 @@
             <th onclick="app.sortSalesHeader('platform')">پلتفرم</th>
             <th onclick="app.sortSalesHeader('productName')">محصول</th>
             <th onclick="app.sortSalesHeader('status')">وضعیت</th>
-            <th onclick="app.sortSalesHeader('price')">مبلغ کل</th>
-            <th onclick="app.sortSalesHeader('deposit')">پرداخت‌شده</th>
-            <th onclick="app.sortSalesHeader('balance')">مانده</th>
+            <th onclick="app.sortSalesHeader('price')">مبلغ کل (ریال)</th>
+            <th onclick="app.sortSalesHeader('deposit')">پرداخت‌شده (ریال)</th>
+            <th onclick="app.sortSalesHeader('balance')">مانده (ریال)</th>
             <th onclick="app.sortSalesHeader('settlementDate')">تاریخ تسویه</th>
             <th>تاریخ واریز</th>
             <th>نام واریزکننده</th>
@@ -349,8 +390,9 @@
             <th>کارشناس</th>
             <th>محصول</th>
             <th>نوع پرداخت</th>
-            <th>مبلغ</th>
+            <th>مبلغ (ریال)</th>
             <th>تاریخ و ساعت</th>
+            <th>بانک مقصد</th>
             <th>نام واریزکننده</th>
             <th>وضعیت / عملیات</th>
           </tr>

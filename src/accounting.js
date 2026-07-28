@@ -35,6 +35,7 @@ export function getAllPayments() {
           amount,
           soldAt: pay.soldAt || '',
           depositorName: pay.depositorName || '',
+          destinationBank: pay.destinationBank || '',
           paymentStatus: getPaymentEntryStatus(pay),
           paymentRejectReason: pay.paymentRejectReason || '',
           paymentReviewedAt: pay.paymentReviewedAt || '',
@@ -59,7 +60,7 @@ export function renderAccounting() {
   const tbody = document.getElementById('accountingBody')
   if (!tbody) return
   if (!hasPermission('accounting')) {
-    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><h3>دسترسی ندارید</h3></div></td></tr>`
+    tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state"><h3>دسترسی ندارید</h3></div></td></tr>`
     return
   }
 
@@ -90,7 +91,7 @@ export function renderAccounting() {
 
   if (payments.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="10">
+      <tr><td colspan="11">
         <div class="empty-state">
           <div class="icon">💳</div>
           <h3>واریزی‌ای در این وضعیت نیست</h3>
@@ -120,8 +121,9 @@ export function renderAccounting() {
       <td>${escapeHtml(p.advisor) || '—'}</td>
       <td>${escapeHtml(p.productName)}</td>
       <td>${escapeHtml(p.productStatus)}</td>
-      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-weight:600;">${formatNumber(p.amount)}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-weight:600;">${formatNumber(p.amount)} ریال</td>
       <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;direction:ltr;text-align:right;">${escapeHtml(p.soldAt) || '—'}</td>
+      <td>${escapeHtml(p.destinationBank) || '—'}</td>
       <td>${escapeHtml(p.depositorName) || '—'}</td>
       <td><span class="payment-badge payment-${p.paymentStatus}">${escapeHtml(statusLabel)}</span>
         <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">${actions}</div>

@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin } from './utils.js'
+import { getDestinationBanks, saveDestinationBanks } from './data.js'
 
 // ============================================
 // Password Hashing (PBKDF2)
@@ -309,12 +310,13 @@ export async function refreshSessionFromServer(localUser) {
 // ============================================
 
 export async function openSettingsModal() {
-  if (!requirePermission('settings')) return
+  if (!requireMainAdmin()) return
   document.getElementById('newFirstName').value = ''
   document.getElementById('newLastName').value = ''
   document.getElementById('newPhone').value = ''
   document.getElementById('newRole').value = 'user'
   await renderUsersList()
+  renderDestinationBanksSettings()
   document.getElementById('settingsModal').classList.add('active')
   document.getElementById('profileDropdown').classList.remove('active')
 }
@@ -324,7 +326,7 @@ export function closeSettingsModal() {
 }
 
 export async function addUser() {
-  if (!requirePermission('settings')) return
+  if (!requireMainAdmin()) return
   const firstName = document.getElementById('newFirstName').value.trim()
   const lastName = document.getElementById('newLastName').value.trim()
   const phone = normalizePhone(document.getElementById('newPhone').value.trim())
@@ -371,7 +373,7 @@ export async function addUser() {
 }
 
 export async function deleteUser(username) {
-  if (!requirePermission('settings')) return
+  if (!requireMainAdmin()) return
   if (username === 'admin') { showToast('امکان حذف مدیر وجود ندارد'); return }
   const currentUser = getCurrentUser()
   if (currentUser && currentUser.username === username) { showToast('امکان حذف کاربر جاری وجود ندارد'); return }
@@ -431,27 +433,94 @@ export async function renderUsersList() {
       `).join('')
 
     return `
-      <div class="settings-user-row" style="flex-direction:column;align-items:stretch;">
-        <div style="display:flex;align-items:center;gap:10px;">
+      <div class="settings-user-row">
+        <div class="settings-user-header" role="button" tabindex="0" aria-expanded="false" onclick="app.toggleSettingsUserRow(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();app.toggleSettingsUserRow(this)}">
           <div class="user-info">
             <div class="user-name">${escapeHtml(userDisplay)} ${isCurrentUser ? '<span style="font-size:11px;color:var(--accent);">(شما)</span>' : ''}</div>
             <div class="user-role">📱 ${escapeHtml(userPhone)} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${userRole}</span></div>
           </div>
-          ${!isAdminUser ? `<button class="btn-icon" title="حذف" onclick="app.deleteUser('${escapeAttr(u.username)}')" style="color:var(--danger);">🗑</button>` : ''}
+          ${!isAdminUser ? `<button type="button" class="btn-icon" title="حذف" onclick="event.stopPropagation();app.deleteUser('${escapeAttr(u.username)}')" style="color:var(--danger);">🗑</button>` : ''}
+          <span class="settings-user-chevron" aria-hidden="true">▾</span>
         </div>
-        ${u.role !== 'admin' ? `
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
-          ${permsHtml}
-          <button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="app.saveUserPermissions('${escapeAttr(u.username)}')">ذخیره دسترسی‌ها</button>
+        <div class="settings-user-body" hidden>
+          ${u.role !== 'admin' ? `
+          <div class="settings-user-perms">
+            ${permsHtml}
+            <button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="app.saveUserPermissions('${escapeAttr(u.username)}')">ذخیره دسترسی‌ها</button>
+          </div>
+          ` : `<div class="settings-user-perms">${permsHtml}</div>`}
         </div>
-        ` : `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">${permsHtml}</div>`}
       </div>
     `
   }).join('')
 }
 
+export function toggleSettingsUserRow(headerEl) {
+  if (!headerEl) return
+  const row = headerEl.closest('.settings-user-row')
+  if (!row) return
+  const body = row.querySelector('.settings-user-body')
+  if (!body) return
+  const willOpen = body.hidden
+  body.hidden = !willOpen
+  row.classList.toggle('is-open', willOpen)
+  headerEl.setAttribute('aria-expanded', willOpen ? 'true' : 'false')
+}
+
+export function renderDestinationBanksSettings() {
+  const list = document.getElementById('settingsBanksList')
+  if (!list) return
+  const banks = getDestinationBanks()
+  if (banks.length === 0) {
+    list.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:6px 0;">هنوز بانکی ثبت نشده</div>'
+    return
+  }
+  list.innerHTML = banks.map((bank, idx) => `
+    <div class="settings-bank-row">
+      <span>${escapeHtml(bank)}</span>
+      <button type="button" class="btn-icon" title="حذف" onclick="app.removeDestinationBank(${idx})" style="color:var(--danger);">🗑</button>
+    </div>
+  `).join('')
+}
+
+export async function addDestinationBank() {
+  if (!requireMainAdmin()) return
+  const input = document.getElementById('newDestinationBank')
+  const name = (input?.value || '').trim()
+  if (!name) { showToast('نام بانک را وارد کنید'); return }
+  const banks = getDestinationBanks()
+  if (banks.some(b => b.toLowerCase() === name.toLowerCase())) {
+    showToast('این بانک قبلاً ثبت شده')
+    return
+  }
+  try {
+    await saveDestinationBanks([...banks, name])
+    if (input) input.value = ''
+    renderDestinationBanksSettings()
+    showToast('بانک اضافه شد')
+  } catch (e) {
+    console.error('addDestinationBank error:', e)
+    showToast('خطا در ذخیره بانک')
+  }
+}
+
+export async function removeDestinationBank(index) {
+  if (!requireMainAdmin()) return
+  const banks = getDestinationBanks()
+  if (index < 0 || index >= banks.length) return
+  banks.splice(index, 1)
+  try {
+    await saveDestinationBanks(banks)
+    renderDestinationBanksSettings()
+    showToast('بانک حذف شد')
+  } catch (e) {
+    console.error('removeDestinationBank error:', e)
+    showToast('خطا در حذف بانک')
+  }
+}
+
 export async function saveUserPermissions(username) {
-  if (!requirePermission('settings')) return
+  if (!requireMainAdmin()) return
 
   const checkboxes = document.querySelectorAll(`input[data-perm-user="${username}"]`)
   if (checkboxes.length === 0) {
@@ -496,7 +565,7 @@ export function applyPermissions() {
   document.querySelectorAll('.tab').forEach(t => {
     const text = t.textContent.trim()
     let permKey = null
-    if (text === 'داشبرد') permKey = 'dashboard'
+    if (text === 'داشبورد') permKey = 'dashboard'
     else if (text === 'لیست مشتریان') permKey = 'customers_view'
     else if (text === 'تاریخچه پیگیری') permKey = 'followups_view'
     else if (text === 'فروش‌ها') permKey = 'sales_view'
@@ -516,7 +585,7 @@ export function applyPermissions() {
 
   const settingsItem = document.querySelector('.profile-dropdown-item[onclick*="openSettingsModal"]')
   if (settingsItem) {
-    settingsItem.style.display = hasPermission('settings') ? '' : 'none'
+    settingsItem.style.display = isMainAdmin() ? '' : 'none'
   }
 
   const activeTab = document.querySelector('.tab.active')

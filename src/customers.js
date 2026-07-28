@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId } from './data.js'
+import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks } from './data.js'
 import { getUsersSafe } from './auth.js'
 import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
@@ -942,8 +942,9 @@ export function renderProducts(customerId) {
         return `
           <div class="product-row payment-row">
             <span class="payment-index">واریز ${pi + 1}</span>
-            <span class="product-price" style="direction:ltr;">${pay.amount ? formatNumber(pay.amount) : '—'}</span>
+            <span class="product-price" style="direction:ltr;">${pay.amount ? formatNumber(pay.amount) + ' ریال' : '—'}</span>
             <span class="product-settlement" style="direction:ltr;">${escapeHtml(pay.soldAt || '—')}</span>
+            ${renderDestinationBankField(customerId, i, pi, pay, false)}
             <span style="font-size:13px;">${escapeHtml(pay.depositorName || '—')}</span>
             ${badge}
           </div>`
@@ -952,9 +953,10 @@ export function renderProducts(customerId) {
       return `
         <div class="product-row payment-row${incomplete ? ' is-incomplete' : ''}">
           <span class="payment-index">واریز ${pi + 1}</span>
-          <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="مبلغ واریز *" value="${pay.amount ? formatNumber(pay.amount) : ''}" oninput="app.formatInput(this)" onblur="app.savePaymentField('${customerId}', ${i}, ${pi}, 'amount', app.unformatInput(this))">
+          <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="مبلغ واریز (ریال) *" value="${pay.amount ? formatNumber(pay.amount) : ''}" oninput="app.formatInput(this)" onblur="app.savePaymentField('${customerId}', ${i}, ${pi}, 'amount', app.unformatInput(this))" title="واحد: ریال">
           <input type="text" class="product-settlement" placeholder="تاریخ *" data-jdp value="${pay.soldAt ? pay.soldAt.split(' ')[0] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtDate', this.value)">
           <input type="time" class="product-settlement" value="${pay.soldAt && pay.soldAt.includes(' ') ? pay.soldAt.split(' ')[1] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtTime', this.value)">
+          ${renderDestinationBankField(customerId, i, pi, pay, true)}
           <input type="text" class="product-settlement product-depositor" placeholder="نام واریزکننده *" value="${escapeAttr(pay.depositorName || '')}" onblur="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'depositorName', this.value)">
           ${badge}
           ${canDeletePay ? `<button type="button" class="btn-remove-product" title="حذف واریز" onclick="app.removeProductPayment('${escapeAttr(customerId)}', ${i}, ${pi})">✕</button>` : ''}
@@ -973,8 +975,8 @@ export function renderProducts(customerId) {
     }
 
     const priceHtml = (!canEdit || priceLocked)
-      ? `<span class="product-price-locked" title="قیمت کل قفل شده">قیمت کل: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${price ? formatNumber(price) : '—'}</b></span>`
-      : `<input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت کل *" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" onblur="app.saveProductField('${customerId}', ${i}, 'price', app.unformatInput(this))">`
+      ? `<span class="product-price-locked" title="قیمت کل قفل شده">قیمت کل (ریال): <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${price ? formatNumber(price) : '—'}</b></span>`
+      : `<input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت کل (ریال) *" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" onblur="app.saveProductField('${customerId}', ${i}, 'price', app.unformatInput(this))" title="واحد: ریال">`
 
     const settlementHtml = canEdit && !closed
       ? `<input type="text" class="product-settlement" placeholder="تاریخ تسویه" data-jdp value="${p.settlementDate || ''}" onchange="app.updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">`
@@ -1150,6 +1152,49 @@ export async function savePaymentField(customerId, productIndex, paymentIndex, f
   syncProductStatus(product)
   await setProducts(customerId, products)
   renderProducts(customerId)
+}
+
+function renderDestinationBankField(customerId, productIndex, paymentIndex, pay, editable) {
+  const banks = getDestinationBanks()
+  const value = String(pay.destinationBank || '').trim()
+  const inList = value && banks.some(b => b === value)
+  const isCustom = !!(value && !inList)
+
+  if (!editable) {
+    return `<span style="font-size:13px;">${escapeHtml(value) || '—'}</span>`
+  }
+
+  const options = [
+    `<option value="">بانک مقصد *</option>`,
+    ...banks.map(b => `<option value="${escapeAttr(b)}" ${value === b ? 'selected' : ''}>${escapeHtml(b)}</option>`),
+    `<option value="__custom__" ${isCustom ? 'selected' : ''}>سایر (ورود دستی)</option>`
+  ].join('')
+
+  return `
+    <div class="product-bank-field">
+      <select class="product-settlement" onchange="app.onDestinationBankSelect('${escapeAttr(customerId)}', ${productIndex}, ${paymentIndex}, this)">
+        ${options}
+      </select>
+      <input type="text" class="product-settlement bank-custom-input" placeholder="نام بانک *" value="${isCustom ? escapeAttr(value) : ''}" style="${isCustom ? '' : 'display:none;'}" onblur="app.updatePaymentField('${escapeAttr(customerId)}', ${productIndex}, ${paymentIndex}, 'destinationBank', this.value)">
+    </div>`
+}
+
+export function onDestinationBankSelect(customerId, productIndex, paymentIndex, selectEl) {
+  const wrap = selectEl.closest('.product-bank-field')
+  const customInput = wrap?.querySelector('.bank-custom-input')
+  const val = selectEl.value
+  if (val === '__custom__') {
+    if (customInput) {
+      customInput.style.display = ''
+      customInput.focus()
+    }
+    return
+  }
+  if (customInput) {
+    customInput.style.display = 'none'
+    customInput.value = ''
+  }
+  updatePaymentField(customerId, productIndex, paymentIndex, 'destinationBank', val)
 }
 
 export async function updatePaymentField(customerId, productIndex, paymentIndex, field, value) {

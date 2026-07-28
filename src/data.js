@@ -4,7 +4,7 @@
 
 import { supabase } from './supabase.js'
 
-let data = { customers: [], followups: [], convertedCount: 0 }
+let data = { customers: [], followups: [], convertedCount: 0, destinationBanks: [] }
 
 // ============================================
 // Load all data from Supabase
@@ -53,12 +53,39 @@ export async function loadData() {
     createdByPhone: f.created_by_phone || ''
   }))
 
-  // Load settings (convertedCount)
+  // Load settings (convertedCount, destination banks, …)
   const settings = {}
   ;(settingsRes.data || []).forEach(s => { settings[s.key] = s.value })
   data.convertedCount = settings.convertedCount || 0
+  data.destinationBanks = normalizeDestinationBanks(settings.destination_banks)
 
   return data
+}
+
+function normalizeDestinationBanks(raw) {
+  if (Array.isArray(raw)) {
+    return raw.map(b => String(b || '').trim()).filter(Boolean)
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed.map(b => String(b || '').trim()).filter(Boolean)
+    } catch (_) {
+      return raw.split(/[\n,]/).map(b => b.trim()).filter(Boolean)
+    }
+  }
+  return []
+}
+
+export function getDestinationBanks() {
+  return Array.isArray(data.destinationBanks) ? [...data.destinationBanks] : []
+}
+
+export async function saveDestinationBanks(banks) {
+  const cleaned = [...new Set((banks || []).map(b => String(b || '').trim()).filter(Boolean))]
+  data.destinationBanks = cleaned
+  await saveSetting('destination_banks', cleaned)
+  return cleaned
 }
 
 // ============================================

@@ -2,6 +2,8 @@
 // Utility Functions
 // ============================================
 
+import { ADMIN_PHONE } from './config.js'
+
 /** Customer lead-source platforms (value → Persian label) */
 export const PLATFORM_LABELS = {
   instagram: 'اینستاگرام',
@@ -396,17 +398,15 @@ export const ALL_PERMISSIONS = {
   sales_view: 'مشاهده فروش‌ها',
   sales_import: 'ایمپورت فروش',
   sales_export: 'خروجی فروش‌ها',
-  accounting: 'تأیید واریزی‌ها (حسابداری)',
-  settings: 'مدیریت کاربران'
+  accounting: 'تأیید واریزی‌ها (حسابداری)'
 }
 
 export const PERMISSION_GROUPS = [
-  { label: 'داشبرد', keys: ['dashboard'] },
+  { label: 'داشبورد', keys: ['dashboard'] },
   { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_delete', 'customers_import', 'customers_export'] },
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_import', 'sales_export'] },
-  { label: 'حسابداری', keys: ['accounting'] },
-  { label: 'سیستم', keys: ['settings'] }
+  { label: 'حسابداری', keys: ['accounting'] }
 ]
 
 export const PAYMENT_STATUS = {
@@ -430,6 +430,7 @@ export function createPayment(overrides = {}) {
     amount: '',
     soldAt: dateTime,
     depositorName: '',
+    destinationBank: '',
     paymentStatus: PAYMENT_STATUS.pending,
     paymentRejectReason: '',
     paymentReviewedAt: '',
@@ -457,6 +458,7 @@ export function ensureProductPayments(product) {
       amount: amount ? String(amount) : '',
       soldAt: product.soldAt || getNowJalaliDateTime().dateTime,
       depositorName: product.depositorName || '',
+      destinationBank: product.destinationBank || '',
       paymentStatus: product.paymentStatus || PAYMENT_STATUS.approved,
       paymentRejectReason: product.paymentRejectReason || '',
       paymentReviewedAt: product.paymentReviewedAt || '',
@@ -501,7 +503,7 @@ export function getProductBalance(product) {
   return Math.max(0, price - getApprovedPaid(product))
 }
 
-/** Amount / date / time / depositor all present */
+/** Amount / date / time / depositor / destination bank all present */
 export function isPaymentFilled(payment) {
   if (!payment) return false
   const amount = parseFloat(payment.amount) || 0
@@ -510,7 +512,12 @@ export function isPaymentFilled(payment) {
   const hasDate = !!(parts[0] && parts[0].split('/').length === 3)
   const hasTime = !!(parts[1] && /^\d{1,2}:\d{2}/.test(parts[1]))
   const depositor = String(payment.depositorName || '').trim()
-  return amount > 0 && hasDate && hasTime && !!depositor
+  const bank = String(payment.destinationBank || '').trim()
+  // Legacy approved rows may not have destinationBank yet
+  if (getPaymentEntryStatus(payment) === PAYMENT_STATUS.approved) {
+    return amount > 0 && hasDate && hasTime && !!depositor
+  }
+  return amount > 0 && hasDate && hasTime && !!depositor && !!bank
 }
 
 export function areProductPaymentsFilled(product) {
@@ -600,7 +607,6 @@ export function getDefaultPermissions() {
   p.customers_delete = false
   p.followups_delete = false
   p.accounting = false
-  p.settings = false
   return p
 }
 
@@ -789,6 +795,22 @@ export function clearCurrentUser() {
 export function isAdmin() {
   const user = getCurrentUser()
   return user && user.role === 'admin'
+}
+
+/** Primary admins only (role admin / seeded admin / configured admin phone). */
+export function isMainAdmin(user = getCurrentUser()) {
+  if (!user) return false
+  if (user.role === 'admin') return true
+  if (user.username === 'admin') return true
+  const adminPhone = normalizePhone(ADMIN_PHONE)
+  if (adminPhone && normalizePhone(user.phone) === adminPhone) return true
+  return false
+}
+
+export function requireMainAdmin() {
+  if (isMainAdmin()) return true
+  showToast('فقط ادمین اصلی به این بخش دسترسی دارد')
+  return false
 }
 
 // ============================================

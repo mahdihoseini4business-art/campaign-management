@@ -133,9 +133,9 @@ function renderSalesRows(allSales) {
       <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${escapeHtml(pLabel)}</span></td>
       <td>${escapeHtml(s.productName)}</td>
       <td><span style="color:${statusColor};font-weight:600;">${escapeHtml(s.status)}</span></td>
-      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.price > 0 ? formatNumber(s.price) : '—'}</td>
-      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.deposit > 0 ? formatNumber(s.deposit) : '—'}</td>
-      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? formatNumber(s.balance) : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.price > 0 ? formatNumber(s.price) + ' ریال' : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.deposit > 0 ? formatNumber(s.deposit) + ' ریال' : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? formatNumber(s.balance) + ' ریال' : '—'}</td>
       <td style="font-size:12px;">${settlementHtml}</td>
       <td style="font-family:'Vazirmatn',sans-serif;font-size:12px;direction:ltr;text-align:right;">${escapeHtml(s.soldAt) || '—'}</td>
       <td>${escapeHtml(s.depositorName) || '—'}</td>
