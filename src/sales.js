@@ -2,6 +2,7 @@ import { getData } from './data.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser,
   jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, ownsCustomer,
+  canViewOrgWideData, formatSoldAt24h,
   PLATFORM_LABELS, PLATFORM_CLASSES, PAYMENT_STATUS_LABELS,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
   getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
@@ -63,7 +64,6 @@ function getFilteredSales() {
   let allSales = getAllSales()
 
   const currentUser = getCurrentUser()
-  const isAdmin = currentUser && currentUser.role === 'admin'
   const data = getData()
 
   if (search) {
@@ -80,7 +80,7 @@ function getFilteredSales() {
     if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
     const customer = data.customers.find(c => c.id === s.customerId)
-    if (!isAdmin && customer && !ownsCustomer(customer, currentUser)) return false
+    if (!canViewOrgWideData() && customer && !ownsCustomer(customer, currentUser)) return false
     return true
   })
 
@@ -137,7 +137,7 @@ function renderSalesRows(allSales) {
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.deposit > 0 ? formatNumber(s.deposit) + ' ریال' : '—'}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? formatNumber(s.balance) + ' ریال' : '—'}</td>
       <td style="font-size:12px;">${settlementHtml}</td>
-      <td style="font-family:'Vazirmatn',sans-serif;font-size:12px;direction:ltr;text-align:right;">${escapeHtml(s.soldAt) || '—'}</td>
+      <td style="font-family:'Vazirmatn',sans-serif;font-size:12px;direction:ltr;text-align:right;">${escapeHtml(formatSoldAt24h(s.soldAt)) || '—'}</td>
       <td>${escapeHtml(s.depositorName) || '—'}</td>
       <td>${paymentHtml}</td>
     </tr>`

@@ -288,13 +288,62 @@ export function computeCustomerLrfm(customer, followups = []) {
   return { L: lengthDays, R: lastFollowup, F: freqAvg, M: monetary }
 }
 
-/** Current Jalali date + time in Asia/Tehran, e.g. "1404/04/15 14:30" */
+/** Current Jalali date + time in Asia/Tehran, e.g. "1404/04/15 14:30" (24h) */
 export function getNowJalaliDateTime() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tehran' }))
   const j = toJalali(now)
   const date = `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.day).padStart(2, '0')}`
   const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
   return { date, time, dateTime: `${date} ${time}` }
+}
+
+/**
+ * Normalize any time string to 24h "HH:MM" (no AM/PM).
+ * Accepts: "14:30", "2:30 PM", "02:30:00", "2:30 ب.ظ"
+ */
+export function normalizeTimeTo24h(timeStr) {
+  if (!timeStr) return ''
+  let t = toEnDigits(String(timeStr).trim())
+  if (!t) return ''
+
+  let isPm = false
+  let isAm = false
+  if (/\bP\.?M\.?\b/i.test(t) || /ب\.?\s*ظ/i.test(t)) isPm = true
+  if (/\bA\.?M\.?\b/i.test(t) || /ق\.?\s*ظ/i.test(t)) isAm = true
+  t = t.replace(/\b(A\.?M\.?|P\.?M\.?)\b/ig, '').replace(/[قب]\.?\s*ظ\.?/ig, '').trim()
+
+  const m = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?/)
+  if (!m) return ''
+  let h = parseInt(m[1], 10)
+  const min = parseInt(m[2], 10)
+  if (Number.isNaN(h) || Number.isNaN(min) || min < 0 || min > 59) return ''
+
+  if (isPm || isAm) {
+    if (h < 1 || h > 12) return ''
+    if (isPm && h < 12) h += 12
+    if (isAm && h === 12) h = 0
+  } else if (h > 23) {
+    return ''
+  }
+
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
+}
+
+/** Extract HH:MM (24h) from soldAt "date time" or bare time */
+export function soldAtTimePart(soldAt) {
+  const raw = toEnDigits(String(soldAt || '')).trim()
+  if (!raw) return ''
+  const parts = raw.split(/\s+/)
+  if (parts.length < 2) return normalizeTimeTo24h(parts[0])
+  return normalizeTimeTo24h(parts.slice(1).join(' '))
+}
+
+/** Format soldAt for display with 24h clock */
+export function formatSoldAt24h(soldAt) {
+  const date = jalaliDatePart(soldAt)
+  const time = soldAtTimePart(soldAt)
+  if (date && time) return `${date} ${time}`
+  return date || time || ''
 }
 
 /** Extract Jalali YYYY/MM/DD from "1404/04/15" or "1404/04/15 14:30" */
@@ -509,21 +558,21 @@ export function getOperationalBalance(product) {
   return Math.max(0, price - getCountablePaid(product))
 }
 
-/** Amount / date / time / depositor / destination bank all present */
+/** Amount / date / time / destination bank present (depositor optional) */
 export function isPaymentFilled(payment) {
   if (!payment) return false
   const amount = parseFloat(payment.amount) || 0
   const soldAt = toEnDigits(String(payment.soldAt || '')).trim()
   const parts = soldAt.split(/\s+/)
   const hasDate = !!(parts[0] && parts[0].split('/').length === 3)
-  const hasTime = !!(parts[1] && /^\d{1,2}:\d{2}/.test(parts[1]))
-  const depositor = String(payment.depositorName || '').trim()
+  const time24 = normalizeTimeTo24h(parts.slice(1).join(' '))
+  const hasTime = /^\d{2}:\d{2}/.test(time24)
   const bank = String(payment.destinationBank || '').trim()
   // Legacy approved rows may not have destinationBank yet
   if (getPaymentEntryStatus(payment) === PAYMENT_STATUS.approved) {
-    return amount > 0 && hasDate && hasTime && !!depositor
+    return amount > 0 && hasDate && hasTime
   }
-  return amount > 0 && hasDate && hasTime && !!depositor && !!bank
+  return amount > 0 && hasDate && hasTime && !!bank
 }
 
 export function areProductPaymentsFilled(product) {
@@ -621,6 +670,33 @@ export function hasPermission(key) {
   if (!user) return false
   if (user.role === 'admin') return true
   return user.permissions && user.permissions[key] === true
+}
+
+/**
+ * Org-wide read for financial roles (admin or accounting).
+ * Sales list, dashboard, and similar views use this instead of ownsCustomer.
+ */
+export function canViewOrgWideData(user = getCurrentUser()) {
+  if (!user) return false
+  if (user.role === 'admin') return true
+  return !!(user.permissions && user.permissions.accounting === true)
+}
+
+/** Permissions auto-enabled with accounting (Level-1 accountant pack). */
+export const ACCOUNTING_PERMISSION_BUNDLE = [
+  'dashboard',
+  'sales_view',
+  'customers_view',
+  'customers_ld',
+  'customers_cs'
+]
+
+export function applyAccountingPermissionBundle(permissions = {}) {
+  const next = { ...permissions }
+  if (next.accounting) {
+    ACCOUNTING_PERMISSION_BUNDLE.forEach(k => { next[k] = true })
+  }
+  return next
 }
 
 /** Guard for actions — shows toast and returns false when denied. */

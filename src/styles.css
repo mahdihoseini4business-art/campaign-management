@@ -794,6 +794,8 @@
   .product-block .product-deposit { min-width: 120px; direction: ltr; text-align: left; }
   .product-row .product-settlement,
   .product-block .product-settlement { min-width: 110px; direction: ltr; text-align: left; font-size: 12px; }
+  .product-row .product-time,
+  .product-block .product-time { min-width: 72px; max-width: 88px; }
   .product-row .product-depositor,
   .product-block .product-depositor { min-width: 140px; }
 

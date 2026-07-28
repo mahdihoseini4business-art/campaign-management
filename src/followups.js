@@ -1,5 +1,5 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB } from './data.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canManageCustomer, getCurrentUser, ownsCustomer, normalizePhone } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canManageCustomer, getCurrentUser, ownsCustomer, normalizePhone, canViewOrgWideData } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { openCustomerDetail } from './customers.js'
 
@@ -13,7 +13,6 @@ export function renderFollowups() {
   const search = toEnDigits(document.getElementById('searchFollowups').value).toLowerCase()
 
   const currentUser = getCurrentUser()
-  const isAdmin = currentUser && currentUser.role === 'admin'
 
   const filtered = data.followups.filter(f => {
     const customer = data.customers.find(c => c.id === f.customerId)
@@ -21,7 +20,7 @@ export function renderFollowups() {
     if (customer) {
       if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
       if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
-      if (!isAdmin && !ownsCustomer(customer, currentUser)) return false
+      if (!canViewOrgWideData() && !ownsCustomer(customer, currentUser)) return false
     }
     return f.customerId.toLowerCase().includes(search) ||
       name.toLowerCase().includes(search) ||

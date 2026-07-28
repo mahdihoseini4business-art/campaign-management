@@ -3,14 +3,14 @@ import { getUsersSafe } from './auth.js'
 import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
   canViewCustomer, canManageCustomer, getCurrentUser, formatNumber, jalaliToNum,
-  getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer, isAdmin,
+  getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer, isAdmin, canViewOrgWideData,
   resolveAdvisor, normalizePhone, userDisplayName, PLATFORM_LABELS, PLATFORM_CLASSES,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
   getNowJalaliDateTime, PAYMENT_STATUS_LABELS, createPayment,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getOperationalBalance,
   getProductPayments, getPaymentEntryStatus, getWorstPaymentStatus,
   isPaymentFilled, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS,
-  computeCustomerLrfm, isProductCountableInSales
+  computeCustomerLrfm, isProductCountableInSales, soldAtTimePart, formatSoldAt24h, normalizeTimeTo24h
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -33,7 +33,6 @@ export async function renderCustomers() {
 
   // Render customers immediately (don't wait for users)
   const currentUser = getCurrentUser()
-  const isAdmin = currentUser && currentUser.role === 'admin'
 
   const filtered = data.customers.filter(c => {
     const matchesSearch = !search ||
@@ -50,8 +49,8 @@ export async function renderCustomers() {
     if (isCS && !hasPermission('customers_cs')) return false
     if (isLD && !hasPermission('customers_ld')) return false
 
-    // Empty search → only my customers (admin sees all). Active search → whole DB.
-    if (!search && !isAdmin && !ownsCustomer(c, currentUser)) return false
+    // Empty search → only my customers (unless org-wide / admin). Active search → whole DB.
+    if (!search && !canViewOrgWideData() && !ownsCustomer(c, currentUser)) return false
 
     if (advisorFilter && normalizePhone(c.advisorPhone) !== normalizePhone(advisorFilter)) return false
     return true
@@ -84,7 +83,7 @@ export async function renderCustomers() {
     const statusLabel = STATUS_LABELS[c.status] || c.status
     const canEdit = hasPermission('customers_add') && canManageCustomer(c, currentUser)
     const canDelete = hasPermission('customers_delete') && canManageCustomer(c, currentUser)
-    const isMine = isAdmin || ownsCustomer(c, currentUser)
+    const isMine = canViewOrgWideData() || ownsCustomer(c, currentUser)
 
     const platformUrl = getPlatformUrl(c.platform, c.platformId, c.phone)
     const platformIdHtml = platformUrl
@@ -166,12 +165,12 @@ async function updateAdvisorDropdown() {
 export function updateStats() {
   const data = getData()
   const currentUser = getCurrentUser()
-  const admin = isAdmin()
+  const orgWide = canViewOrgWideData()
 
   function inScope(c) {
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false
-    if (!admin && !ownsCustomer(c, currentUser)) return false
+    if (!orgWide && !ownsCustomer(c, currentUser)) return false
     return true
   }
 
@@ -192,7 +191,7 @@ export function updateStats() {
   document.getElementById('stat-following').textContent = scoped.filter(c =>
     data.followups.some(f => f.customerId === c.id)
   ).length
-  document.getElementById('stat-converted').textContent = admin ? (data.convertedCount || 0) : 0
+  document.getElementById('stat-converted').textContent = orgWide ? (data.convertedCount || 0) : 0
 
   let totalPaid = 0
   scoped.forEach(c => {
@@ -980,7 +979,7 @@ export async function renderProducts(customerId, users = null) {
           <div class="product-row payment-row">
             <span class="payment-index">واریز ${pi + 1}${sellerHtml}</span>
             <span class="product-price" style="direction:ltr;">${pay.amount ? formatNumber(pay.amount) + ' ریال' : '—'}</span>
-            <span class="product-settlement" style="direction:ltr;">${escapeHtml(pay.soldAt || '—')}</span>
+            <span class="product-settlement" style="direction:ltr;">${escapeHtml(formatSoldAt24h(pay.soldAt) || '—')}</span>
             ${renderDestinationBankField(customerId, i, pi, pay, false)}
             <span style="font-size:13px;">${escapeHtml(pay.depositorName || '—')}</span>
             ${badge}
@@ -992,9 +991,9 @@ export async function renderProducts(customerId, users = null) {
           <span class="payment-index">واریز ${pi + 1}${sellerHtml}</span>
           <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="مبلغ واریز (ریال) *" value="${pay.amount ? formatNumber(pay.amount) : ''}" oninput="app.formatInput(this)" onblur="app.savePaymentField('${customerId}', ${i}, ${pi}, 'amount', app.unformatInput(this))" title="واحد: ریال">
           <input type="text" class="product-settlement" placeholder="تاریخ *" data-jdp value="${pay.soldAt ? pay.soldAt.split(' ')[0] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtDate', this.value)">
-          <input type="time" class="product-settlement" value="${pay.soldAt && pay.soldAt.includes(' ') ? pay.soldAt.split(' ')[1] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtTime', this.value)">
+          <input type="text" class="product-settlement product-time" inputmode="numeric" placeholder="ساعت * ۱۴:۳۰" maxlength="5" value="${escapeAttr(soldAtTimePart(pay.soldAt))}" onblur="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtTime', this.value)" title="ساعت ۲۴ ساعته، مثلاً ۱۴:۳۰">
           ${renderDestinationBankField(customerId, i, pi, pay, true)}
-          <input type="text" class="product-settlement product-depositor" placeholder="نام واریزکننده *" value="${escapeAttr(pay.depositorName || '')}" onblur="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'depositorName', this.value)">
+          <input type="text" class="product-settlement product-depositor" placeholder="نام واریزکننده" value="${escapeAttr(pay.depositorName || '')}" onblur="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'depositorName', this.value)">
           ${badge}
           ${canDeletePay ? `<button type="button" class="btn-remove-product" title="حذف واریز" onclick="app.removeProductPayment('${escapeAttr(customerId)}', ${i}, ${pi})">✕</button>` : ''}
         </div>`
@@ -1248,11 +1247,17 @@ export async function updatePaymentField(customerId, productIndex, paymentIndex,
   }
 
   if (field === 'soldAtDate') {
-    const oldTime = (pay.soldAt || '').split(' ')[1] || ''
+    const oldTime = soldAtTimePart(pay.soldAt)
     pay.soldAt = oldTime ? `${value} ${oldTime}` : value
   } else if (field === 'soldAtTime') {
+    const time24 = normalizeTimeTo24h(value)
+    if (value && !time24) {
+      showToast('ساعت را به صورت ۲۴ ساعته وارد کنید (مثلاً ۱۴:۳۰)')
+      renderProducts(customerId)
+      return
+    }
     const oldDate = (pay.soldAt || '').split(' ')[0] || ''
-    pay.soldAt = oldDate ? `${oldDate} ${value}` : value
+    pay.soldAt = oldDate ? (time24 ? `${oldDate} ${time24}` : oldDate) : time24
   } else {
     pay[field] = value
   }

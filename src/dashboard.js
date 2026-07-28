@@ -3,7 +3,7 @@ import { getUsersSafe } from './auth.js'
 import {
   hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliNum,
   jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr, ownsCustomer,
-  normalizePhone, userDisplayName, jalaliDiffDays, jalaliDatePart
+  normalizePhone, userDisplayName, canViewOrgWideData, jalaliDiffDays, jalaliDatePart
 } from './utils.js'
 import { getAllSales } from './sales.js'
 
@@ -112,10 +112,10 @@ function updateUserFilterCount() {
 
 async function ensureUserFilterUI() {
   const currentUser = getCurrentUser()
-  const admin = currentUser && currentUser.role === 'admin'
+  const orgWide = canViewOrgWideData()
   const users = (await getUsersSafe()).filter(u => u.phone)
-  // Admins can filter any advisor; experts only see their own stats
-  dashUsersCache = admin
+  // Admins / accountants see all advisors; sales experts only themselves
+  dashUsersCache = orgWide
     ? users
     : users.filter(u => normalizePhone(u.phone) === normalizePhone(currentUser?.phone))
 
@@ -124,7 +124,7 @@ async function ensureUserFilterUI() {
   } else {
     const valid = new Set(dashUsersCache.map(u => normalizePhone(u.phone)))
     selectedAdvisorPhones = new Set([...selectedAdvisorPhones].filter(p => valid.has(p)))
-    if (!admin && dashUsersCache.length && selectedAdvisorPhones.size === 0) {
+    if (!orgWide && dashUsersCache.length && selectedAdvisorPhones.size === 0) {
       selectedAdvisorPhones = new Set(dashUsersCache.map(u => normalizePhone(u.phone)))
     }
   }
@@ -196,8 +196,7 @@ export function applySalesChart() {
   const dateFromNum = dateFrom ? jalaliToNum(dateFrom) : 0
   const dateToNum = dateTo ? jalaliToNum(dateTo) : 99999999
   const currentUser = getCurrentUser()
-  const isAdmin = currentUser && currentUser.role === 'admin'
-  renderSalesTimelineChart(dateFromNum, dateToNum, currentUser, isAdmin)
+  renderSalesTimelineChart(dateFromNum, dateToNum, currentUser)
 }
 
 function syncSalesChartTimeframeOptions() {
@@ -285,7 +284,7 @@ function saleEventDate(sale) {
   return jalaliDatePart(sale.soldAt) || jalaliDatePart(sale.settlementDate) || ''
 }
 
-function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser, isAdmin) {
+function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
   if (dashCharts.salesTimeline) {
     dashCharts.salesTimeline.destroy()
     delete dashCharts.salesTimeline
@@ -400,7 +399,6 @@ export async function renderDashboard() {
   }
 
   const currentUser = getCurrentUser()
-  const isAdmin = currentUser && currentUser.role === 'admin'
 
   function inUserScope(c) {
     return matchesSelectedUsers(c)
@@ -506,10 +504,10 @@ export async function renderDashboard() {
     </tr>`).join('')
   }
 
-  renderDashCharts(dateFromNum, dateToNum, currentUser, isAdmin)
+  renderDashCharts(dateFromNum, dateToNum, currentUser)
 }
 
-function renderDashCharts(dateFromNum, dateToNum, currentUser, isAdmin) {
+function renderDashCharts(dateFromNum, dateToNum, currentUser) {
   const data = getData()
   Object.values(dashCharts).forEach(c => { try { c.destroy() } catch (_) {} })
   dashCharts = {}
@@ -592,7 +590,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser, isAdmin) {
     }
   })
 
-  renderSalesTimelineChart(dateFromNum, dateToNum, currentUser, isAdmin)
+  renderSalesTimelineChart(dateFromNum, dateToNum, currentUser)
 }
 
 export function clearDashFilter() {

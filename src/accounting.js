@@ -3,7 +3,7 @@ import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
   requirePermission, getCurrentUser, normalizePhone, getNowJalaliDateTime,
   ensureProductPayments, syncProductStatus, getPaymentEntryStatus,
-  PAYMENT_STATUS, PAYMENT_STATUS_LABELS
+  PAYMENT_STATUS, PAYMENT_STATUS_LABELS, formatSoldAt24h
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSales } from './sales.js'
@@ -113,7 +113,7 @@ export function renderAccounting() {
          <button class="btn btn-sm btn-reject" onclick="app.openRejectPaymentModal('${escapeAttr(p.customerId)}', ${p.productIndex}, ${p.paymentIndex})">رد</button>`
       : (p.paymentStatus === 'rejected'
         ? `<span style="font-size:12px;color:var(--danger);">${escapeHtml(p.paymentRejectReason || '—')}</span>`
-        : `<span style="font-size:12px;color:var(--text-muted);">${escapeHtml(p.paymentReviewedAt || '—')}</span>`)
+        : `<span style="font-size:12px;color:var(--text-muted);">${escapeHtml(formatSoldAt24h(p.paymentReviewedAt) || p.paymentReviewedAt || '—')}</span>`)
 
     return `<tr>
       <td><span class="id-badge ${p.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(p.customerId)}')">${escapeHtml(p.customerId)}</span></td>
@@ -123,7 +123,7 @@ export function renderAccounting() {
       <td>${escapeHtml(p.productName)}</td>
       <td>${escapeHtml(p.productStatus)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-weight:600;">${formatNumber(p.amount)} ریال</td>
-      <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;direction:ltr;text-align:right;">${escapeHtml(p.soldAt) || '—'}</td>
+      <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;direction:ltr;text-align:right;">${escapeHtml(formatSoldAt24h(p.soldAt)) || '—'}</td>
       <td>${escapeHtml(p.destinationBank) || '—'}</td>
       <td>${escapeHtml(p.depositorName) || '—'}</td>
       <td><span class="payment-badge payment-${p.paymentStatus}">${escapeHtml(statusLabel)}</span>

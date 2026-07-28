@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE } from './utils.js'
 import { getDestinationBanks, saveDestinationBanks } from './data.js'
 
 // ============================================
@@ -527,9 +527,19 @@ export async function saveUserPermissions(username) {
     showToast('برای کاربر مدیر نمی‌توان دسترسی جزئی ذخیره کرد')
     return
   }
-  const permissions = {}
+  let permissions = {}
   checkboxes.forEach(cb => {
     permissions[cb.dataset.permKey] = cb.checked
+  })
+  permissions = applyAccountingPermissionBundle(permissions)
+  // Keep UI in sync when accounting auto-grants related perms
+  checkboxes.forEach(cb => {
+    const key = cb.dataset.permKey
+    if (permissions[key] && !cb.checked) {
+      cb.checked = true
+      const label = cb.closest('label')
+      if (label) label.style.background = '#d1e7dd'
+    }
   })
 
   const { error } = await supabase
@@ -554,6 +564,18 @@ export function togglePermCheckbox(el) {
   const label = el.closest('label')
   if (label) {
     label.style.background = el.checked ? '#d1e7dd' : '#f8f9fa'
+  }
+
+  // Level-1: enabling accounting auto-grants dashboard / sales / customers view
+  if (el.dataset.permKey === 'accounting' && el.checked) {
+    const username = el.dataset.permUser
+    ACCOUNTING_PERMISSION_BUNDLE.forEach(key => {
+      const cb = document.querySelector(`input[data-perm-user="${username}"][data-perm-key="${key}"]`)
+      if (!cb) return
+      cb.checked = true
+      const lbl = cb.closest('label')
+      if (lbl) lbl.style.background = '#d1e7dd'
+    })
   }
 }
 
