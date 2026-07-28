@@ -3,14 +3,14 @@ import { getUsersSafe } from './auth.js'
 import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
   canViewCustomer, canManageCustomer, getCurrentUser, formatNumber, jalaliToNum,
-  getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer,
+  getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer, isAdmin,
   resolveAdvisor, normalizePhone, userDisplayName, PLATFORM_LABELS, PLATFORM_CLASSES,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
   getNowJalaliDateTime, PAYMENT_STATUS_LABELS, createPayment,
-  ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
+  ensureProductPayments, syncProductStatus, getApprovedPaid, getOperationalBalance,
   getProductPayments, getPaymentEntryStatus, getWorstPaymentStatus,
   isPaymentFilled, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS,
-  computeCustomerLrfm
+  computeCustomerLrfm, isProductCountableInSales
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -165,31 +165,42 @@ async function updateAdvisorDropdown() {
 
 export function updateStats() {
   const data = getData()
-  document.getElementById('stat-total').textContent = data.customers.filter(c => {
+  const currentUser = getCurrentUser()
+  const admin = isAdmin()
+
+  function inScope(c) {
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false
+    if (!admin && !ownsCustomer(c, currentUser)) return false
     return true
-  }).length
-  document.getElementById('stat-ld').textContent = data.customers.filter(c => c.id.startsWith('LD') && hasPermission('customers_ld')).length
-  document.getElementById('stat-cs').textContent = data.customers.filter(c => c.id.startsWith('CS') && hasPermission('customers_cs')).length
-  document.getElementById('stat-following').textContent = data.customers.filter(c => {
-    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false
-    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false
-    return data.followups.some(f => f.customerId === c.id)
-  }).length
-  document.getElementById('stat-converted').textContent = data.convertedCount || 0
+  }
+
+  function hasPurchase(c) {
+    return (c.products || []).some(p => {
+      ensureProductPayments(p)
+      return isProductCountableInSales(p)
+    })
+  }
+
+  const scoped = data.customers.filter(inScope)
+
+  // کل مخاطبین = همه ثبت‌شده‌ها در اسکوپ
+  document.getElementById('stat-total').textContent = scoped.length
+  // کل مشتریان = کسانی که فروش/خرید ثبت‌شده دارند
+  document.getElementById('stat-ld').textContent = scoped.filter(hasPurchase).length
+  document.getElementById('stat-cs').textContent = scoped.filter(c => c.id.startsWith('CS')).length
+  document.getElementById('stat-following').textContent = scoped.filter(c =>
+    data.followups.some(f => f.customerId === c.id)
+  ).length
+  document.getElementById('stat-converted').textContent = admin ? (data.convertedCount || 0) : 0
 
   let totalPaid = 0
-  data.customers.forEach(c => {
-    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
-    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
-    if (c.products) {
-      c.products.forEach(p => {
-        ensureProductPayments(p)
-        syncProductStatus(p)
-        totalPaid += getApprovedPaid(p)
-      })
-    }
+  scoped.forEach(c => {
+    ;(c.products || []).forEach(p => {
+      ensureProductPayments(p)
+      syncProductStatus(p)
+      totalPaid += getApprovedPaid(p)
+    })
   })
   document.getElementById('stat-revenue').textContent = formatNumber(totalPaid) + ' ریال'
 }
@@ -917,7 +928,7 @@ export function renderProducts(customerId) {
   container.innerHTML = products.map((p, i) => {
     const price = parseFloat(p.price) || 0
     const approved = getApprovedPaid(p)
-    const balance = getProductBalance(p)
+    const balance = getOperationalBalance(p)
     const pays = getProductPayments(p)
     const worst = getWorstPaymentStatus(p)
     const closed = isInvoiceClosed(p)
@@ -1054,7 +1065,7 @@ export async function addProductPayment(customerId, productIndex) {
   }
 
   const user = getCurrentUser()
-  const balance = getProductBalance(product)
+  const balance = getOperationalBalance(product)
   const suggested = balance > 0 ? String(balance) : ''
   product.payments.push(createPayment({
     amount: suggested,

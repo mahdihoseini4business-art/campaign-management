@@ -503,6 +503,12 @@ export function getProductBalance(product) {
   return Math.max(0, price - getApprovedPaid(product))
 }
 
+/** Remaining after approved + pending (excludes rejected) — for next deposit UX */
+export function getOperationalBalance(product) {
+  const price = parseFloat(product?.price) || 0
+  return Math.max(0, price - getCountablePaid(product))
+}
+
 /** Amount / date / time / depositor / destination bank all present */
 export function isPaymentFilled(payment) {
   if (!payment) return false

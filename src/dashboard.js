@@ -111,15 +111,22 @@ function updateUserFilterCount() {
 }
 
 async function ensureUserFilterUI() {
+  const currentUser = getCurrentUser()
+  const admin = currentUser && currentUser.role === 'admin'
   const users = (await getUsersSafe()).filter(u => u.phone)
-  // Anyone with dashboard access can filter by any advisor
-  dashUsersCache = users
+  // Admins can filter any advisor; experts only see their own stats
+  dashUsersCache = admin
+    ? users
+    : users.filter(u => normalizePhone(u.phone) === normalizePhone(currentUser?.phone))
 
   if (selectedAdvisorPhones == null) {
     selectedAdvisorPhones = new Set(dashUsersCache.map(u => normalizePhone(u.phone)))
   } else {
     const valid = new Set(dashUsersCache.map(u => normalizePhone(u.phone)))
     selectedAdvisorPhones = new Set([...selectedAdvisorPhones].filter(p => valid.has(p)))
+    if (!admin && dashUsersCache.length && selectedAdvisorPhones.size === 0) {
+      selectedAdvisorPhones = new Set(dashUsersCache.map(u => normalizePhone(u.phone)))
+    }
   }
 
   const container = document.getElementById('dashUserCheckboxes')
