@@ -26,17 +26,13 @@ let phoneFieldState = { status: 'ok', customer: null, lastActivity: null }
 // Render Customers
 // ============================================
 
-export async function renderCustomers() {
+export function getFilteredCustomers() {
   const data = getData()
-  const tbody = document.getElementById('customerBody')
-  if (!tbody) return
-  const search = toEnDigits(document.getElementById('searchCustomers').value).toLowerCase()
-  const advisorFilter = document.getElementById('filterAdvisor').value
-
-  // Render customers immediately (don't wait for users)
+  const search = toEnDigits(document.getElementById('searchCustomers')?.value || '').toLowerCase()
+  const advisorFilter = document.getElementById('filterAdvisor')?.value || ''
   const currentUser = getCurrentUser()
 
-  const filtered = data.customers.filter(c => {
+  return data.customers.filter(c => {
     const extras = getCustomerSearchExtras(c)
     const matchesSearch = matchesTabSearch(search, [
       c.id,
@@ -61,6 +57,18 @@ export async function renderCustomers() {
     if (advisorFilter && normalizePhone(c.advisorPhone) !== normalizePhone(advisorFilter)) return false
     return true
   })
+}
+
+export async function renderCustomers() {
+  const data = getData()
+  const tbody = document.getElementById('customerBody')
+  if (!tbody) return
+  const search = toEnDigits(document.getElementById('searchCustomers').value).toLowerCase()
+  const advisorFilter = document.getElementById('filterAdvisor').value
+
+  // Render customers immediately (don't wait for users)
+  const currentUser = getCurrentUser()
+  const filtered = getFilteredCustomers()
 
   const showSelectCol = hasPermission('customers_delete')
   const colCount = showSelectCol ? 13 : 12

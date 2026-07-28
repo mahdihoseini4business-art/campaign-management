@@ -7,14 +7,12 @@ import { openCustomerDetail } from './customers.js'
 // Render Followups
 // ============================================
 
-export function renderFollowups() {
+export function getFilteredFollowups() {
   const data = getData()
-  const tbody = document.getElementById('followupBody')
-  const search = toEnDigits(document.getElementById('searchFollowups').value).toLowerCase()
-
+  const search = toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
   const currentUser = getCurrentUser()
 
-  const filtered = data.followups.filter(f => {
+  return data.followups.filter(f => {
     const customer = data.customers.find(c => c.id === f.customerId)
     const name = customer ? customer.name : ''
     if (customer) {
@@ -37,6 +35,13 @@ export function renderFollowups() {
       ...extras.depositors
     ])
   })
+}
+
+export function renderFollowups() {
+  const data = getData()
+  const tbody = document.getElementById('followupBody')
+  const search = toEnDigits(document.getElementById('searchFollowups').value).toLowerCase()
+  const filtered = getFilteredFollowups()
 
   const showSelectCol = hasPermission('followups_delete')
   const colCount = showSelectCol ? 9 : 8

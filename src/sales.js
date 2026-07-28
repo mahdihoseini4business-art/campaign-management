@@ -60,8 +60,8 @@ export function getAllSales() {
 // Render Sales
 // ============================================
 
-function getFilteredSales() {
-  const search = toEnDigits(document.getElementById('searchSales').value || '').toLowerCase()
+export function getFilteredSales() {
+  const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
   let allSales = getAllSales()
 
   const currentUser = getCurrentUser()

@@ -1,14 +1,15 @@
 import { getData, saveCustomerToDB, generateId } from './data.js'
 import {
   toEnDigits, showToast, getCurrentUser, resolveAdvisor, PLATFORM_LABELS, PLATFORM_MAP_IMPORT,
-  requirePermission, canViewCustomer, ensureProductPayments, syncProductStatus, getApprovedPaid,
-  getProductBalance, isProductCountableInSales, getProductPayments, getPaymentEntryStatus,
+  requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
+  getProductBalance, getProductPayments, getPaymentEntryStatus,
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, createPayment, formatSoldAt24h, normalizePhone,
-  canViewScopedCustomer, formatCustomerLevel, parseCustomerLevel, syncCustomerLevel
+  formatCustomerLevel, parseCustomerLevel, syncCustomerLevel
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
-import { renderCustomers } from './customers.js'
-import { renderSales } from './sales.js'
+import { renderCustomers, getFilteredCustomers } from './customers.js'
+import { getFilteredFollowups } from './followups.js'
+import { renderSales, getFilteredSales } from './sales.js'
 
 // ============================================
 // Helpers
@@ -76,7 +77,7 @@ const EXPORT_CONFIG = {
     ],
     getRows: () => {
       const data = getData()
-      return data.customers.filter(c => canViewCustomer(c) && canViewScopedCustomer(c)).map(c => {
+      return getFilteredCustomers().map(c => {
         const customerFollowups = data.followups.filter(f => f.customerId === c.id)
         const lastDate = customerFollowups.length
           ? customerFollowups[customerFollowups.length - 1].date
@@ -110,10 +111,7 @@ const EXPORT_CONFIG = {
     headers: ['شناسه مشتری', 'نام مشتری', 'تاریخ', 'نوع', 'نتیجه', 'پیگیری بعدی', 'توضیحات'],
     getRows: () => {
       const data = getData()
-      return data.followups.filter(f => {
-        const c = data.customers.find(x => x.id === f.customerId)
-        return c && canViewCustomer(c) && canViewScopedCustomer(c)
-      }).map(f => {
+      return getFilteredFollowups().map(f => {
         const c = data.customers.find(x => x.id === f.customerId)
         return [
           f.customerId,
@@ -137,43 +135,52 @@ const EXPORT_CONFIG = {
     getRows: () => {
       const data = getData()
       const rows = []
-      data.customers.filter(c => canViewCustomer(c) && canViewScopedCustomer(c)).forEach(c => {
-        ;(c.products || []).forEach(p => {
-          ensureProductPayments(p)
-          syncProductStatus(p)
-          if (!isProductCountableInSales(p)) return
-          const price = parseFloat(p.price) || 0
-          const deposit = getApprovedPaid(p)
-          const balance = getProductBalance(p)
-          const pays = getProductPayments(p).filter(pay => (parseFloat(pay.amount) || 0) > 0)
-          const base = [
-            c.id,
-            c.name || c.platformId || '',
-            c.phone || '',
-            PLATFORM_LABELS[c.platform] || c.platform || '',
-            p.name || '',
-            p.status || '',
-            price || '',
-            deposit || '',
-            balance || '',
-            p.settlementDate || '',
-            c.advisor || ''
-          ]
-          if (pays.length === 0) {
-            rows.push([...base, '', '', '', '', ''])
-            return
-          }
-          pays.forEach(pay => {
-            const status = getPaymentEntryStatus(pay)
-            rows.push([
-              ...base,
-              parseFloat(pay.amount) || '',
-              formatSoldAt24h(pay.soldAt) || pay.soldAt || '',
-              pay.depositorName || '',
-              pay.destinationBank || '',
-              PAYMENT_STATUS_LABELS[status] || status || ''
-            ])
-          })
+      getFilteredSales().forEach(s => {
+        const c = data.customers.find(x => x.id === s.customerId)
+        const p = c?.products?.[s.productIndex]
+        if (!c || !p) {
+          rows.push([
+            s.customerId, s.customerName, s.customerPhone,
+            PLATFORM_LABELS[s.platform] || s.platform || '',
+            s.productName, s.status, s.price || '', s.deposit || '', s.balance || '',
+            s.settlementDate || '', s.advisor || '',
+            '', formatSoldAt24h(s.soldAt) || s.soldAt || '', s.depositorName || '', '', ''
+          ])
+          return
+        }
+        ensureProductPayments(p)
+        syncProductStatus(p)
+        const price = parseFloat(p.price) || 0
+        const deposit = getApprovedPaid(p)
+        const balance = getProductBalance(p)
+        const pays = getProductPayments(p).filter(pay => (parseFloat(pay.amount) || 0) > 0)
+        const base = [
+          c.id,
+          c.name || c.platformId || '',
+          c.phone || '',
+          PLATFORM_LABELS[c.platform] || c.platform || '',
+          p.name || '',
+          p.status || '',
+          price || '',
+          deposit || '',
+          balance || '',
+          p.settlementDate || '',
+          c.advisor || ''
+        ]
+        if (pays.length === 0) {
+          rows.push([...base, '', '', '', '', ''])
+          return
+        }
+        pays.forEach(pay => {
+          const status = getPaymentEntryStatus(pay)
+          rows.push([
+            ...base,
+            parseFloat(pay.amount) || '',
+            formatSoldAt24h(pay.soldAt) || pay.soldAt || '',
+            pay.depositorName || '',
+            pay.destinationBank || '',
+            PAYMENT_STATUS_LABELS[status] || status || ''
+          ])
         })
       })
       return rows
@@ -187,7 +194,8 @@ export function exportTabCSV(tab) {
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
 
-  const csvContent = '\uFEFF' + [cfg.headers, ...cfg.getRows()]
+  const rows = cfg.getRows()
+  const csvContent = '\uFEFF' + [cfg.headers, ...rows]
     .map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
     .join('\n')
 
@@ -196,7 +204,7 @@ export function exportTabCSV(tab) {
   link.href = URL.createObjectURL(blob)
   link.download = `${cfg.label}_${new Date().toISOString().slice(0, 10)}.csv`
   link.click()
-  showToast(`فایل CSV دانلود شد`)
+  showToast(`${rows.length} ردیف در CSV ذخیره شد`)
 }
 
 export function exportTabXLSX(tab) {
@@ -217,7 +225,7 @@ export function exportTabXLSX(tab) {
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, cfg.label)
   XLSX.writeFile(wb, `${cfg.label}_${new Date().toISOString().slice(0, 10)}.xlsx`)
-  showToast(`فایل Excel دانلود شد`)
+  showToast(`${rows.length} ردیف در Excel ذخیره شد`)
 }
 
 // ============================================
