@@ -658,7 +658,7 @@ export function ownsCustomer(customer, user = getCurrentUser()) {
   const ownerPhone = normalizePhone(customer.advisorPhone)
   if (myPhone && ownerPhone) return myPhone === ownerPhone
 
-  const myName = (user.displayName || '').trim()
+  const myName = userDisplayName(user).trim()
   const advisorName = (customer.advisor || '').trim()
   if (myName && advisorName) return myName === advisorName
   return false

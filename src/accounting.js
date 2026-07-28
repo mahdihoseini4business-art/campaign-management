@@ -3,7 +3,7 @@ import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
   requirePermission, getCurrentUser, normalizePhone, getNowJalaliDateTime,
   ensureProductPayments, syncProductStatus, getPaymentEntryStatus,
-  PAYMENT_STATUS, PAYMENT_STATUS_LABELS, ownsCustomer, isAdmin
+  PAYMENT_STATUS, PAYMENT_STATUS_LABELS
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSales } from './sales.js'
@@ -47,17 +47,6 @@ export function getAllPayments() {
   return payments
 }
 
-function getScopedPayments() {
-  const currentUser = getCurrentUser()
-  const admin = isAdmin()
-  const data = getData()
-  return getAllPayments().filter(p => {
-    if (admin) return true
-    const customer = data.customers.find(c => c.id === p.customerId)
-    return customer && ownsCustomer(customer, currentUser)
-  })
-}
-
 export function setAccountingFilter(filter) {
   if (!requirePermission('accounting')) return
   accountingFilter = filter
@@ -76,8 +65,9 @@ export function renderAccounting() {
   }
 
   const search = toEnDigits(document.getElementById('searchAccounting')?.value || '').toLowerCase()
-  const scopedAll = getScopedPayments()
-  let payments = scopedAll.filter(p => p.paymentStatus === accountingFilter)
+  // Accounting is a global review queue — anyone with this permission sees all payments
+  const allPayments = getAllPayments()
+  let payments = allPayments.filter(p => p.paymentStatus === accountingFilter)
 
   if (search) {
     payments = payments.filter(p =>
@@ -96,9 +86,9 @@ export function renderAccounting() {
     const el = document.getElementById(id)
     if (el) el.textContent = String(n)
   }
-  setStat('stat-acc-pending', scopedAll.filter(p => p.paymentStatus === 'pending').length)
-  setStat('stat-acc-approved', scopedAll.filter(p => p.paymentStatus === 'approved').length)
-  setStat('stat-acc-rejected', scopedAll.filter(p => p.paymentStatus === 'rejected').length)
+  setStat('stat-acc-pending', allPayments.filter(p => p.paymentStatus === 'pending').length)
+  setStat('stat-acc-approved', allPayments.filter(p => p.paymentStatus === 'approved').length)
+  setStat('stat-acc-rejected', allPayments.filter(p => p.paymentStatus === 'rejected').length)
 
   if (payments.length === 0) {
     tbody.innerHTML = `
