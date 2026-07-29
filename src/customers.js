@@ -727,6 +727,7 @@ export async function openCustomerDetail(id) {
   }
 
   const canEdit = hasPermission('customers_add') && canManageCustomer(c)
+  const canAddSale = canEdit || (hasPermission('sales_add_others') && canViewCustomer(c))
   const canAddFollowup = hasPermission('followups_add') && canManageCustomer(c)
 
   const customerFollowups = data.followups.filter(f => f.customerId === id)
@@ -863,7 +864,7 @@ export async function openCustomerDetail(id) {
     <div class="detail-products" style="margin-bottom:20px;">
       <div style="font-size:14px;font-weight:600;margin-bottom:12px;">محصولات</div>
       <div id="detailProductsList"></div>
-      ${canEdit ? `<button class="btn btn-sm" style="margin-top:8px;" onclick="app.addProductRow('${escapeAttr(c.id)}')">+ افزودن محصول</button>` : ''}
+      ${canAddSale ? `<button class="btn btn-sm" style="margin-top:8px;" onclick="app.addProductRow('${escapeAttr(c.id)}')">+ افزودن محصول</button>` : ''}
     </div>
 
     <div class="detail-timeline-title">
@@ -1122,6 +1123,7 @@ export async function renderProducts(customerId, users = null) {
   const data = getData()
   const customer = data.customers.find(c => c.id === customerId)
   const canEdit = hasPermission('customers_add') && canManageCustomer(customer)
+    || (hasPermission('sales_add_others') && canViewCustomer(customer))
   if (users) detailUsersCache = users
   else if (!detailUsersCache.length) {
     try { detailUsersCache = await getUsersSafe() } catch (_) { detailUsersCache = [] }
@@ -1233,11 +1235,12 @@ export async function renderProducts(customerId, users = null) {
 }
 
 export async function addProductRow(customerId) {
-  if (!requirePermission('customers_add')) return
   const data = getData()
   const customer = data.customers.find(c => c.id === customerId)
-  if (!canManageCustomer(customer)) {
-    showToast('فقط کارشناس مسئول می‌تواند محصول اضافه کند')
+  const allowed = (hasPermission('customers_add') && canManageCustomer(customer))
+    || (hasPermission('sales_add_others') && canViewCustomer(customer))
+  if (!allowed) {
+    showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
     return
   }
   const products = getProducts(customerId)
@@ -1262,7 +1265,13 @@ export async function addProductRow(customerId) {
 }
 
 export async function addProductPayment(customerId, productIndex) {
-  if (!requirePermission('customers_add')) return
+  const _cust = getData().customers.find(c => c.id === customerId)
+  const _allowed = (hasPermission('customers_add') && canManageCustomer(_cust))
+    || (hasPermission('sales_add_others') && canViewCustomer(_cust))
+  if (!_allowed) {
+    showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
+    return
+  }
   const products = getProducts(customerId)
   const product = products[productIndex]
   if (!product) return
@@ -1297,7 +1306,13 @@ export async function addProductPayment(customerId, productIndex) {
 }
 
 export async function removeProductPayment(customerId, productIndex, paymentIndex) {
-  if (!requirePermission('customers_add')) return
+  const _cust = getData().customers.find(c => c.id === customerId)
+  const _allowed = (hasPermission('customers_add') && canManageCustomer(_cust))
+    || (hasPermission('sales_add_others') && canViewCustomer(_cust))
+  if (!_allowed) {
+    showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
+    return
+  }
   const products = getProducts(customerId)
   const product = products[productIndex]
   if (!product) return

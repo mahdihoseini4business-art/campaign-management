@@ -581,6 +581,7 @@ export const ALL_PERMISSIONS = {
   followups_export: 'خروجی پیگیری‌ها',
   sales_view: 'مشاهده فروش‌ها',
   sales_import: 'ایمپورت فروش',
+  sales_add_others: 'ثبت فروش برای مشتریان دیگران',
   sales_export: 'خروجی فروش‌ها',
   accounting: 'تأیید واریزی‌ها (حسابداری)'
 }
@@ -589,7 +590,7 @@ export const PERMISSION_GROUPS = [
   { label: 'داشبورد', keys: ['dashboard'] },
   { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_delete', 'customers_import', 'customers_export'] },
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_delete', 'followups_export'] },
-  { label: 'فروش‌ها', keys: ['sales_view', 'sales_import', 'sales_export'] },
+  { label: 'فروش‌ها', keys: ['sales_view', 'sales_add_others', 'sales_import', 'sales_export'] },
   { label: 'حسابداری', keys: ['accounting'] }
 ]
 
@@ -796,6 +797,7 @@ export function getDefaultPermissions() {
   Object.keys(ALL_PERMISSIONS).forEach(k => p[k] = true)
   p.customers_delete = false
   p.followups_delete = false
+  p.sales_add_others = false
   p.accounting = false
   return p
 }
