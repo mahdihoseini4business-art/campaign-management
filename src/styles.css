@@ -867,7 +867,8 @@
   }
 
   /* Followup tab badge */
-  .followup-tab-badge {
+  .followup-tab-badge,
+  .followup-filter-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -882,6 +883,11 @@
     margin-right: 4px;
     vertical-align: middle;
     line-height: 1;
+  }
+
+  .followup-filter-btn.active .followup-filter-badge {
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
   }
 
   /* Today highlight */

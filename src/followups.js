@@ -183,13 +183,22 @@ export function getFilteredFollowups() {
 // ============================================
 
 export function updateFollowupBadge() {
-  // Badge must ignore search box — always show today's pending count
+  // Badges ignore search box — always show true pending counts
+  const pending = getPendingItems(false)
   const todayN = jalaliToNum(getTodayJalaliStr())
-  const count = getPendingItems(false).filter(i => dateNum(i.nextDate) === todayN).length
-  const badge = document.getElementById('followupTabBadge')
-  if (badge) {
-    badge.textContent = count
-    badge.style.display = count > 0 ? 'inline-flex' : 'none'
+  const todayCount = pending.filter(i => dateNum(i.nextDate) === todayN).length
+  const overdueCount = pending.filter(i => i.category === 'overdue').length
+
+  const tabBadge = document.getElementById('followupTabBadge')
+  if (tabBadge) {
+    tabBadge.textContent = todayCount
+    tabBadge.style.display = todayCount > 0 ? 'inline-flex' : 'none'
+  }
+
+  const overdueBadge = document.getElementById('followupOverdueBadge')
+  if (overdueBadge) {
+    overdueBadge.textContent = overdueCount
+    overdueBadge.style.display = overdueCount > 0 ? 'inline-flex' : 'none'
   }
 }
 

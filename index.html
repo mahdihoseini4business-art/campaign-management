@@ -335,7 +335,7 @@
       <div class="followup-filters">
         <button type="button" class="btn followup-filter-btn active" data-filter="today" onclick="app.setFollowupFilter('today')">پیگیری‌های امروز</button>
         <button type="button" class="btn followup-filter-btn" data-filter="waiting" onclick="app.setFollowupFilter('waiting')">در انتظار پیگیری</button>
-        <button type="button" class="btn followup-filter-btn" data-filter="overdue" onclick="app.setFollowupFilter('overdue')">معوقه‌ها</button>
+        <button type="button" class="btn followup-filter-btn" data-filter="overdue" onclick="app.setFollowupFilter('overdue')">معوقه‌ها <span class="followup-filter-badge" id="followupOverdueBadge" style="display:none;">0</span></button>
         <button type="button" class="btn followup-filter-btn" data-filter="done" onclick="app.setFollowupFilter('done')">انجام شده</button>
       </div>
       <select class="form-select" id="bulkActionFollowups" style="width:180px;display:none;">
