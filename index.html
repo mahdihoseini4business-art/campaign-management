@@ -144,7 +144,7 @@
   <div class="tabs" role="tablist" aria-label="بخش‌های اصلی">
     <button class="tab tab-dashboard" role="tab" id="tab-dashboard" aria-controls="sheet-dashboard" aria-selected="false" tabindex="-1" onclick="app.switchTab('dashboard', this)">داشبورد</button>
     <button class="tab active" role="tab" id="tab-customers" aria-controls="sheet-customers" aria-selected="true" tabindex="0" onclick="app.switchTab('customers', this)">لیست مشتریان</button>
-    <button class="tab" role="tab" id="tab-followups" aria-controls="sheet-followups" aria-selected="false" tabindex="-1" onclick="app.switchTab('followups', this)">تاریخچه پیگیری</button>
+    <button class="tab" role="tab" id="tab-followups" aria-controls="sheet-followups" aria-selected="false" tabindex="-1" onclick="app.switchTab('followups', this)">فالوآپ‌ها <span class="followup-tab-badge" id="followupTabBadge" style="display:none;">0</span></button>
     <button class="tab" role="tab" id="tab-sales" aria-controls="sheet-sales" aria-selected="false" tabindex="-1" onclick="app.switchTab('sales', this)">فروش‌ها</button>
     <button class="tab" role="tab" id="tab-accounting" aria-controls="sheet-accounting" aria-selected="false" tabindex="-1" data-perm="accounting" onclick="app.switchTab('accounting', this)">حسابداری</button>
   </div>
@@ -322,15 +322,26 @@
     </div>
   </div>
 
-  <!-- شیت پیگیری -->
+  <!-- شیت فالوآپ‌ها -->
   <div class="sheet" id="sheet-followups" role="tabpanel" aria-labelledby="tab-followups" hidden>
-    <div class="toolbar">
+    <div class="stats">
+      <div class="stat-card"><div class="label">در انتظار پیگیری</div><div class="value" style="color:var(--warning)" id="stat-followup-waiting">0</div></div>
+      <div class="stat-card"><div class="label">انجام شده</div><div class="value" style="color:var(--success)" id="stat-followup-done">0</div></div>
+      <div class="stat-card"><div class="label">معوقه‌ها</div><div class="value" style="color:var(--danger)" id="stat-followup-overdue">0</div></div>
+    </div>
+
+    <div class="toolbar" style="gap:10px;flex-wrap:wrap;">
+      <div class="followup-filters">
+        <button type="button" class="btn followup-filter-btn active" data-filter="waiting" onclick="app.setFollowupFilter('waiting')">در انتظار پیگیری</button>
+        <button type="button" class="btn followup-filter-btn" data-filter="overdue" onclick="app.setFollowupFilter('overdue')">معوقه‌ها</button>
+        <button type="button" class="btn followup-filter-btn" data-filter="done" onclick="app.setFollowupFilter('done')">انجام شده</button>
+      </div>
       <select class="form-select" id="bulkActionFollowups" style="width:180px;display:none;">
         <option value="">عملیات دسته‌جمعی...</option>
         <option value="delete">حذف انتخاب شده‌ها</option>
       </select>
       <span id="bulkCountFollowups" style="display:none;font-size:13px;color:var(--text-muted);"></span>
-      <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchFollowups" oninput="app.renderFollowups()">
+      <input type="text" class="search-box" placeholder="جستجو (مشتری، کارشناس)..." id="searchFollowups" oninput="app.renderFollowups()">
       <button class="btn" data-perm="followups_export" onclick="app.exportTabCSV('followups')">خروجی CSV</button>
       <button class="btn" data-perm="followups_export" onclick="app.exportTabXLSX('followups')">خروجی Excel</button>
       <button class="btn btn-primary" data-perm="followups_add" onclick="app.openFollowupModal()">+ پیگیری جدید</button>
@@ -348,7 +359,7 @@
             <th onclick="app.sortFollowupsHeader('result')">نتیجه</th>
             <th onclick="app.sortFollowupsHeader('nextDate')">پیگیری بعدی</th>
             <th>توضیحات</th>
-            <th style="width: 60px;"></th>
+            <th style="width: 100px;">عملیات</th>
           </tr>
         </thead>
         <tbody id="followupBody"></tbody>
@@ -517,6 +528,28 @@
     <div class="modal-footer">
       <button class="btn" onclick="app.closeCustomerModal()">انصراف</button>
       <button class="btn btn-primary" onclick="app.saveCustomer()">ذخیره</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال انجام پیگیری -->
+<div class="modal-overlay" id="followupDoneModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <h2>ثبت انجام پیگیری</h2>
+      <button class="modal-close" onclick="app.closeFollowupDoneModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="followupDoneId">
+      <div id="followupDoneInfo" style="background:var(--paper);border-radius:var(--radius-sm);padding:12px;margin-bottom:12px;font-size:13px;line-height:1.8;"></div>
+      <div class="form-group">
+        <label for="followupDoneNote">یادداشت <span class="required">*</span></label>
+        <textarea class="form-textarea" id="followupDoneNote" placeholder="نتیجه پیگیری را بنویسید..." style="min-height:80px;"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeFollowupDoneModal()">انصراف</button>
+      <button class="btn btn-done" onclick="app.confirmFollowupDone()">ثبت انجام</button>
     </div>
   </div>
 </div>

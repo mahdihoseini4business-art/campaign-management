@@ -78,7 +78,12 @@ export async function loadData() {
     result: f.result || '',
     nextDate: f.next_date || '',
     notes: f.notes || '',
-    createdByPhone: f.created_by_phone || ''
+    createdByPhone: f.created_by_phone || '',
+    status: f.status || 'pending',
+    doneAt: f.done_at || '',
+    doneByPhone: f.done_by_phone || '',
+    doneNote: f.done_note || '',
+    wasOverdue: !!f.was_overdue
   }))
 
   // Load settings (convertedCount, destination banks, …)
@@ -235,15 +240,21 @@ export async function saveFollowupToDB(followup) {
     throw new Error('پیگیری تکراری وجود دارد')
   }
 
-  const { data: inserted, error } = await supabase.from('followups').insert({
+  const row = {
     customer_id: followup.customerId,
     date: followup.date,
     type: followup.type,
     result: followup.result,
     next_date: followup.nextDate,
     notes: followup.notes,
-    created_by_phone: followup.createdByPhone || null
-  }).select('id').single()
+    created_by_phone: followup.createdByPhone || null,
+    status: followup.status || 'pending',
+    done_at: followup.doneAt || null,
+    done_by_phone: followup.doneByPhone || null,
+    done_note: followup.doneNote || null,
+    was_overdue: !!followup.wasOverdue
+  }
+  const { data: inserted, error } = await supabase.from('followups').insert(row).select('id').single()
   if (error) throw new Error('خطا در درج پیگیری: ' + error.message)
   return inserted ? inserted.id : null
 }
@@ -268,6 +279,17 @@ export async function updateFollowupInDB(followup) {
 // ============================================
 // Delete followup from Supabase
 // ============================================
+
+export async function markFollowupDoneInDB(id, { doneAt, doneByPhone, doneNote, wasOverdue }) {
+  const { error } = await supabase.from('followups').update({
+    status: 'done',
+    done_at: doneAt,
+    done_by_phone: doneByPhone,
+    done_note: doneNote,
+    was_overdue: !!wasOverdue
+  }).eq('id', id)
+  if (error) throw new Error('خطا در ثبت انجام پیگیری: ' + error.message)
+}
 
 export async function deleteFollowupFromDB(id) {
   const { error } = await supabase.from('followups').delete().eq('id', id)

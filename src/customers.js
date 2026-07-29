@@ -882,11 +882,15 @@ export async function openCustomerDetail(id) {
       const authorHtml = authorName
         ? `<span class="record-author" title="ثبت‌کننده">👤 ${escapeHtml(authorName)}</span>`
         : ''
+      const isOverdoneNote = f.type === 'پیگیری معوقه انجام‌شده'
+      const overdueTag = isOverdoneNote ? '<span class="overdue-tag">معوقه</span>' : ''
+      const itemClass = isOverdoneNote ? ' timeline-item-overdue' : ''
       html += `
-        <div class="timeline-item">
+        <div class="timeline-item${itemClass}">
           <div class="timeline-header">
             <span class="timeline-date">${f.date}</span>
             <span class="timeline-type">${escapeHtml(f.type)}</span>
+            ${overdueTag}
             ${authorHtml}
           </div>
           <div class="timeline-result">${escapeHtml(f.result)}</div>
