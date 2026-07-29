@@ -420,7 +420,7 @@ init().catch(err => {
         <div style="font-size:48px;margin-bottom:16px;">⚠️</div>
         <h2 style="margin-bottom:8px;">خطا در بارگذاری برنامه</h2>
         <p style="color:#78716C;">لطفاً صفحه را رفرش کنید یا با پشتیبانی تماس بگیرید</p>
-        <button onclick="location.reload()" style="margin-top:16px;padding:8px 24px;background:#1D1C74;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit;">تلاش مجدد</button>
+        <button onclick="location.reload()" style="margin-top:16px;padding:8px 24px;background:#0155d2;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit;">تلاش مجدد</button>
       </div>
     </div>
   `

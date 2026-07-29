@@ -1,12 +1,12 @@
 :root {
     /* Brand Color System */
     --ink: #1C1917;
-    --paper: #F0F0FA;
-    --accent: #ED1C24;
-    --accent-light: #FEF2F2;
-    --accent-hover: #c41820;
-    --secondary: #1D1C74;
-    --secondary-light: #EDEDFA;
+    --paper: #f0f5fc;
+    --accent: #25b88b;
+    --accent-light: #e8f8f2;
+    --accent-hover: #1e9e77;
+    --secondary: #0155d2;
+    --secondary-light: #e6effa;
     --border: #E7E5E4;
     --text: #1C1917;
     --text-muted: #78716C;
@@ -17,9 +17,9 @@
     --warning-light: #FFFBEB;
     --danger: #ED1C24;
     --danger-light: #FEF2F2;
-    --tag-ld: #1D1C74;
+    --tag-ld: #0155d2;
     --tag-cs: #10B981;
-    --row-hover: #E8E8F5;
+    --row-hover: #e6effa;
     --surface: #FFFFFF;
     --surface-elevated: #FFFFFF;
 
@@ -426,7 +426,7 @@
   .platform-bale { background: #00A884; }
   .platform-eitaa { background: #F59E0B; }
   .platform-goftino { background: #6366F1; }
-  .platform-carno { background: #1D1C74; }
+  .platform-carno { background: #0155d2; }
   .platform-rubika { background: #A855F7; }
   .platform-referral { background: #78716C; }
 
