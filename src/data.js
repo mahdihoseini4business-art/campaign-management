@@ -240,21 +240,41 @@ export async function saveFollowupToDB(followup) {
     throw new Error('پیگیری تکراری وجود دارد')
   }
 
-  const row = {
+  const baseRow = {
     customer_id: followup.customerId,
     date: followup.date,
     type: followup.type,
     result: followup.result,
     next_date: followup.nextDate,
     notes: followup.notes,
-    created_by_phone: followup.createdByPhone || null,
-    status: followup.status || 'pending',
-    done_at: followup.doneAt || null,
-    done_by_phone: followup.doneByPhone || null,
-    done_note: followup.doneNote || null,
-    was_overdue: !!followup.wasOverdue
+    created_by_phone: followup.createdByPhone || null
   }
-  const { data: inserted, error } = await supabase.from('followups').insert(row).select('id').single()
+
+  // Try with optional done/status columns; fall back if migration not applied yet
+  let inserted = null
+  let error = null
+  if (followup.status || followup.doneAt || followup.wasOverdue) {
+    const full = await supabase.from('followups').insert({
+      ...baseRow,
+      status: followup.status || 'pending',
+      done_at: followup.doneAt || null,
+      done_by_phone: followup.doneByPhone || null,
+      done_note: followup.doneNote || null,
+      was_overdue: !!followup.wasOverdue
+    }).select('id').single()
+    inserted = full.data
+    error = full.error
+    if (error && /column|schema cache/i.test(error.message || '')) {
+      const fallback = await supabase.from('followups').insert(baseRow).select('id').single()
+      inserted = fallback.data
+      error = fallback.error
+    }
+  } else {
+    const res = await supabase.from('followups').insert(baseRow).select('id').single()
+    inserted = res.data
+    error = res.error
+  }
+
   if (error) throw new Error('خطا در درج پیگیری: ' + error.message)
   return inserted ? inserted.id : null
 }

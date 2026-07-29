@@ -820,11 +820,11 @@ export function applyPermissions() {
   document.querySelectorAll('.tab').forEach(t => {
     const text = t.textContent.trim()
     let permKey = null
-    if (text === 'داشبورد') permKey = 'dashboard'
-    else if (text === 'لیست مشتریان') permKey = 'customers_view'
-    else if (text === 'تاریخچه پیگیری') permKey = 'followups_view'
-    else if (text === 'فروش‌ها') permKey = 'sales_view'
-    else if (text === 'حسابداری') permKey = 'accounting'
+    if (t.id === 'tab-dashboard' || text === 'داشبورد') permKey = 'dashboard'
+    else if (t.id === 'tab-customers' || text === 'لیست مشتریان') permKey = 'customers_view'
+    else if (t.id === 'tab-followups' || text.startsWith('فالوآپ') || text === 'تاریخچه پیگیری') permKey = 'followups_view'
+    else if (t.id === 'tab-sales' || text === 'فروش‌ها') permKey = 'sales_view'
+    else if (t.id === 'tab-accounting' || text === 'حسابداری') permKey = 'accounting'
     if (permKey && !hasPermission(permKey)) {
       t.style.display = 'none'
     } else {

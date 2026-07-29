@@ -52,6 +52,7 @@ function switchTab(tab, el) {
   }
 
   if (tab === 'dashboard') renderDashboard()
+  if (tab === 'followups') renderFollowups()
   if (tab === 'sales') renderSales()
   if (tab === 'accounting') renderAccounting()
 }

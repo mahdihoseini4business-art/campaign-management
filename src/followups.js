@@ -1,92 +1,126 @@
-import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, markFollowupDoneInDB } from './data.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canManageCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime } from './utils.js'
+import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB } from './data.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, getNowJalaliDateTime } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
-import { openCustomerDetail } from './customers.js'
 
 let followupFilter = 'waiting' // waiting | overdue | done
 
 // ============================================
-// Filter classification helpers
+// Classification (based on customer.nextFollowupDate)
 // ============================================
 
-function classifyFollowup(f) {
-  if (f.status === 'done') return 'done'
+function classifyDate(dateStr) {
+  if (!dateStr) return null
   const today = getTodayJalaliStr()
   const todayNum = jalaliToNum(today)
-  const nextNum = jalaliToNum(f.nextDate)
-  if (nextNum === 99999999) return 'waiting'
-  const threeDaysLater = jalaliAddDays(today, 3)
-  const threeDaysNum = jalaliToNum(threeDaysLater)
-  if (nextNum < todayNum) return 'overdue'
-  if (nextNum <= threeDaysNum) return 'waiting'
-  return 'waiting'
+  // Normalize Persian digits / datetime strings like "1405/05/07 12:00"
+  const dateNum = jalaliToNum(toEnDigits(String(dateStr)).trim().split(/\s+/)[0])
+  if (dateNum === 99999999) return null
+  if (dateNum < todayNum) return 'overdue'
+  // jalaliAddDays already returns numeric YYYYMMDD — do NOT wrap with jalaliToNum
+  const threeDaysNum = jalaliAddDays(today, 3)
+  if (dateNum <= threeDaysNum) return 'waiting'
+  return null
 }
 
-function isFollowupToday(f) {
-  return f.nextDate === getTodayJalaliStr()
+function isDoneFollowup(f) {
+  if (f.status === 'done') return true
+  return f.type === 'پیگیری انجام‌شده' || f.type === 'پیگیری معوقه انجام‌شده'
 }
 
-// ============================================
-// Badge
-// ============================================
+function canSeeCustomer(customer, currentUser) {
+  if (!customer) return false
+  if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
+  if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
+  if (!canViewScopedCustomer(customer, currentUser)) return false
+  return true
+}
 
-export function updateFollowupBadge() {
+/** Pending actionable items = customers with a nextFollowupDate */
+function getPendingItems() {
   const data = getData()
   const currentUser = getCurrentUser()
-  const today = getTodayJalaliStr()
-  const count = data.followups.filter(f => {
-    if (f.status === 'done') return false
-    if (f.nextDate !== today) return false
-    const customer = data.customers.find(c => c.id === f.customerId)
-    if (!customer) return false
-    if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
-    if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
-    if (!canViewScopedCustomer(customer, currentUser)) return false
-    return true
-  }).length
+  const search = toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
 
-  const badge = document.getElementById('followupTabBadge')
-  if (badge) {
-    badge.textContent = count
-    badge.style.display = count > 0 ? 'inline-flex' : 'none'
-  }
+  return data.customers
+    .filter(c => c.nextFollowupDate && canSeeCustomer(c, currentUser))
+    .map(c => {
+      const last = [...data.followups].reverse().find(f => f.customerId === c.id && !isDoneFollowup(f))
+      return {
+        kind: 'pending',
+        customerId: c.id,
+        customerName: c.name || c.platformId || c.id,
+        date: last?.date || '',
+        type: last?.type || '—',
+        result: last?.result || '—',
+        nextDate: c.nextFollowupDate,
+        notes: last?.notes || '',
+        category: classifyDate(c.nextFollowupDate)
+      }
+    })
+    .filter(item => {
+      if (!item.category) return false
+      const extras = getCustomerSearchExtras(data.customers.find(c => c.id === item.customerId))
+      return matchesTabSearch(search, [
+        item.customerId,
+        item.customerName,
+        item.notes,
+        item.type,
+        item.result,
+        item.date,
+        item.nextDate,
+        ...extras.products,
+        ...extras.depositors
+      ])
+    })
 }
 
-// ============================================
-// Stats
-// ============================================
+/** Done items = followup notes marked as completed */
+function getDoneItems() {
+  const data = getData()
+  const currentUser = getCurrentUser()
+  const search = toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
 
-function updateFollowupStats(filtered) {
-  let waiting = 0, done = 0, overdue = 0
-  filtered.forEach(f => {
-    const cat = classifyFollowup(f)
-    if (cat === 'waiting') waiting++
-    else if (cat === 'done') done++
-    else if (cat === 'overdue') overdue++
-  })
-  const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v }
-  el('stat-followup-waiting', waiting)
-  el('stat-followup-done', done)
-  el('stat-followup-overdue', overdue)
+  return data.followups
+    .filter(f => {
+      if (!isDoneFollowup(f)) return false
+      const customer = data.customers.find(c => c.id === f.customerId)
+      if (!canSeeCustomer(customer, currentUser)) return false
+      const name = customer ? customer.name : ''
+      const extras = getCustomerSearchExtras(customer)
+      return matchesTabSearch(search, [
+        f.customerId,
+        name,
+        customer?.phone,
+        customer?.advisor,
+        f.notes,
+        f.type,
+        f.result,
+        f.date,
+        f.nextDate,
+        ...extras.products,
+        ...extras.depositors
+      ])
+    })
+    .map(f => {
+      const customer = data.customers.find(c => c.id === f.customerId)
+      return {
+        kind: 'done',
+        id: f.id,
+        customerId: f.customerId,
+        customerName: customer ? customer.name : '—',
+        date: f.date,
+        type: f.type,
+        result: f.result,
+        nextDate: f.nextDate || '',
+        notes: f.notes || f.doneNote || '',
+        wasOverdue: !!f.wasOverdue || f.type === 'پیگیری معوقه انجام‌شده',
+        category: 'done'
+      }
+    })
 }
-
-// ============================================
-// Filter
-// ============================================
-
-export function setFollowupFilter(filter) {
-  followupFilter = filter
-  document.querySelectorAll('.followup-filter-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.filter === filter)
-  })
-  renderFollowups()
-}
-
-// ============================================
-// Render Followups
-// ============================================
 
 export function getFilteredFollowups() {
+  // Kept for import-export / bulk compatibility: all raw followups with scope
   const data = getData()
   const search = toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
   const currentUser = getCurrentUser()
@@ -94,11 +128,7 @@ export function getFilteredFollowups() {
   return data.followups.filter(f => {
     const customer = data.customers.find(c => c.id === f.customerId)
     const name = customer ? customer.name : ''
-    if (customer) {
-      if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
-      if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
-      if (!canViewScopedCustomer(customer, currentUser)) return false
-    }
+    if (customer && !canSeeCustomer(customer, currentUser)) return false
     const extras = getCustomerSearchExtras(customer)
     return matchesTabSearch(search, [
       f.customerId,
@@ -116,99 +146,138 @@ export function getFilteredFollowups() {
   })
 }
 
-export function renderFollowups() {
-  const data = getData()
-  const tbody = document.getElementById('followupBody')
-  const allFiltered = getFilteredFollowups()
+// ============================================
+// Badge + Stats
+// ============================================
 
-  updateFollowupStats(allFiltered)
-  updateFollowupBadge()
-
-  const filtered = allFiltered.filter(f => classifyFollowup(f) === followupFilter)
-
-  const showSelectCol = hasPermission('followups_delete')
-  const colCount = showSelectCol ? 10 : 9
-
-  if (filtered.length === 0) {
-    tbody.innerHTML = `
-      <tr><td colspan="${colCount}">
-        <div class="empty-state">
-          <div class="icon">📋</div>
-          <h3>پیگیری‌ای یافت نشد</h3>
-          <p>در این بخش پیگیری‌ای وجود ندارد</p>
-        </div>
-      </td></tr>`
-    renderPaginationBar('followupPagination', 'followups', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
-    return
-  }
-
-  const search = toEnDigits(document.getElementById('searchFollowups').value).toLowerCase()
-  const page = paginateList('followups', filtered, search)
+export function updateFollowupBadge() {
   const today = getTodayJalaliStr()
+  const count = getPendingItems().filter(i => i.nextDate === today).length
+  const badge = document.getElementById('followupTabBadge')
+  if (badge) {
+    badge.textContent = count
+    badge.style.display = count > 0 ? 'inline-flex' : 'none'
+  }
+}
 
-  tbody.innerHTML = page.items.map((f) => {
-    const customer = data.customers.find(c => c.id === f.customerId)
-    const name = customer ? customer.name : '—'
-    const followupId = f.id || `idx_${data.followups.indexOf(f)}`
-    const canEdit = hasPermission('followups_add')
-    const canDelete = showSelectCol
-    const selectCell = showSelectCol
-      ? `<td><input type="checkbox" data-id="${escapeAttr(followupId)}" onchange="app.toggleRowSelect('followups', '${escapeAttr(followupId)}', this.checked)"></td>`
-      : ''
+function updateFollowupStats() {
+  const pending = getPendingItems()
+  const done = getDoneItems()
+  const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v }
+  el('stat-followup-waiting', pending.filter(i => i.category === 'waiting').length)
+  el('stat-followup-overdue', pending.filter(i => i.category === 'overdue').length)
+  el('stat-followup-done', done.length)
+}
 
-    const isToday = f.nextDate === today
-    const rowClass = (isToday && f.status !== 'done') ? ' class="highlight-today"' : ''
-    const isDone = f.status === 'done'
-
-    let actionBtns = ''
-    if (!isDone) {
-      actionBtns += `<button class="btn btn-sm btn-done" title="انجام شد" onclick="app.openFollowupDoneModal('${escapeAttr(followupId)}')">✓ انجام شد</button>`
-    }
-    if (canEdit && !isDone) {
-      actionBtns += ` <button class="btn-icon" title="ویرایش" onclick="app.editFollowup('${escapeAttr(followupId)}')">✏</button>`
-    }
-    if (canDelete) {
-      actionBtns += ` <button class="btn-icon" title="حذف" onclick="app.deleteFollowup('${escapeAttr(followupId)}')">🗑</button>`
-    }
-
-    return `<tr${rowClass}>
-      ${selectCell}
-      <td><span class="id-badge ${f.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="font-size:11px;cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(f.customerId)}')">${escapeHtml(f.customerId)}</span></td>
-      <td>${escapeHtml(name)}</td>
-      <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(f.date)}</td>
-      <td>${escapeHtml(f.type)}</td>
-      <td>${escapeHtml(f.result)}</td>
-      <td style="font-size:13px;">${escapeHtml(f.nextDate) || '—'}</td>
-      <td class="notes-cell" title="${escapeHtml(f.notes)}">${escapeHtml(f.notes) || '—'}</td>
-      <td>
-        <div class="actions-cell">${actionBtns}</div>
-      </td>
-    </tr>`
-  }).join('')
-
-  renderPaginationBar('followupPagination', 'followups', page)
+export function setFollowupFilter(filter) {
+  followupFilter = filter
+  document.querySelectorAll('.followup-filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === filter)
+  })
+  renderFollowups()
 }
 
 // ============================================
-// Done Modal
+// Render
 // ============================================
 
-export function openFollowupDoneModal(followupId) {
+export function renderFollowups() {
+  const tbody = document.getElementById('followupBody')
+  if (!tbody) return
+
+  try {
+    updateFollowupStats()
+    updateFollowupBadge()
+
+    const pending = getPendingItems()
+    const done = getDoneItems()
+    const filtered = followupFilter === 'done'
+      ? done
+      : pending.filter(i => i.category === followupFilter)
+
+    const showSelectCol = hasPermission('followups_delete') && followupFilter === 'done'
+    const colCount = (hasPermission('followups_delete') ? 1 : 0) + 9
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `
+        <tr><td colspan="${colCount}">
+          <div class="empty-state">
+            <div class="icon">📋</div>
+            <h3>پیگیری‌ای یافت نشد</h3>
+            <p>در این بخش پیگیری‌ای وجود ندارد</p>
+          </div>
+        </td></tr>`
+      renderPaginationBar('followupPagination', 'followups', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
+      return
+    }
+
+    const search = toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
+    const page = paginateList('followups', filtered, `${followupFilter}|${search}`)
+    const today = getTodayJalaliStr()
+    const canEdit = hasPermission('followups_add')
+
+    tbody.innerHTML = page.items.map((item) => {
+      const selectCell = hasPermission('followups_delete')
+        ? (showSelectCol
+          ? `<td><input type="checkbox" data-id="${escapeAttr(String(item.id || ''))}" onchange="app.toggleRowSelect('followups', '${escapeAttr(String(item.id || ''))}', this.checked)"></td>`
+          : '<td></td>')
+        : ''
+
+      const isToday = item.nextDate === today && item.kind === 'pending'
+      const rowClass = isToday ? ' class="highlight-today"' : ''
+
+      let actionBtns = ''
+      if (item.kind === 'pending') {
+        actionBtns += `<button class="btn btn-sm btn-done" title="انجام شد" onclick="app.openFollowupDoneModal('${escapeAttr(item.customerId)}')">✓ انجام شد</button>`
+      } else {
+        if (canEdit) {
+          actionBtns += `<button class="btn-icon" title="ویرایش" onclick="app.editFollowup('${escapeAttr(String(item.id))}')">✏</button>`
+        }
+        if (hasPermission('followups_delete')) {
+          actionBtns += ` <button class="btn-icon" title="حذف" onclick="app.deleteFollowup('${escapeAttr(String(item.id))}')">🗑</button>`
+        }
+      }
+
+      const overdueBadge = item.wasOverdue ? ' <span class="overdue-tag">معوقه</span>' : ''
+
+      return `<tr${rowClass}>
+        ${selectCell}
+        <td><span class="id-badge ${item.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="font-size:11px;cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(item.customerId)}')">${escapeHtml(item.customerId)}</span></td>
+        <td>${escapeHtml(item.customerName)}${overdueBadge}</td>
+        <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(item.date) || '—'}</td>
+        <td>${escapeHtml(item.type)}</td>
+        <td>${escapeHtml(item.result)}</td>
+        <td style="font-size:13px;">${escapeHtml(item.nextDate) || '—'}</td>
+        <td class="notes-cell" title="${escapeHtml(item.notes)}">${escapeHtml(item.notes) || '—'}</td>
+        <td><div class="actions-cell">${actionBtns}</div></td>
+      </tr>`
+    }).join('')
+
+    renderPaginationBar('followupPagination', 'followups', page)
+  } catch (e) {
+    console.error('renderFollowups error:', e)
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><h3>خطا در نمایش فالوآپ‌ها</h3><p>${escapeHtml(e.message || String(e))}</p></div></td></tr>`
+  }
+}
+
+// ============================================
+// Done Modal (customerId-based)
+// ============================================
+
+export function openFollowupDoneModal(customerId) {
   if (!requirePermission('followups_add')) return
   const data = getData()
-  const f = data.followups.find(x => String(x.id) === String(followupId) || `idx_${data.followups.indexOf(x)}` === followupId)
-  if (!f) { showToast('پیگیری یافت نشد'); return }
+  const customer = data.customers.find(c => c.id === customerId)
+  if (!customer) { showToast('مشتری یافت نشد'); return }
 
-  const customer = data.customers.find(c => c.id === f.customerId)
-  const name = customer ? customer.name : f.customerId
-  const cat = classifyFollowup(f)
+  const cat = classifyDate(customer.nextFollowupDate)
+  const name = customer.name || customer.platformId || customerId
 
-  document.getElementById('followupDoneId').value = followupId
+  document.getElementById('followupDoneId').value = customerId
   document.getElementById('followupDoneNote').value = ''
   document.getElementById('followupDoneInfo').innerHTML = `
-    <div><strong>مشتری:</strong> ${escapeHtml(name)} (${escapeHtml(f.customerId)})</div>
-    <div><strong>تاریخ پیگیری:</strong> ${escapeHtml(f.nextDate || f.date)}</div>
-    <div><strong>نوع:</strong> ${escapeHtml(f.type)}</div>
+    <div><strong>مشتری:</strong> ${escapeHtml(name)} (${escapeHtml(customerId)})</div>
+    <div><strong>تاریخ پیگیری:</strong> ${escapeHtml(customer.nextFollowupDate || '—')}</div>
     ${cat === 'overdue' ? '<div style="color:var(--danger);font-weight:600;">⚠ این پیگیری معوقه است</div>' : ''}
   `
   document.getElementById('followupDoneModal').classList.add('active')
@@ -222,33 +291,24 @@ export function closeFollowupDoneModal() {
 export async function confirmFollowupDone() {
   if (!requirePermission('followups_add')) return
   const data = getData()
-  const followupId = document.getElementById('followupDoneId').value
+  const customerId = document.getElementById('followupDoneId').value
   const note = document.getElementById('followupDoneNote').value.trim()
 
   if (!note) { showToast('یادداشت را وارد کنید'); return }
 
-  const f = data.followups.find(x => String(x.id) === String(followupId) || `idx_${data.followups.indexOf(x)}` === followupId)
-  if (!f) { showToast('پیگیری یافت نشد'); return }
+  const customer = data.customers.find(c => c.id === customerId)
+  if (!customer) { showToast('مشتری یافت نشد'); return }
 
-  const cat = classifyFollowup(f)
+  const cat = classifyDate(customer.nextFollowupDate)
   const wasOverdue = cat === 'overdue'
   const { dateTime } = getNowJalaliDateTime()
-  const currentUser = getCurrentUser()
-  const doneByPhone = normalizePhone(currentUser?.phone || '')
+  const doneByPhone = normalizePhone(getCurrentUser()?.phone || '')
+  const today = getTodayJalaliStr()
+  const noteType = wasOverdue ? 'پیگیری معوقه انجام‌شده' : 'پیگیری انجام‌شده'
 
   try {
-    await markFollowupDoneInDB(f.id, { doneAt: dateTime, doneByPhone, doneNote: note, wasOverdue })
-
-    f.status = 'done'
-    f.doneAt = dateTime
-    f.doneByPhone = doneByPhone
-    f.doneNote = note
-    f.wasOverdue = wasOverdue
-
-    const noteType = wasOverdue ? 'پیگیری معوقه انجام‌شده' : 'پیگیری انجام‌شده'
-    const today = getTodayJalaliStr()
     const noteFollowup = {
-      customerId: f.customerId,
+      customerId,
       date: today,
       type: noteType,
       result: 'انجام شد',
@@ -265,17 +325,20 @@ export async function confirmFollowupDone() {
     noteFollowup.id = noteId
     data.followups.push(noteFollowup)
 
+    customer.nextFollowupDate = ''
+    await saveCustomerToDB(customer)
+
     closeFollowupDoneModal()
     renderFollowups()
     showToast('پیگیری انجام شد')
   } catch (e) {
     console.error('confirmFollowupDone error:', e)
-    showToast('خطا در ثبت انجام پیگیری')
+    showToast(e.message || 'خطا در ثبت انجام پیگیری')
   }
 }
 
 // ============================================
-// Followup Modal (Add/Edit)
+// Followup Modal (Add/Edit) — history records
 // ============================================
 
 export function openFollowupModal(editFollowupId) {
@@ -361,9 +424,14 @@ export async function saveFollowup() {
       data.followups.push(newFollowup)
     } catch (e) {
       console.error('saveFollowup error:', e)
-      showToast('خطا در ذخیره پیگیری')
+      showToast(e.message || 'خطا در ذخیره پیگیری')
       return
     }
+  }
+
+  if (nextDate) {
+    customer.nextFollowupDate = nextDate
+    try { await saveCustomerToDB(customer) } catch (_) {}
   }
 
   renderFollowups()
