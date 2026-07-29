@@ -371,10 +371,11 @@ export function hasInPersonPurchase(customer) {
 }
 
 export function countCustomerReferrals(customer, allCustomers = []) {
-  const phone = normalizePhone(customer?.phone)
-  if (!phone) return 0
+  const phones = getCustomerPhones(customer)
+  if (!phones.length) return 0
+  const set = new Set(phones)
   return (allCustomers || []).filter(c =>
-    c.id !== customer.id && normalizePhone(c.referredByPhone) === phone
+    c.id !== customer.id && set.has(normalizePhone(c.referredByPhone))
   ).length
 }
 
@@ -554,12 +555,79 @@ export function hasRecentActivityByOther(customer, followups, userPhone, days = 
   )
 }
 
+/** Max mobile numbers allowed per customer */
+export const MAX_CUSTOMER_PHONES = 3
+
+/**
+ * Normalize a customer (or raw phone / phones list) into a unique array of
+ * valid Iranian mobiles (09XXXXXXXXX), capped at MAX_CUSTOMER_PHONES.
+ */
+export function normalizeCustomerPhones(source) {
+  let raw = []
+  if (Array.isArray(source)) {
+    raw = source
+  } else if (source && typeof source === 'object') {
+    if (Array.isArray(source.phones) && source.phones.length) {
+      raw = source.phones
+    } else if (source.phone) {
+      raw = [source.phone]
+    }
+  } else if (typeof source === 'string' && source.trim()) {
+    raw = source.split(/[,،;/|\n]+/)
+  }
+
+  const seen = new Set()
+  const out = []
+  for (const item of raw) {
+    const n = normalizePhone(item)
+    if (!n || !/^09\d{9}$/.test(n)) continue
+    if (seen.has(n)) continue
+    seen.add(n)
+    out.push(n)
+    if (out.length >= MAX_CUSTOMER_PHONES) break
+  }
+  return out
+}
+
+/** Phones array for a customer (compat with legacy `phone` field). */
+export function getCustomerPhones(customer) {
+  return normalizeCustomerPhones(customer)
+}
+
+/** First phone — kept for display / legacy call sites. */
+export function getPrimaryPhone(customer) {
+  return getCustomerPhones(customer)[0] || ''
+}
+
+/** True if any of the customer's phones matches `phone`. */
+export function customerHasPhone(customer, phone) {
+  const n = normalizePhone(phone)
+  if (!n) return false
+  return getCustomerPhones(customer).includes(n)
+}
+
+/**
+ * Compact table display: first phone, plus "+N" when more exist.
+ * Returns { text, extra } where extra is the count beyond the first.
+ */
+export function formatPhonesDisplay(customer) {
+  const phones = getCustomerPhones(customer)
+  if (!phones.length) return { text: '', extra: 0, phones }
+  return { text: phones[0], extra: Math.max(0, phones.length - 1), phones }
+}
+
+/** Find customer that owns this phone on any of their numbers. */
 export function findCustomerByPhone(phone, customers, excludeId = null) {
   const n = normalizePhone(phone)
   if (!n || !/^09\d{9}$/.test(n)) return null
   return (customers || []).find(c =>
-    (!excludeId || c.id !== excludeId) && normalizePhone(c.phone) === n
+    (!excludeId || c.id !== excludeId) && customerHasPhone(c, n)
   ) || null
+}
+
+/** Alias — same semantics as findCustomerByPhone after multi-phone upgrade. */
+export function findCustomerByAnyPhone(phone, customers, excludeId = null) {
+  return findCustomerByPhone(phone, customers, excludeId)
 }
 
 // ============================================

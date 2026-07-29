@@ -1222,6 +1222,51 @@
     padding: 8px 10px;
   }
 
+  .phone-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .phone-field-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .phone-field-row .form-input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .phone-field-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .phone-field-actions .btn-icon {
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--text);
+  }
+
+  .phone-field-actions .btn-icon:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .phone-field-actions .btn-icon.is-danger:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+
   .row-other-owner {
     background: #fafaf9;
   }

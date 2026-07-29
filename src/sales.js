@@ -7,7 +7,8 @@ import {
   CUSTOMER_LEVELS, resolveCustomerLevel,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
   getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
-  productHasRejectedPayment, getProductPayments
+  productHasRejectedPayment, getProductPayments,
+  getCustomerPhones, getPrimaryPhone
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -32,7 +33,8 @@ export function getAllSales() {
           customerId: c.id,
           productIndex,
           customerName: c.name || c.platformId,
-          customerPhone: c.phone || '',
+          customerPhone: getPrimaryPhone(c),
+          customerPhones: getCustomerPhones(c),
           advisor: c.advisor || '',
           platform: c.platform,
           productName: p.name,
@@ -77,6 +79,7 @@ export function getFilteredSales() {
         s.customerId,
         s.customerName,
         s.customerPhone,
+        ...(s.customerPhones || []),
         s.advisor,
         s.productName,
         s.depositorName,
@@ -149,7 +152,14 @@ function renderSalesRows(allSales) {
       ${selectCell}
       <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(s.customerId)}')">${escapeHtml(s.customerId)}</span></td>
       <td>${escapeHtml(s.customerName)}</td>
-      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(s.customerPhone) || '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${(() => {
+        const phones = s.customerPhones || (s.customerPhone ? [s.customerPhone] : [])
+        if (!phones.length) return '—'
+        const extra = phones.length > 1
+          ? ` <span style="color:var(--text-muted);font-size:11px;" title="${escapeAttr(phones.slice(1).join('، '))}">+${phones.length - 1}</span>`
+          : ''
+        return `${escapeHtml(phones[0])}${extra}`
+      })()}</td>
       <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${escapeHtml(pLabel)}</span></td>
       <td>${escapeHtml(s.productName)}</td>
       <td><span style="color:${statusColor};font-weight:600;">${escapeHtml(s.status)}</span></td>

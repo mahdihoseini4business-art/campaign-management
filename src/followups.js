@@ -1,5 +1,5 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB } from './data.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, getNowJalaliDateTime } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, getNowJalaliDateTime, getCustomerPhones } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
 let followupFilter = 'today' // today | waiting | overdue | done
@@ -86,7 +86,7 @@ function getPendingItems(applySearch = true) {
       if (!matchesTabSearch(search, [
         item.customerId,
         item.customerName,
-        c.phone,
+        ...getCustomerPhones(c),
         c.advisor,
         item.notes,
         item.type,
@@ -122,7 +122,7 @@ function getDoneItems(applySearch = true) {
       if (!matchesTabSearch(search, [
         f.customerId,
         name,
-        customer?.phone,
+        ...getCustomerPhones(customer),
         customer?.advisor,
         f.notes,
         f.type,
@@ -165,7 +165,7 @@ export function getFilteredFollowups() {
     return matchesTabSearch(search, [
       f.customerId,
       name,
-      customer?.phone,
+      ...getCustomerPhones(customer),
       customer?.advisor,
       f.notes,
       f.type,

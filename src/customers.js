@@ -7,6 +7,8 @@ import {
   canViewScopedCustomer, matchesTabSearch, getCustomerSearchExtras,
   resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
+  getCustomerPhones, normalizeCustomerPhones, getPrimaryPhone, formatPhonesDisplay,
+  MAX_CUSTOMER_PHONES,
   getStatusLabels, getStatusClass,
   getNowJalaliDateTime, PAYMENT_STATUS_LABELS, createPayment,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getOperationalBalance,
@@ -34,8 +36,10 @@ function populateStatusDropdown(select) {
 
 export { populatePlatformDropdown, populateStatusDropdown }
 
-/** Phone-field check while creating/editing: ok | incomplete | own | blocked | transferable | taken */
-let phoneFieldState = { status: 'ok', customer: null, lastActivity: null }
+/** Phone-field check while creating/editing: ok | incomplete | own | blocked | transferable | taken | duplicate */
+let phoneFieldState = { status: 'ok', customer: null, lastActivity: null, index: 0 }
+/** Visible phone input slots in the customer modal (1–3). */
+let phoneSlots = ['']
 
 // ============================================
 // Render Customers
@@ -52,10 +56,11 @@ export function getFilteredCustomers() {
 
   return data.customers.filter(c => {
     const extras = getCustomerSearchExtras(c)
+    const phones = getCustomerPhones(c)
     const matchesSearch = matchesTabSearch(search, [
       c.id,
       c.name,
-      c.phone,
+      ...phones,
       c.advisor,
       c.platformId,
       ...extras.products,
@@ -153,7 +158,7 @@ export async function renderCustomers() {
       ? `<td>${canDelete ? `<input type="checkbox" data-id="${escapeAttr(c.id)}" onchange="app.toggleRowSelect('customers', '${escapeAttr(c.id)}', this.checked)">` : ''}</td>`
       : ''
 
-    const platformUrl = getPlatformUrl(c.platform, c.platformId, c.phone)
+    const platformUrl = getPlatformUrl(c.platform, c.platformId, getPrimaryPhone(c))
     const platformIdHtml = platformUrl
       ? `<a href="${platformUrl}" target="_blank" rel="noopener" style="font-family:'Vazirmatn',sans-serif;font-size:13px;color:var(--accent);text-decoration:none;border-bottom:1px dashed var(--accent);">${escapeHtml(c.platformId)}</a>`
       : `<span style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(c.platformId)}</span>`
@@ -195,7 +200,14 @@ export async function renderCustomers() {
       <td>${platformIdHtml}</td>
       <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>
       <td>${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}</td>
-      <td style="font-family: monospace; direction: ltr; text-align: right;">${escapeHtml(c.phone) || '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td style="font-family: monospace; direction: ltr; text-align: right;">${(() => {
+        const disp = formatPhonesDisplay(c)
+        if (!disp.text) return '<span style="color:var(--text-muted)">—</span>'
+        const extra = disp.extra > 0
+          ? ` <span style="color:var(--text-muted);font-size:11px;" title="${escapeAttr(disp.phones.slice(1).join('، '))}">+${disp.extra}</span>`
+          : ''
+        return `${escapeHtml(disp.text)}${extra}`
+      })()}</td>
       <td><span class="status-badge ${statusClass}">${escapeHtml(statusLabel)}</span></td>
       <td style="font-size:12px;">${escapeHtml(c.advisor) || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td style="text-align:center;"><span class="followup-count ${countClass}">${followupCount}</span></td>
@@ -278,7 +290,7 @@ export function updateStats() {
 export async function openCustomerModal(editId) {
   if (!requirePermission('customers_add')) return
   clearPhoneFieldMessages()
-  phoneFieldState = { status: 'ok', customer: null, lastActivity: null }
+  phoneFieldState = { status: 'ok', customer: null, lastActivity: null, index: 0 }
   const data = getData()
   const modal = document.getElementById('customerModal')
   const title = document.getElementById('customerModalTitle')
@@ -307,7 +319,8 @@ export async function openCustomerModal(editId) {
     document.getElementById('customerPlatformId').value = c.platformId
     document.getElementById('customerPlatform').value = c.platform
     document.getElementById('customerName').value = c.name
-    document.getElementById('customerPhone').value = c.phone
+    const existingPhones = getCustomerPhones(c)
+    phoneSlots = existingPhones.length ? [...existingPhones] : ['']
     document.getElementById('customerStatus').value = c.status
     document.getElementById('customerNotes').value = c.notes
     const selectedPhone = c.advisorPhone || (currentUser ? currentUser.phone : '')
@@ -319,40 +332,119 @@ export async function openCustomerModal(editId) {
     document.getElementById('customerPlatformId').value = ''
     document.getElementById('customerPlatform').value = 'instagram'
     document.getElementById('customerName').value = ''
-    document.getElementById('customerPhone').value = ''
+    phoneSlots = ['']
     document.getElementById('customerStatus').value = 'new'
     document.getElementById('customerNotes').value = ''
     advisorSelect.value = currentUser?.phone ? normalizePhone(currentUser.phone) : ''
-    updatePreviewId()
   }
+
+  renderPhoneFields()
+  if (!editId) updatePreviewId()
 
   modal.classList.add('active')
   document.getElementById('customerPlatformId').focus()
 }
 
+function syncPhoneSlotsFromDom() {
+  const inputs = document.querySelectorAll('#customerPhonesList .customer-phone-input')
+  if (!inputs.length) return
+  phoneSlots = Array.from(inputs).map(el => el.value)
+}
+
+function getFormPhonesRaw() {
+  syncPhoneSlotsFromDom()
+  return phoneSlots.map(v => String(v || '').trim()).filter(Boolean)
+}
+
+function getFormPhones() {
+  return normalizeCustomerPhones(getFormPhonesRaw())
+}
+
+function renderPhoneFields() {
+  const container = document.getElementById('customerPhonesList')
+  if (!container) return
+  if (!phoneSlots.length) phoneSlots = ['']
+
+  container.innerHTML = phoneSlots.map((val, i) => {
+    const normalized = normalizePhone(val)
+    const isValid = /^09\d{9}$/.test(normalized)
+    const canAdd = i === phoneSlots.length - 1
+      && phoneSlots.length < MAX_CUSTOMER_PHONES
+      && isValid
+    const canRemove = phoneSlots.length > 1
+    return `
+      <div class="phone-field-row" data-index="${i}">
+        <input type="text" class="form-input customer-phone-input" data-index="${i}"
+          placeholder="۰۹۱۲۳۴۵۶۷۸۹" dir="ltr" style="text-align:left;" autocomplete="tel"
+          value="${escapeAttr(val || '')}"
+          oninput="app.onCustomerPhoneInput(${i})"
+          onblur="app.onCustomerPhoneInput(${i})">
+        <div class="phone-field-actions">
+          ${canAdd ? `<button type="button" class="btn-icon" title="افزودن شماره" onclick="app.addCustomerPhoneSlot()">+</button>` : ''}
+          ${canRemove ? `<button type="button" class="btn-icon is-danger" title="حذف شماره" onclick="app.removeCustomerPhoneSlot(${i})">×</button>` : ''}
+        </div>
+      </div>
+    `
+  }).join('')
+}
+
+export function addCustomerPhoneSlot() {
+  syncPhoneSlotsFromDom()
+  if (phoneSlots.length >= MAX_CUSTOMER_PHONES) return
+  const last = normalizePhone(phoneSlots[phoneSlots.length - 1])
+  if (!/^09\d{9}$/.test(last)) {
+    showToast('ابتدا شماره فعلی را به‌درستی وارد کنید')
+    return
+  }
+  phoneSlots.push('')
+  renderPhoneFields()
+  const inputs = document.querySelectorAll('#customerPhonesList .customer-phone-input')
+  inputs[inputs.length - 1]?.focus()
+}
+
+export function removeCustomerPhoneSlot(index) {
+  syncPhoneSlotsFromDom()
+  if (phoneSlots.length <= 1) return
+  phoneSlots.splice(index, 1)
+  renderPhoneFields()
+  onCustomerPhoneInput()
+  updatePreviewId()
+}
+
 function clearPhoneFieldMessages() {
-  const input = document.getElementById('customerPhone')
+  document.querySelectorAll('#customerPhonesList .customer-phone-input').forEach(el => {
+    el.classList.remove('is-invalid')
+  })
   const err = document.getElementById('customerPhoneError')
   const hint = document.getElementById('customerPhoneHint')
-  if (input) input.classList.remove('is-invalid')
   if (err) { err.hidden = true; err.textContent = '' }
   if (hint) { hint.hidden = true; hint.textContent = ''; hint.className = 'form-hint' }
 }
 
-function setPhoneFieldError(message) {
-  const input = document.getElementById('customerPhone')
+function setPhoneFieldError(message, index = null) {
+  document.querySelectorAll('#customerPhonesList .customer-phone-input').forEach(el => {
+    el.classList.remove('is-invalid')
+  })
+  if (index != null) {
+    const input = document.querySelector(`#customerPhonesList .customer-phone-input[data-index="${index}"]`)
+    if (input) input.classList.add('is-invalid')
+  } else {
+    document.querySelectorAll('#customerPhonesList .customer-phone-input').forEach(el => {
+      if (el.value.trim()) el.classList.add('is-invalid')
+    })
+  }
   const err = document.getElementById('customerPhoneError')
   const hint = document.getElementById('customerPhoneHint')
-  if (input) input.classList.add('is-invalid')
   if (hint) { hint.hidden = true; hint.textContent = '' }
   if (err) { err.hidden = false; err.textContent = message }
 }
 
 function setPhoneFieldHint(message, kind = 'info') {
-  const input = document.getElementById('customerPhone')
+  document.querySelectorAll('#customerPhonesList .customer-phone-input').forEach(el => {
+    el.classList.remove('is-invalid')
+  })
   const err = document.getElementById('customerPhoneError')
   const hint = document.getElementById('customerPhoneHint')
-  if (input) input.classList.remove('is-invalid')
   if (err) { err.hidden = true; err.textContent = '' }
   if (hint) {
     hint.hidden = false
@@ -366,81 +458,120 @@ function formatActivityLabel(act) {
   return `${act.dateStr} (${act.label})`
 }
 
-/** Live validation for create/edit phone field */
-export function onCustomerPhoneInput() {
+/** Live validation for create/edit phone fields */
+export function onCustomerPhoneInput(index = 0) {
   const data = getData()
   const currentUser = getCurrentUser()
   const editId = document.getElementById('editCustomerId')?.value || ''
-  const raw = document.getElementById('customerPhone')?.value || ''
-  const phone = normalizePhone(raw)
+  syncPhoneSlotsFromDom()
+
+  const active = document.activeElement
+  const activeIndex = active?.dataset?.index ?? String(index)
+  const selStart = active?.selectionStart
+  const selEnd = active?.selectionEnd
+  renderPhoneFields()
+  const restored = document.querySelector(`#customerPhonesList .customer-phone-input[data-index="${activeIndex}"]`)
+  if (restored) {
+    restored.focus()
+    if (typeof selStart === 'number' && typeof selEnd === 'number') {
+      try { restored.setSelectionRange(selStart, selEnd) } catch (_) { /* ignore */ }
+    }
+  }
 
   clearPhoneFieldMessages()
-  phoneFieldState = { status: 'ok', customer: null, lastActivity: null }
+  phoneFieldState = { status: 'ok', customer: null, lastActivity: null, index: 0 }
 
-  if (!phone) {
-    phoneFieldState.status = 'ok'
-    return
-  }
+  const rawSlots = phoneSlots.map(v => String(v || '').trim())
+  const normalizedSlots = rawSlots.map(v => (v ? normalizePhone(v) : ''))
 
-  if (!/^09\d{9}$/.test(phone)) {
-    phoneFieldState.status = 'incomplete'
-    if (phone.length >= 11 || (raw.trim().length >= 10 && !phone.startsWith('09'))) {
-      setPhoneFieldError('فرمت شماره موبایل صحیح نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹)')
+  // Intra-form duplicate check
+  const seen = new Map()
+  for (let i = 0; i < normalizedSlots.length; i++) {
+    const phone = normalizedSlots[i]
+    if (!phone) continue
+    if (!/^09\d{9}$/.test(phone)) {
+      phoneFieldState = { status: 'incomplete', customer: null, lastActivity: null, index: i }
+      if (phone.length >= 11 || (rawSlots[i].length >= 10 && !phone.startsWith('09'))) {
+        setPhoneFieldError('فرمت شماره موبایل صحیح نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹)', i)
+      }
+      updatePreviewId()
+      return
     }
-    return
+    if (seen.has(phone)) {
+      phoneFieldState = { status: 'duplicate', customer: null, lastActivity: null, index: i }
+      setPhoneFieldError('این شماره دوبار در همین فرم وارد شده است', i)
+      updatePreviewId()
+      return
+    }
+    seen.set(phone, i)
   }
 
-  const existing = findCustomerByPhone(phone, data.customers, editId || null)
-  if (!existing) {
-    phoneFieldState.status = 'ok'
-    return
-  }
+  // Cross-customer checks — evaluate first conflict found
+  for (let i = 0; i < normalizedSlots.length; i++) {
+    const phone = normalizedSlots[i]
+    if (!phone || !/^09\d{9}$/.test(phone)) continue
 
-  const lastActivity = getLastActivity(existing, data.followups)
-  phoneFieldState.customer = existing
-  phoneFieldState.lastActivity = lastActivity
+    const existing = findCustomerByPhone(phone, data.customers, editId || null)
+    if (!existing) continue
 
-  if (editId) {
-    phoneFieldState.status = 'taken'
-    setPhoneFieldError(
-      `این شماره از قبل برای مشتری ${existing.id} ثبت شده است` +
-      (lastActivity ? ` — آخرین فعالیت: ${formatActivityLabel(lastActivity)}` : '')
+    const lastActivity = getLastActivity(existing, data.followups)
+    phoneFieldState.customer = existing
+    phoneFieldState.lastActivity = lastActivity
+    phoneFieldState.index = i
+
+    if (editId) {
+      phoneFieldState.status = 'taken'
+      setPhoneFieldError(
+        `این شماره از قبل برای مشتری ${existing.id} ثبت شده است` +
+        (lastActivity ? ` — آخرین فعالیت: ${formatActivityLabel(lastActivity)}` : ''),
+        i
+      )
+      updatePreviewId()
+      return
+    }
+
+    if (ownsCustomer(existing, currentUser)) {
+      phoneFieldState.status = 'own'
+      setPhoneFieldError(
+        `مشتری با این شماره از قبل متعلق به شماست (${existing.id})` +
+        (lastActivity ? `. آخرین فعالیت: ${formatActivityLabel(lastActivity)}` : ''),
+        i
+      )
+      updatePreviewId()
+      return
+    }
+
+    const recentOther = hasRecentActivityByOther(existing, data.followups, currentUser?.phone, 30)
+    if (recentOther) {
+      phoneFieldState.status = 'blocked'
+      setPhoneFieldError(
+        `مشتری با این شماره از قبل وجود دارد و در ۳۰ روز اخیر توسط کارشناس دیگری روی آن فعالیت ثبت شده؛ امکان ثبت/انتقال نیست. آخرین فعالیت: ${formatActivityLabel(lastActivity)}`,
+        i
+      )
+      updatePreviewId()
+      return
+    }
+
+    phoneFieldState.status = 'transferable'
+    setPhoneFieldHint(
+      `مشتری با این شماره از قبل وجود دارد (کارشناس فعلی: ${existing.advisor || '—'}، ${existing.id}). ` +
+      `آخرین فعالیت: ${formatActivityLabel(lastActivity)}. با ذخیره، مشتری و تمام گزارش‌ها به کارشناس انتخاب‌شده منتقل می‌شود.`,
+      'warning'
     )
+    updatePreviewId()
     return
   }
 
-  if (ownsCustomer(existing, currentUser)) {
-    phoneFieldState.status = 'own'
-    setPhoneFieldError(
-      `مشتری با این شماره از قبل متعلق به شماست (${existing.id})` +
-      (lastActivity ? `. آخرین فعالیت: ${formatActivityLabel(lastActivity)}` : '')
-    )
-    return
-  }
-
-  const recentOther = hasRecentActivityByOther(existing, data.followups, currentUser?.phone, 30)
-  if (recentOther) {
-    phoneFieldState.status = 'blocked'
-    setPhoneFieldError(
-      `مشتری با این شماره از قبل وجود دارد و در ۳۰ روز اخیر توسط کارشناس دیگری روی آن فعالیت ثبت شده؛ امکان ثبت/انتقال نیست. آخرین فعالیت: ${formatActivityLabel(lastActivity)}`
-    )
-    return
-  }
-
-  phoneFieldState.status = 'transferable'
-  setPhoneFieldHint(
-    `مشتری با این شماره از قبل وجود دارد (کارشناس فعلی: ${existing.advisor || '—'}، ${existing.id}). ` +
-    `آخرین فعالیت: ${formatActivityLabel(lastActivity)}. با ذخیره، مشتری و تمام گزارش‌ها به کارشناس انتخاب‌شده منتقل می‌شود.`,
-    'warning'
-  )
+  phoneFieldState.status = 'ok'
+  updatePreviewId()
 }
 
 async function updatePreviewId() {
   if (document.getElementById('editCustomerId').value) return
-  const phone = document.getElementById('customerPhone').value.trim()
-  const type = phone ? 'CS' : 'LD'
+  const phones = getFormPhones()
+  const type = phones.length ? 'CS' : 'LD'
   document.getElementById('customerIdDisplay').value = await peekNextId(type)
-  document.getElementById('customerIdHint').textContent = phone
+  document.getElementById('customerIdHint').textContent = phones.length
     ? 'شماره وارد شد → مشتری (CS)'
     : 'بدون شماره → لید (LD)'
 }
@@ -462,26 +593,42 @@ export async function saveCustomer() {
   const platformId = document.getElementById('customerPlatformId').value.trim()
   const platform = document.getElementById('customerPlatform').value
   const name = document.getElementById('customerName').value.trim()
-  const phoneRaw = document.getElementById('customerPhone').value.trim()
-  const phone = phoneRaw ? normalizePhone(phoneRaw) : ''
+  const phones = getFormPhones()
+  const phone = phones[0] || ''
   const status = document.getElementById('customerStatus').value
   const notes = document.getElementById('customerNotes').value.trim()
   const advisorSelectValue = document.getElementById('customerAdvisor').value
   const { advisor, advisorPhone } = resolveAdvisor(advisorSelectValue, users)
+  const phoneFields = { phone, phones }
 
   // Re-run live validation
   onCustomerPhoneInput()
 
-  if (phone && !/^09\d{9}$/.test(phone)) {
-    setPhoneFieldError('فرمت شماره موبایل صحیح نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹)')
-    document.getElementById('customerPhone')?.focus()
+  // Reject incomplete / invalid raw slots
+  for (let i = 0; i < phoneSlots.length; i++) {
+    const raw = String(phoneSlots[i] || '').trim()
+    if (!raw) continue
+    const n = normalizePhone(raw)
+    if (!/^09\d{9}$/.test(n)) {
+      setPhoneFieldError('فرمت شماره موبایل صحیح نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹)', i)
+      document.querySelector(`#customerPhonesList .customer-phone-input[data-index="${i}"]`)?.focus()
+      return
+    }
+  }
+
+  if (phoneFieldState.status === 'duplicate' || phoneFieldState.status === 'incomplete') {
+    document.querySelector(`#customerPhonesList .customer-phone-input[data-index="${phoneFieldState.index}"]`)?.focus()
     return
+  }
+
+  const focusPhoneIndex = (idx = 0) => {
+    document.querySelector(`#customerPhonesList .customer-phone-input[data-index="${idx}"]`)?.focus()
   }
 
   if (!editId) {
     // === CREATE ===
     if (phoneFieldState.status === 'blocked' || phoneFieldState.status === 'taken') {
-      document.getElementById('customerPhone')?.focus()
+      focusPhoneIndex(phoneFieldState.index)
       return
     }
     if (phoneFieldState.status === 'own' && phoneFieldState.customer) {
@@ -493,11 +640,11 @@ export async function saveCustomer() {
 
     const existById = platformId && data.customers.find(c => c.platformId && c.platformId.toLowerCase() === platformId.toLowerCase())
     if (existById) {
-      if (phone && !existById.phone) {
+      if (phones.length && !getCustomerPhones(existById).length) {
         const idx = data.customers.findIndex(c => c.id === existById.id)
         if (idx === -1) return
         const wasLD = existById.id.startsWith('LD')
-        const updatedFields = { platformId, platform, name, phone, status, notes, advisor, advisorPhone }
+        const updatedFields = { platformId, platform, name, ...phoneFields, status, notes, advisor, advisorPhone }
 
         if (wasLD) {
           const newId = await generateId('CS')
@@ -534,15 +681,15 @@ export async function saveCustomer() {
     // Transfer existing customer when phone is free of recent activity
     if (phoneFieldState.status === 'transferable' && phoneFieldState.customer) {
       await transferCustomerOwnership(phoneFieldState.customer, {
-        platformId, platform, name, phone, status, notes, advisor, advisorPhone
+        platformId, platform, name, ...phoneFields, status, notes, advisor, advisorPhone
       }, users)
       return
     }
 
-    const type = phone ? 'CS' : 'LD'
+    const type = phones.length ? 'CS' : 'LD'
     const id = await generateId(type)
     const newCustomer = {
-      id, platformId, platform, name, phone, status, notes, advisor, advisorPhone,
+      id, platformId, platform, name, ...phoneFields, status, notes, advisor, advisorPhone,
       nextFollowupDate: '', products: [], createdAt: new Date().toISOString(),
       customerLevel: '', customerLevelLocked: false, referredByPhone: ''
     }
@@ -550,12 +697,24 @@ export async function saveCustomer() {
     data.customers.push(newCustomer)
   } else {
     // === EDIT ===
-    // Block changing phone to one that already exists on another customer
-    const dupByPhone = phone && findCustomerByPhone(phone, data.customers, editId)
-    if (dupByPhone) {
-      setPhoneFieldError(`این شماره از قبل برای مشتری ${dupByPhone.id} ثبت شده و قابل تغییر نیست`)
-      document.getElementById('customerPhone')?.focus()
+    if (phoneFieldState.status === 'taken') {
+      setPhoneFieldError(
+        phoneFieldState.customer
+          ? `این شماره از قبل برای مشتری ${phoneFieldState.customer.id} ثبت شده و قابل تغییر نیست`
+          : 'این شماره از قبل برای مشتری دیگری ثبت شده است',
+        phoneFieldState.index
+      )
+      focusPhoneIndex(phoneFieldState.index)
       return
+    }
+
+    for (const p of phones) {
+      const dupByPhone = findCustomerByPhone(p, data.customers, editId)
+      if (dupByPhone) {
+        setPhoneFieldError(`این شماره از قبل برای مشتری ${dupByPhone.id} ثبت شده و قابل تغییر نیست`)
+        focusPhoneIndex()
+        return
+      }
     }
 
     const dupById = platformId && data.customers.find(c => c.id !== editId && c.platformId && c.platformId.toLowerCase() === platformId.toLowerCase())
@@ -569,16 +728,16 @@ export async function saveCustomer() {
         return
       }
       const wasLD = oldCustomer.id.startsWith('LD')
-      const nowHasPhone = phone && phone.length > 0
+      const nowHasPhone = phones.length > 0
       const advisorFields = { advisor, advisorPhone }
 
       if (wasLD && nowHasPhone) {
         const newId = await generateId('CS')
         try {
-          await saveCustomerToDB({ ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, ...advisorFields })
+          await saveCustomerToDB({ ...oldCustomer, id: newId, platformId, platform, name, ...phoneFields, status, notes, ...advisorFields })
           await updateFollowupsCustomerId(oldCustomer.id, newId)
           await saveSetting('convertedCount', (data.convertedCount || 0) + 1)
-          data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, ...advisorFields }
+          data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, ...phoneFields, status, notes, ...advisorFields }
           data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
           data.convertedCount = (data.convertedCount || 0) + 1
           await renderCustomers()
@@ -594,9 +753,9 @@ export async function saveCustomer() {
       if (!wasLD && !nowHasPhone && oldCustomer.id.startsWith('CS')) {
         const newId = await generateId('LD')
         try {
-          await saveCustomerToDB({ ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, ...advisorFields })
+          await saveCustomerToDB({ ...oldCustomer, id: newId, platformId, platform, name, ...phoneFields, status, notes, ...advisorFields })
           await updateFollowupsCustomerId(oldCustomer.id, newId)
-          data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, phone, status, notes, ...advisorFields }
+          data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, ...phoneFields, status, notes, ...advisorFields }
           data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
           await renderCustomers()
           closeCustomerModal()
@@ -608,7 +767,7 @@ export async function saveCustomer() {
         return
       }
 
-      const updated = { ...oldCustomer, platformId, platform, name, phone, status, notes, ...advisorFields }
+      const updated = { ...oldCustomer, platformId, platform, name, ...phoneFields, status, notes, ...advisorFields }
       await saveCustomerToDB(updated)
       data.customers[idx] = updated
     }
@@ -639,12 +798,14 @@ async function transferCustomerOwnership(existing, fields, users) {
 
   const oldAdvisor = existing.advisor || '—'
   const { advisor, advisorPhone } = fields
+  const phones = normalizeCustomerPhones(fields.phones || fields.phone || existing)
   const updated = {
     ...existing,
     platformId: fields.platformId || existing.platformId,
     platform: fields.platform || existing.platform,
     name: fields.name || existing.name,
-    phone: fields.phone || existing.phone,
+    phones,
+    phone: phones[0] || '',
     status: fields.status || existing.status,
     notes: fields.notes !== undefined && fields.notes !== '' ? fields.notes : existing.notes,
     advisor,
@@ -797,7 +958,11 @@ export async function openCustomerDetail(id) {
       </div>
       <div class="detail-field">
         <span class="detail-label">شماره تماس</span>
-        <span class="detail-value" style="direction:ltr;text-align:right;">${escapeHtml(c.phone) || '—'}</span>
+        <span class="detail-value" style="direction:ltr;text-align:right;">${(() => {
+          const phones = getCustomerPhones(c)
+          if (!phones.length) return '—'
+          return phones.map(p => escapeHtml(p)).join('<br>')
+        })()}</span>
       </div>
       <div class="detail-field">
         <span class="detail-label">کارشناس مسئول</span>

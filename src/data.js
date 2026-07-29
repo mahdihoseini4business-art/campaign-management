@@ -4,6 +4,38 @@
 
 import { supabase } from './supabase.js'
 
+function toEnDigitsLocal(str) {
+  return String(str || '').replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+}
+
+function normalizePhoneLocal(phone) {
+  let p = toEnDigitsLocal(String(phone || '').replace(/[\s\-()]/g, ''))
+  if (p.startsWith('+98')) p = '0' + p.slice(3)
+  else if (p.startsWith('98') && p.length >= 12) p = '0' + p.slice(2)
+  else if (p.length === 10 && p.startsWith('9')) p = '0' + p
+  return p
+}
+
+/** Local normalizer to avoid circular import with utils.js */
+function normalizeCustomerPhonesLocal(source) {
+  let raw = []
+  if (Array.isArray(source)) raw = source
+  else if (source && typeof source === 'object') {
+    if (Array.isArray(source.phones) && source.phones.length) raw = source.phones
+    else if (source.phone) raw = [source.phone]
+  }
+  const seen = new Set()
+  const out = []
+  for (const item of raw) {
+    const n = normalizePhoneLocal(item)
+    if (!n || !/^09\d{9}$/.test(n) || seen.has(n)) continue
+    seen.add(n)
+    out.push(n)
+    if (out.length >= 3) break
+  }
+  return out
+}
+
 let data = { customers: [], followups: [], convertedCount: 0, destinationBanks: [], platforms: [], statuses: [] }
 
 const DEFAULT_PLATFORMS = [
@@ -52,23 +84,30 @@ export async function loadData() {
   }
 
   // Map DB rows to app format
-  data.customers = (customersRes.data || []).map(c => ({
-    id: c.id,
-    platformId: c.platform_id || '',
-    platform: c.platform || 'instagram',
-    name: c.name || '',
-    phone: c.phone || '',
-    status: c.status || 'new',
-    notes: c.notes || '',
-    advisor: c.advisor || '',
-    advisorPhone: c.advisor_phone || '',
-    nextFollowupDate: c.next_followup_date || '',
-    products: c.products || [],
-    createdAt: c.created_at || null,
-    customerLevel: c.customer_level || '',
-    customerLevelLocked: !!c.customer_level_locked,
-    referredByPhone: c.referred_by_phone || ''
-  }))
+  data.customers = (customersRes.data || []).map(c => {
+    const phones = normalizeCustomerPhonesLocal({
+      phones: c.phones,
+      phone: c.phone || ''
+    })
+    return {
+      id: c.id,
+      platformId: c.platform_id || '',
+      platform: c.platform || 'instagram',
+      name: c.name || '',
+      phones,
+      phone: phones[0] || '',
+      status: c.status || 'new',
+      notes: c.notes || '',
+      advisor: c.advisor || '',
+      advisorPhone: c.advisor_phone || '',
+      nextFollowupDate: c.next_followup_date || '',
+      products: c.products || [],
+      createdAt: c.created_at || null,
+      customerLevel: c.customer_level || '',
+      customerLevelLocked: !!c.customer_level_locked,
+      referredByPhone: c.referred_by_phone || ''
+    }
+  })
 
   data.followups = (followupsRes.data || []).map(f => ({
     id: f.id,
@@ -187,12 +226,14 @@ export function getData() {
 // ============================================
 
 export async function saveCustomerToDB(customer) {
+  const phones = normalizeCustomerPhonesLocal(customer)
   const row = {
     id: customer.id,
     platform_id: customer.platformId || '',
     platform: customer.platform || 'instagram',
     name: customer.name || '',
-    phone: customer.phone || '',
+    phone: phones[0] || '',
+    phones,
     status: customer.status || 'new',
     notes: customer.notes || '',
     advisor: customer.advisor || '',
@@ -204,7 +245,12 @@ export async function saveCustomerToDB(customer) {
     referred_by_phone: customer.referredByPhone || ''
   }
 
-  const { error } = await supabase.from('customers').upsert(row, { onConflict: 'id' })
+  let { error } = await supabase.from('customers').upsert(row, { onConflict: 'id' })
+  // Graceful fallback before migration 007 is applied
+  if (error && /phones/i.test(error.message || '')) {
+    const { phones: _omit, ...legacy } = row
+    ;({ error } = await supabase.from('customers').upsert(legacy, { onConflict: 'id' }))
+  }
   if (error) throw new Error('خطا در ذخیره مشتری: ' + error.message)
 }
 

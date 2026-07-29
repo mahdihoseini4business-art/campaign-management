@@ -4,7 +4,8 @@ import {
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
   getProductBalance, getProductPayments, getPaymentEntryStatus,
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, createPayment, formatSoldAt24h, normalizePhone,
-  formatCustomerLevel, parseCustomerLevel, syncCustomerLevel
+  formatCustomerLevel, parseCustomerLevel, syncCustomerLevel,
+  normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
@@ -67,7 +68,7 @@ const EXPORT_CONFIG = {
   customers: {
     label: 'مشتریان',
     headers: [
-      'شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'وضعیت', 'سطح مشتری', 'کارشناس',
+      'شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'شماره ۲', 'شماره ۳', 'وضعیت', 'سطح مشتری', 'کارشناس',
       'تعداد پیگیری', 'آخرین پیگیری', 'پیگیری بعدی', 'توضیحات'
     ],
     getRows: () => {
@@ -84,12 +85,15 @@ const EXPORT_CONFIG = {
         const level = c.customerLevelLocked
           ? (c.customerLevel || '')
           : syncCustomerLevel(c, data.customers, data.followups)
+        const phones = getCustomerPhones(c)
         return [
           c.id,
           c.platformId || '',
           getPlatformLabels()[c.platform] || c.platform || '',
           c.name || '',
-          c.phone || '',
+          phones[0] || '',
+          phones[1] || '',
+          phones[2] || '',
           getStatusLabels()[c.status] || c.status || '',
           formatCustomerLevel(level) === '—' ? '' : formatCustomerLevel(level),
           c.advisor || '',
@@ -152,7 +156,7 @@ const EXPORT_CONFIG = {
         const base = [
           c.id,
           c.name || c.platformId || '',
-          c.phone || '',
+          getCustomerPhones(c).join(' / ') || '',
           getPlatformLabels()[c.platform] || c.platform || '',
           p.name || '',
           p.status || '',
@@ -232,7 +236,9 @@ const IMPORT_FIELDS = [
   { key: 'platformId', label: 'ایدی پلتفرم' },
   { key: 'platform', label: 'پلتفرم' },
   { key: 'name', label: 'نام' },
-  { key: 'phone', label: 'شماره تماس', aliases: ['شماره', 'شماره موبایل'] },
+  { key: 'phone', label: 'شماره تماس', aliases: ['شماره', 'شماره موبایل', 'شماره ۱', 'شماره 1'] },
+  { key: 'phone2', label: 'شماره تماس ۲', aliases: ['شماره ۲', 'شماره 2', 'موبایل ۲'] },
+  { key: 'phone3', label: 'شماره تماس ۳', aliases: ['شماره ۳', 'شماره 3', 'موبایل ۳'] },
   { key: 'status', label: 'وضعیت' },
   { key: 'customerLevel', label: 'سطح مشتری', aliases: ['سطح'] },
   { key: 'referredByPhone', label: 'شماره معرف', aliases: ['معرف'] },
@@ -353,10 +359,14 @@ export async function doImport() {
     }
 
     const phone = toEnDigits(getValue('phone'))
+    const phone2 = toEnDigits(getValue('phone2'))
+    const phone3 = toEnDigits(getValue('phone3'))
+    const phones = normalizeCustomerPhones([phone, phone2, phone3])
+    const primaryPhone = phones[0] || ''
     const importId = getValue('id')
     let platformId = getValue('platformId')
-    if (!platformId && phone) {
-      const cleanPhone = phone.replace(/^0/, '+98')
+    if (!platformId && primaryPhone) {
+      const cleanPhone = primaryPhone.replace(/^0/, '+98')
       platformId = `telegram.me/${cleanPhone}`
     } else if (!platformId) {
       platformId = `auto_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
@@ -371,13 +381,11 @@ export async function doImport() {
     const existByPlatform = data.customers.find(c =>
       (c.platformId || '').toLowerCase() === platformId.toLowerCase()
     )
-    const existByPhone = phone && data.customers.find(c =>
-      c.phone && (c.phone === phone || normalizePhone(c.phone) === normalizePhone(phone))
-    )
+    const existByPhone = phones.some(p => findCustomerByPhone(p, data.customers))
 
     if (existById || existByPlatform || existByPhone) { skipped++; continue }
 
-    const type = phone ? 'CS' : 'LD'
+    const type = phones.length ? 'CS' : 'LD'
     const currentUser = getCurrentUser()
     const advisorRaw = getValue('advisor') || (currentUser ? (currentUser.phone || currentUser.displayName) : '')
     const { advisor, advisorPhone } = resolveAdvisor(advisorRaw, users)
@@ -390,7 +398,8 @@ export async function doImport() {
       platformId,
       platform,
       name: getValue('name'),
-      phone,
+      phone: primaryPhone,
+      phones,
       status,
       notes: getValue('notes'),
       nextFollowupDate: getValue('nextFollowupDate') || '',
@@ -564,9 +573,7 @@ export async function doSalesImport() {
     let customer = null
     if (customerId) customer = data.customers.find(c => c.id === customerId)
     if (!customer && phone) {
-      customer = data.customers.find(c =>
-        c.phone && (c.phone === phone || normalizePhone(c.phone) === normalizePhone(phone))
-      )
+      customer = findCustomerByPhone(phone, data.customers)
     }
 
     if (!customer) {
@@ -578,12 +585,14 @@ export async function doSalesImport() {
       const { advisor, advisorPhone } = resolveAdvisor(advisorRaw, users)
       const platformRaw = getValue('platform').toLowerCase()
       const platform = buildPlatformImportMap()[platformRaw] || platformRaw || 'instagram'
+      const phones = normalizeCustomerPhones([phone])
       customer = {
         id,
         platformId: '',
         platform,
         name,
-        phone,
+        phone: phones[0] || '',
+        phones,
         status: 'new',
         notes: 'خودکار ایجاد شده از ایمپورت فروش',
         advisor,

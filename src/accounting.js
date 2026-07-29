@@ -3,7 +3,8 @@ import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
   requirePermission, getCurrentUser, normalizePhone, getNowJalaliDateTime,
   ensureProductPayments, syncProductStatus, getPaymentEntryStatus,
-  PAYMENT_STATUS, PAYMENT_STATUS_LABELS, formatSoldAt24h, matchesTabSearch
+  PAYMENT_STATUS, PAYMENT_STATUS_LABELS, formatSoldAt24h, matchesTabSearch,
+  getCustomerPhones, getPrimaryPhone
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSales } from './sales.js'
@@ -27,7 +28,8 @@ export function getAllPayments() {
           productIndex,
           paymentIndex,
           customerName: c.name || c.platformId || c.id,
-          customerPhone: c.phone || '',
+          customerPhone: getPrimaryPhone(c),
+          customerPhones: getCustomerPhones(c),
           advisor: c.advisor || '',
           advisorPhone: c.advisorPhone || '',
           productName: product.name || '',
@@ -75,6 +77,7 @@ export function renderAccounting() {
         p.customerId,
         p.customerName,
         p.customerPhone,
+        ...(p.customerPhones || []),
         p.depositorName,
         p.productName,
         p.advisor,
@@ -123,7 +126,14 @@ export function renderAccounting() {
     return `<tr>
       <td><span class="id-badge ${p.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(p.customerId)}')">${escapeHtml(p.customerId)}</span></td>
       <td>${escapeHtml(p.customerName)}</td>
-      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(p.customerPhone) || '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${(() => {
+        const phones = p.customerPhones || (p.customerPhone ? [p.customerPhone] : [])
+        if (!phones.length) return '—'
+        const extra = phones.length > 1
+          ? ` <span style="color:var(--text-muted);font-size:11px;" title="${escapeAttr(phones.slice(1).join('، '))}">+${phones.length - 1}</span>`
+          : ''
+        return `${escapeHtml(phones[0])}${extra}`
+      })()}</td>
       <td>${escapeHtml(p.advisor) || '—'}</td>
       <td>${escapeHtml(p.productName)}</td>
       <td>${escapeHtml(p.productStatus)}</td>
