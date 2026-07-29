@@ -493,6 +493,39 @@ export async function saveCustomer() {
 
     const existById = platformId && data.customers.find(c => c.platformId && c.platformId.toLowerCase() === platformId.toLowerCase())
     if (existById) {
+      if (phone && !existById.phone) {
+        const idx = data.customers.findIndex(c => c.id === existById.id)
+        if (idx === -1) return
+        const wasLD = existById.id.startsWith('LD')
+        const updatedFields = { platformId, platform, name, phone, status, notes, advisor, advisorPhone }
+
+        if (wasLD) {
+          const newId = await generateId('CS')
+          try {
+            await saveCustomerToDB({ ...existById, ...updatedFields, id: newId })
+            await updateFollowupsCustomerId(existById.id, newId)
+            await saveSetting('convertedCount', (data.convertedCount || 0) + 1)
+            data.customers[idx] = { ...existById, ...updatedFields, id: newId }
+            data.followups.forEach(f => { if (f.customerId === existById.id) f.customerId = newId })
+            data.convertedCount = (data.convertedCount || 0) + 1
+            await renderCustomers()
+            closeCustomerModal()
+            showToast(`شماره ثبت شد — ${existById.id} تبدیل شد به ${newId}`)
+          } catch (e) {
+            console.error('LD→CS conversion error:', e)
+            showToast('خطا در تبدیل مشتری')
+          }
+          return
+        }
+
+        const updated = { ...existById, ...updatedFields }
+        await saveCustomerToDB(updated)
+        data.customers[idx] = updated
+        await renderCustomers()
+        closeCustomerModal()
+        showToast(`مشتری ${existById.id} با شماره جدید به‌روزرسانی شد`)
+        return
+      }
       openCustomerDetail(existById.id)
       showToast(`این ایدی قبلاً ثبت شده — پنل مشتری ${existById.id} باز شد`)
       return
