@@ -1,9 +1,10 @@
-import { getData } from './data.js'
+import { getData, getPlatforms } from './data.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser,
   jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr,
   canViewScopedCustomer, formatSoldAt24h, matchesTabSearch,
   getPlatformLabels, getPlatformClass, PAYMENT_STATUS_LABELS,
+  CUSTOMER_LEVELS, resolveCustomerLevel,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
   getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
   productHasRejectedPayment, getProductPayments
@@ -62,6 +63,9 @@ export function getAllSales() {
 
 export function getFilteredSales() {
   const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
+  const platformFilter = document.getElementById('filterSalesPlatform')?.value || ''
+  const levelFilter = document.getElementById('filterSalesLevel')?.value || ''
+  const payStatusFilter = document.getElementById('filterSalesPaymentStatus')?.value || ''
   let allSales = getAllSales()
 
   const currentUser = getCurrentUser()
@@ -88,6 +92,12 @@ export function getFilteredSales() {
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
     const customer = data.customers.find(c => c.id === s.customerId)
     if (!canViewScopedCustomer(customer, currentUser)) return false
+    if (platformFilter && s.platform !== platformFilter) return false
+    if (payStatusFilter && s.paymentStatus !== payStatusFilter) return false
+    if (levelFilter && customer) {
+      const resolved = resolveCustomerLevel(customer, data.customers, data.followups)
+      if (resolved !== levelFilter) return false
+    }
     return true
   })
 
@@ -154,9 +164,35 @@ function renderSalesRows(allSales) {
   }).join('')
 }
 
+function populateSalesFilterDropdowns() {
+  const pSel = document.getElementById('filterSalesPlatform')
+  if (pSel) {
+    const val = pSel.value
+    pSel.innerHTML = '<option value="">همه پلتفرم‌ها</option>' +
+      getPlatforms().map(p => `<option value="${escapeAttr(p.key)}">${escapeHtml(p.label)}</option>`).join('')
+    pSel.value = val
+  }
+  const lSel = document.getElementById('filterSalesLevel')
+  if (lSel) {
+    const val = lSel.value
+    lSel.innerHTML = '<option value="">همه سطوح</option>' +
+      Object.values(CUSTOMER_LEVELS).map(l => `<option value="${escapeAttr(l.key)}">${l.emoji} ${escapeHtml(l.label)}</option>`).join('')
+    lSel.value = val
+  }
+  const sSel = document.getElementById('filterSalesPaymentStatus')
+  if (sSel) {
+    const val = sSel.value
+    sSel.innerHTML = '<option value="">همه وضعیت‌ها</option>' +
+      Object.entries(PAYMENT_STATUS_LABELS).map(([k, v]) => `<option value="${escapeAttr(k)}">${escapeHtml(v)}</option>`).join('')
+    sSel.value = val
+  }
+}
+
 export function renderSales() {
   const tbody = document.getElementById('salesBody')
   const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
+
+  populateSalesFilterDropdowns()
 
   let allSales = getFilteredSales()
 

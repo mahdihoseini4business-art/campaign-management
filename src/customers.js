@@ -45,6 +45,9 @@ export function getFilteredCustomers() {
   const data = getData()
   const search = toEnDigits(document.getElementById('searchCustomers')?.value || '').toLowerCase()
   const advisorFilter = document.getElementById('filterAdvisor')?.value || ''
+  const platformFilter = document.getElementById('filterPlatform')?.value || ''
+  const statusFilter = document.getElementById('filterStatus')?.value || ''
+  const levelFilter = document.getElementById('filterCustomerLevel')?.value || ''
   const currentUser = getCurrentUser()
 
   return data.customers.filter(c => {
@@ -66,12 +69,41 @@ export function getFilteredCustomers() {
     if (isCS && !hasPermission('customers_cs')) return false
     if (isLD && !hasPermission('customers_ld')) return false
 
-    // Empty search → scoped customers (self + granted). Active search → whole DB.
     if (!search && !canViewScopedCustomer(c, currentUser)) return false
 
     if (advisorFilter && normalizePhone(c.advisorPhone) !== normalizePhone(advisorFilter)) return false
+    if (platformFilter && c.platform !== platformFilter) return false
+    if (statusFilter && c.status !== statusFilter) return false
+    if (levelFilter) {
+      const resolved = resolveCustomerLevel(c, data.customers, data.followups)
+      if (resolved !== levelFilter) return false
+    }
     return true
   })
+}
+
+function populateCustomerFilterDropdowns() {
+  const platformSelect = document.getElementById('filterPlatform')
+  if (platformSelect) {
+    const val = platformSelect.value
+    platformSelect.innerHTML = '<option value="">همه پلتفرم‌ها</option>' +
+      getPlatforms().map(p => `<option value="${escapeAttr(p.key)}">${escapeHtml(p.label)}</option>`).join('')
+    platformSelect.value = val
+  }
+  const statusSelect = document.getElementById('filterStatus')
+  if (statusSelect) {
+    const val = statusSelect.value
+    statusSelect.innerHTML = '<option value="">همه وضعیت‌ها</option>' +
+      getStatuses().map(s => `<option value="${escapeAttr(s.key)}">${escapeHtml(s.label)}</option>`).join('')
+    statusSelect.value = val
+  }
+  const levelSelect = document.getElementById('filterCustomerLevel')
+  if (levelSelect) {
+    const val = levelSelect.value
+    levelSelect.innerHTML = '<option value="">همه سطوح</option>' +
+      Object.values(CUSTOMER_LEVELS).map(l => `<option value="${escapeAttr(l.key)}">${l.emoji} ${escapeHtml(l.label)}</option>`).join('')
+    levelSelect.value = val
+  }
 }
 
 export async function renderCustomers() {
@@ -81,7 +113,8 @@ export async function renderCustomers() {
   const search = toEnDigits(document.getElementById('searchCustomers').value).toLowerCase()
   const advisorFilter = document.getElementById('filterAdvisor').value
 
-  // Render customers immediately (don't wait for users)
+  populateCustomerFilterDropdowns()
+
   const currentUser = getCurrentUser()
   const filtered = getFilteredCustomers()
 

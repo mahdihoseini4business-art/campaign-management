@@ -277,6 +277,15 @@
       <select class="form-select" id="filterAdvisor" style="width:150px;" onchange="app.renderCustomers()">
         <option value="">همه کارشناسان</option>
       </select>
+      <select class="form-select" id="filterPlatform" style="width:150px;" onchange="app.renderCustomers()">
+        <option value="">همه پلتفرم‌ها</option>
+      </select>
+      <select class="form-select" id="filterStatus" style="width:150px;" onchange="app.renderCustomers()">
+        <option value="">همه وضعیت‌ها</option>
+      </select>
+      <select class="form-select" id="filterCustomerLevel" style="width:150px;" onchange="app.renderCustomers()">
+        <option value="">همه سطوح</option>
+      </select>
       <button class="btn" data-perm="customers_export" onclick="app.exportTabCSV('customers')">خروجی CSV</button>
       <button class="btn" data-perm="customers_export" onclick="app.exportTabXLSX('customers')">خروجی Excel</button>
       <button class="btn" data-perm="customers_import" onclick="app.openImportModal()">ایمپورت اکسل</button>
@@ -365,6 +374,15 @@
       </select>
       <span id="bulkCountSales" style="display:none;font-size:13px;color:var(--text-muted);"></span>
       <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchSales" oninput="app.renderSales()">
+      <select class="form-select" id="filterSalesPlatform" style="width:150px;" onchange="app.renderSales()">
+        <option value="">همه پلتفرم‌ها</option>
+      </select>
+      <select class="form-select" id="filterSalesLevel" style="width:150px;" onchange="app.renderSales()">
+        <option value="">همه سطوح</option>
+      </select>
+      <select class="form-select" id="filterSalesPaymentStatus" style="width:150px;" onchange="app.renderSales()">
+        <option value="">همه وضعیت‌ها</option>
+      </select>
       <button class="btn" data-perm="sales_export" onclick="app.exportTabCSV('sales')">خروجی CSV</button>
       <button class="btn" data-perm="sales_export" onclick="app.exportTabXLSX('sales')">خروجی Excel</button>
       <button class="btn btn-primary" data-perm="sales_import" onclick="app.openSalesImportModal()">ایمپورت فروش از اکسل</button>
