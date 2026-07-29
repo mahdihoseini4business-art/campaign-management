@@ -466,7 +466,8 @@ export async function renderDashboard() {
   const totalCash = cashSales.reduce((sum, s) => sum + s.price, 0)
   const totalDeposit = depositSales.reduce((sum, s) => sum + s.deposit, 0)
   const totalBalance = depositSales.reduce((sum, s) => sum + s.balance, 0)
-  const totalAll = allSales.reduce((sum, s) => sum + s.price, 0)
+  // Actual received: full price of completed + approved deposits (not unpaid remainder)
+  const totalAll = totalCash + totalDeposit
 
   document.getElementById('dash-sales-count').textContent = allSales.length
   document.getElementById('dash-sales-cash').textContent = formatNumber(totalCash) + ' ریال'

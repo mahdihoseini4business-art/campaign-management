@@ -287,7 +287,8 @@ export function renderSales() {
   const totalCash = cashSales.reduce((sum, s) => sum + s.price, 0)
   const totalDeposit = depositSales.reduce((sum, s) => sum + s.deposit, 0)
   const totalBalance = depositSales.reduce((sum, s) => sum + s.balance, 0)
-  const totalAll = countable.reduce((sum, s) => sum + s.price, 0)
+  // Actual received: full price of completed + approved deposits (not unpaid remainder)
+  const totalAll = totalCash + totalDeposit
 
   document.getElementById('stat-sales-count').textContent = countable.length
   document.getElementById('stat-sales-cash').textContent = formatNumber(totalCash) + ' ریال'
