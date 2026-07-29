@@ -1,4 +1,5 @@
 import { getData, getPlatforms } from './data.js'
+import { getUsersSafe } from './auth.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser,
   jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr,
@@ -8,7 +9,8 @@ import {
   ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
   getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
   productHasRejectedPayment, getProductPayments,
-  getCustomerPhones, getPrimaryPhone
+  getCustomerPhones, getPrimaryPhone,
+  normalizePhone, normalizeViewUserPhones, userDisplayName
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -36,6 +38,7 @@ export function getAllSales() {
           customerPhone: getPrimaryPhone(c),
           customerPhones: getCustomerPhones(c),
           advisor: c.advisor || '',
+          advisorPhone: normalizePhone(c.advisorPhone || ''),
           platform: c.platform,
           productName: p.name,
           status: p.status,
@@ -66,6 +69,7 @@ export function getAllSales() {
 export function getFilteredSales() {
   const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
   const platformFilter = document.getElementById('filterSalesPlatform')?.value || ''
+  const advisorFilter = document.getElementById('filterSalesAdvisor')?.value || ''
   const levelFilter = document.getElementById('filterSalesLevel')?.value || ''
   const payStatusFilter = document.getElementById('filterSalesPaymentStatus')?.value || ''
   let allSales = getAllSales()
@@ -96,6 +100,10 @@ export function getFilteredSales() {
     const customer = data.customers.find(c => c.id === s.customerId)
     if (!canViewScopedCustomer(customer, currentUser)) return false
     if (platformFilter && s.platform !== platformFilter) return false
+    if (advisorFilter) {
+      const ownerPhone = s.advisorPhone || normalizePhone(customer?.advisorPhone || '')
+      if (ownerPhone !== normalizePhone(advisorFilter)) return false
+    }
     if (payStatusFilter && s.paymentStatus !== payStatusFilter) return false
     if (levelFilter && customer) {
       const resolved = resolveCustomerLevel(customer, data.customers, data.followups)
@@ -196,6 +204,47 @@ function populateSalesFilterDropdowns() {
       Object.entries(PAYMENT_STATUS_LABELS).map(([k, v]) => `<option value="${escapeAttr(k)}">${escapeHtml(v)}</option>`).join('')
     sSel.value = val
   }
+  updateSalesAdvisorFilter()
+}
+
+async function updateSalesAdvisorFilter() {
+  const sel = document.getElementById('filterSalesAdvisor')
+  if (!sel) return
+
+  const currentUser = getCurrentUser()
+  const subordinates = normalizeViewUserPhones(
+    currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones
+  )
+
+  if (!subordinates.length) {
+    sel.style.display = 'none'
+    sel.value = ''
+    return
+  }
+
+  const currentVal = sel.value
+  const users = await getUsersSafe()
+  const byPhone = new Map(
+    users.filter(u => u.phone).map(u => [normalizePhone(u.phone), u])
+  )
+
+  const selfPhone = normalizePhone(currentUser?.phone || '')
+  const options = []
+  if (selfPhone) {
+    const selfUser = byPhone.get(selfPhone)
+    const selfLabel = selfUser ? userDisplayName(selfUser) : 'خودم'
+    options.push({ phone: selfPhone, label: `${selfLabel} (خودم)` })
+  }
+  for (const phone of subordinates) {
+    if (phone === selfPhone) continue
+    const u = byPhone.get(phone)
+    options.push({ phone, label: u ? userDisplayName(u) : phone })
+  }
+
+  sel.innerHTML = '<option value="">همه کارشناسان</option>' +
+    options.map(o => `<option value="${escapeAttr(o.phone)}">${escapeHtml(o.label)}</option>`).join('')
+  sel.value = options.some(o => o.phone === currentVal) ? currentVal : ''
+  sel.style.display = ''
 }
 
 export function renderSales() {

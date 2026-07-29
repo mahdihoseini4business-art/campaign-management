@@ -117,7 +117,7 @@
 <div class="header">
   <div style="display:flex;align-items:center;gap:10px;">
     <img src="/logo.webp" alt="لوگو" style="width:32px;height:32px;border-radius:8px;object-fit:contain;">
-    <h1>مدیریت کمپین دیجیتال مارکتینگ</h1>
+    <h1>OKYAR - سیستم مدیریت عملکرد سازمان</h1>
   </div>
   <div class="header-actions">
     <div class="profile-menu">
@@ -389,6 +389,9 @@
       <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchSales" oninput="app.renderSales()">
       <select class="form-select" id="filterSalesPlatform" style="width:150px;" onchange="app.renderSales()">
         <option value="">همه پلتفرم‌ها</option>
+      </select>
+      <select class="form-select" id="filterSalesAdvisor" style="width:160px;display:none;" onchange="app.renderSales()">
+        <option value="">همه کارشناسان</option>
       </select>
       <select class="form-select" id="filterSalesLevel" style="width:150px;" onchange="app.renderSales()">
         <option value="">همه سطوح</option>
