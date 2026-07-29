@@ -150,31 +150,48 @@ const EXPORT_CONFIG = {
         ensureProductPayments(p)
         syncProductStatus(p)
         const price = parseFloat(p.price) || 0
-        const deposit = getApprovedPaid(p)
-        const balance = getProductBalance(p)
         const pays = getProductPayments(p).filter(pay => (parseFloat(pay.amount) || 0) > 0)
-        const base = [
-          c.id,
-          c.name || c.platformId || '',
-          getCustomerPhones(c).join(' / ') || '',
-          getPlatformLabels()[c.platform] || c.platform || '',
-          p.name || '',
-          p.status || '',
-          price || '',
-          deposit || '',
-          balance || '',
-          p.settlementDate || '',
-          c.advisor || ''
-        ]
+        const phoneStr = getCustomerPhones(c).join(' / ') || ''
+        const platformLabel = getPlatformLabels()[c.platform] || c.platform || ''
         if (pays.length === 0) {
-          rows.push([...base, '', '', '', '', ''])
+          rows.push([
+            c.id,
+            c.name || c.platformId || '',
+            phoneStr,
+            platformLabel,
+            p.name || '',
+            p.status || '',
+            price || '',
+            getApprovedPaid(p) || '',
+            getProductBalance(p) || '',
+            p.settlementDate || '',
+            c.advisor || '',
+            '', '', '', '', ''
+          ])
           return
         }
+        let paidSoFar = 0
         pays.forEach(pay => {
+          const amount = parseFloat(pay.amount) || 0
           const status = getPaymentEntryStatus(pay)
+          // Cumulative paid = sum of non-rejected deposits up to this row
+          if (status !== PAYMENT_STATUS.rejected) {
+            paidSoFar += amount
+          }
+          const balance = Math.max(0, price - paidSoFar)
           rows.push([
-            ...base,
-            parseFloat(pay.amount) || '',
+            c.id,
+            c.name || c.platformId || '',
+            phoneStr,
+            platformLabel,
+            p.name || '',
+            p.status || '',
+            price || '',
+            paidSoFar || '',
+            balance || '',
+            p.settlementDate || '',
+            c.advisor || '',
+            amount || '',
             formatSoldAt24h(pay.soldAt) || pay.soldAt || '',
             pay.depositorName || '',
             pay.destinationBank || '',
