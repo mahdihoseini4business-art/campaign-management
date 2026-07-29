@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0155d2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>سیستم مدیریت کمپین دیجیتال مارکتینگ</title>
+<title>اوکی یار | OKyar</title>
 <link rel="icon" type="image/jpeg" href="public/OKyar-icon.jpeg">
 <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
 <link rel="stylesheet" href="https://unpkg.com/@majidh1/jalalidatepicker/dist/jalalidatepicker.min.css">
@@ -325,14 +325,16 @@
   <!-- شیت فالوآپ‌ها -->
   <div class="sheet" id="sheet-followups" role="tabpanel" aria-labelledby="tab-followups" hidden>
     <div class="stats">
+      <div class="stat-card"><div class="label">پیگیری‌های امروز</div><div class="value" style="color:#ea580c" id="stat-followup-today">0</div></div>
       <div class="stat-card"><div class="label">در انتظار پیگیری</div><div class="value" style="color:var(--warning)" id="stat-followup-waiting">0</div></div>
-      <div class="stat-card"><div class="label">انجام شده</div><div class="value" style="color:var(--success)" id="stat-followup-done">0</div></div>
       <div class="stat-card"><div class="label">معوقه‌ها</div><div class="value" style="color:var(--danger)" id="stat-followup-overdue">0</div></div>
+      <div class="stat-card"><div class="label">انجام شده</div><div class="value" style="color:var(--success)" id="stat-followup-done">0</div></div>
     </div>
 
     <div class="toolbar" style="gap:10px;flex-wrap:wrap;">
       <div class="followup-filters">
-        <button type="button" class="btn followup-filter-btn active" data-filter="waiting" onclick="app.setFollowupFilter('waiting')">در انتظار پیگیری</button>
+        <button type="button" class="btn followup-filter-btn active" data-filter="today" onclick="app.setFollowupFilter('today')">پیگیری‌های امروز</button>
+        <button type="button" class="btn followup-filter-btn" data-filter="waiting" onclick="app.setFollowupFilter('waiting')">در انتظار پیگیری</button>
         <button type="button" class="btn followup-filter-btn" data-filter="overdue" onclick="app.setFollowupFilter('overdue')">معوقه‌ها</button>
         <button type="button" class="btn followup-filter-btn" data-filter="done" onclick="app.setFollowupFilter('done')">انجام شده</button>
       </div>

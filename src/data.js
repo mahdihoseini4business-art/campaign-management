@@ -228,16 +228,22 @@ export async function deleteCustomerFromDB(id) {
 // followups don't have a stable primary key in the app,
 // so we use customer_id + date + type as a soft key
 export async function saveFollowupToDB(followup) {
-  // Check for duplicate (same customer + date + type)
-  const { data: existing } = await supabase.from('followups')
-    .select('id')
-    .eq('customer_id', followup.customerId)
-    .eq('date', followup.date)
-    .eq('type', followup.type)
-    .limit(1)
+  const isDoneNote = followup.status === 'done' ||
+    followup.type === 'پیگیری انجام‌شده' ||
+    followup.type === 'پیگیری معوقه انجام‌شده'
 
-  if (existing && existing.length > 0) {
-    throw new Error('پیگیری تکراری وجود دارد')
+  // Done notes can repeat same day for same customer — skip soft-duplicate check
+  if (!isDoneNote) {
+    const { data: existing } = await supabase.from('followups')
+      .select('id')
+      .eq('customer_id', followup.customerId)
+      .eq('date', followup.date)
+      .eq('type', followup.type)
+      .limit(1)
+
+    if (existing && existing.length > 0) {
+      throw new Error('پیگیری تکراری وجود دارد')
+    }
   }
 
   const baseRow = {
@@ -245,15 +251,13 @@ export async function saveFollowupToDB(followup) {
     date: followup.date,
     type: followup.type,
     result: followup.result,
-    next_date: followup.nextDate,
+    next_date: followup.nextDate || '',
     notes: followup.notes,
     created_by_phone: followup.createdByPhone || null
   }
 
-  // Try with optional done/status columns; fall back if migration not applied yet
-  let inserted = null
-  let error = null
-  if (followup.status || followup.doneAt || followup.wasOverdue) {
+  // Prefer writing status/done columns when present; fall back on any schema error
+  if (isDoneNote || followup.status || followup.doneAt || followup.wasOverdue) {
     const full = await supabase.from('followups').insert({
       ...baseRow,
       status: followup.status || 'pending',
@@ -262,19 +266,16 @@ export async function saveFollowupToDB(followup) {
       done_note: followup.doneNote || null,
       was_overdue: !!followup.wasOverdue
     }).select('id').single()
-    inserted = full.data
-    error = full.error
-    if (error && /column|schema cache/i.test(error.message || '')) {
-      const fallback = await supabase.from('followups').insert(baseRow).select('id').single()
-      inserted = fallback.data
-      error = fallback.error
-    }
-  } else {
-    const res = await supabase.from('followups').insert(baseRow).select('id').single()
-    inserted = res.data
-    error = res.error
+
+    if (!full.error) return full.data ? full.data.id : null
+
+    // Fallback without optional columns
+    const fallback = await supabase.from('followups').insert(baseRow).select('id').single()
+    if (fallback.error) throw new Error('خطا در درج پیگیری: ' + fallback.error.message)
+    return fallback.data ? fallback.data.id : null
   }
 
+  const { data: inserted, error } = await supabase.from('followups').insert(baseRow).select('id').single()
   if (error) throw new Error('خطا در درج پیگیری: ' + error.message)
   return inserted ? inserted.id : null
 }
