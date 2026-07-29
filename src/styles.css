@@ -192,7 +192,7 @@
 
   .search-box:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(237,28,36,0.15);
+    box-shadow: 0 0 0 3px rgba(37,184,139,0.15);
   }
 
   /* --- Buttons --- */
@@ -218,7 +218,7 @@
   .btn:hover:not(.btn-primary):not(.btn-danger) { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
 
   .btn-secondary { background: transparent; color: var(--secondary); border: 1.5px solid var(--secondary); }
-  .btn-secondary:hover { background: rgba(29,28,116,0.1); border-color: var(--secondary); }
+  .btn-secondary:hover { background: rgba(1,85,210,0.1); border-color: var(--secondary); }
 
   .btn-ghost { background: transparent; color: var(--text-secondary); border: none; }
   .btn-ghost:hover { background: var(--row-hover); color: var(--ink); }
@@ -782,7 +782,7 @@
   .product-block select:focus,
   .product-block input:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(237,28,36,0.15);
+    box-shadow: 0 0 0 3px rgba(37,184,139,0.15);
   }
 
   .product-row .product-name,
@@ -1137,7 +1137,7 @@
   .form-select:focus,
   .form-textarea:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(237,28,36,0.15);
+    box-shadow: 0 0 0 3px rgba(37,184,139,0.15);
   }
 
   .form-textarea { resize: vertical; min-height: 80px; height: auto; }
@@ -1162,7 +1162,7 @@
   .form-input.is-invalid,
   .form-select.is-invalid {
     border-color: var(--danger);
-    box-shadow: 0 0 0 3px rgba(237, 28, 36, 0.12);
+    box-shadow: 0 0 0 3px rgba(37,184,139,0.12);
   }
 
   .form-hint.is-warning {
