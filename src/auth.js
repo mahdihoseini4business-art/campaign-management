@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getPlatforms, savePlatforms, getStatuses, saveStatuses } from './data.js'
 
 // ============================================
 // Password Hashing (PBKDF2)
@@ -319,6 +319,8 @@ export async function openSettingsModal() {
   document.getElementById('newRole').value = 'user'
   await renderUsersList()
   renderDestinationBanksSettings()
+  renderPlatformsSettings()
+  renderStatusesSettings()
   document.getElementById('settingsModal').classList.add('active')
   document.getElementById('profileDropdown').classList.remove('active')
 }
@@ -560,6 +562,188 @@ export async function removeDestinationBank(index) {
     console.error('removeDestinationBank error:', e)
     showToast('خطا در حذف بانک')
   }
+}
+
+// ============================================
+// Platforms Settings
+// ============================================
+
+export function renderPlatformsSettings() {
+  const list = document.getElementById('settingsPlatformsList')
+  if (!list) return
+  const platforms = getPlatforms()
+  list.innerHTML = platforms.map((p, idx) => `
+    <div class="settings-config-row" data-idx="${idx}">
+      <span class="platform-dot platform-${escapeAttr(p.key)}" style="background:${escapeAttr(p.color)};"></span>
+      <span style="flex:1;font-size:13px;">${escapeHtml(p.label)}</span>
+      <input type="color" value="${escapeAttr(p.color)}" title="رنگ" style="width:28px;height:28px;border:none;cursor:pointer;padding:0;" onchange="app.updatePlatformField(${idx},'color',this.value)">
+      <button type="button" class="btn-icon" title="ویرایش" onclick="app.editPlatform(${idx})" style="font-size:12px;">✏️</button>
+      <button type="button" class="btn-icon" title="حذف" onclick="app.removePlatform(${idx})" style="color:var(--danger);">🗑</button>
+    </div>
+  `).join('')
+}
+
+export async function addPlatform() {
+  if (!requireMainAdmin()) return
+  const keyInput = document.getElementById('newPlatformKey')
+  const labelInput = document.getElementById('newPlatformLabel')
+  const key = (keyInput?.value || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+  const label = (labelInput?.value || '').trim()
+  if (!key || !label) { showToast('کلید و نام پلتفرم الزامیست'); return }
+  const platforms = getPlatforms()
+  if (platforms.some(p => p.key === key)) { showToast('این کلید قبلاً وجود دارد'); return }
+  try {
+    await savePlatforms([...platforms, { key, label, color: '#888888', linkTemplate: '' }])
+    if (keyInput) keyInput.value = ''
+    if (labelInput) labelInput.value = ''
+    renderPlatformsSettings()
+    showToast('پلتفرم اضافه شد')
+  } catch (e) {
+    console.error('addPlatform error:', e)
+    showToast('خطا در ذخیره پلتفرم')
+  }
+}
+
+export async function removePlatform(index) {
+  if (!requireMainAdmin()) return
+  const platforms = [...getPlatforms()]
+  if (index < 0 || index >= platforms.length) return
+  if (!confirm(`حذف پلتفرم "${platforms[index].label}"؟`)) return
+  platforms.splice(index, 1)
+  try {
+    await savePlatforms(platforms)
+    renderPlatformsSettings()
+    showToast('پلتفرم حذف شد')
+  } catch (e) {
+    showToast('خطا در حذف پلتفرم')
+  }
+}
+
+export async function updatePlatformField(index, field, value) {
+  if (!requireMainAdmin()) return
+  const platforms = [...getPlatforms()]
+  if (!platforms[index]) return
+  platforms[index][field] = value
+  try {
+    await savePlatforms(platforms)
+    renderPlatformsSettings()
+  } catch (e) {
+    showToast('خطا در ذخیره تغییرات')
+  }
+}
+
+export function editPlatform(index) {
+  if (!requireMainAdmin()) return
+  const platforms = getPlatforms()
+  const p = platforms[index]
+  if (!p) return
+  const newLabel = prompt('نام پلتفرم:', p.label)
+  if (newLabel === null) return
+  const newLink = prompt('قالب لینک (از {id} و {phone} استفاده کنید):', p.linkTemplate || '')
+  if (newLink === null) return
+  const updated = [...platforms]
+  updated[index] = { ...p, label: newLabel.trim() || p.label, linkTemplate: newLink.trim() }
+  savePlatforms(updated).then(() => {
+    renderPlatformsSettings()
+    showToast('پلتفرم ویرایش شد')
+  }).catch(() => showToast('خطا در ذخیره'))
+}
+
+// ============================================
+// Statuses Settings
+// ============================================
+
+export function renderStatusesSettings() {
+  const list = document.getElementById('settingsStatusesList')
+  if (!list) return
+  const statuses = getStatuses()
+  list.innerHTML = statuses.map((s, idx) => `
+    <div class="settings-config-row" data-idx="${idx}" draggable="true" ondragstart="app.onStatusDragStart(event,${idx})" ondragover="app.onStatusDragOver(event)" ondrop="app.onStatusDrop(event,${idx})">
+      <span class="drag-handle" title="جابجایی">☰</span>
+      <span class="status-badge status-${escapeAttr(s.key)}" style="background:${escapeAttr(s.bgColor)};color:${escapeAttr(s.textColor)};">${escapeHtml(s.label)}</span>
+      <span style="flex:1;"></span>
+      <input type="color" value="${escapeAttr(s.bgColor)}" title="رنگ پس‌زمینه" style="width:28px;height:28px;border:none;cursor:pointer;padding:0;" onchange="app.updateStatusField(${idx},'bgColor',this.value)">
+      <input type="color" value="${escapeAttr(s.textColor)}" title="رنگ متن" style="width:24px;height:24px;border:none;cursor:pointer;padding:0;" onchange="app.updateStatusField(${idx},'textColor',this.value)">
+      <button type="button" class="btn-icon" title="ویرایش" onclick="app.editStatus(${idx})" style="font-size:12px;">✏️</button>
+      <button type="button" class="btn-icon" title="حذف" onclick="app.removeStatus(${idx})" style="color:var(--danger);">🗑</button>
+    </div>
+  `).join('')
+}
+
+let draggedStatusIdx = null
+export function onStatusDragStart(e, idx) { draggedStatusIdx = idx; e.dataTransfer.effectAllowed = 'move' }
+export function onStatusDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }
+export async function onStatusDrop(e, targetIdx) {
+  e.preventDefault()
+  if (draggedStatusIdx === null || draggedStatusIdx === targetIdx) return
+  const statuses = [...getStatuses()]
+  const [moved] = statuses.splice(draggedStatusIdx, 1)
+  statuses.splice(targetIdx, 0, moved)
+  draggedStatusIdx = null
+  try {
+    await saveStatuses(statuses)
+    renderStatusesSettings()
+    showToast('ترتیب وضعیت‌ها ذخیره شد')
+  } catch (e) { showToast('خطا در ذخیره ترتیب') }
+}
+
+export async function addStatus() {
+  if (!requireMainAdmin()) return
+  const keyInput = document.getElementById('newStatusKey')
+  const labelInput = document.getElementById('newStatusLabel')
+  const key = (keyInput?.value || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+  const label = (labelInput?.value || '').trim()
+  if (!key || !label) { showToast('کلید و نام وضعیت الزامیست'); return }
+  const statuses = getStatuses()
+  if (statuses.some(s => s.key === key)) { showToast('این کلید قبلاً وجود دارد'); return }
+  try {
+    await saveStatuses([...statuses, { key, label, bgColor: '#e9ecef', textColor: '#495057', order: statuses.length }])
+    if (keyInput) keyInput.value = ''
+    if (labelInput) labelInput.value = ''
+    renderStatusesSettings()
+    showToast('وضعیت اضافه شد')
+  } catch (e) {
+    showToast('خطا در ذخیره وضعیت')
+  }
+}
+
+export async function removeStatus(index) {
+  if (!requireMainAdmin()) return
+  const statuses = [...getStatuses()]
+  if (index < 0 || index >= statuses.length) return
+  if (!confirm(`حذف وضعیت "${statuses[index].label}"؟`)) return
+  statuses.splice(index, 1)
+  try {
+    await saveStatuses(statuses)
+    renderStatusesSettings()
+    showToast('وضعیت حذف شد')
+  } catch (e) { showToast('خطا در حذف وضعیت') }
+}
+
+export async function updateStatusField(index, field, value) {
+  if (!requireMainAdmin()) return
+  const statuses = [...getStatuses()]
+  if (!statuses[index]) return
+  statuses[index][field] = value
+  try {
+    await saveStatuses(statuses)
+    renderStatusesSettings()
+  } catch (e) { showToast('خطا در ذخیره تغییرات') }
+}
+
+export function editStatus(index) {
+  if (!requireMainAdmin()) return
+  const statuses = getStatuses()
+  const s = statuses[index]
+  if (!s) return
+  const newLabel = prompt('نام وضعیت:', s.label)
+  if (newLabel === null || !newLabel.trim()) return
+  const updated = [...statuses]
+  updated[index] = { ...s, label: newLabel.trim() }
+  saveStatuses(updated).then(() => {
+    renderStatusesSettings()
+    showToast('وضعیت ویرایش شد')
+  }).catch(() => showToast('خطا در ذخیره'))
 }
 
 export async function saveUserPermissions(username) {

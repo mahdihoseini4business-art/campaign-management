@@ -3,75 +3,70 @@
 // ============================================
 
 import { ADMIN_PHONE } from './config.js'
+import { getPlatforms, getStatuses } from './data.js'
 
-/** Customer lead-source platforms (value → Persian label) */
-export const PLATFORM_LABELS = {
-  instagram: 'اینستاگرام',
-  telegram: 'تلگرام',
-  whatsapp: 'واتساپ',
-  website: 'سایت',
-  bale: 'بله',
-  eitaa: 'ایتا',
-  goftino: 'گفتینو',
-  carno_leads: 'کارنو لیدز',
-  rubika: 'روبیکا',
-  referral: 'ارجاعی',
+/** Dynamic platform labels (value → Persian label) built from settings */
+export function getPlatformLabels() {
+  const result = {}
+  for (const p of getPlatforms()) result[p.key] = p.label
+  return result
 }
 
-/** CSS class for platform color dots */
-export const PLATFORM_CLASSES = {
-  instagram: 'platform-ig',
-  telegram: 'platform-tg',
-  whatsapp: 'platform-wa',
-  website: 'platform-web',
-  bale: 'platform-bale',
-  eitaa: 'platform-eitaa',
-  goftino: 'platform-goftino',
-  carno_leads: 'platform-carno',
-  rubika: 'platform-rubika',
-  referral: 'platform-referral',
+/** Dynamic CSS class for platform color dots */
+export function getPlatformClass(key) {
+  return `platform-${key}`
 }
 
-/** Map Persian/English import aliases → canonical platform key */
-export const PLATFORM_MAP_IMPORT = {
-  'اینستاگرام': 'instagram', instagram: 'instagram', 'اینستا': 'instagram', insta: 'instagram',
-  'تلگرام': 'telegram', telegram: 'telegram', tg: 'telegram',
-  'واتساپ': 'whatsapp', whatsapp: 'whatsapp', wa: 'whatsapp',
-  'سایت': 'website', website: 'website', site: 'website', web: 'website',
-  'بله': 'bale', bale: 'bale',
-  'ایتا': 'eitaa', eitaa: 'eitaa', eita: 'eitaa',
-  'گفتینو': 'goftino', goftino: 'goftino',
-  'کارنو لیدز': 'carno_leads', 'کارنولیدز': 'carno_leads', carno_leads: 'carno_leads', 'carno leads': 'carno_leads', carno: 'carno_leads',
-  'روبیکا': 'rubika', rubika: 'rubika',
-  'ارجاعی': 'referral', referral: 'referral', referred: 'referral',
+/** Build import alias map dynamically from current platforms */
+export function buildPlatformImportMap() {
+  const map = {}
+  for (const p of getPlatforms()) {
+    map[p.label] = p.key
+    map[p.key] = p.key
+    map[p.label.toLowerCase()] = p.key
+  }
+  return map
 }
 
-/** Build a profile/chat URL when the platform supports one; otherwise ''. */
+/** Build a profile/chat URL from the platform's linkTemplate */
 export function getPlatformUrl(platform, platformId, phone) {
   const id = (platformId || '').trim()
-  if (!id && platform !== 'whatsapp') return ''
+  const p = getPlatforms().find(x => x.key === platform)
+  if (!p || !p.linkTemplate) return ''
 
-  switch (platform) {
-    case 'instagram':
-      return `https://instagram.com/${encodeURIComponent(id.replace(/^@/, ''))}`
-    case 'telegram':
-      return `https://telegram.me/${encodeURIComponent(id.replace(/^@/, ''))}`
-    case 'whatsapp': {
-      const raw = String(phone || id).replace(/\D/g, '')
-      if (!raw) return ''
-      const intl = raw.startsWith('0') ? `98${raw.slice(1)}` : raw
-      return `https://wa.me/${encodeURIComponent(intl)}`
-    }
-    case 'website':
-      if (/^https?:\/\//i.test(id)) return id
-      return `https://${id}`
-    case 'bale':
-      return `https://ble.ir/${encodeURIComponent(id.replace(/^@/, ''))}`
-    case 'eitaa':
-      return `https://eitaa.com/${encodeURIComponent(id.replace(/^@/, ''))}`
-    default:
-      return ''
+  const tpl = p.linkTemplate
+  if (tpl.includes('{phone}')) {
+    const raw = String(phone || id).replace(/\D/g, '')
+    if (!raw) return ''
+    const intl = raw.startsWith('0') ? `98${raw.slice(1)}` : raw
+    return tpl.replace('{phone}', encodeURIComponent(intl))
   }
+
+  if (!id) return ''
+  const cleanId = id.replace(/^@/, '')
+  let url = tpl.replace('{id}', encodeURIComponent(cleanId))
+  if (platform === 'website') {
+    if (/^https?:\/\//i.test(id)) return id
+    url = tpl.replace('{id}', cleanId)
+  }
+  return url
+}
+
+/** Dynamic status labels built from settings */
+export function getStatusLabels() {
+  const result = {}
+  for (const s of getStatuses()) result[s.key] = s.label
+  return result
+}
+
+/** Dynamic status CSS class */
+export function getStatusClass(key) {
+  return `status-${key}`
+}
+
+/** Get ordered status keys (for sorting) */
+export function getStatusOrder() {
+  return getStatuses().map(s => s.key)
 }
 
 export function toEnDigits(str) {

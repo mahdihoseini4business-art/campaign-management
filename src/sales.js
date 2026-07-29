@@ -3,7 +3,7 @@ import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser,
   jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr,
   canViewScopedCustomer, formatSoldAt24h, matchesTabSearch,
-  PLATFORM_LABELS, PLATFORM_CLASSES, PAYMENT_STATUS_LABELS,
+  getPlatformLabels, getPlatformClass, PAYMENT_STATUS_LABELS,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
   getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
   productHasRejectedPayment, getProductPayments
@@ -98,8 +98,8 @@ function renderSalesRows(allSales) {
   const todayNum = getTodayJalaliNum()
   const showSelectCol = hasPermission('customers_add')
   return allSales.map(s => {
-    const pClass = PLATFORM_CLASSES[s.platform] || ''
-    const pLabel = PLATFORM_LABELS[s.platform] || s.platform
+    const pClass = getPlatformClass(s.platform)
+    const pLabel = getPlatformLabels()[s.platform] || s.platform
     const statusColor = s.status === 'تکمیل' ? 'var(--success)' : 'var(--warning)'
     const balanceClass = s.balance > 0 ? 'color:var(--danger);' : ''
     const selectCell = showSelectCol

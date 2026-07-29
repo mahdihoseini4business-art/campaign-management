@@ -1,6 +1,6 @@
 import { getData, saveCustomerToDB, generateId } from './data.js'
 import {
-  toEnDigits, showToast, getCurrentUser, resolveAdvisor, PLATFORM_LABELS, PLATFORM_MAP_IMPORT,
+  toEnDigits, showToast, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
   getProductBalance, getProductPayments, getPaymentEntryStatus,
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, createPayment, formatSoldAt24h, normalizePhone,
@@ -15,11 +15,6 @@ import { renderSales, getFilteredSales } from './sales.js'
 // Helpers
 // ============================================
 
-const CUSTOMER_STATUS_EXPORT = {
-  new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند',
-  sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل',
-  purchased: 'خرید کرد', cancelled: 'منصرف شده'
-}
 
 function autoMapColumns(headers, fields) {
   const mapping = {}
@@ -92,10 +87,10 @@ const EXPORT_CONFIG = {
         return [
           c.id,
           c.platformId || '',
-          PLATFORM_LABELS[c.platform] || c.platform || '',
+          getPlatformLabels()[c.platform] || c.platform || '',
           c.name || '',
           c.phone || '',
-          CUSTOMER_STATUS_EXPORT[c.status] || c.status || '',
+          getStatusLabels()[c.status] || c.status || '',
           formatCustomerLevel(level) === '—' ? '' : formatCustomerLevel(level),
           c.advisor || '',
           customerFollowups.length,
@@ -141,7 +136,7 @@ const EXPORT_CONFIG = {
         if (!c || !p) {
           rows.push([
             s.customerId, s.customerName, s.customerPhone,
-            PLATFORM_LABELS[s.platform] || s.platform || '',
+            getPlatformLabels()[s.platform] || s.platform || '',
             s.productName, s.status, s.price || '', s.deposit || '', s.balance || '',
             s.settlementDate || '', s.advisor || '',
             '', formatSoldAt24h(s.soldAt) || s.soldAt || '', s.depositorName || '', '', ''
@@ -158,7 +153,7 @@ const EXPORT_CONFIG = {
           c.id,
           c.name || c.platformId || '',
           c.phone || '',
-          PLATFORM_LABELS[c.platform] || c.platform || '',
+          getPlatformLabels()[c.platform] || c.platform || '',
           p.name || '',
           p.status || '',
           price || '',
@@ -368,7 +363,7 @@ export async function doImport() {
     }
 
     const platformRaw = getValue('platform').toLowerCase()
-    const platform = PLATFORM_MAP_IMPORT[platformRaw] || platformRaw || 'instagram'
+    const platform = buildPlatformImportMap()[platformRaw] || platformRaw || 'instagram'
     const statusRaw = getValue('status')
     const status = STATUS_MAP_IMPORT[statusRaw] || statusRaw || 'new'
 
@@ -582,7 +577,7 @@ export async function doSalesImport() {
       const advisorRaw = getValue('advisor') || (currentUser ? (currentUser.phone || currentUser.displayName) : '')
       const { advisor, advisorPhone } = resolveAdvisor(advisorRaw, users)
       const platformRaw = getValue('platform').toLowerCase()
-      const platform = PLATFORM_MAP_IMPORT[platformRaw] || platformRaw || 'instagram'
+      const platform = buildPlatformImportMap()[platformRaw] || platformRaw || 'instagram'
       customer = {
         id,
         platformId: '',

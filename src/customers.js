@@ -1,12 +1,13 @@
-import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks } from './data.js'
+import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getPlatforms, getStatuses } from './data.js'
 import { getUsersSafe } from './auth.js'
 import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
   canViewCustomer, canManageCustomer, getCurrentUser, formatNumber, jalaliToNum,
   getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer, isAdmin, canViewOrgWideData,
   canViewScopedCustomer, matchesTabSearch, getCustomerSearchExtras,
-  resolveAdvisor, normalizePhone, userDisplayName, PLATFORM_LABELS, PLATFORM_CLASSES,
+  resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
+  getStatusLabels, getStatusClass,
   getNowJalaliDateTime, PAYMENT_STATUS_LABELS, createPayment,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getOperationalBalance,
   getProductPayments, getPaymentEntryStatus, getWorstPaymentStatus,
@@ -16,8 +17,22 @@ import {
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
-const STATUS_LABELS = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
-const STATUS_CLASSES = { new: 'status-new', contacted: 'status-contacted', chatting: 'status-chatting', interested: 'status-interested', sent: 'status-sent', followup_done: 'status-followup_done', converting: 'status-converting', purchased: 'status-purchased', cancelled: 'status-cancelled' }
+
+function populatePlatformDropdown(select) {
+  if (!select) return
+  const val = select.value
+  select.innerHTML = getPlatforms().map(p => `<option value="${escapeAttr(p.key)}">${escapeHtml(p.label)}</option>`).join('')
+  if (val) select.value = val
+}
+
+function populateStatusDropdown(select) {
+  if (!select) return
+  const val = select.value
+  select.innerHTML = getStatuses().map(s => `<option value="${escapeAttr(s.key)}">${escapeHtml(s.label)}</option>`).join('')
+  if (val) select.value = val
+}
+
+export { populatePlatformDropdown, populateStatusDropdown }
 
 /** Phone-field check while creating/editing: ok | incomplete | own | blocked | transferable | taken */
 let phoneFieldState = { status: 'ok', customer: null, lastActivity: null }
@@ -94,10 +109,10 @@ export async function renderCustomers() {
 
   tbody.innerHTML = page.items.map(c => {
     const idClass = c.id.startsWith('CS') ? 'id-cs' : 'id-ld'
-    const platformClass = PLATFORM_CLASSES[c.platform] || ''
-    const platformLabel = PLATFORM_LABELS[c.platform] || c.platform
-    const statusClass = STATUS_CLASSES[c.status] || 'status-new'
-    const statusLabel = STATUS_LABELS[c.status] || c.status
+    const platformClass = getPlatformClass(c.platform)
+    const platformLabel = getPlatformLabels()[c.platform] || c.platform
+    const statusClass = getStatusClass(c.status)
+    const statusLabel = getStatusLabels()[c.status] || c.status
     const canEdit = hasPermission('customers_add') && canManageCustomer(c, currentUser)
     const canDelete = showSelectCol && canManageCustomer(c, currentUser)
     const isMine = ownsCustomer(c, currentUser) || canViewOrgWideData()
@@ -241,6 +256,9 @@ export async function openCustomerModal(editId) {
     .filter(u => u.phone)
     .map(u => `<option value="${escapeAttr(normalizePhone(u.phone))}">${escapeHtml(userDisplayName(u))}</option>`)
     .join('')
+
+  populatePlatformDropdown(document.getElementById('customerPlatform'))
+  populateStatusDropdown(document.getElementById('customerStatus'))
 
   if (editId) {
     const c = data.customers.find(x => x.id === editId)
@@ -647,7 +665,7 @@ export async function openCustomerDetail(id) {
 
   const customerFollowups = data.followups.filter(f => f.customerId === id)
   const idClass = c.id.startsWith('CS') ? 'id-cs' : 'id-ld'
-  const platformLabel = PLATFORM_LABELS[c.platform] || c.platform
+  const platformLabel = getPlatformLabels()[c.platform] || c.platform
   const lrfm = computeCustomerLrfm(c, data.followups)
   let levelKey = resolveCustomerLevel(c, data.customers, data.followups)
   if (!c.customerLevelLocked) {

@@ -1,7 +1,7 @@
 import './styles.css'
-import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum, showToast, escapeAttr } from './utils.js'
+import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum, showToast, escapeAttr, getStatusOrder } from './utils.js'
 import { getData, loadData, backfillAdvisorPhones } from './data.js'
-import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, addDestinationBank, removeDestinationBank, filterViewUserOptions } from './auth.js'
+import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, addDestinationBank, removeDestinationBank, filterViewUserOptions, addPlatform, removePlatform, updatePlatformField, editPlatform, addStatus, removeStatus, updateStatusField, editStatus, onStatusDragStart, onStatusDragOver, onStatusDrop } from './auth.js'
 import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, saveProductField, updateProduct, removeProduct, onCustomerPhoneInput, addProductPayment, savePaymentField, updatePaymentField, removeProductPayment, onDestinationBankSelect } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup } from './followups.js'
 import { renderSales, sortSales } from './sales.js'
@@ -62,8 +62,6 @@ function switchTab(tab, el) {
 
 let customerSortState = { field: null, asc: true }
 let followupSortState = { field: null, asc: true }
-const STATUS_ORDER = ['new', 'contacted', 'chatting', 'interested', 'sent', 'followup_done', 'converting', 'purchased', 'cancelled']
-
 function sortCustomers(field) {
   if (customerSortState.field === field) customerSortState.asc = !customerSortState.asc
   else { customerSortState.field = field; customerSortState.asc = true }
@@ -85,8 +83,9 @@ function sortCustomers(field) {
       return customerSortState.asc ? va - vb : vb - va
     }
     if (field === 'status') {
-      const orderA = STATUS_ORDER.indexOf(va)
-      const orderB = STATUS_ORDER.indexOf(vb)
+      const so = getStatusOrder()
+      const orderA = so.indexOf(va)
+      const orderB = so.indexOf(vb)
       return customerSortState.asc ? orderA - orderB : orderB - orderA
     }
     if (typeof va === 'number') return customerSortState.asc ? va - vb : vb - va
@@ -180,6 +179,17 @@ const app = {
   filterViewUserOptions,
   addDestinationBank,
   removeDestinationBank,
+  addPlatform,
+  removePlatform,
+  updatePlatformField,
+  editPlatform,
+  addStatus,
+  removeStatus,
+  updateStatusField,
+  editStatus,
+  onStatusDragStart,
+  onStatusDragOver,
+  onStatusDrop,
   toggleProfileMenu,
   switchTab,
   sortCustomers,

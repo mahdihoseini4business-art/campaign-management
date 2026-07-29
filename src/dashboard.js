@@ -1,10 +1,10 @@
-import { getData } from './data.js'
+import { getData, getStatuses } from './data.js'
 import { getUsersSafe } from './auth.js'
 import {
   hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliNum,
   jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr, ownsCustomer,
   normalizePhone, userDisplayName, canViewOrgWideData, jalaliDiffDays, jalaliDatePart,
-  getVisibleAdvisorPhones
+  getVisibleAdvisorPhones, getStatusLabels
 } from './utils.js'
 import { getAllSales } from './sales.js'
 
@@ -525,8 +525,9 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     return matchesSelectedUsers(c)
   }
 
-  const statusLabels = { new: 'جدید', contacted: 'تماس گرفته', chatting: 'در حال چت', interested: 'علاقه‌مند', sent: 'اطلاعات ارسال', followup_done: 'تکمیل پیگیری', converting: 'در حال تبدیل', purchased: 'خرید کرد', cancelled: 'منصرف شده' }
-  const statusColors = { new: '#e9ecef', contacted: '#cce5ff', chatting: '#d0bfff', interested: '#fff3cd', sent: '#d1e7dd', followup_done: '#b6effb', converting: '#f8d7da', purchased: '#198754', cancelled: '#adb5bd' }
+  const statusLabels = getStatusLabels()
+  const statusColors = {}
+  for (const s of getStatuses()) statusColors[s.key] = s.bgColor
 
   const custStatusCounts = {}
   data.customers.forEach(c => {

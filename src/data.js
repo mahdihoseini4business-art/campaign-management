@@ -4,7 +4,32 @@
 
 import { supabase } from './supabase.js'
 
-let data = { customers: [], followups: [], convertedCount: 0, destinationBanks: [] }
+let data = { customers: [], followups: [], convertedCount: 0, destinationBanks: [], platforms: [], statuses: [] }
+
+const DEFAULT_PLATFORMS = [
+  { key: 'instagram', label: 'اینستاگرام', color: '#E1306C', linkTemplate: 'https://instagram.com/{id}' },
+  { key: 'telegram', label: 'تلگرام', color: '#0088cc', linkTemplate: 'https://telegram.me/{id}' },
+  { key: 'whatsapp', label: 'واتساپ', color: '#25D366', linkTemplate: 'https://wa.me/{phone}' },
+  { key: 'website', label: 'سایت', color: '#2563EB', linkTemplate: 'https://{id}' },
+  { key: 'bale', label: 'بله', color: '#00A884', linkTemplate: 'https://ble.ir/{id}' },
+  { key: 'eitaa', label: 'ایتا', color: '#F59E0B', linkTemplate: 'https://eitaa.com/{id}' },
+  { key: 'goftino', label: 'گفتینو', color: '#6366F1', linkTemplate: '' },
+  { key: 'carno_leads', label: 'کارنو لیدز', color: '#0155d2', linkTemplate: '' },
+  { key: 'rubika', label: 'روبیکا', color: '#A855F7', linkTemplate: '' },
+  { key: 'referral', label: 'ارجاعی', color: '#78716C', linkTemplate: '' },
+]
+
+const DEFAULT_STATUSES = [
+  { key: 'new', label: 'جدید', bgColor: '#e9ecef', textColor: '#495057', order: 0 },
+  { key: 'contacted', label: 'تماس گرفته', bgColor: '#cce5ff', textColor: '#084298', order: 1 },
+  { key: 'chatting', label: 'در حال چت', bgColor: '#d0bfff', textColor: '#581c87', order: 2 },
+  { key: 'interested', label: 'علاقه‌مند', bgColor: '#fff3cd', textColor: '#664d03', order: 3 },
+  { key: 'sent', label: 'اطلاعات ارسال', bgColor: '#d1e7dd', textColor: '#0f5132', order: 4 },
+  { key: 'followup_done', label: 'تکمیل پیگیری', bgColor: '#b6effb', textColor: '#055160', order: 5 },
+  { key: 'converting', label: 'در حال تبدیل', bgColor: '#f8d7da', textColor: '#842029', order: 6 },
+  { key: 'purchased', label: 'خرید کرد', bgColor: '#d1e7dd', textColor: '#0f5132', order: 7 },
+  { key: 'cancelled', label: 'منصرف شده', bgColor: '#e9ecef', textColor: '#495057', order: 8 },
+]
 
 // ============================================
 // Load all data from Supabase
@@ -61,6 +86,12 @@ export async function loadData() {
   ;(settingsRes.data || []).forEach(s => { settings[s.key] = s.value })
   data.convertedCount = settings.convertedCount || 0
   data.destinationBanks = normalizeDestinationBanks(settings.destination_banks)
+  data.platforms = Array.isArray(settings.platforms) && settings.platforms.length > 0 ? settings.platforms : [...DEFAULT_PLATFORMS]
+  data.statuses = Array.isArray(settings.statuses) && settings.statuses.length > 0
+    ? [...settings.statuses].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    : [...DEFAULT_STATUSES]
+
+  injectDynamicStyles()
 
   return data
 }
@@ -79,6 +110,53 @@ function normalizeDestinationBanks(raw) {
   }
   return []
 }
+
+// ============================================
+// Platforms & Statuses
+// ============================================
+
+export function getPlatforms() {
+  return Array.isArray(data.platforms) && data.platforms.length > 0 ? data.platforms : DEFAULT_PLATFORMS
+}
+
+export async function savePlatforms(platforms) {
+  data.platforms = platforms
+  await saveSetting('platforms', platforms)
+  injectDynamicStyles()
+}
+
+export function getStatuses() {
+  return Array.isArray(data.statuses) && data.statuses.length > 0 ? data.statuses : DEFAULT_STATUSES
+}
+
+export async function saveStatuses(statuses) {
+  data.statuses = statuses.map((s, i) => ({ ...s, order: i }))
+  await saveSetting('statuses', data.statuses)
+  injectDynamicStyles()
+}
+
+function injectDynamicStyles() {
+  let styleEl = document.getElementById('dynamic-platform-status-styles')
+  if (!styleEl) {
+    styleEl = document.createElement('style')
+    styleEl.id = 'dynamic-platform-status-styles'
+    document.head.appendChild(styleEl)
+  }
+  const platforms = getPlatforms()
+  const statuses = getStatuses()
+  let css = ''
+  for (const p of platforms) {
+    css += `.platform-${p.key} { background: ${p.color}; }\n`
+  }
+  for (const s of statuses) {
+    css += `.status-${s.key} { background: ${s.bgColor}; color: ${s.textColor};${s.key === 'cancelled' ? ' text-decoration: line-through;' : ''} }\n`
+  }
+  styleEl.textContent = css
+}
+
+// ============================================
+// Destination Banks
+// ============================================
 
 export function getDestinationBanks() {
   return Array.isArray(data.destinationBanks) ? [...data.destinationBanks] : []

@@ -26,7 +26,7 @@
 
 <!-- مودال تنظیمات -->
 <div class="modal-overlay" id="settingsModal">
-  <div class="modal" style="max-width: 560px;">
+  <div class="modal" style="max-width: 640px;">
     <div class="modal-header">
       <h2>تنظیمات و مدیریت کاربران</h2>
       <button class="modal-close" onclick="app.closeSettingsModal()">&times;</button>
@@ -74,6 +74,38 @@
           <button type="button" class="btn btn-primary" onclick="app.addDestinationBank()">افزودن</button>
         </div>
         <div id="settingsBanksList" style="margin-top:10px;"></div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:8px;">پلتفرم‌ها</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">پلتفرم‌های منبع مشتری. قالب لینک از {id} و {phone} استفاده می‌کند.</div>
+        <div class="form-row" style="align-items:flex-end;">
+          <div class="form-group" style="flex:1;margin-bottom:0;">
+            <label for="newPlatformKey">کلید (انگلیسی)</label>
+            <input type="text" class="form-input" id="newPlatformKey" placeholder="مثلاً twitter" dir="ltr" style="text-align:left;">
+          </div>
+          <div class="form-group" style="flex:1;margin-bottom:0;">
+            <label for="newPlatformLabel">نام نمایشی</label>
+            <input type="text" class="form-input" id="newPlatformLabel" placeholder="مثلاً توییتر">
+          </div>
+          <button type="button" class="btn btn-primary" onclick="app.addPlatform()">افزودن</button>
+        </div>
+        <div id="settingsPlatformsList" style="margin-top:10px;"></div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:8px;">وضعیت‌های مشتری</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">با کشیدن و رها کردن ترتیب وضعیت‌ها را تغییر دهید.</div>
+        <div class="form-row" style="align-items:flex-end;">
+          <div class="form-group" style="flex:1;margin-bottom:0;">
+            <label for="newStatusKey">کلید (انگلیسی)</label>
+            <input type="text" class="form-input" id="newStatusKey" placeholder="مثلاً waiting" dir="ltr" style="text-align:left;">
+          </div>
+          <div class="form-group" style="flex:1;margin-bottom:0;">
+            <label for="newStatusLabel">نام نمایشی</label>
+            <input type="text" class="form-input" id="newStatusLabel" placeholder="مثلاً در انتظار">
+          </div>
+          <button type="button" class="btn btn-primary" onclick="app.addStatus()">افزودن</button>
+        </div>
+        <div id="settingsStatusesList" style="margin-top:10px;"></div>
       </div>
     </div>
     <div class="modal-footer">
