@@ -1040,14 +1040,17 @@ export async function openCustomerDetail(id) {
   })()
 
   const idFieldHtml = isNew
-    ? `<div class="detail-field">
-        <span class="detail-label">شناسه</span>
-        <input type="text" class="form-input" id="detailIdDisplay" readonly style="background:#f8f9fa;font-family:'Vazirmatn',sans-serif;">
-        <div class="form-hint" id="detailIdHint">خودکار — LD اگر شماره نداشته باشد، CS اگر داشته باشد</div>
-      </div>`
+    ? ''
     : `<div class="detail-field">
         <span class="detail-label">شناسه</span>
         <span class="detail-value"><span class="id-badge ${idClass}">${escapeHtml(c.id)}</span></span>
+      </div>`
+
+  const levelFieldHtml = isNew
+    ? ''
+    : `<div class="detail-field">
+        <span class="detail-label">سطح مشتری</span>
+        <span class="detail-value">${levelHtml}</span>
       </div>`
 
   const infoFields = canEdit
@@ -1058,10 +1061,7 @@ export async function openCustomerDetail(id) {
         <input type="text" class="form-input" id="detailName" value="${escapeAttr(c.name || '')}" placeholder="اختیاری">
       </div>
       ${idFieldHtml}
-      <div class="detail-field">
-        <span class="detail-label">سطح مشتری</span>
-        <span class="detail-value">${levelHtml}</span>
-      </div>
+      ${levelFieldHtml}
       <div class="detail-field">
         <span class="detail-label">وضعیت</span>
         <select class="form-select" id="detailStatus"></select>
@@ -1095,10 +1095,7 @@ export async function openCustomerDetail(id) {
         <span class="detail-value">${escapeHtml(c.name) || '—'}</span>
       </div>
       ${idFieldHtml}
-      <div class="detail-field">
-        <span class="detail-label">سطح مشتری</span>
-        <span class="detail-value">${levelHtml}</span>
-      </div>
+      ${levelFieldHtml}
       <div class="detail-field">
         <span class="detail-label">وضعیت</span>
         <span class="detail-value"><span class="status-badge ${statusClass}">${escapeHtml(statusLabel)}</span></span>
@@ -1280,7 +1277,6 @@ export async function openCustomerDetail(id) {
     if (platformEl) platformEl.value = c.platform || 'instagram'
     if (statusEl) statusEl.value = c.status || 'new'
     renderPhoneFields()
-    if (isNew) updatePreviewId()
     document.getElementById('detailPlatformId')?.focus()
   }
 
