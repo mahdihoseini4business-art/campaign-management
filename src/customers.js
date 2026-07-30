@@ -124,7 +124,7 @@ export async function renderCustomers() {
   const filtered = getFilteredCustomers()
 
   const showSelectCol = hasPermission('customers_delete')
-  const colCount = showSelectCol ? 13 : 12
+  const colCount = showSelectCol ? 12 : 11
 
   if (filtered.length === 0) {
     tbody.innerHTML = `
@@ -146,7 +146,6 @@ export async function renderCustomers() {
   const page = paginateList('customers', filtered, filterSig)
 
   tbody.innerHTML = page.items.map(c => {
-    const idClass = c.id.startsWith('CS') ? 'id-cs' : 'id-ld'
     const platformClass = getPlatformClass(c.platform)
     const platformLabel = getPlatformLabels()[c.platform] || c.platform
     const statusClass = getStatusClass(c.status)
@@ -194,12 +193,11 @@ export async function renderCustomers() {
       }
     }
 
-    return `<tr class="${nextFollowupClass}${isMine ? '' : ' row-other-owner'}">
+    return `<tr class="clickable-row ${nextFollowupClass}${isMine ? '' : ' row-other-owner'}" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
       ${selectCell}
-      <td><span class="id-badge ${idClass}">${escapeHtml(c.id)}</span>${!isMine ? '<span class="owner-badge">همکار</span>' : ''}</td>
       <td>${platformIdHtml}</td>
       <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>
-      <td>${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td>${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}${!isMine ? '<span class="owner-badge">همکار</span>' : ''}</td>
       <td style="font-family: monospace; direction: ltr; text-align: right;">${(() => {
         const disp = formatPhonesDisplay(c)
         if (!disp.text) return '<span style="color:var(--text-muted)">—</span>'
@@ -216,7 +214,6 @@ export async function renderCustomers() {
       <td class="notes-cell" title="${escapeHtml(lastNote || c.notes)}">${escapeHtml(lastNote || c.notes) || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td>
         <div class="actions-cell">
-          <button class="btn-icon" title="پنل مشتری" onclick="app.openCustomerDetail('${escapeAttr(c.id)}')" style="color:var(--accent);">👤</button>
           ${canEdit ? `<button class="btn-icon" title="ویرایش" onclick="app.editCustomer('${escapeAttr(c.id)}')">✏</button>` : ''}
           ${canDelete ? `<button class="btn-icon" title="حذف" onclick="app.deleteCustomer('${escapeAttr(c.id)}')">🗑</button>` : ''}
         </div>
@@ -877,6 +874,14 @@ export function closeDeleteModal() {
 // ============================================
 // Customer Detail Panel
 // ============================================
+
+/** Open customer panel on row click, unless the click was on an interactive control. */
+export function onCustomerRowClick(event, customerId) {
+  if (!customerId) return
+  const t = event?.target
+  if (t?.closest?.('button, a, input, select, textarea, label, .actions-cell')) return
+  openCustomerDetail(customerId)
+}
 
 export async function openCustomerDetail(id) {
   const data = getData()

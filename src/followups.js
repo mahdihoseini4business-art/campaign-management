@@ -73,6 +73,7 @@ function getPendingItems(applySearch = true) {
       kind: 'pending',
       customerId: c.id,
       customerName: c.name || c.platformId || c.id,
+      advisor: c.advisor || '',
       date: last?.date || '',
       type: last?.type || '—',
       result: last?.result || '—',
@@ -139,6 +140,7 @@ function getDoneItems(applySearch = true) {
       id: f.id,
       customerId: f.customerId,
       customerName: customer ? (customer.name || customer.platformId || customer.id) : '—',
+      advisor: customer?.advisor || '',
       date: f.date,
       type: f.type,
       result: f.result,
@@ -239,7 +241,7 @@ export function renderFollowups() {
       : pending.filter(i => i.category === followupFilter)
 
     const showSelectCol = hasPermission('followups_delete') && followupFilter === 'done'
-    const colCount = (hasPermission('followups_delete') ? 1 : 0) + 9
+    const colCount = (hasPermission('followups_delete') ? 1 : 0) + 8
 
     if (filtered.length === 0) {
       tbody.innerHTML = `
@@ -279,10 +281,10 @@ export function renderFollowups() {
 
       const overdueBadge = item.wasOverdue ? ' <span class="overdue-tag">معوقه</span>' : ''
 
-      return `<tr>
+      return `<tr class="clickable-row" onclick="app.onCustomerRowClick(event, '${escapeAttr(item.customerId)}')">
         ${selectCell}
-        <td><span class="id-badge ${item.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="font-size:11px;cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(item.customerId)}')">${escapeHtml(item.customerId)}</span></td>
         <td>${escapeHtml(item.customerName)}${overdueBadge}</td>
+        <td style="font-size:12px;">${escapeHtml(item.advisor) || '—'}</td>
         <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(item.date) || '—'}</td>
         <td>${escapeHtml(item.type)}</td>
         <td>${escapeHtml(item.result)}</td>

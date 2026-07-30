@@ -157,9 +157,8 @@ function renderSalesRows(allSales) {
       paymentHtml += `<div class="payment-reject-reason" title="${escapeAttr(s.paymentRejectReason)}">${escapeHtml(s.paymentRejectReason)}</div>`
     }
 
-    return `<tr class="${rowClass}">
+    return `<tr class="clickable-row ${rowClass}" onclick="app.onCustomerRowClick(event, '${escapeAttr(s.customerId)}')">
       ${selectCell}
-      <td><span class="id-badge ${s.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(s.customerId)}')">${escapeHtml(s.customerId)}</span></td>
       <td>${escapeHtml(s.customerName)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${(() => {
         const phones = s.customerPhones || (s.customerPhone ? [s.customerPhone] : [])
@@ -169,6 +168,7 @@ function renderSalesRows(allSales) {
           : ''
         return `${escapeHtml(phones[0])}${extra}`
       })()}</td>
+      <td style="font-size:12px;">${escapeHtml(s.advisor) || '—'}</td>
       <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${escapeHtml(pLabel)}</span></td>
       <td>${escapeHtml(s.productName)}</td>
       <td><span style="color:${statusColor};font-weight:600;">${escapeHtml(s.status)}</span></td>

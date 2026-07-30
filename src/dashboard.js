@@ -483,15 +483,14 @@ export async function renderDashboard() {
 
   const overdueBody = document.getElementById('dashOverdueBody')
   if (overdueList.length === 0) {
-    overdueBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری عقب افتاده‌ای وجود ندارد</td></tr>'
+    overdueBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری عقب افتاده‌ای وجود ندارد</td></tr>'
   } else {
     overdueBody.innerHTML = overdueList.map(c => {
       const disp = formatPhonesDisplay(c)
       const phoneHtml = disp.text
         ? `${escapeHtml(disp.text)}${disp.extra > 0 ? ` <span style="color:var(--text-muted);font-size:11px;">+${disp.extra}</span>` : ''}`
         : '—'
-      return `<tr style="background:#fff8f0;">
-      <td><span class="id-badge ${c.id.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(c.id)}')">${escapeHtml(c.id)}</span></td>
+      return `<tr class="clickable-row" style="background:#fff8f0;" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
       <td>${escapeHtml(c.name || c.platformId)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${phoneHtml}</td>
       <td><span class="settlement-badge settlement-overdue-badge">⚠ ${c.nextFollowupDate}</span></td>
@@ -502,15 +501,14 @@ export async function renderDashboard() {
 
   const soonBody = document.getElementById('dashSoonBody')
   if (soonList.length === 0) {
-    soonBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری نزدیکی وجود ندارد</td></tr>'
+    soonBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری نزدیکی وجود ندارد</td></tr>'
   } else {
     soonBody.innerHTML = soonList.map(c => {
       const disp = formatPhonesDisplay(c)
       const phoneHtml = disp.text
         ? `${escapeHtml(disp.text)}${disp.extra > 0 ? ` <span style="color:var(--text-muted);font-size:11px;">+${disp.extra}</span>` : ''}`
         : '—'
-      return `<tr style="background:#f0fff4;">
-      <td><span class="id-badge ${c.id.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(c.id)}')">${escapeHtml(c.id)}</span></td>
+      return `<tr class="clickable-row" style="background:#f0fff4;" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
       <td>${escapeHtml(c.name || c.platformId)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${phoneHtml}</td>
       <td><span class="settlement-badge settlement-soon-badge">${c.nextFollowupDate}</span></td>

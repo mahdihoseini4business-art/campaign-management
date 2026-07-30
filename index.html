@@ -234,7 +234,7 @@
     <div class="dash-collapsible-body" id="dash-overdue-body" role="region" aria-labelledby="dash-overdue-toggle">
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>شناسه</th><th>نام</th><th>شماره</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
+          <thead><tr><th>نام</th><th>شماره</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
           <tbody id="dashOverdueBody"></tbody>
         </table>
       </div>
@@ -249,7 +249,7 @@
     <div class="dash-collapsible-body" id="dash-soon-body" role="region" aria-labelledby="dash-soon-toggle">
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>شناسه</th><th>نام</th><th>شماره</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
+          <thead><tr><th>نام</th><th>شماره</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
           <tbody id="dashSoonBody"></tbody>
         </table>
       </div>
@@ -297,7 +297,6 @@
         <thead>
           <tr>
             <th style="width:40px;" data-perm="customers_delete"><input type="checkbox" id="selectAllCustomers" onchange="app.toggleSelectAll('customers', this.checked)"></th>
-            <th onclick="app.sortCustomersHeader('id')">شناسه</th>
             <th onclick="app.sortCustomersHeader('platformId')">ایدی پلتفرم</th>
             <th onclick="app.sortCustomersHeader('platform')">پلتفرم</th>
             <th onclick="app.sortCustomersHeader('name')">نام</th>
@@ -354,8 +353,8 @@
         <thead>
           <tr>
             <th style="width:40px;" data-perm="followups_delete"><input type="checkbox" id="selectAllFollowups" onchange="app.toggleSelectAll('followups', this.checked)"></th>
-            <th onclick="app.sortFollowupsHeader('customerId')">شناسه</th>
             <th onclick="app.sortFollowupsHeader('customerName')">نام</th>
+            <th onclick="app.sortFollowupsHeader('advisor')">کارشناس</th>
             <th onclick="app.sortFollowupsHeader('date')">تاریخ</th>
             <th onclick="app.sortFollowupsHeader('type')">نوع</th>
             <th onclick="app.sortFollowupsHeader('result')">نتیجه</th>
@@ -409,9 +408,9 @@
         <thead>
           <tr>
             <th style="width:40px;" data-perm="customers_add"><input type="checkbox" id="selectAllSales" onchange="app.toggleSelectAll('sales', this.checked)"></th>
-            <th onclick="app.sortSalesHeader('customerId')">شناسه مشتری</th>
             <th onclick="app.sortSalesHeader('customerName')">نام مشتری</th>
             <th onclick="app.sortSalesHeader('customerPhone')">شماره موبایل</th>
+            <th onclick="app.sortSalesHeader('advisor')">کارشناس</th>
             <th onclick="app.sortSalesHeader('platform')">پلتفرم</th>
             <th onclick="app.sortSalesHeader('productName')">محصول</th>
             <th onclick="app.sortSalesHeader('status')">وضعیت</th>
@@ -451,7 +450,6 @@
       <table>
         <thead>
           <tr>
-            <th>شناسه</th>
             <th>مشتری</th>
             <th>شماره</th>
             <th>کارشناس</th>

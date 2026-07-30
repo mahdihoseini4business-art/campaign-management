@@ -62,7 +62,7 @@ export function renderAccounting() {
   const tbody = document.getElementById('accountingBody')
   if (!tbody) return
   if (!hasPermission('accounting')) {
-    tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state"><h3>دسترسی ندارید</h3></div></td></tr>`
+    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><h3>دسترسی ندارید</h3></div></td></tr>`
     return
   }
 
@@ -100,7 +100,7 @@ export function renderAccounting() {
 
   if (payments.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="11">
+      <tr><td colspan="10">
         <div class="empty-state">
           <div class="icon">💳</div>
           <h3>واریزی‌ای در این وضعیت نیست</h3>
@@ -123,8 +123,7 @@ export function renderAccounting() {
         ? `<span style="font-size:12px;color:var(--danger);">${escapeHtml(p.paymentRejectReason || '—')}</span>`
         : `<span style="font-size:12px;color:var(--text-muted);">${escapeHtml(formatSoldAt24h(p.paymentReviewedAt) || p.paymentReviewedAt || '—')}</span>`)
 
-    return `<tr>
-      <td><span class="id-badge ${p.customerId.startsWith('CS') ? 'id-cs' : 'id-ld'}" style="cursor:pointer;" onclick="app.openCustomerDetail('${escapeAttr(p.customerId)}')">${escapeHtml(p.customerId)}</span></td>
+    return `<tr class="clickable-row" onclick="app.onCustomerRowClick(event, '${escapeAttr(p.customerId)}')">
       <td>${escapeHtml(p.customerName)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${(() => {
         const phones = p.customerPhones || (p.customerPhone ? [p.customerPhone] : [])
@@ -142,7 +141,7 @@ export function renderAccounting() {
       <td>${escapeHtml(p.destinationBank) || '—'}</td>
       <td>${escapeHtml(p.depositorName) || '—'}</td>
       <td><span class="payment-badge payment-${p.paymentStatus}">${escapeHtml(statusLabel)}</span>
-        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">${actions}</div>
+        <div class="actions-cell" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">${actions}</div>
       </td>
     </tr>`
   }).join('')
