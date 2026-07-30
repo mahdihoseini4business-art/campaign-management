@@ -319,27 +319,51 @@ function renderPhoneFields() {
   if (!container) return
   if (!phoneSlots.length) phoneSlots = ['']
 
-  container.innerHTML = phoneSlots.map((val, i) => {
+  container.innerHTML = phoneSlots.map((val, i) => `
+      <div class="phone-field-row" data-index="${i}">
+        <input type="tel" inputmode="numeric" class="form-input customer-phone-input" data-index="${i}"
+          placeholder="09123456789" dir="ltr" style="text-align:left;" autocomplete="tel" maxlength="11"
+          value="${escapeAttr(val || '')}"
+          oninput="app.onCustomerPhoneInput(${i})">
+        <div class="phone-field-actions"></div>
+      </div>
+    `).join('')
+  updatePhoneFieldActions()
+}
+
+/** Keep only digits; if starts with 9 prepend 0; cap at 11. */
+function sanitizePhoneInput(raw) {
+  let digits = toEnDigits(String(raw || '')).replace(/\D/g, '')
+  if (digits.startsWith('9')) digits = '0' + digits
+  if (digits.length > 11) digits = digits.slice(0, 11)
+  return digits
+}
+
+function caretDigitOffset(value, caret) {
+  const before = String(value || '').slice(0, Math.max(0, caret || 0))
+  return toEnDigits(before).replace(/\D/g, '').length
+}
+
+function updatePhoneFieldActions() {
+  const { listId } = phoneForm()
+  const container = document.getElementById(listId)
+  if (!container) return
+
+  phoneSlots.forEach((val, i) => {
+    const row = container.querySelector(`.phone-field-row[data-index="${i}"]`)
+    const actions = row?.querySelector('.phone-field-actions')
+    if (!actions) return
     const normalized = normalizePhone(val)
     const isValid = /^09\d{9}$/.test(normalized)
     const canAdd = i === phoneSlots.length - 1
       && phoneSlots.length < MAX_CUSTOMER_PHONES
       && isValid
     const canRemove = phoneSlots.length > 1
-    return `
-      <div class="phone-field-row" data-index="${i}">
-        <input type="text" class="form-input customer-phone-input" data-index="${i}"
-          placeholder="۰۹۱۲۳۴۵۶۷۸۹" dir="ltr" style="text-align:left;" autocomplete="tel"
-          value="${escapeAttr(val || '')}"
-          oninput="app.onCustomerPhoneInput(${i})"
-          onblur="app.onCustomerPhoneInput(${i})">
-        <div class="phone-field-actions">
-          ${canAdd ? `<button type="button" class="btn-icon" title="افزودن شماره" onclick="app.addCustomerPhoneSlot()">+</button>` : ''}
-          ${canRemove ? `<button type="button" class="btn-icon is-danger" title="حذف شماره" onclick="app.removeCustomerPhoneSlot(${i})">×</button>` : ''}
-        </div>
-      </div>
+    actions.innerHTML = `
+      ${canAdd ? `<button type="button" class="btn-icon" title="افزودن شماره" onclick="app.addCustomerPhoneSlot()">+</button>` : ''}
+      ${canRemove ? `<button type="button" class="btn-icon is-danger" title="حذف شماره" onclick="app.removeCustomerPhoneSlot(${i})">×</button>` : ''}
     `
-  }).join('')
+  })
 }
 
 export function addCustomerPhoneSlot() {
@@ -362,7 +386,7 @@ export function removeCustomerPhoneSlot(index) {
   if (phoneSlots.length <= 1) return
   phoneSlots.splice(index, 1)
   renderPhoneFields()
-  onCustomerPhoneInput()
+  validateCustomerPhones()
   updatePreviewId()
 }
 
@@ -416,26 +440,37 @@ function formatActivityLabel(act) {
   return `${act.dateStr} (${act.label})`
 }
 
-/** Live validation for create/edit phone fields */
+/** Sanitize typed phone value in-place without rebuilding the field. */
 export function onCustomerPhoneInput(index = 0) {
+  const { listId } = phoneForm()
+  const input = document.querySelector(`#${listId} .customer-phone-input[data-index="${index}"]`)
+  if (input) {
+    const prev = input.value
+    const caret = input.selectionStart
+    const digitsBefore = caretDigitOffset(prev, caret)
+    const startedWithNine = toEnDigits(prev).replace(/\D/g, '').startsWith('9')
+    const sanitized = sanitizePhoneInput(prev)
+    if (sanitized !== prev) {
+      input.value = sanitized
+      let newCaret = digitsBefore
+      if (startedWithNine && sanitized.startsWith('0')) newCaret = Math.min(sanitized.length, digitsBefore + 1)
+      try { input.setSelectionRange(newCaret, newCaret) } catch (_) { /* ignore */ }
+    }
+    while (phoneSlots.length <= index) phoneSlots.push('')
+    phoneSlots[index] = sanitized
+  } else {
+    syncPhoneSlotsFromDom()
+  }
+
+  updatePhoneFieldActions()
+  validateCustomerPhones()
+}
+
+/** Live validation for create/edit phone fields (no DOM rebuild / no focus steal). */
+function validateCustomerPhones() {
   const data = getData()
   const currentUser = getCurrentUser()
-  const { listId, getEditId } = phoneForm()
-  const editId = getEditId()
-  syncPhoneSlotsFromDom()
-
-  const active = document.activeElement
-  const activeIndex = active?.dataset?.index ?? String(index)
-  const selStart = active?.selectionStart
-  const selEnd = active?.selectionEnd
-  renderPhoneFields()
-  const restored = document.querySelector(`#${listId} .customer-phone-input[data-index="${activeIndex}"]`)
-  if (restored) {
-    restored.focus()
-    if (typeof selStart === 'number' && typeof selEnd === 'number') {
-      try { restored.setSelectionRange(selStart, selEnd) } catch (_) { /* ignore */ }
-    }
-  }
+  const editId = phoneForm().getEditId()
 
   clearPhoneFieldMessages()
   phoneFieldState = { status: 'ok', customer: null, lastActivity: null, index: 0 }
