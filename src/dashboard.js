@@ -4,9 +4,10 @@ import {
   hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliNum,
   jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr, ownsCustomer,
   normalizePhone, userDisplayName, canViewOrgWideData, jalaliDiffDays, jalaliDatePart,
-  getVisibleAdvisorPhones, getStatusLabels, formatPhonesDisplay
+  getVisibleAdvisorPhones, getStatusLabels, formatPhonesDisplay,
+  ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
+  getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS
 } from './utils.js'
-import { getAllSales } from './sales.js'
 
 let dashCharts = {}
 /** @type {Set<string>|null} null = not initialized yet (treat as all) */
@@ -282,8 +283,80 @@ function buildSalesBuckets(fromStr, toStr, timeframe) {
   return buckets
 }
 
-function saleEventDate(sale) {
-  return jalaliDatePart(sale.soldAt) || ''
+function forEachDashSalePayment(inUserScope, hasDateFilter, inDateRange, onPayment, onProduct = null) {
+  const data = getData()
+  data.customers.forEach(c => {
+    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
+    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
+    if (!inUserScope(c)) return
+    ;(c.products || []).forEach(p => {
+      ensureProductPayments(p)
+      syncProductStatus(p)
+      if (!isProductCountableInSales(p)) return
+
+      const pays = getProductPayments(p).filter(pay => {
+        const amount = parseFloat(pay.amount) || 0
+        if (amount <= 0) return false
+        if (getPaymentEntryStatus(pay) !== PAYMENT_STATUS.approved) return false
+        if (hasDateFilter && !inDateRange(jalaliDatePart(pay.soldAt))) return false
+        return true
+      })
+
+      if (hasDateFilter && pays.length === 0) return
+
+      if (onProduct) {
+        onProduct({
+          customer: c,
+          product: p,
+          payments: pays,
+          paidInScope: pays.reduce((sum, pay) => sum + (parseFloat(pay.amount) || 0), 0),
+          price: parseFloat(p.price) || 0,
+          deposit: getApprovedPaid(p),
+          balance: getProductBalance(p)
+        })
+      }
+      pays.forEach(pay => {
+        onPayment({
+          customer: c,
+          product: p,
+          payment: pay,
+          amount: parseFloat(pay.amount) || 0,
+          date: jalaliDatePart(pay.soldAt)
+        })
+      })
+    })
+  })
+}
+
+function computeDashSalesMetrics(inUserScope, hasDateFilter, inDateRange) {
+  let salesCount = 0
+  let totalCash = 0
+  let totalDeposit = 0
+  let totalBalance = 0
+
+  forEachDashSalePayment(inUserScope, hasDateFilter, inDateRange, () => {}, ({ product, paidInScope, price, deposit, balance }) => {
+    salesCount++
+    if (hasDateFilter) {
+      if (product.status === 'تکمیل') totalCash += paidInScope
+      else {
+        totalDeposit += paidInScope
+        totalBalance += balance
+      }
+    } else if (product.status === 'تکمیل') {
+      totalCash += price
+    } else {
+      totalDeposit += deposit
+      totalBalance += balance
+    }
+  })
+
+  return {
+    salesCount,
+    totalCash,
+    totalDeposit,
+    totalBalance,
+    totalAll: totalCash + totalDeposit
+  }
 }
 
 function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
@@ -302,28 +375,17 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
   const buckets = buildSalesBuckets(from, to, timeframe)
   const totals = buckets.map(() => 0)
 
-  const data = getData()
-  getAllSales().forEach(s => {
-    if (!s.countable) return
-    if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return
-    if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return
-    const customer = data.customers.find(c => c.id === s.customerId)
-    if (!matchesSelectedUsers(customer)) return
-
-    // Respect global dash date filter when set — based on deposit/payment date
-    if (dateFromNum > 0 || dateToNum < 99999999) {
-      const d = saleEventDate(s)
-      if (!d) return
-      const sn = jalaliToNum(d)
-      if (sn < dateFromNum || sn > dateToNum) return
+  forEachDashSalePayment(
+    matchesSelectedUsers,
+    hasDashDateFilter,
+    inDashRange,
+    ({ amount, date }) => {
+      if (!date || jalaliToNum(date) === 99999999) return
+      const n = jalaliToNum(date)
+      const idx = buckets.findIndex(b => n >= b.fromNum && n <= b.toNum)
+      if (idx !== -1) totals[idx] += amount
     }
-
-    const d = saleEventDate(s)
-    if (!d || jalaliToNum(d) === 99999999) return
-    const n = jalaliToNum(d)
-    const idx = buckets.findIndex(b => n >= b.fromNum && n <= b.toNum)
-    if (idx !== -1) totals[idx] += s.price || 0
-  })
+  )
 
   dashCharts.salesTimeline = new Chart(canvas, {
     type: 'bar',
@@ -456,31 +518,18 @@ export async function renderDashboard() {
   const activeCustomers = scopedCustomers.filter(c => c.products && c.products.length > 0)
   document.getElementById('dash-active-customers').textContent = activeCustomers.length
 
-  const allSales = getAllSales().filter(s => {
-    if (!s.countable) return false
-    if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false
-    if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
-    const customer = data.customers.find(c => c.id === s.customerId)
-    if (!inUserScope(customer)) return false
-    if ((dateFrom || dateTo) && !inDateRange(saleEventDate(s))) return false
-    return true
-  })
-  const cashSales = allSales.filter(s => s.status === 'تکمیل')
-  const depositSales = allSales.filter(s => s.status === 'بیعانه')
+  const hasDateFilter = !!(dateFrom || dateTo)
+  const salesMetrics = computeDashSalesMetrics(inUserScope, hasDateFilter, inDateRange)
 
-  const totalCash = cashSales.reduce((sum, s) => sum + s.price, 0)
-  const totalDeposit = depositSales.reduce((sum, s) => sum + s.deposit, 0)
-  const totalBalance = depositSales.reduce((sum, s) => sum + s.balance, 0)
-  // Actual received: full price of completed + approved deposits (not unpaid remainder)
-  const totalAll = totalCash + totalDeposit
+  document.getElementById('dash-sales-count').textContent = salesMetrics.salesCount
+  document.getElementById('dash-sales-cash').textContent = formatNumber(salesMetrics.totalCash) + ' ریال'
+  document.getElementById('dash-sales-deposit').textContent = formatNumber(salesMetrics.totalDeposit) + ' ریال'
+  document.getElementById('dash-sales-balance').textContent = formatNumber(salesMetrics.totalBalance) + ' ریال'
+  document.getElementById('dash-sales-total').textContent = formatNumber(salesMetrics.totalAll) + ' ریال'
 
-  document.getElementById('dash-sales-count').textContent = allSales.length
-  document.getElementById('dash-sales-cash').textContent = formatNumber(totalCash) + ' ریال'
-  document.getElementById('dash-sales-deposit').textContent = formatNumber(totalDeposit) + ' ریال'
-  document.getElementById('dash-sales-balance').textContent = formatNumber(totalBalance) + ' ریال'
-  document.getElementById('dash-sales-total').textContent = formatNumber(totalAll) + ' ریال'
-
-  const avgSale = allSales.length > 0 ? Math.round(totalAll / allSales.length) : 0
+  const avgSale = salesMetrics.salesCount > 0
+    ? Math.round(salesMetrics.totalAll / salesMetrics.salesCount)
+    : 0
   document.getElementById('dash-avg-sale').textContent = formatNumber(avgSale) + ' ریال'
 
   const overdueBody = document.getElementById('dashOverdueBody')
@@ -567,18 +616,25 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
   })
 
   const salesStatus = { 'تکمیل': 0, 'بیعانه': 0 }
-  const chartSales = getAllSales().filter(s => {
-    if (!s.countable) return false
-    if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false
-    if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
-    const customer = data.customers.find(c => c.id === s.customerId)
-    if (!inUserScope(customer)) return false
-    if (!inChartDateRange(saleEventDate(s))) return false
-    return true
-  })
-  chartSales.forEach(s => {
-    salesStatus[s.status] = (salesStatus[s.status] || 0) + s.price
-  })
+  const productSales = {}
+  const hasDateFilter = dateFromNum > 0 || dateToNum < 99999999
+
+  forEachDashSalePayment(
+    inUserScope,
+    hasDateFilter,
+    inChartDateRange,
+    () => {},
+    ({ product, paidInScope, price }) => {
+      const value = hasDateFilter
+        ? paidInScope
+        : (product.status === 'تکمیل' ? price : getApprovedPaid(product))
+      const statusKey = product.status === 'تکمیل' ? 'تکمیل' : 'بیعانه'
+      salesStatus[statusKey] = (salesStatus[statusKey] || 0) + value
+      const name = product.name || '—'
+      productSales[name] = (productSales[name] || 0) + value
+    }
+  )
+
   dashCharts.salesStatus = new Chart(document.getElementById('chartSalesStatus'), {
     type: 'pie',
     data: {
@@ -588,10 +644,6 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Vazirmatn', size: 11 } } } } }
   })
 
-  const productSales = {}
-  chartSales.forEach(s => {
-    productSales[s.productName] = (productSales[s.productName] || 0) + s.price
-  })
   dashCharts.products = new Chart(document.getElementById('chartProducts'), {
     type: 'bar',
     data: {

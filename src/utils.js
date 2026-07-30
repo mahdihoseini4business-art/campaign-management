@@ -187,11 +187,13 @@ export function toJalali(gregorian) {
 // Empty/invalid dates return 99999999 (sorts to end of list).
 export function jalaliToNum(dateStr) {
   if (!dateStr) return 99999999
-  const parts = dateStr.split('/')
+  const datePart = toEnDigits(String(dateStr)).trim().split(/\s+/)[0] || ''
+  const parts = datePart.split('/')
   if (parts.length !== 3) return 99999999
-  const y = parseInt(parts[0]) || 0
-  const m = parseInt(parts[1]) || 0
-  const d = parseInt(parts[2]) || 0
+  const y = parseInt(parts[0], 10) || 0
+  const m = parseInt(parts[1], 10) || 0
+  const d = parseInt(parts[2], 10) || 0
+  if (!y || !m || !d) return 99999999
   return y * 10000 + m * 100 + d
 }
 
