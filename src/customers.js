@@ -774,7 +774,7 @@ function readDetailFormFields(users, fallback = {}) {
   const name = document.getElementById('detailName')?.value.trim() || ''
   const phones = getFormPhones()
   const status = document.getElementById('detailStatus')?.value || fallback.status || 'new'
-  const notes = document.getElementById('detailNotes')?.value.trim() || ''
+  const notes = fallback.notes || ''
   const advisorSelectValue = document.getElementById('detailAdvisor')?.value || fallback.advisorPhone || ''
   const { advisor, advisorPhone } = resolveAdvisor(advisorSelectValue, users)
   return { platformId, platform, name, phones, status, notes, advisor, advisorPhone }
