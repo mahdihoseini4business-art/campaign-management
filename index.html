@@ -151,21 +151,6 @@
 
   <!-- شیت داشبورد -->
   <div class="sheet" id="sheet-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" hidden>
-    <section class="dash-section dash-section-fixed" aria-label="وضعیت فعلی">
-      <div class="dash-section-header">
-        <h3 class="dash-section-title">وضعیت فعلی</h3>
-        <span class="dash-section-hint">بدون تأثیر فیلتر تاریخ</span>
-      </div>
-      <div class="dashboard-stats dash-stats-fixed">
-        <div class="stat-card"><div class="label">کل مشتریان</div><div class="value" id="dash-total-customers">0</div></div>
-        <div class="stat-card"><div class="label">پیگیری تنظیم‌شده</div><div class="value" style="color:var(--warning)" id="dash-set-followup">0</div></div>
-        <div class="stat-card"><div class="label">پیگیری عقب‌افتاده</div><div class="value" style="color:var(--danger)" id="dash-overdue-followup">0</div></div>
-        <div class="stat-card"><div class="label">بدون تاریخ پیگیری</div><div class="value" id="dash-no-followup">0</div></div>
-        <div class="stat-card"><div class="label">پیگیری نزدیک (۳ روز)</div><div class="value" style="color:var(--success)" id="dash-soon-followup">0</div></div>
-        <div class="stat-card highlight"><div class="label">مشتریان فعال</div><div class="value" style="color:var(--accent)" id="dash-active-customers">0</div></div>
-      </div>
-    </section>
-
     <div class="dash-filters" style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
       <div style="font-size:16px;font-weight:600;">فیلتر تاریخ:</div>
       <input type="text" class="form-input" id="dashDateFrom" placeholder="از تاریخ" data-jdp style="width:150px;">
@@ -186,26 +171,27 @@
       <button class="btn" onclick="app.clearDashFilter()">پاک کردن فیلتر</button>
     </div>
 
-    <section class="dash-section dash-section-filtered" aria-label="آمار بازه زمانی">
-      <div class="dash-section-header">
-        <h3 class="dash-section-title">آمار بازه زمانی</h3>
-        <span class="dash-section-hint">بر اساس فیلتر تاریخ و کارشناس</span>
-      </div>
-      <div class="dashboard-stats">
-        <div class="stat-card highlight"><div class="label">مشتریان من</div><div class="value" style="color:var(--accent)" id="dash-my-customers">0</div></div>
-        <div class="stat-card"><div class="label">لیدها</div><div class="value" style="color:var(--tag-ld)" id="dash-total-leads">0</div></div>
-        <div class="stat-card"><div class="label">مشتریان تماسی</div><div class="value" style="color:var(--tag-cs)" id="dash-total-cs">0</div></div>
-        <div class="stat-card"><div class="label">تعداد پیگیری‌ها</div><div class="value" style="color:var(--accent)" id="dash-total-followups">0</div></div>
+    <div class="dashboard-stats dash-stats-fixed">
+      <div class="stat-card"><div class="label">کل مشتریان</div><div class="value" id="dash-total-customers">0</div></div>
+      <div class="stat-card"><div class="label">پیگیری تنظیم‌شده</div><div class="value" style="color:var(--warning)" id="dash-set-followup">0</div></div>
+      <div class="stat-card"><div class="label">پیگیری عقب‌افتاده</div><div class="value" style="color:var(--danger)" id="dash-overdue-followup">0</div></div>
+      <div class="stat-card"><div class="label">بدون تاریخ پیگیری</div><div class="value" id="dash-no-followup">0</div></div>
+      <div class="stat-card"><div class="label">پیگیری نزدیک (۳ روز)</div><div class="value" style="color:var(--success)" id="dash-soon-followup">0</div></div>
+      <div class="stat-card highlight"><div class="label">مشتریان فعال</div><div class="value" style="color:var(--accent)" id="dash-active-customers">0</div></div>
+    </div>
 
-        <div class="stat-card"><div class="label">تعداد کل فروش</div><div class="value" id="dash-sales-count">0</div></div>
-        <div class="stat-card"><div class="label">فروش نقد</div><div class="value" style="color:var(--success)" id="dash-sales-cash">۰</div></div>
-        <div class="stat-card"><div class="label">بیعانه‌ها</div><div class="value" style="color:var(--warning)" id="dash-sales-deposit">۰</div></div>
-        <div class="stat-card"><div class="label">مانده حساب‌ها</div><div class="value" style="color:var(--danger)" id="dash-sales-balance">۰</div></div>
-
-        <div class="stat-card highlight"><div class="label">جمع کل مبلغ فروش</div><div class="value" style="color:var(--accent);font-size:24px;" id="dash-sales-total">۰</div></div>
-        <div class="stat-card"><div class="label">میانگین مبلغ فروش</div><div class="value" style="color:var(--text)" id="dash-avg-sale">۰</div></div>
-      </div>
-    </section>
+    <div class="dashboard-stats">
+      <div class="stat-card highlight"><div class="label">مشتریان من</div><div class="value" style="color:var(--accent)" id="dash-my-customers">0</div></div>
+      <div class="stat-card"><div class="label">لیدها</div><div class="value" style="color:var(--tag-ld)" id="dash-total-leads">0</div></div>
+      <div class="stat-card"><div class="label">مشتریان تماسی</div><div class="value" style="color:var(--tag-cs)" id="dash-total-cs">0</div></div>
+      <div class="stat-card"><div class="label">تعداد پیگیری‌ها</div><div class="value" style="color:var(--accent)" id="dash-total-followups">0</div></div>
+      <div class="stat-card"><div class="label">تعداد کل فروش</div><div class="value" id="dash-sales-count">0</div></div>
+      <div class="stat-card"><div class="label">فروش نقد</div><div class="value" style="color:var(--success)" id="dash-sales-cash">۰</div></div>
+      <div class="stat-card"><div class="label">بیعانه‌ها</div><div class="value" style="color:var(--warning)" id="dash-sales-deposit">۰</div></div>
+      <div class="stat-card"><div class="label">مانده حساب‌ها</div><div class="value" style="color:var(--danger)" id="dash-sales-balance">۰</div></div>
+      <div class="stat-card highlight"><div class="label">جمع کل مبلغ فروش</div><div class="value" style="color:var(--accent);font-size:24px;" id="dash-sales-total">۰</div></div>
+      <div class="stat-card"><div class="label">میانگین مبلغ فروش</div><div class="value" style="color:var(--text)" id="dash-avg-sale">۰</div></div>
+    </div>
 
     <div class="chart-grid">
       <div class="chart-card">

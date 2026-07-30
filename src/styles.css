@@ -246,53 +246,8 @@
     margin-bottom: 24px;
   }
 
-  .dash-section {
-    margin-bottom: 8px;
-  }
-
-  .dash-section-header {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
-  }
-
-  .dash-section-title {
-    margin: 0;
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--text);
-  }
-
-  .dash-section-hint {
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-
-  .dash-section-fixed {
-    background: linear-gradient(180deg, var(--secondary-light) 0%, transparent 100%);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 16px 16px 4px;
-    margin-bottom: 20px;
-  }
-
   .dash-stats-fixed {
-    grid-template-columns: repeat(3, 1fr);
-    margin-bottom: 12px;
-  }
-
-  .dash-section-fixed .stat-card {
-    border-right-color: var(--secondary);
-  }
-
-  .dash-filters {
-    padding: 14px 16px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-subtle);
+    grid-template-columns: repeat(6, 1fr);
   }
 
   .stat-card {
