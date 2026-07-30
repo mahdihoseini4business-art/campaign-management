@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones, syncToolbarActionsMenus } from './utils.js'
 import { getDestinationBanks, saveDestinationBanks, getPlatforms, savePlatforms, getStatuses, saveStatuses } from './data.js'
 
 // ============================================
@@ -837,6 +837,8 @@ export function applyPermissions() {
     if (!key) return
     el.style.display = hasPermission(key) ? '' : 'none'
   })
+
+  syncToolbarActionsMenus()
 
   const settingsItem = document.querySelector('.profile-dropdown-item[onclick*="openSettingsModal"]')
   if (settingsItem) {

@@ -310,7 +310,6 @@ export function renderSales() {
   const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
 
   populateSalesFilterDropdowns()
-  initSalesActionsMenu()
 
   let allSales = getFilteredSales()
 
@@ -365,8 +364,6 @@ export function renderSales() {
   document.getElementById('stat-sales-balance').textContent = formatNumber(totalBalance) + ' ریال'
   document.getElementById('stat-sales-total').textContent = formatNumber(totalAll) + ' ریال'
 
-  syncSalesActionsMenuVisibility()
-
   if (allSales.length === 0) {
     const colCount = hasPermission('customers_add') ? 14 : 13
     tbody.innerHTML = `
@@ -394,32 +391,3 @@ export function sortSales(field) {
   renderSales()
 }
 
-function syncSalesActionsMenuVisibility() {
-  const menu = document.getElementById('salesActionsMenu')
-  if (!menu) return
-  const canExport = hasPermission('sales_export')
-  const canImport = hasPermission('sales_import')
-  menu.style.display = (canExport || canImport) ? '' : 'none'
-}
-
-export function toggleSalesActionsMenu(event) {
-  event?.stopPropagation?.()
-  const dd = document.getElementById('salesActionsDropdown')
-  if (!dd) return
-  dd.hidden = !dd.hidden
-}
-
-export function closeSalesActionsMenu() {
-  const dd = document.getElementById('salesActionsDropdown')
-  if (dd) dd.hidden = true
-}
-
-let salesActionsMenuInited = false
-function initSalesActionsMenu() {
-  if (salesActionsMenuInited) return
-  salesActionsMenuInited = true
-  document.addEventListener('click', (e) => {
-    const wrap = document.getElementById('salesActionsMenu')
-    if (wrap && !wrap.contains(e.target)) closeSalesActionsMenu()
-  })
-}

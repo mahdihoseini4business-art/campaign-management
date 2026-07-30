@@ -194,6 +194,10 @@
     gap: 2px;
   }
 
+  .toolbar-actions-dropdown[hidden] {
+    display: none !important;
+  }
+
   .toolbar-actions-item {
     appearance: none;
     border: none;

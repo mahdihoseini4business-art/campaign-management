@@ -97,6 +97,48 @@ export function unformatInput(el) {
   return el.value.replace(/[^\d-]/g, '')
 }
 
+/** Close all toolbar export/import action menus */
+export function closeAllToolbarActions() {
+  document.querySelectorAll('.toolbar-actions-dropdown').forEach(dd => {
+    dd.hidden = true
+  })
+}
+
+/** Toggle one toolbar actions dropdown (closes others first) */
+export function toggleToolbarActions(btn, event) {
+  event?.stopPropagation?.()
+  const wrap = btn?.closest?.('.toolbar-actions')
+  const dd = wrap?.querySelector?.('.toolbar-actions-dropdown')
+  if (!dd) return
+  const willOpen = dd.hidden
+  closeAllToolbarActions()
+  if (willOpen) dd.hidden = false
+}
+
+let toolbarActionsInited = false
+export function initToolbarActionsMenus() {
+  if (toolbarActionsInited) return
+  toolbarActionsInited = true
+  document.addEventListener('click', (e) => {
+    if (e.target?.closest?.('.toolbar-actions')) return
+    closeAllToolbarActions()
+  })
+}
+
+/** Show/hide export-import menus based on permissions */
+export function syncToolbarActionsMenus() {
+  const menus = [
+    { id: 'customersActionsMenu', perms: ['customers_export', 'customers_import'] },
+    { id: 'followupsActionsMenu', perms: ['followups_export'] },
+    { id: 'salesActionsMenu', perms: ['sales_export', 'sales_import'] },
+  ]
+  for (const { id, perms } of menus) {
+    const el = document.getElementById(id)
+    if (!el) continue
+    el.style.display = perms.some(p => hasPermission(p)) ? '' : 'none'
+  }
+}
+
 /**
  * Shared list-search (same behavior as accounting tab).
  * Matches query against any of the provided field values (id, name, phone, advisor, product, depositor, …).

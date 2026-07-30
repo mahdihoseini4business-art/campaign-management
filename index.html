@@ -286,9 +286,14 @@
       <select class="form-select" id="filterCustomerLevel" style="width:150px;" onchange="app.renderCustomers()">
         <option value="">همه سطوح</option>
       </select>
-      <button class="btn" data-perm="customers_export" onclick="app.exportTabCSV('customers')">خروجی CSV</button>
-      <button class="btn" data-perm="customers_export" onclick="app.exportTabXLSX('customers')">خروجی Excel</button>
-      <button class="btn" data-perm="customers_import" onclick="app.openImportModal()">ایمپورت اکسل</button>
+      <div class="toolbar-actions" id="customersActionsMenu">
+        <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
+        <div class="toolbar-actions-dropdown" hidden>
+          <button type="button" class="toolbar-actions-item" data-perm="customers_export" onclick="app.exportTabCSV('customers');app.closeAllToolbarActions()">خروجی CSV</button>
+          <button type="button" class="toolbar-actions-item" data-perm="customers_export" onclick="app.exportTabXLSX('customers');app.closeAllToolbarActions()">خروجی Excel</button>
+          <button type="button" class="toolbar-actions-item" data-perm="customers_import" onclick="app.openImportModal();app.closeAllToolbarActions()">ایمپورت اکسل</button>
+        </div>
+      </div>
       <button class="btn btn-primary" data-perm="customers_add" onclick="app.openCustomerModal()">+ مشتری جدید</button>
     </div>
 
@@ -343,8 +348,13 @@
       </select>
       <span id="bulkCountFollowups" style="display:none;font-size:13px;color:var(--text-muted);"></span>
       <input type="text" class="search-box" placeholder="جستجو (مشتری، کارشناس)..." id="searchFollowups" oninput="app.renderFollowups()">
-      <button class="btn" data-perm="followups_export" onclick="app.exportTabCSV('followups')">خروجی CSV</button>
-      <button class="btn" data-perm="followups_export" onclick="app.exportTabXLSX('followups')">خروجی Excel</button>
+      <div class="toolbar-actions" id="followupsActionsMenu">
+        <button type="button" class="btn" data-perm="followups_export" onclick="app.toggleToolbarActions(this, event)">خروجی ▾</button>
+        <div class="toolbar-actions-dropdown" hidden>
+          <button type="button" class="toolbar-actions-item" data-perm="followups_export" onclick="app.exportTabCSV('followups');app.closeAllToolbarActions()">خروجی CSV</button>
+          <button type="button" class="toolbar-actions-item" data-perm="followups_export" onclick="app.exportTabXLSX('followups');app.closeAllToolbarActions()">خروجی Excel</button>
+        </div>
+      </div>
       <button class="btn btn-primary" data-perm="followups_add" onclick="app.openFollowupModal()">+ پیگیری جدید</button>
     </div>
 
@@ -401,11 +411,11 @@
         <option value="">همه وضعیت‌ها</option>
       </select>
       <div class="toolbar-actions" id="salesActionsMenu">
-        <button type="button" class="btn btn-primary" id="salesActionsBtn" onclick="app.toggleSalesActionsMenu(event)">خروجی / ایمپورت ▾</button>
-        <div class="toolbar-actions-dropdown" id="salesActionsDropdown" hidden>
-          <button type="button" class="toolbar-actions-item" data-perm="sales_export" onclick="app.exportTabCSV('sales');app.closeSalesActionsMenu()">خروجی CSV</button>
-          <button type="button" class="toolbar-actions-item" data-perm="sales_export" onclick="app.exportTabXLSX('sales');app.closeSalesActionsMenu()">خروجی Excel</button>
-          <button type="button" class="toolbar-actions-item" data-perm="sales_import" onclick="app.openSalesImportModal();app.closeSalesActionsMenu()">ایمپورت از اکسل</button>
+        <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
+        <div class="toolbar-actions-dropdown" hidden>
+          <button type="button" class="toolbar-actions-item" data-perm="sales_export" onclick="app.exportTabCSV('sales');app.closeAllToolbarActions()">خروجی CSV</button>
+          <button type="button" class="toolbar-actions-item" data-perm="sales_export" onclick="app.exportTabXLSX('sales');app.closeAllToolbarActions()">خروجی Excel</button>
+          <button type="button" class="toolbar-actions-item" data-perm="sales_import" onclick="app.openSalesImportModal();app.closeAllToolbarActions()">ایمپورت از اکسل</button>
         </div>
       </div>
     </div>
