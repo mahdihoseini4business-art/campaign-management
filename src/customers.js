@@ -1084,10 +1084,6 @@ export async function openCustomerDetail(id) {
         <span class="detail-label">ایدی پلتفرم</span>
         <input type="text" class="form-input" id="detailPlatformId" value="${escapeAttr(c.platformId || '')}" placeholder="اختیاری" style="font-family:'Vazirmatn',sans-serif;">
       </div>
-      <div class="detail-field full">
-        <span class="detail-label">توضیحات مشتری</span>
-        <textarea class="form-textarea" id="detailNotes" placeholder="توضیحات اضافه..." style="min-height:72px;">${escapeHtml(c.notes || '')}</textarea>
-      </div>
     `
     : `
       <div class="detail-field">
@@ -1115,10 +1111,6 @@ export async function openCustomerDetail(id) {
       <div class="detail-field">
         <span class="detail-label">ایدی پلتفرم</span>
         <span class="detail-value" style="font-family:'Vazirmatn',sans-serif;">${escapeHtml(c.platformId) || '—'}</span>
-      </div>
-      <div class="detail-field full">
-        <span class="detail-label">توضیحات مشتری</span>
-        <span class="detail-value">${escapeHtml(c.notes) || '—'}</span>
       </div>
     `
 
