@@ -36,7 +36,7 @@ function normalizeCustomerPhonesLocal(source) {
   return out
 }
 
-let data = { customers: [], followups: [], convertedCount: 0, destinationBanks: [], platforms: [], statuses: [] }
+let data = { customers: [], followups: [], ownershipTransfers: [], convertedCount: 0, destinationBanks: [], platforms: [], statuses: [] }
 
 const DEFAULT_PLATFORMS = [
   { key: 'instagram', label: 'اینستاگرام', color: '#E1306C', linkTemplate: 'https://instagram.com/{id}' },
@@ -68,16 +68,21 @@ const DEFAULT_STATUSES = [
 // ============================================
 
 export async function loadData() {
-  const [customersRes, followupsRes, settingsRes] = await Promise.all([
+  const [customersRes, followupsRes, settingsRes, transfersRes] = await Promise.all([
     supabase.from('customers').select('*'),
     supabase.from('followups').select('*'),
-    supabase.from('app_settings').select('*')
+    supabase.from('app_settings').select('*'),
+    supabase.from('ownership_transfers').select('*').order('created_at', { ascending: true })
   ])
 
   const errors = []
   if (customersRes.error) errors.push('مشتریان: ' + customersRes.error.message)
   if (followupsRes.error) errors.push('پیگیری‌ها: ' + followupsRes.error.message)
   if (settingsRes.error) errors.push('تنظیمات: ' + settingsRes.error.message)
+  // ownership_transfers may be missing before migration 008 — treat as empty
+  if (transfersRes.error && !/ownership_transfers|does not exist|relation/i.test(transfersRes.error.message || '')) {
+    errors.push('انتقال‌ها: ' + transfersRes.error.message)
+  }
 
   if (errors.length > 0) {
     throw new Error('خطا در بارگذاری داده‌ها:\n' + errors.join('\n'))
@@ -124,6 +129,10 @@ export async function loadData() {
     doneNote: f.done_note || '',
     wasOverdue: !!f.was_overdue
   }))
+
+  data.ownershipTransfers = (transfersRes.error || !transfersRes.data)
+    ? []
+    : transfersRes.data.map(mapOwnershipTransferRow)
 
   // Load settings (convertedCount, destination banks, …)
   const settings = {}
@@ -267,6 +276,47 @@ export async function deleteCustomerFromDB(id) {
   if (error) throw new Error('خطا در حذف مشتری: ' + error.message)
 }
 
+function mapOwnershipTransferRow(t) {
+  return {
+    id: t.id,
+    customerId: t.customer_id,
+    fromAdvisorPhone: t.from_advisor_phone || '',
+    fromAdvisorName: t.from_advisor_name || '',
+    toAdvisorPhone: t.to_advisor_phone || '',
+    toAdvisorName: t.to_advisor_name || '',
+    actedByPhone: t.acted_by_phone || '',
+    batchId: t.batch_id || '',
+    reason: t.reason || '',
+    customerStatusAtTransfer: t.customer_status_at_transfer || '',
+    createdAt: t.created_at || null
+  }
+}
+
+// ============================================
+// Ownership transfers
+// ============================================
+
+export async function saveOwnershipTransferToDB(transfer) {
+  const row = {
+    customer_id: transfer.customerId,
+    from_advisor_phone: transfer.fromAdvisorPhone || null,
+    from_advisor_name: transfer.fromAdvisorName || null,
+    to_advisor_phone: transfer.toAdvisorPhone || null,
+    to_advisor_name: transfer.toAdvisorName || null,
+    acted_by_phone: transfer.actedByPhone || null,
+    batch_id: transfer.batchId || null,
+    reason: transfer.reason || null,
+    customer_status_at_transfer: transfer.customerStatusAtTransfer || null
+  }
+  const { data: inserted, error } = await supabase
+    .from('ownership_transfers')
+    .insert(row)
+    .select('*')
+    .single()
+  if (error) throw new Error('خطا در ثبت انتقال: ' + error.message)
+  return mapOwnershipTransferRow(inserted)
+}
+
 // ============================================
 // Save followup to Supabase
 // ============================================
@@ -277,9 +327,10 @@ export async function saveFollowupToDB(followup) {
   const isDoneNote = followup.status === 'done' ||
     followup.type === 'پیگیری انجام‌شده' ||
     followup.type === 'پیگیری معوقه انجام‌شده'
+  const isSystemNote = followup.type === 'سیستمی'
 
-  // Done notes can repeat same day for same customer — skip soft-duplicate check
-  if (!isDoneNote) {
+  // Done / system notes can repeat same day for same customer — skip soft-duplicate check
+  if (!isDoneNote && !isSystemNote) {
     const { data: existing } = await supabase.from('followups')
       .select('id')
       .eq('customer_id', followup.customerId)

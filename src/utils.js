@@ -685,6 +685,7 @@ export const ALL_PERMISSIONS = {
   customers_cs: 'مشاهده مشتریان تماسی (CS)',
   customers_add: 'افزودن و ویرایش مشتری',
   customers_delete: 'حذف مشتری',
+  customers_transfer: 'انتقال مالکیت مشتری',
   customers_import: 'ایمپورت اکسل مشتریان',
   customers_export: 'خروجی مشتریان',
   followups_view: 'مشاهده پیگیری‌ها',
@@ -700,7 +701,7 @@ export const ALL_PERMISSIONS = {
 
 export const PERMISSION_GROUPS = [
   { label: 'داشبورد', keys: ['dashboard'] },
-  { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_delete', 'customers_import', 'customers_export'] },
+  { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_delete', 'customers_transfer', 'customers_import', 'customers_export'] },
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_add_others', 'sales_import', 'sales_export'] },
   { label: 'حسابداری', keys: ['accounting'] }
@@ -1037,6 +1038,22 @@ export function canManageCustomer(customer, user = getCurrentUser()) {
   if (!canViewCustomer(customer, user)) return false
   if (user.role === 'admin') return true
   return ownsCustomer(customer, user)
+}
+
+/**
+ * Transfer ownership: admin, or user with customers_transfer who owns
+ * the customer or has the owner in viewUserPhones (زیرمجموعه).
+ */
+export function canTransferCustomer(customer, user = getCurrentUser()) {
+  if (!user || !customer) return false
+  if (!canViewCustomer(customer, user)) return false
+  if (user.role === 'admin') return true
+  if (!hasPermission('customers_transfer')) return false
+  if (ownsCustomer(customer, user)) return true
+  const ownerPhone = normalizePhone(customer.advisorPhone)
+  if (!ownerPhone) return false
+  const team = normalizeViewUserPhones(user.viewUserPhones ?? user.permissions?.viewUserPhones)
+  return team.includes(ownerPhone)
 }
 
 /** @deprecated use canViewCustomer / canManageCustomer */

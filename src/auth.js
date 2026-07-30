@@ -447,8 +447,8 @@ export async function renderUsersList() {
       ? ''
       : `
         <div class="view-users-picker" data-view-user="${escapeAttr(u.username)}" style="margin-top:14px;">
-          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">مشاهده داده کاربران</div>
-          <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">علاوه بر داده خودش، اطلاعات کاربران انتخاب‌شده را فقط می‌بیند (بدون ویرایش).</div>
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">زیرمجموعه / مشاهده و انتقال</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">علاوه بر داده خودش، اطلاعات کاربران انتخاب‌شده را می‌بیند. با مجوز «انتقال مالکیت مشتری» می‌تواند مالکیت مشتریان آن‌ها را منتقل کند.</div>
           <input type="search" class="form-input view-users-search" placeholder="جستجوی نام یا شماره..." oninput="app.filterViewUserOptions('${escapeAttr(u.username)}', this.value)" style="font-size:12px;margin-bottom:8px;">
           <div class="view-users-options">
             ${otherUsers.length === 0
@@ -839,6 +839,12 @@ export function applyPermissions() {
   })
 
   syncToolbarActionsMenus()
+
+  // Rebuild customer bulk actions (delete / transfer) for current permissions
+  try {
+    const actionEl = document.getElementById('bulkActionCustomers')
+    if (actionEl) delete actionEl.dataset.optionsReady
+  } catch (_) { /* ignore */ }
 
   const settingsItem = document.querySelector('.profile-dropdown-item[onclick*="openSettingsModal"]')
   if (settingsItem) {

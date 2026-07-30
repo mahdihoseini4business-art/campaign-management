@@ -193,6 +193,34 @@
       <div class="stat-card"><div class="label">میانگین مبلغ فروش</div><div class="value" style="color:var(--text)" id="dash-avg-sale">۰</div></div>
     </div>
 
+    <div class="dashboard-stats" id="dashTransferStats" style="margin-top:4px;">
+      <div class="stat-card"><div class="label">انتقال‌ها (بازه)</div><div class="value" style="color:var(--secondary)" id="dash-transfer-count">0</div></div>
+      <div class="stat-card"><div class="label">دسته‌های انتقال</div><div class="value" id="dash-transfer-batches">0</div></div>
+      <div class="stat-card"><div class="label">میانگین ماندگاری (روز)</div><div class="value" id="dash-transfer-dwell">—</div></div>
+      <div class="stat-card"><div class="label">تبدیل تا ۳۰ روز بعد از انتقال</div><div class="value" style="color:var(--success)" id="dash-transfer-conversion">—</div></div>
+    </div>
+
+    <div class="chart-grid" style="margin-top:12px;">
+      <div class="chart-card chart-card-wide">
+        <div class="chart-title">ورودی / خروجی انتقال کارشناسان</div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>کارشناس</th>
+                <th style="text-align:center;">ورودی</th>
+                <th style="text-align:center;">خروجی</th>
+                <th style="text-align:center;">خالص</th>
+              </tr>
+            </thead>
+            <tbody id="dashTransferBody">
+              <tr><td colspan="4" style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px;">داده‌ای نیست</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <div class="chart-grid">
       <div class="chart-card">
         <div class="chart-title">وضعیت مشتریان</div>
@@ -280,9 +308,8 @@
     </div>
 
     <div class="toolbar">
-      <select class="form-select" id="bulkActionCustomers" style="width:180px;display:none;">
+      <select class="form-select" id="bulkActionCustomers" style="width:200px;display:none;">
         <option value="">عملیات دسته‌جمعی...</option>
-        <option value="delete">حذف انتخاب شده‌ها</option>
       </select>
       <span id="bulkCountCustomers" style="display:none;font-size:13px;color:var(--text-muted);"></span>
       <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchCustomers" oninput="app.renderCustomers()">
@@ -313,7 +340,7 @@
       <table>
         <thead>
           <tr>
-            <th style="width:40px;" data-perm="customers_delete"><input type="checkbox" id="selectAllCustomers" onchange="app.toggleSelectAll('customers', this.checked)"></th>
+            <th class="customer-select-col" style="width:40px;"><input type="checkbox" id="selectAllCustomers" onchange="app.toggleSelectAll('customers', this.checked)"></th>
             <th onclick="app.sortCustomersHeader('platformId')">ایدی پلتفرم</th>
             <th onclick="app.sortCustomersHeader('platform')">پلتفرم</th>
             <th onclick="app.sortCustomersHeader('name')">نام</th>
@@ -555,6 +582,39 @@
     <div class="modal-footer">
       <button class="btn" onclick="app.closeFollowupModal()">انصراف</button>
       <button class="btn btn-primary" onclick="app.saveFollowup()">ذخیره</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال انتقال دسته‌جمعی -->
+<div class="modal-overlay" id="bulkTransferModal">
+  <div class="modal" style="max-width: 440px;">
+    <div class="modal-header">
+      <h2>انتقال به کارشناس</h2>
+      <button class="modal-close" onclick="app.closeBulkTransferModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+        <span id="bulkTransferCount">0</span> مشتری انتخاب‌شده به کارشناس مقصد منتقل می‌شود.
+      </p>
+      <div class="form-group">
+        <label for="bulkTransferAdvisor">کارشناس مقصد <span class="required">*</span></label>
+        <select class="form-select" id="bulkTransferAdvisor">
+          <option value="">انتخاب کارشناس مقصد...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="bulkTransferReason">دلیل انتقال</label>
+        <select class="form-select" id="bulkTransferReason">
+          <option value="distribution">توزیع بین تیم</option>
+          <option value="handoff">تحویل به مسئول بالاتر</option>
+          <option value="reassign">جابه‌جایی مسئول</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeBulkTransferModal()">انصراف</button>
+      <button class="btn btn-primary" id="bulkTransferConfirmBtn" onclick="app.confirmBulkTransfer()">انتقال</button>
     </div>
   </div>
 </div>

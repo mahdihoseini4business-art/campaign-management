@@ -6,7 +6,8 @@ import {
   normalizePhone, userDisplayName, canViewOrgWideData, jalaliDiffDays, jalaliDatePart,
   getVisibleAdvisorPhones, getStatusLabels, formatPhonesDisplay,
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
-  getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS
+  getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
+  gregorianToJalaliStr
 } from './utils.js'
 
 let dashCharts = {}
@@ -435,6 +436,158 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
 }
 
 // ============================================
+// Ownership transfer metrics
+// ============================================
+
+const TRANSFER_CONVERSION_DAYS = 30
+
+function transferInDateRange(transfer, dateFromNum, dateToNum) {
+  if (!dateFromNum && (!dateToNum || dateToNum === 99999999)) return true
+  const jalali = gregorianToJalaliStr(transfer.createdAt)
+  if (!jalali) return false
+  const n = jalaliToNum(jalali)
+  return n >= (dateFromNum || 0) && n <= (dateToNum || 99999999)
+}
+
+function transferTouchesSelected(transfer) {
+  if (!selectedAdvisorPhones || selectedAdvisorPhones.size === 0) return false
+  const from = normalizePhone(transfer.fromAdvisorPhone)
+  const to = normalizePhone(transfer.toAdvisorPhone)
+  return (from && selectedAdvisorPhones.has(from)) || (to && selectedAdvisorPhones.has(to))
+}
+
+function customerConvertedAfter(customer, transferAtMs, withinDays) {
+  if (!customer) return false
+  const deadline = transferAtMs + withinDays * 24 * 60 * 60 * 1000
+  if (customer.status === 'purchased') {
+    // Status alone has no timestamp — count if currently purchased and has countable sale
+  }
+  const products = customer.products || []
+  for (const p of products) {
+    ensureProductPayments(p)
+    if (!isProductCountableInSales(p)) continue
+    for (const pay of getProductPayments(p)) {
+      const sold = pay.soldAt || p.soldAt
+      if (!sold) continue
+      // soldAt is Jalali datetime — approximate via gregorian if ISO, else accept as post-transfer if countable
+      const d = new Date(sold)
+      if (!Number.isNaN(d.getTime())) {
+        const t = d.getTime()
+        if (t >= transferAtMs && t <= deadline) return true
+        continue
+      }
+      // Jalali soldAt: treat countable sale as conversion signal within window if no reliable clock
+      const j = jalaliDatePart(sold)
+      if (!j) continue
+      const jNum = jalaliToNum(j)
+      const transferJ = gregorianToJalaliStr(new Date(transferAtMs))
+      const deadlineJ = gregorianToJalaliStr(new Date(deadline))
+      if (jNum >= jalaliToNum(transferJ) && jNum <= jalaliToNum(deadlineJ)) return true
+    }
+  }
+  return false
+}
+
+function renderTransferMetrics(dateFromNum, dateToNum) {
+  const data = getData()
+  const transfers = (data.ownershipTransfers || []).filter(t =>
+    transferInDateRange(t, dateFromNum, dateToNum) && transferTouchesSelected(t)
+  )
+
+  const countEl = document.getElementById('dash-transfer-count')
+  const batchesEl = document.getElementById('dash-transfer-batches')
+  const dwellEl = document.getElementById('dash-transfer-dwell')
+  const convEl = document.getElementById('dash-transfer-conversion')
+  const bodyEl = document.getElementById('dashTransferBody')
+
+  if (countEl) countEl.textContent = String(transfers.length)
+
+  const batches = new Set(transfers.map(t => t.batchId).filter(Boolean))
+  if (batchesEl) batchesEl.textContent = String(batches.size)
+
+  // Dwell: days between consecutive transfers on same customer (ownership tenure)
+  const byCustomer = {}
+  for (const t of (data.ownershipTransfers || [])) {
+    if (!t.customerId || !t.createdAt) continue
+    if (!byCustomer[t.customerId]) byCustomer[t.customerId] = []
+    byCustomer[t.customerId].push(t)
+  }
+  const dwellDays = []
+  for (const list of Object.values(byCustomer)) {
+    list.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    for (let i = 1; i < list.length; i++) {
+      const prev = list[i - 1]
+      const curr = list[i]
+      // Only count tenure that ended (outgoing transfer) in the filtered set
+      if (!transfers.some(t => t.id === curr.id)) continue
+      const to = normalizePhone(prev.toAdvisorPhone)
+      if (selectedAdvisorPhones && to && !selectedAdvisorPhones.has(to)) continue
+      const ms = new Date(curr.createdAt) - new Date(prev.createdAt)
+      if (ms >= 0) dwellDays.push(ms / (1000 * 60 * 60 * 24))
+    }
+  }
+  if (dwellEl) {
+    dwellEl.textContent = dwellDays.length
+      ? formatNumber(Math.round(dwellDays.reduce((a, b) => a + b, 0) / dwellDays.length))
+      : '—'
+  }
+
+  // Conversion within 30 days after receiving a transfer (to_advisor)
+  let convEligible = 0
+  let convHit = 0
+  for (const t of transfers) {
+    const to = normalizePhone(t.toAdvisorPhone)
+    if (!to || !selectedAdvisorPhones?.has(to)) continue
+    const at = new Date(t.createdAt).getTime()
+    if (Number.isNaN(at)) continue
+    convEligible++
+    const customer = data.customers.find(c => c.id === t.customerId)
+    if (customerConvertedAfter(customer, at, TRANSFER_CONVERSION_DAYS)) convHit++
+  }
+  if (convEl) {
+    convEl.textContent = convEligible
+      ? `${formatNumber(Math.round((convHit / convEligible) * 100))}% (${convHit}/${convEligible})`
+      : '—'
+  }
+
+  // In / out table
+  const stats = {}
+  function ensureRow(phone, name) {
+    const key = phone || name || '—'
+    if (!stats[key]) stats[key] = { phone: phone || '', name: name || phone || '—', in: 0, out: 0 }
+    return stats[key]
+  }
+  for (const t of transfers) {
+    const from = normalizePhone(t.fromAdvisorPhone)
+    const to = normalizePhone(t.toAdvisorPhone)
+    if (from && selectedAdvisorPhones.has(from)) {
+      ensureRow(from, t.fromAdvisorName).out++
+    }
+    if (to && selectedAdvisorPhones.has(to)) {
+      ensureRow(to, t.toAdvisorName).in++
+    }
+  }
+
+  const rows = Object.values(stats).sort((a, b) => (b.in + b.out) - (a.in + a.out))
+  if (bodyEl) {
+    if (rows.length === 0) {
+      bodyEl.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px;">انتقالی در این بازه ثبت نشده</td></tr>'
+    } else {
+      bodyEl.innerHTML = rows.map(r => {
+        const net = r.in - r.out
+        const netColor = net > 0 ? 'var(--success)' : net < 0 ? 'var(--danger)' : 'var(--text-muted)'
+        return `<tr>
+          <td>${escapeHtml(r.name || r.phone)}</td>
+          <td style="text-align:center;color:var(--success);">${r.in}</td>
+          <td style="text-align:center;color:var(--danger);">${r.out}</td>
+          <td style="text-align:center;color:${netColor};font-weight:600;">${net > 0 ? '+' : ''}${net}</td>
+        </tr>`
+      }).join('')
+    }
+  }
+}
+
+// ============================================
 // Dashboard
 // ============================================
 
@@ -536,6 +689,8 @@ export async function renderDashboard() {
     ? Math.round(salesMetrics.totalAll / salesMetrics.salesCount)
     : 0
   document.getElementById('dash-avg-sale').textContent = formatNumber(avgSale) + ' ریال'
+
+  renderTransferMetrics(dateFromNum, dateToNum)
 
   const overdueBody = document.getElementById('dashOverdueBody')
   if (overdueList.length === 0) {

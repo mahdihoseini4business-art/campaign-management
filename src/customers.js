@@ -1,8 +1,8 @@
-import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getPlatforms, getStatuses } from './data.js'
+import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getPlatforms, getStatuses, saveOwnershipTransferToDB } from './data.js'
 import { getUsersSafe } from './auth.js'
 import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
-  canViewCustomer, canManageCustomer, getCurrentUser, formatNumber, jalaliToNum,
+  canViewCustomer, canManageCustomer, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
   getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer, isAdmin, canViewOrgWideData,
   canViewScopedCustomer, matchesTabSearch, getCustomerSearchExtras,
   resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
@@ -15,7 +15,8 @@ import {
   getProductPayments, getPaymentEntryStatus, getWorstPaymentStatus,
   isPaymentFilled, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS,
   computeCustomerLrfm, isProductCountableInSales, soldAtTimePart, formatSoldAt24h, normalizeTimeTo24h,
-  CUSTOMER_LEVELS, formatCustomerLevel, parseCustomerLevel, resolveCustomerLevel, syncCustomerLevel
+  CUSTOMER_LEVELS, formatCustomerLevel, parseCustomerLevel, resolveCustomerLevel, syncCustomerLevel,
+  normalizeViewUserPhones
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -64,6 +65,7 @@ export function getFilteredCustomers() {
   const statusFilter = document.getElementById('filterStatus')?.value || ''
   const levelFilter = document.getElementById('filterCustomerLevel')?.value || ''
   const currentUser = getCurrentUser()
+  const teamPhones = normalizeViewUserPhones(currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones)
 
   return data.customers.filter(c => {
     const extras = getCustomerSearchExtras(c)
@@ -87,7 +89,12 @@ export function getFilteredCustomers() {
 
     if (!search && !canViewScopedCustomer(c, currentUser)) return false
 
-    if (advisorFilter && normalizePhone(c.advisorPhone) !== normalizePhone(advisorFilter)) return false
+    if (advisorFilter === '__team__') {
+      const owner = normalizePhone(c.advisorPhone)
+      if (!owner || !teamPhones.includes(owner)) return false
+    } else if (advisorFilter && normalizePhone(c.advisorPhone) !== normalizePhone(advisorFilter)) {
+      return false
+    }
     if (platformFilter && c.platform !== platformFilter) return false
     if (statusFilter && c.status !== statusFilter) return false
     if (levelFilter) {
@@ -134,8 +141,10 @@ export async function renderCustomers() {
   const currentUser = getCurrentUser()
   const filtered = getFilteredCustomers()
 
-  const showSelectCol = hasPermission('customers_delete')
+  const showSelectCol = hasPermission('customers_delete') || hasPermission('customers_transfer')
   const colCount = showSelectCol ? 11 : 10
+  const selectTh = document.querySelector('#sheet-customers thead th.customer-select-col')
+  if (selectTh) selectTh.style.display = showSelectCol ? '' : 'none'
 
   if (filtered.length === 0) {
     tbody.innerHTML = `
@@ -161,7 +170,10 @@ export async function renderCustomers() {
     const platformLabel = getPlatformLabels()[c.platform] || c.platform
     const statusClass = getStatusClass(c.status)
     const statusLabel = getStatusLabels()[c.status] || c.status
-    const canSelect = showSelectCol && canManageCustomer(c, currentUser)
+    const canSelect = showSelectCol && (
+      (hasPermission('customers_delete') && canManageCustomer(c, currentUser)) ||
+      canTransferCustomer(c, currentUser)
+    )
     const isMine = ownsCustomer(c, currentUser) || canViewOrgWideData()
     const selectCell = showSelectCol
       ? `<td>${canSelect ? `<input type="checkbox" data-id="${escapeAttr(c.id)}" onchange="app.toggleRowSelect('customers', '${escapeAttr(c.id)}', this.checked)">` : ''}</td>`
@@ -236,7 +248,12 @@ async function updateAdvisorDropdown() {
   if (!advisorSelect) return
   const currentVal = advisorSelect.value
   const users = await getUsersSafe()
-  advisorSelect.innerHTML = '<option value="">همه کارشناسان</option>' + users
+  const currentUser = getCurrentUser()
+  const teamPhones = normalizeViewUserPhones(currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones)
+  const teamOption = teamPhones.length
+    ? `<option value="__team__">زیرمجموعه من (${teamPhones.length})</option>`
+    : ''
+  advisorSelect.innerHTML = `<option value="">همه کارشناسان</option>${teamOption}` + users
     .filter(u => u.phone)
     .map(u => `<option value="${escapeAttr(normalizePhone(u.phone))}">${escapeHtml(userDisplayName(u))}</option>`)
     .join('')
@@ -618,31 +635,52 @@ async function applyCustomerEdit(editId, fields) {
 
   const wasLD = oldCustomer.id.startsWith('LD')
   const nowHasPhone = phones.length > 0
+  const advisorChanged = normalizePhone(oldCustomer.advisorPhone) !== normalizePhone(advisorPhone)
+  // Keep previous owner until after conversion; reassign logs the handoff separately
+  const baseFields = advisorChanged
+    ? { platformId, platform, name, ...phoneFields, status, notes, advisor: oldCustomer.advisor, advisorPhone: oldCustomer.advisorPhone }
+    : { platformId, platform, name, ...phoneFields, status, notes, ...advisorFields }
+
+  let resultId = editId
+  let toast = 'اطلاعات مشتری ذخیره شد'
 
   if (wasLD && nowHasPhone) {
     const newId = await generateId('CS')
-    await saveCustomerToDB({ ...oldCustomer, id: newId, platformId, platform, name, ...phoneFields, status, notes, ...advisorFields })
+    await saveCustomerToDB({ ...oldCustomer, id: newId, ...baseFields })
     await updateFollowupsCustomerId(oldCustomer.id, newId)
     await saveSetting('convertedCount', (data.convertedCount || 0) + 1)
-    data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, ...phoneFields, status, notes, ...advisorFields }
+    data.customers[idx] = { ...oldCustomer, id: newId, ...baseFields }
     data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
     data.convertedCount = (data.convertedCount || 0) + 1
-    return { id: newId, toast: `شماره ثبت شد — ${oldCustomer.id} تبدیل شد به ${newId}` }
-  }
-
-  if (!wasLD && !nowHasPhone && oldCustomer.id.startsWith('CS')) {
+    resultId = newId
+    toast = `شماره ثبت شد — ${oldCustomer.id} تبدیل شد به ${newId}`
+  } else if (!wasLD && !nowHasPhone && oldCustomer.id.startsWith('CS')) {
     const newId = await generateId('LD')
-    await saveCustomerToDB({ ...oldCustomer, id: newId, platformId, platform, name, ...phoneFields, status, notes, ...advisorFields })
+    await saveCustomerToDB({ ...oldCustomer, id: newId, ...baseFields })
     await updateFollowupsCustomerId(oldCustomer.id, newId)
-    data.customers[idx] = { ...oldCustomer, id: newId, platformId, platform, name, ...phoneFields, status, notes, ...advisorFields }
+    data.customers[idx] = { ...oldCustomer, id: newId, ...baseFields }
     data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
-    return { id: newId, toast: `شماره حذف شد — ${oldCustomer.id} تبدیل شد به ${newId}` }
+    resultId = newId
+    toast = `شماره حذف شد — ${oldCustomer.id} تبدیل شد به ${newId}`
+  } else if (!advisorChanged) {
+    const updated = { ...oldCustomer, ...baseFields }
+    await saveCustomerToDB(updated)
+    data.customers[idx] = updated
   }
 
-  const updated = { ...oldCustomer, platformId, platform, name, ...phoneFields, status, notes, ...advisorFields }
-  await saveCustomerToDB(updated)
-  data.customers[idx] = updated
-  return { id: editId, toast: 'اطلاعات مشتری ذخیره شد' }
+  if (advisorChanged) {
+    const current = data.customers.find(c => c.id === resultId) || oldCustomer
+    await reassignCustomerOwnership({
+      customer: current,
+      toAdvisor: advisor,
+      toAdvisorPhone: advisorPhone,
+      reason: 'handoff',
+      fieldOverrides: { platformId, platform, name, ...phoneFields, status, notes },
+      skipPermissionCheck: true
+    })
+  }
+
+  return { id: resultId, toast }
 }
 
 async function transferCustomerOwnership(existing, fields, users) {
@@ -657,46 +695,128 @@ async function transferCustomerOwnership(existing, fields, users) {
     return
   }
 
-  const oldAdvisor = existing.advisor || '—'
   const { advisor, advisorPhone } = fields
   const phones = normalizeCustomerPhones(fields.phones || fields.phone || existing)
-  const updated = {
-    ...existing,
+  const fieldOverrides = {
     platformId: fields.platformId || existing.platformId,
     platform: fields.platform || existing.platform,
     name: fields.name || existing.name,
     phones,
     phone: phones[0] || '',
     status: fields.status || existing.status,
-    notes: fields.notes !== undefined && fields.notes !== '' ? fields.notes : existing.notes,
-    advisor,
-    advisorPhone
-  }
-
-  const { date, time } = getNowJalaliDateTime()
-  const transferNote = {
-    customerId: existing.id,
-    date,
-    type: 'سیستمی',
-    result: 'انتقال کارشناس',
-    nextDate: '',
-    notes: `این مشتری در تاریخ ${date} ساعت ${time} از کارشناس ${oldAdvisor} به کارشناس ${advisor} منتقل شد.`,
-    createdByPhone: normalizePhone(currentUser?.phone || advisorPhone)
+    notes: fields.notes !== undefined && fields.notes !== '' ? fields.notes : existing.notes
   }
 
   try {
-    await saveCustomerToDB(updated)
-    data.customers[idx] = updated
-    const fid = await saveFollowupToDB(transferNote)
-    transferNote.id = fid
-    data.followups.push(transferNote)
+    await reassignCustomerOwnership({
+      customer: existing,
+      toAdvisor: advisor,
+      toAdvisorPhone: advisorPhone,
+      reason: 'reclaim',
+      fieldOverrides,
+      skipPermissionCheck: true
+    })
     await renderCustomers()
     openCustomerDetail(existing.id)
-    showToast(`مشتری ${existing.id} از ${oldAdvisor} به ${advisor} منتقل شد`)
+    showToast(`مشتری ${existing.id} از ${existing.advisor || '—'} به ${advisor} منتقل شد`)
   } catch (e) {
     console.error('transferCustomerOwnership error:', e)
-    showToast('خطا در انتقال مشتری')
+    showToast(e?.message || 'خطا در انتقال مشتری')
   }
+}
+
+/**
+ * Central ownership reassignment: updates customer, writes ownership_transfers row,
+ * and appends a systemic followup for the customer timeline.
+ * @returns {Promise<{ customer: object, transfer: object }>}
+ */
+export async function reassignCustomerOwnership({
+  customer,
+  toAdvisor,
+  toAdvisorPhone,
+  toUser,
+  actedBy = getCurrentUser(),
+  reason = 'handoff',
+  batchId = '',
+  fieldOverrides = null,
+  skipPermissionCheck = false,
+  writeTimeline = true
+}) {
+  const data = getData()
+  const idx = data.customers.findIndex(c => c.id === customer.id)
+  if (idx === -1) throw new Error('مشتری یافت نشد')
+
+  const existing = data.customers[idx]
+  if (!skipPermissionCheck && !canTransferCustomer(existing, actedBy)) {
+    throw new Error('شما مجاز به انتقال این مشتری نیستید')
+  }
+
+  let advisor = toAdvisor
+  let advisorPhone = normalizePhone(toAdvisorPhone || '')
+  if (toUser) {
+    advisor = userDisplayName(toUser)
+    advisorPhone = normalizePhone(toUser.phone)
+  }
+  if (!advisorPhone) throw new Error('کارشناس مقصد نامعتبر است')
+
+  const fromPhone = normalizePhone(existing.advisorPhone)
+  const fromName = existing.advisor || ''
+  if (fromPhone && fromPhone === advisorPhone) {
+    return { customer: existing, transfer: null, skipped: true }
+  }
+
+  const updated = {
+    ...existing,
+    ...(fieldOverrides || {}),
+    advisor: advisor || '',
+    advisorPhone
+  }
+
+  const transferPayload = {
+    customerId: existing.id,
+    fromAdvisorPhone: fromPhone,
+    fromAdvisorName: fromName,
+    toAdvisorPhone: advisorPhone,
+    toAdvisorName: advisor || '',
+    actedByPhone: normalizePhone(actedBy?.phone || ''),
+    batchId: batchId || '',
+    reason: reason || 'handoff',
+    customerStatusAtTransfer: existing.status || ''
+  }
+
+  await saveCustomerToDB(updated)
+  data.customers[idx] = updated
+
+  let savedTransfer = null
+  try {
+    savedTransfer = await saveOwnershipTransferToDB(transferPayload)
+    if (!Array.isArray(data.ownershipTransfers)) data.ownershipTransfers = []
+    data.ownershipTransfers.push(savedTransfer)
+  } catch (e) {
+    console.warn('ownership_transfers save skipped (migration 008?):', e?.message || e)
+  }
+
+  if (writeTimeline) {
+    const { date, time } = getNowJalaliDateTime()
+    const transferNote = {
+      customerId: existing.id,
+      date,
+      type: 'سیستمی',
+      result: 'انتقال کارشناس',
+      nextDate: '',
+      notes: `این مشتری در تاریخ ${date} ساعت ${time} از کارشناس ${fromName || '—'} به کارشناس ${advisor || '—'} منتقل شد.`,
+      createdByPhone: normalizePhone(actedBy?.phone || advisorPhone)
+    }
+    try {
+      const fid = await saveFollowupToDB(transferNote)
+      transferNote.id = fid
+      data.followups.push(transferNote)
+    } catch (e) {
+      console.warn('transfer timeline followup skipped:', e?.message || e)
+    }
+  }
+
+  return { customer: updated, transfer: savedTransfer }
 }
 
 export function editCustomer(id) {
@@ -970,6 +1090,7 @@ export async function openCustomerDetail(id) {
     : data.customers.find(x => x.id === id)
 
   const canEdit = isNew || (hasPermission('customers_add') && canManageCustomer(c))
+  const canTransfer = !isNew && canTransferCustomer(c)
   const canDelete = !isNew && hasPermission('customers_delete') && canManageCustomer(c)
   const canAddSale = !isNew && (canEdit || (hasPermission('sales_add_others') && canViewCustomer(c)))
   const canAddFollowup = !isNew && hasPermission('followups_add') && canManageCustomer(c)
@@ -1007,9 +1128,16 @@ export async function openCustomerDetail(id) {
     return `<option value="${escapeAttr(phone)}" ${selected}>${escapeHtml(userDisplayName(u))}</option>`
   }).join('')
 
-  const advisorHtml = canEdit
-    ? `<select class="form-select" id="detailAdvisor">${advisorOptions}</select>`
-    : escapeHtml(c.advisor || '—')
+  // Editable when managing; transfer-only users get an immediate onchange select
+  let advisorHtml
+  if (canEdit) {
+    advisorHtml = `<select class="form-select" id="detailAdvisor">${advisorOptions}</select>`
+  } else if (canTransfer) {
+    advisorHtml = `<select class="form-select" id="detailAdvisor" onchange="app.updateCustomerAdvisor('${escapeAttr(c.id)}', this.value)">${advisorOptions}</select>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">با تغییر، مالکیت فوراً منتقل می‌شود</div>`
+  } else {
+    advisorHtml = escapeHtml(c.advisor || '—')
+  }
 
   const levelDisplay = isNew ? '—' : formatCustomerLevel(levelKey)
   const levelHtml = (!isNew && isAdmin())
@@ -1362,25 +1490,36 @@ export async function addQuickNote(customerId) {
 }
 
 export async function updateCustomerAdvisor(customerId, advisorPhoneValue) {
-  if (!isAdmin()) {
-    showToast('فقط مدیر می‌تواند کارشناس مسئول را تغییر دهد')
-    return
-  }
   const data = getData()
   const c = data.customers.find(x => x.id === customerId)
   if (!c) return
   if (!canViewCustomer(c)) { showToast('شما به این مشتری دسترسی ندارید'); return }
+  if (!canTransferCustomer(c)) {
+    showToast('شما مجاز به انتقال این مشتری نیستید')
+    return
+  }
   const users = await getUsersSafe()
   const { advisor, advisorPhone } = resolveAdvisor(advisorPhoneValue, users)
-  c.advisor = advisor
-  c.advisorPhone = advisorPhone
+  if (!advisorPhone) {
+    showToast('کارشناس مقصد نامعتبر است')
+    return
+  }
   try {
-    await saveCustomerToDB(c)
+    const result = await reassignCustomerOwnership({
+      customer: c,
+      toAdvisor: advisor,
+      toAdvisorPhone: advisorPhone,
+      reason: 'handoff'
+    })
     await renderCustomers()
-    showToast('کارشناس مسئول تغییر کرد')
+    if (result.skipped) showToast('کارشناس مسئول تغییری نکرد')
+    else showToast('کارشناس مسئول تغییر کرد')
+    if (document.getElementById('detailBody') && document.getElementById('detailModal')?.classList.contains('active')) {
+      await openCustomerDetail(customerId)
+    }
   } catch (e) {
     console.error('updateCustomerAdvisor error:', e)
-    showToast('خطا در ذخیره کارشناس')
+    showToast(e?.message || 'خطا در ذخیره کارشناس')
   }
 }
 
