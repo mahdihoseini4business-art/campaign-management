@@ -588,20 +588,21 @@
 
 <!-- مودال انتقال دسته‌جمعی -->
 <div class="modal-overlay" id="bulkTransferModal">
-  <div class="modal" style="max-width: 440px;">
+  <div class="modal" style="max-width: 480px;">
     <div class="modal-header">
       <h2>انتقال به کارشناس</h2>
       <button class="modal-close" onclick="app.closeBulkTransferModal()">&times;</button>
     </div>
     <div class="modal-body">
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
-        <span id="bulkTransferCount">0</span> مشتری انتخاب‌شده به کارشناس مقصد منتقل می‌شود.
+        <span id="bulkTransferCount">0</span> مشتری انتخاب‌شده بین کارشناسان انتخاب‌شده
+        <strong>به‌طور مساوی</strong> تقسیم می‌شود.
       </p>
       <div class="form-group">
-        <label for="bulkTransferAdvisor">کارشناس مقصد <span class="required">*</span></label>
-        <select class="form-select" id="bulkTransferAdvisor">
-          <option value="">انتخاب کارشناس مقصد...</option>
-        </select>
+        <label>کارشناسان مقصد <span class="required">*</span></label>
+        <input type="search" class="form-input" id="bulkTransferSearch" placeholder="جستجوی نام یا شماره..." oninput="app.filterBulkTransferOptions(this.value)" style="font-size:12px;margin-bottom:8px;">
+        <div class="view-users-options" id="bulkTransferAdvisorList" style="max-height:220px;"></div>
+        <div id="bulkTransferPreview" style="font-size:12px;color:var(--text-muted);margin-top:8px;"></div>
       </div>
       <div class="form-group">
         <label for="bulkTransferReason">دلیل انتقال</label>

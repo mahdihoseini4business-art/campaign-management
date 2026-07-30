@@ -232,6 +232,8 @@ const app = {
   openBulkTransferModal,
   closeBulkTransferModal,
   confirmBulkTransfer,
+  updateBulkTransferPreview,
+  filterBulkTransferOptions,
   formatInput: (el) => {
     let raw = el.value.replace(/[^\d]/g, '')
     el.value = raw ? Number(raw).toLocaleString('en-US') : ''

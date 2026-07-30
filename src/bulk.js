@@ -194,24 +194,113 @@ async function bulkDelete(tab, ids) {
 
 let pendingTransferIds = []
 
+function getSelectedTransferPhones() {
+  return [...document.querySelectorAll('#bulkTransferAdvisorList input[type="checkbox"]:checked')]
+    .map(cb => normalizePhone(cb.value))
+    .filter(Boolean)
+}
+
+/** Split `n` items across `k` buckets as evenly as possible (first buckets get the remainder). */
+export function evenSplitCounts(n, k) {
+  if (k <= 0) return []
+  const base = Math.floor(n / k)
+  const rem = n % k
+  return Array.from({ length: k }, (_, i) => base + (i < rem ? 1 : 0))
+}
+
+/**
+ * Assign eligible customers round-robin / even chunks to destinations.
+ * Skips customers already owned by their assigned destination (tries next destination).
+ */
+function buildEvenAssignments(customers, destinations) {
+  const assignments = [] // { customer, toPhone }
+  if (!destinations.length) return assignments
+
+  const eligible = customers.filter(c => {
+    const owner = normalizePhone(c.advisorPhone)
+    // Already with one of the destinations — leave as-is (not part of redistribute pool)
+    return !destinations.includes(owner)
+  })
+
+  const counts = evenSplitCounts(eligible.length, destinations.length)
+  let idx = 0
+  for (let t = 0; t < destinations.length; t++) {
+    const take = counts[t]
+    for (let j = 0; j < take; j++) {
+      const customer = eligible[idx++]
+      if (!customer) break
+      assignments.push({ customer, toPhone: destinations[t] })
+    }
+  }
+  return assignments
+}
+
+export function filterBulkTransferOptions(query) {
+  const list = document.getElementById('bulkTransferAdvisorList')
+  if (!list) return
+  const q = String(query || '').trim().toLowerCase()
+  list.querySelectorAll('.view-users-option').forEach(el => {
+    const hay = el.getAttribute('data-search') || ''
+    el.style.display = !q || hay.includes(q) ? '' : 'none'
+  })
+}
+
+export function updateBulkTransferPreview() {
+  const preview = document.getElementById('bulkTransferPreview')
+  if (!preview) return
+  const phones = getSelectedTransferPhones()
+  const data = getData()
+  const transferable = pendingTransferIds
+    .map(id => data.customers.find(c => c.id === id))
+    .filter(c => c && canTransferCustomer(c))
+
+  if (phones.length === 0) {
+    preview.textContent = 'حداقل یک کارشناس مقصد انتخاب کنید.'
+    return
+  }
+
+  const destSet = new Set(phones)
+  const alreadyThere = transferable.filter(c => destSet.has(normalizePhone(c.advisorPhone))).length
+  const toDistribute = transferable.length - alreadyThere
+  const counts = evenSplitCounts(toDistribute, phones.length)
+
+  const labels = phones.map((phone, i) => {
+    const cb = document.querySelector(`#bulkTransferAdvisorList input[value="${phone}"]`)
+    const name = cb?.dataset.name || phone
+    return `${name}: ${counts[i] ?? 0}`
+  })
+
+  let text = `تقسیم پیشنهادی — ${labels.join('، ')}`
+  if (alreadyThere) text += ` · ${alreadyThere} مورد از قبل نزد مقصدهاست و جابه‌جا نمی‌شود`
+  preview.textContent = text
+}
+
 export async function openBulkTransferModal(ids) {
   pendingTransferIds = ids || []
   const modal = document.getElementById('bulkTransferModal')
   const countEl = document.getElementById('bulkTransferCount')
-  const selectEl = document.getElementById('bulkTransferAdvisor')
+  const listEl = document.getElementById('bulkTransferAdvisorList')
   const reasonEl = document.getElementById('bulkTransferReason')
-  if (!modal || !selectEl) return
+  const searchEl = document.getElementById('bulkTransferSearch')
+  if (!modal || !listEl) return
 
   if (countEl) countEl.textContent = String(pendingTransferIds.length)
   if (reasonEl) reasonEl.value = 'distribution'
+  if (searchEl) searchEl.value = ''
 
   const users = await getUsersSafe()
-  selectEl.innerHTML = '<option value="">انتخاب کارشناس مقصد...</option>' +
-    users.filter(u => u.phone).map(u => {
-      const phone = normalizePhone(u.phone)
-      return `<option value="${escapeAttr(phone)}">${escapeHtml(userDisplayName(u) || u.username)} · ${escapeHtml(phone)}</option>`
-    }).join('')
+  listEl.innerHTML = users.filter(u => u.phone).map(u => {
+    const phone = normalizePhone(u.phone)
+    const name = userDisplayName(u) || u.username || phone
+    const label = `${name} · ${phone}`
+    return `<label class="view-users-option" data-search="${escapeAttr(label.toLowerCase())}">
+      <input type="checkbox" value="${escapeAttr(phone)}" data-name="${escapeAttr(name)}" onchange="app.updateBulkTransferPreview()">
+      <span>${escapeHtml(name)}</span>
+      <span class="view-users-phone">${escapeHtml(phone)}</span>
+    </label>`
+  }).join('') || '<div style="font-size:12px;color:var(--text-muted);">کاربری برای انتخاب نیست</div>'
 
+  updateBulkTransferPreview()
   modal.classList.add('active')
 }
 
@@ -222,11 +311,9 @@ export function closeBulkTransferModal() {
 }
 
 export async function confirmBulkTransfer() {
-  const selectEl = document.getElementById('bulkTransferAdvisor')
-  const reasonEl = document.getElementById('bulkTransferReason')
-  const toPhone = normalizePhone(selectEl?.value || '')
-  if (!toPhone) {
-    showToast('کارشناس مقصد را انتخاب کنید')
+  const phones = getSelectedTransferPhones()
+  if (phones.length === 0) {
+    showToast('حداقل یک کارشناس مقصد انتخاب کنید')
     return
   }
 
@@ -238,20 +325,37 @@ export async function confirmBulkTransfer() {
   }
 
   const users = await getUsersSafe()
-  const { advisor, advisorPhone } = resolveAdvisor(toPhone, users)
-  if (!advisorPhone) {
+  const destinations = []
+  for (const phone of phones) {
+    const { advisor, advisorPhone } = resolveAdvisor(phone, users)
+    if (!advisorPhone) continue
+    destinations.push({ advisor, advisorPhone })
+  }
+  if (destinations.length === 0) {
     showToast('کارشناس مقصد نامعتبر است')
     return
   }
 
+  const reasonEl = document.getElementById('bulkTransferReason')
   const reason = (reasonEl?.value || 'distribution').trim() || 'distribution'
   const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
   const data = getData()
 
-  let transferred = 0
-  let skipped = 0
+  const candidates = []
   let denied = 0
+  let skipped = 0
+  for (const id of ids) {
+    const customer = data.customers.find(c => c.id === id)
+    if (!customer) { skipped++; continue }
+    if (!canTransferCustomer(customer)) { denied++; continue }
+    candidates.push(customer)
+  }
 
+  const destPhones = destinations.map(d => d.advisorPhone)
+  const assignments = buildEvenAssignments(candidates, destPhones)
+  skipped += candidates.length - assignments.length
+
+  let transferred = 0
   const confirmBtn = document.getElementById('bulkTransferConfirmBtn')
   if (confirmBtn) {
     confirmBtn.disabled = true
@@ -259,16 +363,14 @@ export async function confirmBulkTransfer() {
   }
 
   try {
-    for (const id of ids) {
-      const customer = data.customers.find(c => c.id === id)
-      if (!customer) { skipped++; continue }
-      if (!canTransferCustomer(customer)) { denied++; continue }
-      if (normalizePhone(customer.advisorPhone) === advisorPhone) { skipped++; continue }
+    for (const { customer, toPhone } of assignments) {
+      const dest = destinations.find(d => d.advisorPhone === toPhone)
+      if (!dest) { skipped++; continue }
       try {
         const result = await reassignCustomerOwnership({
           customer,
-          toAdvisor: advisor,
-          toAdvisorPhone: advisorPhone,
+          toAdvisor: dest.advisor,
+          toAdvisorPhone: dest.advisorPhone,
           reason,
           batchId
         })
@@ -291,7 +393,10 @@ export async function confirmBulkTransfer() {
   closeBulkTransferModal()
   await renderCustomers()
 
-  const parts = [`${transferred} منتقل شد`]
+  const destLabel = destinations.length === 1
+    ? destinations[0].advisor
+    : `${destinations.length} کارشناس`
+  const parts = [`${transferred} منتقل شد به ${destLabel}`]
   if (denied) parts.push(`${denied} رد شد (بدون دسترسی)`)
   if (skipped) parts.push(`${skipped} بدون تغییر`)
   showToast(parts.join('، '))
