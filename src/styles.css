@@ -1880,6 +1880,28 @@
     color: var(--text-secondary);
   }
 
+  .chart-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+
+  .chart-title-row .chart-title {
+    margin-bottom: 0;
+  }
+
+  .chart-container-advisor {
+    max-height: none;
+    height: 280px;
+  }
+
+  .chart-container-advisor canvas {
+    max-height: none;
+  }
+
   @media (max-width: 900px) {
     .chart-grid {
       grid-template-columns: 1fr 1fr;

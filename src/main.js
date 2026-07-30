@@ -6,7 +6,7 @@ import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, sa
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, updateFollowupBadge } from './followups.js'
 import { renderSales, sortSales } from './sales.js'
 import { renderAccounting, setAccountingFilter, approvePayment, openRejectPaymentModal, closeRejectPaymentModal, confirmRejectPayment } from './accounting.js'
-import { renderDashboard, toggleDashSection, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart } from './dashboard.js'
+import { renderDashboard, toggleDashSection, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareTypeChange } from './dashboard.js'
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, initSalesImportListeners } from './import-export.js'
 import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection } from './bulk.js'
 import { setPage } from './pagination.js'
@@ -212,6 +212,7 @@ const app = {
   toggleDashUsersAll,
   onSalesChartControlsChange,
   applySalesChart,
+  onAdvisorCompareTypeChange,
   renderDashboard,
   renderCustomers,
   renderFollowups,

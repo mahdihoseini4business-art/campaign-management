@@ -18,6 +18,11 @@ let salesChartDefaultsReady = false
 
 const TIMEFRAME_DAYS = { day: 1, week: 7, month: 30 }
 const TIMEFRAME_LABELS = { day: '۱ روز', week: '۱ هفته', month: '۱ ماه' }
+const ADVISOR_CHART_COLORS = [
+  '#0d6efd', '#198754', '#ffc107', '#dc3545', '#6f42c1',
+  '#fd7e14', '#20c997', '#0dcaf0', '#6610f2', '#d63384',
+  '#495057', '#e83e8c', '#39cccc', '#605ca8', '#f56954'
+]
 
 // ============================================
 // Helpers
@@ -658,7 +663,133 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     }
   })
 
+  renderAdvisorCompareChart(dateFromNum, dateToNum)
   renderSalesTimelineChart(dateFromNum, dateToNum, currentUser)
+}
+
+function advisorLabelForPhone(phone, fallbackName = '') {
+  const p = normalizePhone(phone)
+  const user = dashUsersCache.find(u => normalizePhone(u.phone) === p)
+  if (user) return userDisplayName(user)
+  if (fallbackName) return fallbackName
+  return p || 'نامشخص'
+}
+
+function buildAdvisorCompareRows(dateFromNum, dateToNum) {
+  const hasDateFilter = dateFromNum > 0 || dateToNum < 99999999
+  function inChartDateRange(dateStr) {
+    if (!hasDateFilter) return true
+    if (!dateStr) return false
+    const dNum = jalaliToNum(dateStr)
+    return dNum >= (dateFromNum || 0) && dNum <= (dateToNum || 99999999)
+  }
+
+  const totals = new Map()
+  forEachDashSalePayment(
+    matchesSelectedUsers,
+    hasDateFilter,
+    inChartDateRange,
+    () => {},
+    ({ customer, product, paidInScope, price }) => {
+      const phone = normalizePhone(customer.advisorPhone)
+      if (!phone) return
+      const value = hasDateFilter
+        ? paidInScope
+        : (product.status === 'تکمیل' ? price : getApprovedPaid(product))
+      if (value <= 0) return
+      const prev = totals.get(phone) || { phone, label: advisorLabelForPhone(phone, customer.advisor), value: 0 }
+      prev.value += value
+      if (!prev.label) prev.label = advisorLabelForPhone(phone, customer.advisor)
+      totals.set(phone, prev)
+    }
+  )
+
+  return [...totals.values()].sort((a, b) => b.value - a.value)
+}
+
+function renderAdvisorCompareChart(dateFromNum, dateToNum) {
+  if (dashCharts.advisorCompare) {
+    try { dashCharts.advisorCompare.destroy() } catch (_) {}
+    delete dashCharts.advisorCompare
+  }
+
+  const canvas = document.getElementById('chartAdvisorCompare')
+  if (!canvas || typeof Chart === 'undefined') return
+
+  const type = document.getElementById('advisorCompareType')?.value === 'pie' ? 'pie' : 'bar'
+  const rows = buildAdvisorCompareRows(dateFromNum, dateToNum)
+  const labels = rows.map(r => r.label)
+  const values = rows.map(r => r.value)
+  const colors = rows.map((_, i) => ADVISOR_CHART_COLORS[i % ADVISOR_CHART_COLORS.length])
+
+  const moneyTooltip = {
+    callbacks: {
+      label: (ctx) => {
+        let amount = 0
+        if (typeof ctx.parsed === 'number') amount = ctx.parsed
+        else if (ctx.parsed && typeof ctx.parsed.y === 'number') amount = ctx.parsed.y
+        else amount = Number(ctx.raw) || 0
+        return `${ctx.label || ''}: ${formatNumber(amount)}`
+      }
+    }
+  }
+
+  if (type === 'pie') {
+    dashCharts.advisorCompare = new Chart(canvas, {
+      type: 'pie',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          backgroundColor: colors,
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { family: 'Vazirmatn', size: 11 } } },
+          tooltip: moneyTooltip
+        }
+      }
+    })
+    return
+  }
+
+  dashCharts.advisorCompare = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'مبلغ فروش',
+        data: values,
+        backgroundColor: colors,
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: moneyTooltip
+      },
+      scales: {
+        x: { ticks: { font: { family: 'Vazirmatn', size: 11 } } },
+        y: { ticks: { font: { family: 'monospace' }, callback: v => formatNumber(v) } }
+      }
+    }
+  })
+}
+
+export function onAdvisorCompareTypeChange() {
+  const dateFrom = document.getElementById('dashDateFrom')?.value.trim() || ''
+  const dateTo = document.getElementById('dashDateTo')?.value.trim() || ''
+  const dateFromNum = dateFrom ? jalaliToNum(dateFrom) : 0
+  const dateToNum = dateTo ? jalaliToNum(dateTo) : 99999999
+  renderAdvisorCompareChart(dateFromNum, dateToNum)
 }
 
 export function clearDashFilter() {
