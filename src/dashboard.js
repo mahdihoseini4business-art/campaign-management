@@ -429,6 +429,7 @@ export async function renderDashboard() {
     return true
   }).length
 
+  // Fixed snapshot cards — ignore date filter (always current operational state)
   let overdueList = []
   let soonList = []
   let setCount = 0
@@ -436,7 +437,6 @@ export async function renderDashboard() {
 
   scopedCustomers.forEach(c => {
     if (c.nextFollowupDate) {
-      if (!inDateRange(c.nextFollowupDate)) return
       const dNum = jalaliToNum(c.nextFollowupDate)
       if (dNum < todayNum) overdueList.push(c)
       else if (dNum <= in3DaysNum) soonList.push(c)
@@ -452,6 +452,9 @@ export async function renderDashboard() {
   document.getElementById('dash-no-followup').textContent = noSetCount
   document.getElementById('dash-overdue-badge').textContent = overdueList.length
   document.getElementById('dash-soon-badge').textContent = soonList.length
+
+  const activeCustomers = scopedCustomers.filter(c => c.products && c.products.length > 0)
+  document.getElementById('dash-active-customers').textContent = activeCustomers.length
 
   const allSales = getAllSales().filter(s => {
     if (!s.countable) return false
@@ -476,9 +479,6 @@ export async function renderDashboard() {
   document.getElementById('dash-sales-deposit').textContent = formatNumber(totalDeposit) + ' ریال'
   document.getElementById('dash-sales-balance').textContent = formatNumber(totalBalance) + ' ریال'
   document.getElementById('dash-sales-total').textContent = formatNumber(totalAll) + ' ریال'
-
-  const activeCustomers = scopedCustomers.filter(c => c.products && c.products.length > 0)
-  document.getElementById('dash-active-customers').textContent = activeCustomers.length
 
   const avgSale = allSales.length > 0 ? Math.round(totalAll / allSales.length) : 0
   document.getElementById('dash-avg-sale').textContent = formatNumber(avgSale) + ' ریال'
