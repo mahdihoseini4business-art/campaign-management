@@ -40,23 +40,15 @@ export { populatePlatformDropdown, populateStatusDropdown }
 let phoneFieldState = { status: 'ok', customer: null, lastActivity: null, index: 0 }
 /** Visible phone input slots in the active phone form (1–3). */
 let phoneSlots = ['']
-/** Which phone form is active: create modal or customer detail panel. */
-let phoneFormMode = 'modal'
+/** Which phone form is active: always the customer detail panel. */
+let phoneFormMode = 'detail'
 
 function phoneForm() {
-  if (phoneFormMode === 'detail') {
-    return {
-      listId: 'detailPhonesList',
-      errorId: 'detailPhoneError',
-      hintId: 'detailPhoneHint',
-      getEditId: () => document.getElementById('detailEditCustomerId')?.value || ''
-    }
-  }
   return {
-    listId: 'customerPhonesList',
-    errorId: 'customerPhoneError',
-    hintId: 'customerPhoneHint',
-    getEditId: () => document.getElementById('editCustomerId')?.value || ''
+    listId: 'detailPhonesList',
+    errorId: 'detailPhoneError',
+    hintId: 'detailPhoneHint',
+    getEditId: () => document.getElementById('detailEditCustomerId')?.value || ''
   }
 }
 
@@ -302,37 +294,7 @@ export async function openCustomerModal(editId) {
     return
   }
   if (!requirePermission('customers_add')) return
-  phoneFormMode = 'modal'
-  clearPhoneFieldMessages()
-  phoneFieldState = { status: 'ok', customer: null, lastActivity: null, index: 0 }
-  const title = document.getElementById('customerModalTitle')
-  const currentUser = getCurrentUser()
-  const users = await getUsersSafe()
-  const advisorSelect = document.getElementById('customerAdvisor')
-  advisorSelect.innerHTML = users
-    .filter(u => u.phone)
-    .map(u => `<option value="${escapeAttr(normalizePhone(u.phone))}">${escapeHtml(userDisplayName(u))}</option>`)
-    .join('')
-
-  populatePlatformDropdown(document.getElementById('customerPlatform'))
-  populateStatusDropdown(document.getElementById('customerStatus'))
-
-  title.textContent = 'مشتری جدید'
-  document.getElementById('editCustomerId').value = ''
-  document.getElementById('customerIdHint').textContent = 'خودکار — LD اگر شماره نداشته باشد، CS اگر داشته باشد'
-  document.getElementById('customerPlatformId').value = ''
-  document.getElementById('customerPlatform').value = 'instagram'
-  document.getElementById('customerName').value = ''
-  phoneSlots = ['']
-  document.getElementById('customerStatus').value = 'new'
-  document.getElementById('customerNotes').value = ''
-  advisorSelect.value = currentUser?.phone ? normalizePhone(currentUser.phone) : ''
-
-  renderPhoneFields()
-  updatePreviewId()
-
-  document.getElementById('customerModal').classList.add('active')
-  document.getElementById('customerPlatformId').focus()
+  openCustomerDetail(null)
 }
 
 function syncPhoneSlotsFromDom() {
@@ -390,7 +352,8 @@ export function addCustomerPhoneSlot() {
   }
   phoneSlots.push('')
   renderPhoneFields()
-  const inputs = document.querySelectorAll('#customerPhonesList .customer-phone-input')
+  const { listId } = phoneForm()
+  const inputs = document.querySelectorAll(`#${listId} .customer-phone-input`)
   inputs[inputs.length - 1]?.focus()
 }
 
@@ -564,11 +527,10 @@ export function onCustomerPhoneInput(index = 0) {
 
 async function updatePreviewId() {
   if (phoneForm().getEditId()) return
-  if (phoneFormMode !== 'modal') return
   const phones = getFormPhones()
   const type = phones.length ? 'CS' : 'LD'
-  const display = document.getElementById('customerIdDisplay')
-  const hint = document.getElementById('customerIdHint')
+  const display = document.getElementById('detailIdDisplay')
+  const hint = document.getElementById('detailIdHint')
   if (!display || !hint) return
   display.value = await peekNextId(type)
   hint.textContent = phones.length
@@ -577,139 +539,12 @@ async function updatePreviewId() {
 }
 
 export function closeCustomerModal() {
-  document.getElementById('customerModal').classList.remove('active')
+  closeDetailModal()
 }
 
+/** @deprecated Create/edit now happens in the detail panel via saveCustomerDetail. */
 export async function saveCustomer() {
-  if (!requirePermission('customers_add')) return
-  phoneFormMode = 'modal'
-  const saveBtn = document.querySelector('#customerModal .btn-primary')
-  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'در حال ذخیره...' }
-
-  try {
-  const data = getData()
-  const users = await getUsersSafe()
-  const currentUser = getCurrentUser()
-  const editId = document.getElementById('editCustomerId').value
-  if (editId) {
-    closeCustomerModal()
-    openCustomerDetail(editId)
-    return
-  }
-  const platformId = document.getElementById('customerPlatformId').value.trim()
-  const platform = document.getElementById('customerPlatform').value
-  const name = document.getElementById('customerName').value.trim()
-  const phones = getFormPhones()
-  const phone = phones[0] || ''
-  const status = document.getElementById('customerStatus').value
-  const notes = document.getElementById('customerNotes').value.trim()
-  const advisorSelectValue = document.getElementById('customerAdvisor').value
-  const { advisor, advisorPhone } = resolveAdvisor(advisorSelectValue, users)
-  const phoneFields = { phone, phones }
-
-  // Re-run live validation
-  onCustomerPhoneInput()
-
-  // Reject incomplete / invalid raw slots
-  for (let i = 0; i < phoneSlots.length; i++) {
-    const raw = String(phoneSlots[i] || '').trim()
-    if (!raw) continue
-    const n = normalizePhone(raw)
-    if (!/^09\d{9}$/.test(n)) {
-      setPhoneFieldError('فرمت شماره موبایل صحیح نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹)', i)
-      document.querySelector(`#customerPhonesList .customer-phone-input[data-index="${i}"]`)?.focus()
-      return
-    }
-  }
-
-  if (phoneFieldState.status === 'duplicate' || phoneFieldState.status === 'incomplete') {
-    document.querySelector(`#customerPhonesList .customer-phone-input[data-index="${phoneFieldState.index}"]`)?.focus()
-    return
-  }
-
-  const focusPhoneIndex = (idx = 0) => {
-    document.querySelector(`#customerPhonesList .customer-phone-input[data-index="${idx}"]`)?.focus()
-  }
-
-  // === CREATE ===
-  if (phoneFieldState.status === 'blocked' || phoneFieldState.status === 'taken') {
-    focusPhoneIndex(phoneFieldState.index)
-    return
-  }
-  if (phoneFieldState.status === 'own' && phoneFieldState.customer) {
-    closeCustomerModal()
-    openCustomerDetail(phoneFieldState.customer.id)
-    showToast(`این مشتری از قبل متعلق به شماست — پنل ${phoneFieldState.customer.id} باز شد`)
-    return
-  }
-
-  const existById = platformId && data.customers.find(c => c.platformId && c.platformId.toLowerCase() === platformId.toLowerCase())
-  if (existById) {
-    if (phones.length && !getCustomerPhones(existById).length) {
-      const idx = data.customers.findIndex(c => c.id === existById.id)
-      if (idx === -1) return
-      const wasLD = existById.id.startsWith('LD')
-      const updatedFields = { platformId, platform, name, ...phoneFields, status, notes, advisor, advisorPhone }
-
-      if (wasLD) {
-        const newId = await generateId('CS')
-        try {
-          await saveCustomerToDB({ ...existById, ...updatedFields, id: newId })
-          await updateFollowupsCustomerId(existById.id, newId)
-          await saveSetting('convertedCount', (data.convertedCount || 0) + 1)
-          data.customers[idx] = { ...existById, ...updatedFields, id: newId }
-          data.followups.forEach(f => { if (f.customerId === existById.id) f.customerId = newId })
-          data.convertedCount = (data.convertedCount || 0) + 1
-          await renderCustomers()
-          closeCustomerModal()
-          showToast(`شماره ثبت شد — ${existById.id} تبدیل شد به ${newId}`)
-        } catch (e) {
-          console.error('LD→CS conversion error:', e)
-          showToast('خطا در تبدیل مشتری')
-        }
-        return
-      }
-
-      const updated = { ...existById, ...updatedFields }
-      await saveCustomerToDB(updated)
-      data.customers[idx] = updated
-      await renderCustomers()
-      closeCustomerModal()
-      showToast(`مشتری ${existById.id} با شماره جدید به‌روزرسانی شد`)
-      return
-    }
-    openCustomerDetail(existById.id)
-    showToast(`این ایدی قبلاً ثبت شده — پنل مشتری ${existById.id} باز شد`)
-    return
-  }
-
-  // Transfer existing customer when phone is free of recent activity
-  if (phoneFieldState.status === 'transferable' && phoneFieldState.customer) {
-    await transferCustomerOwnership(phoneFieldState.customer, {
-      platformId, platform, name, ...phoneFields, status, notes, advisor, advisorPhone
-    }, users)
-    return
-  }
-
-  const type = phones.length ? 'CS' : 'LD'
-  const id = await generateId(type)
-  const newCustomer = {
-    id, platformId, platform, name, ...phoneFields, status, notes, advisor, advisorPhone,
-    nextFollowupDate: '', products: [], createdAt: new Date().toISOString(),
-    customerLevel: '', customerLevelLocked: false, referredByPhone: ''
-  }
-  await saveCustomerToDB(newCustomer)
-  data.customers.push(newCustomer)
-
-  await renderCustomers()
-  closeCustomerModal()
-  showToast('مشتری جدید اضافه شد')
-  } catch (e) {
-    console.error('saveCustomer error:', e)
-    showToast('خطا در ذخیره مشتری')
-  } finally {
-    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'ذخیره' }
-  }
+  return saveCustomerDetail(phoneForm().getEditId() || '')
 }
 
 /**
@@ -821,7 +656,6 @@ async function transferCustomerOwnership(existing, fields, users) {
     transferNote.id = fid
     data.followups.push(transferNote)
     await renderCustomers()
-    closeCustomerModal()
     openCustomerDetail(existing.id)
     showToast(`مشتری ${existing.id} از ${oldAdvisor} به ${advisor} منتقل شد`)
   } catch (e) {
@@ -874,10 +708,20 @@ export function onCustomerRowClick(event, customerId) {
   openCustomerDetail(customerId)
 }
 
-function renderDetailFooter(c, canEdit, canDelete) {
+function renderDetailFooter({ isNew, canEdit, canDelete, customerId }) {
   const footer = document.getElementById('detailFooter')
   if (!footer) return
-  const id = escapeAttr(c.id)
+  if (isNew) {
+    footer.innerHTML = `
+      <span></span>
+      <div class="detail-footer-actions">
+        <button type="button" class="btn btn-primary" onclick="app.saveCustomerDetail('')">ایجاد مشتری</button>
+        <button type="button" class="btn" onclick="app.closeDetailModal()">انصراف</button>
+      </div>
+    `
+    return
+  }
+  const id = escapeAttr(customerId)
   footer.innerHTML = `
     ${canDelete
       ? `<button type="button" class="btn btn-danger" onclick="app.deleteCustomer('${id}')">حذف مشتری</button>`
@@ -889,46 +733,144 @@ function renderDetailFooter(c, canEdit, canDelete) {
   `
 }
 
+function readDetailFormFields(users, fallback = {}) {
+  const platformId = document.getElementById('detailPlatformId')?.value.trim() || ''
+  const platform = document.getElementById('detailPlatform')?.value || fallback.platform || 'instagram'
+  const name = document.getElementById('detailName')?.value.trim() || ''
+  const phones = getFormPhones()
+  const status = document.getElementById('detailStatus')?.value || fallback.status || 'new'
+  const notes = document.getElementById('detailNotes')?.value.trim() || ''
+  const advisorSelectValue = document.getElementById('detailAdvisor')?.value || fallback.advisorPhone || ''
+  const { advisor, advisorPhone } = resolveAdvisor(advisorSelectValue, users)
+  return { platformId, platform, name, phones, status, notes, advisor, advisorPhone }
+}
+
+function validateDetailPhones() {
+  const { listId } = phoneForm()
+  onCustomerPhoneInput()
+
+  for (let i = 0; i < phoneSlots.length; i++) {
+    const raw = String(phoneSlots[i] || '').trim()
+    if (!raw) continue
+    const n = normalizePhone(raw)
+    if (!/^09\d{9}$/.test(n)) {
+      setPhoneFieldError('فرمت شماره موبایل صحیح نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹)', i)
+      document.querySelector(`#${listId} .customer-phone-input[data-index="${i}"]`)?.focus()
+      return false
+    }
+  }
+
+  if (phoneFieldState.status === 'duplicate' || phoneFieldState.status === 'incomplete') {
+    document.querySelector(`#${listId} .customer-phone-input[data-index="${phoneFieldState.index}"]`)?.focus()
+    return false
+  }
+  return true
+}
+
+/**
+ * Create customer from detail panel fields (incl. transfer / platformId merge).
+ * @returns {Promise<string|null>} final customer id, or null if aborted/redirected
+ */
+async function createCustomerFromDetail(fields, users) {
+  const data = getData()
+  const { platformId, platform, name, phones, status, notes, advisor, advisorPhone } = fields
+  const phoneFields = { phone: phones[0] || '', phones }
+  const { listId } = phoneForm()
+  const focusPhoneIndex = (idx = 0) => {
+    document.querySelector(`#${listId} .customer-phone-input[data-index="${idx}"]`)?.focus()
+  }
+
+  if (phoneFieldState.status === 'blocked' || phoneFieldState.status === 'taken') {
+    focusPhoneIndex(phoneFieldState.index)
+    return null
+  }
+  if (phoneFieldState.status === 'own' && phoneFieldState.customer) {
+    await openCustomerDetail(phoneFieldState.customer.id)
+    showToast(`این مشتری از قبل متعلق به شماست — پنل ${phoneFieldState.customer.id} باز شد`)
+    return null
+  }
+
+  const existById = platformId && data.customers.find(c => c.platformId && c.platformId.toLowerCase() === platformId.toLowerCase())
+  if (existById) {
+    if (phones.length && !getCustomerPhones(existById).length) {
+      const idx = data.customers.findIndex(c => c.id === existById.id)
+      if (idx === -1) return null
+      const wasLD = existById.id.startsWith('LD')
+      const updatedFields = { platformId, platform, name, ...phoneFields, status, notes, advisor, advisorPhone }
+
+      if (wasLD) {
+        const newId = await generateId('CS')
+        await saveCustomerToDB({ ...existById, ...updatedFields, id: newId })
+        await updateFollowupsCustomerId(existById.id, newId)
+        await saveSetting('convertedCount', (data.convertedCount || 0) + 1)
+        data.customers[idx] = { ...existById, ...updatedFields, id: newId }
+        data.followups.forEach(f => { if (f.customerId === existById.id) f.customerId = newId })
+        data.convertedCount = (data.convertedCount || 0) + 1
+        await renderCustomers()
+        await openCustomerDetail(newId)
+        showToast(`شماره ثبت شد — ${existById.id} تبدیل شد به ${newId}`)
+        return newId
+      }
+
+      const updated = { ...existById, ...updatedFields }
+      await saveCustomerToDB(updated)
+      data.customers[idx] = updated
+      await renderCustomers()
+      await openCustomerDetail(existById.id)
+      showToast(`مشتری ${existById.id} با شماره جدید به‌روزرسانی شد`)
+      return existById.id
+    }
+    await openCustomerDetail(existById.id)
+    showToast(`این ایدی قبلاً ثبت شده — پنل مشتری ${existById.id} باز شد`)
+    return null
+  }
+
+  if (phoneFieldState.status === 'transferable' && phoneFieldState.customer) {
+    await transferCustomerOwnership(phoneFieldState.customer, {
+      platformId, platform, name, ...phoneFields, status, notes, advisor, advisorPhone
+    }, users)
+    return phoneFieldState.customer.id
+  }
+
+  const type = phones.length ? 'CS' : 'LD'
+  const id = await generateId(type)
+  const newCustomer = {
+    id, platformId, platform, name, ...phoneFields, status, notes, advisor, advisorPhone,
+    nextFollowupDate: '', products: [], createdAt: new Date().toISOString(),
+    customerLevel: '', customerLevelLocked: false, referredByPhone: ''
+  }
+  await saveCustomerToDB(newCustomer)
+  data.customers.push(newCustomer)
+  await renderCustomers()
+  await openCustomerDetail(id)
+  showToast('مشتری جدید اضافه شد — می‌توانید محصول ثبت کنید')
+  return id
+}
+
 export async function saveCustomerDetail(customerId) {
   if (!requirePermission('customers_add')) return
+  const isNew = !customerId
   const data = getData()
-  const customer = data.customers.find(c => c.id === customerId)
-  if (!customer || !canManageCustomer(customer)) {
+  const customer = isNew ? null : data.customers.find(c => c.id === customerId)
+  if (!isNew && (!customer || !canManageCustomer(customer))) {
     showToast('فقط کارشناس مسئول می‌تواند این مشتری را ویرایش کند')
     return
   }
 
   phoneFormMode = 'detail'
   const saveBtn = document.querySelector('#detailFooter .btn-primary')
+  const saveLabel = isNew ? 'ایجاد مشتری' : 'ذخیره اطلاعات'
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'در حال ذخیره...' }
 
   try {
     const users = await getUsersSafe()
-    const platformId = document.getElementById('detailPlatformId')?.value.trim() || ''
-    const platform = document.getElementById('detailPlatform')?.value || customer.platform
-    const name = document.getElementById('detailName')?.value.trim() || ''
-    const phones = getFormPhones()
-    const status = document.getElementById('detailStatus')?.value || customer.status
-    const notes = document.getElementById('detailNotes')?.value.trim() || ''
-    const advisorSelectValue = document.getElementById('detailAdvisor')?.value || customer.advisorPhone || ''
-    const { advisor, advisorPhone } = resolveAdvisor(advisorSelectValue, users)
+    if (!validateDetailPhones()) return
+
+    const fields = readDetailFormFields(users, customer || {})
     const { listId } = phoneForm()
 
-    onCustomerPhoneInput()
-
-    for (let i = 0; i < phoneSlots.length; i++) {
-      const raw = String(phoneSlots[i] || '').trim()
-      if (!raw) continue
-      const n = normalizePhone(raw)
-      if (!/^09\d{9}$/.test(n)) {
-        setPhoneFieldError('فرمت شماره موبایل صحیح نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹)', i)
-        document.querySelector(`#${listId} .customer-phone-input[data-index="${i}"]`)?.focus()
-        return
-      }
-    }
-
-    if (phoneFieldState.status === 'duplicate' || phoneFieldState.status === 'incomplete') {
-      document.querySelector(`#${listId} .customer-phone-input[data-index="${phoneFieldState.index}"]`)?.focus()
+    if (isNew) {
+      await createCustomerFromDetail(fields, users)
       return
     }
 
@@ -943,9 +885,7 @@ export async function saveCustomerDetail(customerId) {
       return
     }
 
-    const result = await applyCustomerEdit(customerId, {
-      platformId, platform, name, phones, status, notes, advisor, advisorPhone
-    })
+    const result = await applyCustomerEdit(customerId, fields)
     await renderCustomers()
     await openCustomerDetail(result.id)
     showToast(result.toast)
@@ -957,44 +897,74 @@ export async function saveCustomerDetail(customerId) {
       showToast(e?.message || 'خطا در ذخیره مشتری')
     }
   } finally {
-    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'ذخیره اطلاعات' }
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = saveLabel }
   }
 }
 
 export async function openCustomerDetail(id) {
+  const isNew = id == null || id === ''
   const data = getData()
-  const c = data.customers.find(x => x.id === id)
-  if (!c) return
-  if (!canViewCustomer(c)) {
-    showToast('شما به این مشتری دسترسی ندارید')
-    return
+  const currentUser = getCurrentUser()
+
+  if (isNew) {
+    if (!requirePermission('customers_add')) return
+  } else {
+    const existing = data.customers.find(x => x.id === id)
+    if (!existing) return
+    if (!canViewCustomer(existing)) {
+      showToast('شما به این مشتری دسترسی ندارید')
+      return
+    }
   }
 
-  const canEdit = hasPermission('customers_add') && canManageCustomer(c)
-  const canDelete = hasPermission('customers_delete') && canManageCustomer(c)
-  const canAddSale = canEdit || (hasPermission('sales_add_others') && canViewCustomer(c))
-  const canAddFollowup = hasPermission('followups_add') && canManageCustomer(c)
+  const c = isNew
+    ? {
+        id: '',
+        name: '',
+        platformId: '',
+        platform: 'instagram',
+        status: 'new',
+        notes: '',
+        advisor: currentUser ? userDisplayName(currentUser) : '',
+        advisorPhone: currentUser?.phone ? normalizePhone(currentUser.phone) : '',
+        nextFollowupDate: '',
+        products: [],
+        customerLevel: '',
+        customerLevelLocked: false
+      }
+    : data.customers.find(x => x.id === id)
 
-  const customerFollowups = data.followups.filter(f => f.customerId === id)
-  const idClass = c.id.startsWith('CS') ? 'id-cs' : 'id-ld'
+  const canEdit = isNew || (hasPermission('customers_add') && canManageCustomer(c))
+  const canDelete = !isNew && hasPermission('customers_delete') && canManageCustomer(c)
+  const canAddSale = !isNew && (canEdit || (hasPermission('sales_add_others') && canViewCustomer(c)))
+  const canAddFollowup = !isNew && hasPermission('followups_add') && canManageCustomer(c)
+
+  const customerFollowups = isNew ? [] : data.followups.filter(f => f.customerId === id)
+  const idClass = !isNew && c.id.startsWith('CS') ? 'id-cs' : 'id-ld'
   const platformLabel = getPlatformLabels()[c.platform] || c.platform
   const statusClass = getStatusClass(c.status)
   const statusLabel = getStatusLabels()[c.status] || c.status
-  const lrfm = computeCustomerLrfm(c, data.followups)
-  let levelKey = resolveCustomerLevel(c, data.customers, data.followups)
-  if (!c.customerLevelLocked) {
-    const prev = c.customerLevel || ''
-    levelKey = syncCustomerLevel(c, data.customers, data.followups)
-    if ((c.customerLevel || '') !== prev) {
-      try { await saveCustomerToDB(c) } catch (e) {
-        console.warn('auto level save skipped:', e?.message || e)
+  const lrfm = isNew ? { L: null, R: '', F: null, M: 0 } : computeCustomerLrfm(c, data.followups)
+
+  let levelKey = ''
+  if (!isNew) {
+    levelKey = resolveCustomerLevel(c, data.customers, data.followups)
+    if (!c.customerLevelLocked) {
+      const prev = c.customerLevel || ''
+      levelKey = syncCustomerLevel(c, data.customers, data.followups)
+      if ((c.customerLevel || '') !== prev) {
+        try { await saveCustomerToDB(c) } catch (e) {
+          console.warn('auto level save skipped:', e?.message || e)
+        }
       }
     }
   }
 
   const detailUsers = await getUsersSafe()
 
-  document.getElementById('detailTitle').textContent = `پنل مشتری — ${c.name || c.platformId}`
+  document.getElementById('detailTitle').textContent = isNew
+    ? 'پنل مشتری — مشتری جدید'
+    : `پنل مشتری — ${c.name || c.platformId || c.id}`
 
   const advisorOptions = detailUsers.filter(u => u.phone).map(u => {
     const phone = normalizePhone(u.phone)
@@ -1006,8 +976,8 @@ export async function openCustomerDetail(id) {
     ? `<select class="form-select" id="detailAdvisor">${advisorOptions}</select>`
     : escapeHtml(c.advisor || '—')
 
-  const levelDisplay = formatCustomerLevel(levelKey)
-  const levelHtml = isAdmin()
+  const levelDisplay = isNew ? '—' : formatCustomerLevel(levelKey)
+  const levelHtml = (!isNew && isAdmin())
     ? `<select class="form-select" id="detailCustomerLevel" style="width:auto;display:inline-block;min-width:160px;" onchange="app.updateCustomerLevel('${escapeAttr(c.id)}', this.value)">
           <option value="auto" ${!c.customerLevelLocked ? 'selected' : ''}>خودکار (محاسبه سیستم)</option>
           ${Object.values(CUSTOMER_LEVELS).map(lv => `
@@ -1017,7 +987,7 @@ export async function openCustomerDetail(id) {
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${c.customerLevelLocked ? 'سطح دستی — با انتخاب «خودکار» دوباره محاسبه می‌شود' : `فعلی: ${escapeHtml(levelDisplay)}`}</div>`
     : `<span class="customer-level-badge">${escapeHtml(levelDisplay)}</span>`
 
-  const followupDateControls = canEdit
+  const followupDateControls = canEdit && !isNew
     ? `<div style="display:flex;gap:6px;align-items:center;">
           <input type="text" id="detailFollowupDate" placeholder="تاریخ پیگیری" data-jdp style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:150px;">
           <button class="btn btn-sm btn-primary" onclick="app.setNextFollowup('${escapeAttr(c.id)}')">ذخیره</button>
@@ -1034,17 +1004,25 @@ export async function openCustomerDetail(id) {
     return phones.map(p => escapeHtml(p)).join('<br>')
   })()
 
+  const idFieldHtml = isNew
+    ? `<div class="detail-field">
+        <span class="detail-label">شناسه</span>
+        <input type="text" class="form-input" id="detailIdDisplay" readonly style="background:#f8f9fa;font-family:'Vazirmatn',sans-serif;">
+        <div class="form-hint" id="detailIdHint">خودکار — LD اگر شماره نداشته باشد، CS اگر داشته باشد</div>
+      </div>`
+    : `<div class="detail-field">
+        <span class="detail-label">شناسه</span>
+        <span class="detail-value"><span class="id-badge ${idClass}">${escapeHtml(c.id)}</span></span>
+      </div>`
+
   const infoFields = canEdit
     ? `
-      <input type="hidden" id="detailEditCustomerId" value="${escapeAttr(c.id)}">
+      <input type="hidden" id="detailEditCustomerId" value="${escapeAttr(isNew ? '' : c.id)}">
       <div class="detail-field">
         <span class="detail-label">نام</span>
         <input type="text" class="form-input" id="detailName" value="${escapeAttr(c.name || '')}" placeholder="اختیاری">
       </div>
-      <div class="detail-field">
-        <span class="detail-label">شناسه</span>
-        <span class="detail-value"><span class="id-badge ${idClass}">${escapeHtml(c.id)}</span></span>
-      </div>
+      ${idFieldHtml}
       <div class="detail-field">
         <span class="detail-label">سطح مشتری</span>
         <span class="detail-value">${levelHtml}</span>
@@ -1081,10 +1059,7 @@ export async function openCustomerDetail(id) {
         <span class="detail-label">نام</span>
         <span class="detail-value">${escapeHtml(c.name) || '—'}</span>
       </div>
-      <div class="detail-field">
-        <span class="detail-label">شناسه</span>
-        <span class="detail-value"><span class="id-badge ${idClass}">${escapeHtml(c.id)}</span></span>
-      </div>
+      ${idFieldHtml}
       <div class="detail-field">
         <span class="detail-label">سطح مشتری</span>
         <span class="detail-value">${levelHtml}</span>
@@ -1119,7 +1094,10 @@ export async function openCustomerDetail(id) {
     <div class="detail-info">
       ${infoFields}
     </div>
+  `
 
+  if (!isNew) {
+    html += `
     <div class="detail-rfm">
       <div class="detail-rfm-title">شاخص‌های LRFM</div>
       <div class="rfm-table-wrap">
@@ -1167,89 +1145,98 @@ export async function openCustomerDetail(id) {
         ${followupDateControls}
       </div>
     </div>
+    `
+  }
 
+  html += `
     <div class="detail-products" style="margin-bottom:20px;">
       <div style="font-size:14px;font-weight:600;margin-bottom:12px;">محصولات</div>
       <div id="detailProductsList"></div>
-      ${canAddSale ? `<button class="btn btn-sm" style="margin-top:8px;" onclick="app.addProductRow('${escapeAttr(c.id)}')">+ افزودن محصول</button>` : ''}
+      ${isNew
+        ? `<div style="padding:12px;color:var(--text-muted);font-size:13px;background:#f8f9fa;border-radius:8px;border:1px dashed var(--border);">پس از ایجاد مشتری می‌توانید همین‌جا محصول اضافه کنید.</div>`
+        : (canAddSale ? `<button class="btn btn-sm" style="margin-top:8px;" onclick="app.addProductRow('${escapeAttr(c.id)}')">+ افزودن محصول</button>` : '')}
     </div>
+  `
 
+  if (!isNew) {
+    html += `
     <div class="detail-timeline-title">
       تاریخچه پیگیری <span class="count">${customerFollowups.length}</span>
     </div>
-  `
+    `
 
-  if (customerFollowups.length === 0) {
-    html += `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری ثبت نشده</div>`
-  } else {
-    html += `<div class="timeline">`
-    customerFollowups.forEach(f => {
-      const nextHtml = f.nextDate ? `<div class="timeline-next">پیگیری بعدی: ${f.nextDate}</div>` : ''
-      const authorName = resolveUserNameByPhone(f.createdByPhone, detailUsers)
-      const authorHtml = authorName
-        ? `<span class="record-author" title="ثبت‌کننده">👤 ${escapeHtml(authorName)}</span>`
-        : ''
-      const isOverdoneNote = f.type === 'پیگیری معوقه انجام‌شده'
-      const overdueTag = isOverdoneNote ? '<span class="overdue-tag">معوقه</span>' : ''
-      const itemClass = isOverdoneNote ? ' timeline-item-overdue' : ''
-      html += `
-        <div class="timeline-item${itemClass}">
-          <div class="timeline-header">
-            <span class="timeline-date">${f.date}</span>
-            <span class="timeline-type">${escapeHtml(f.type)}</span>
-            ${overdueTag}
-            ${authorHtml}
+    if (customerFollowups.length === 0) {
+      html += `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری ثبت نشده</div>`
+    } else {
+      html += `<div class="timeline">`
+      customerFollowups.forEach(f => {
+        const nextHtml = f.nextDate ? `<div class="timeline-next">پیگیری بعدی: ${f.nextDate}</div>` : ''
+        const authorName = resolveUserNameByPhone(f.createdByPhone, detailUsers)
+        const authorHtml = authorName
+          ? `<span class="record-author" title="ثبت‌کننده">👤 ${escapeHtml(authorName)}</span>`
+          : ''
+        const isOverdoneNote = f.type === 'پیگیری معوقه انجام‌شده'
+        const overdueTag = isOverdoneNote ? '<span class="overdue-tag">معوقه</span>' : ''
+        const itemClass = isOverdoneNote ? ' timeline-item-overdue' : ''
+        html += `
+          <div class="timeline-item${itemClass}">
+            <div class="timeline-header">
+              <span class="timeline-date">${f.date}</span>
+              <span class="timeline-type">${escapeHtml(f.type)}</span>
+              ${overdueTag}
+              ${authorHtml}
+            </div>
+            <div class="timeline-result">${escapeHtml(f.result)}</div>
+            ${f.notes ? `<div class="timeline-notes">${escapeHtml(f.notes)}</div>` : ''}
+            ${nextHtml}
           </div>
-          <div class="timeline-result">${escapeHtml(f.result)}</div>
-          ${f.notes ? `<div class="timeline-notes">${escapeHtml(f.notes)}</div>` : ''}
-          ${nextHtml}
-        </div>
-      `
-    })
-    html += `</div>`
-  }
+        `
+      })
+      html += `</div>`
+    }
 
-  if (canAddFollowup) {
-    html += `
-    <div class="detail-add-note" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">افزودن توضیحات جدید</div>
-      <textarea class="form-textarea" id="detailQuickNote" placeholder="توضیحات جدید را اینجا بنویسید..." style="min-height:60px;margin-bottom:8px;"></textarea>
-      <div class="form-row">
-        <div class="form-group" style="margin-bottom:0;">
-          <select class="form-select" id="detailQuickType" style="font-size:13px;padding:7px 10px;">
-            <option value="دایرکت">دایرکت</option>
-            <option value="تماس">تماس</option>
-            <option value="کامنت">کامنت</option>
-            <option value="پیام">پیام</option>
-          </select>
-        </div>
-        <div class="form-group" style="margin-bottom:0;">
-          <select class="form-select" id="detailQuickResult" style="font-size:13px;padding:7px 10px;">
-            <option value="پاسخ داد">پاسخ داد</option>
-            <option value="صحبت شد">صحبت شد</option>
-            <option value="ارسال قیمت">ارسال قیمت</option>
-            <option value="ارسال اطلاعات">ارسال اطلاعات</option>
-            <option value="پیگیری">پیگیری</option>
-            <option value="پاسخ نداد">پاسخ نداد</option>
-            <option value="Happy Customer ❤️">Happy Customer ❤️</option>
-          </select>
-        </div>
-        <div class="form-group" style="margin-bottom:0;">
-          <button class="btn btn-primary" style="width:100%;" onclick="app.addQuickNote('${escapeAttr(c.id)}')">ثبت</button>
+    if (canAddFollowup) {
+      html += `
+      <div class="detail-add-note" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px;">افزودن توضیحات جدید</div>
+        <textarea class="form-textarea" id="detailQuickNote" placeholder="توضیحات جدید را اینجا بنویسید..." style="min-height:60px;margin-bottom:8px;"></textarea>
+        <div class="form-row">
+          <div class="form-group" style="margin-bottom:0;">
+            <select class="form-select" id="detailQuickType" style="font-size:13px;padding:7px 10px;">
+              <option value="دایرکت">دایرکت</option>
+              <option value="تماس">تماس</option>
+              <option value="کامنت">کامنت</option>
+              <option value="پیام">پیام</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <select class="form-select" id="detailQuickResult" style="font-size:13px;padding:7px 10px;">
+              <option value="پاسخ داد">پاسخ داد</option>
+              <option value="صحبت شد">صحبت شد</option>
+              <option value="ارسال قیمت">ارسال قیمت</option>
+              <option value="ارسال اطلاعات">ارسال اطلاعات</option>
+              <option value="پیگیری">پیگیری</option>
+              <option value="پاسخ نداد">پاسخ نداد</option>
+              <option value="Happy Customer ❤️">Happy Customer ❤️</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <button class="btn btn-primary" style="width:100%;" onclick="app.addQuickNote('${escapeAttr(c.id)}')">ثبت</button>
+          </div>
         </div>
       </div>
-    </div>
-  `
+    `
+    }
   }
 
   document.getElementById('detailBody').innerHTML = html
-  renderDetailFooter(c, canEdit, canDelete)
+  renderDetailFooter({ isNew, canEdit, canDelete, customerId: c.id })
   document.getElementById('detailModal').classList.add('active')
 
   if (canEdit) {
     phoneFormMode = 'detail'
     phoneFieldState = { status: 'ok', customer: null, lastActivity: null, index: 0 }
-    const existingPhones = getCustomerPhones(c)
+    const existingPhones = isNew ? [] : getCustomerPhones(c)
     phoneSlots = existingPhones.length ? [...existingPhones] : ['']
     populatePlatformDropdown(document.getElementById('detailPlatform'))
     populateStatusDropdown(document.getElementById('detailStatus'))
@@ -1258,9 +1245,11 @@ export async function openCustomerDetail(id) {
     if (platformEl) platformEl.value = c.platform || 'instagram'
     if (statusEl) statusEl.value = c.status || 'new'
     renderPhoneFields()
+    if (isNew) updatePreviewId()
+    document.getElementById('detailPlatformId')?.focus()
   }
 
-  renderProducts(c.id, detailUsers)
+  if (!isNew) renderProducts(c.id, detailUsers)
 }
 
 function resolveUserNameByPhone(phone, users = []) {
