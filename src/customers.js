@@ -1396,7 +1396,7 @@ export async function updateCustomerLevel(customerId, levelValue) {
 
 export function closeDetailModal() {
   document.getElementById('detailModal').classList.remove('active')
-  phoneFormMode = 'modal'
+  phoneFormMode = 'detail'
 }
 
 // ============================================
