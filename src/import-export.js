@@ -5,12 +5,13 @@ import {
   getProductBalance, getProductPayments, getPaymentEntryStatus,
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, createPayment, formatSoldAt24h, normalizePhone,
   formatCustomerLevel, parseCustomerLevel, syncCustomerLevel,
-  normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone
+  normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone,
+  jalaliDatePart, jalaliToNum
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
 import { getFilteredFollowups } from './followups.js'
-import { renderSales, getFilteredSales } from './sales.js'
+import { renderSales, getFilteredSales, getSalesDateFilter } from './sales.js'
 
 // ============================================
 // Helpers
@@ -150,7 +151,17 @@ const EXPORT_CONFIG = {
         ensureProductPayments(p)
         syncProductStatus(p)
         const price = parseFloat(p.price) || 0
-        const pays = getProductPayments(p).filter(pay => (parseFloat(pay.amount) || 0) > 0)
+        const dateFilter = getSalesDateFilter()
+        let pays = getProductPayments(p).filter(pay => (parseFloat(pay.amount) || 0) > 0)
+        if (dateFilter.hasDateFilter) {
+          pays = pays.filter(pay => {
+            if (getPaymentEntryStatus(pay) === PAYMENT_STATUS.rejected) return false
+            const d = jalaliDatePart(pay.soldAt)
+            if (!d) return false
+            const n = jalaliToNum(d)
+            return n >= dateFilter.fromNum && n <= dateFilter.toNum
+          })
+        }
         const phoneStr = getCustomerPhones(c).join(' / ') || ''
         const platformLabel = getPlatformLabels()[c.platform] || c.platform || ''
         if (pays.length === 0) {
@@ -162,7 +173,7 @@ const EXPORT_CONFIG = {
             p.name || '',
             p.status || '',
             price || '',
-            getApprovedPaid(p) || '',
+            dateFilter.hasDateFilter ? (s.deposit || '') : (getApprovedPaid(p) || ''),
             getProductBalance(p) || '',
             p.settlementDate || '',
             c.advisor || '',

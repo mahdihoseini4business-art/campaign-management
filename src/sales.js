@@ -2,14 +2,14 @@ import { getData, getPlatforms } from './data.js'
 import { getUsersSafe } from './auth.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser,
-  jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr,
+  jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, jalaliDatePart,
   canViewScopedCustomer, canViewOrgWideData, getVisibleAdvisorPhones,
   formatSoldAt24h, matchesTabSearch,
-  getPlatformLabels, getPlatformClass, PAYMENT_STATUS_LABELS,
+  getPlatformLabels, getPlatformClass, PAYMENT_STATUS_LABELS, PAYMENT_STATUS,
   CUSTOMER_LEVELS, resolveCustomerLevel,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
   getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
-  productHasRejectedPayment, getProductPayments,
+  productHasRejectedPayment, getProductPayments, getPaymentEntryStatus,
   getCustomerPhones, getPrimaryPhone,
   normalizePhone, userDisplayName
 } from './utils.js'
@@ -67,12 +67,46 @@ export function getAllSales() {
 // Render Sales
 // ============================================
 
+export function getSalesDateFilter() {
+  const dateFrom = document.getElementById('filterSalesDateFrom')?.value.trim() || ''
+  const dateTo = document.getElementById('filterSalesDateTo')?.value.trim() || ''
+  return {
+    dateFrom,
+    dateTo,
+    hasDateFilter: !!(dateFrom || dateTo),
+    fromNum: dateFrom ? jalaliToNum(dateFrom) : 0,
+    toNum: dateTo ? jalaliToNum(dateTo) : 99999999
+  }
+}
+
+function isPaymentInSalesDateRange(pay, dateFilter) {
+  if (!dateFilter.hasDateFilter) return true
+  const d = jalaliDatePart(pay.soldAt)
+  if (!d) return false
+  const n = jalaliToNum(d)
+  return n >= dateFilter.fromNum && n <= dateFilter.toNum
+}
+
+function getApprovedPaymentsInRange(product, dateFilter) {
+  return getProductPayments(product).filter(pay => {
+    const amount = parseFloat(pay.amount) || 0
+    if (amount <= 0) return false
+    if (getPaymentEntryStatus(pay) !== PAYMENT_STATUS.approved) return false
+    return isPaymentInSalesDateRange(pay, dateFilter)
+  })
+}
+
+function sumPayments(pays) {
+  return pays.reduce((sum, pay) => sum + (parseFloat(pay.amount) || 0), 0)
+}
+
 export function getFilteredSales() {
   const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
   const platformFilter = document.getElementById('filterSalesPlatform')?.value || ''
   const advisorFilter = document.getElementById('filterSalesAdvisor')?.value || ''
   const levelFilter = document.getElementById('filterSalesLevel')?.value || ''
   const payStatusFilter = document.getElementById('filterSalesPaymentStatus')?.value || ''
+  const dateFilter = getSalesDateFilter()
   let allSales = getAllSales()
 
   const currentUser = getCurrentUser()
@@ -110,6 +144,27 @@ export function getFilteredSales() {
       const resolved = resolveCustomerLevel(customer, data.customers, data.followups)
       if (resolved !== levelFilter) return false
     }
+
+    if (dateFilter.hasDateFilter) {
+      const product = customer?.products?.[s.productIndex]
+      if (!product) return false
+      ensureProductPayments(product)
+      const paysInRange = getApprovedPaymentsInRange(product, dateFilter)
+      if (!paysInRange.length) return false
+      const paidInRange = sumPayments(paysInRange)
+      const lastInRange = paysInRange[paysInRange.length - 1]
+      s.deposit = paidInRange
+      s.balance = Math.max(0, (parseFloat(product.price) || 0) - getApprovedPaid(product))
+      s.soldAt = lastInRange?.soldAt || ''
+      s.depositorName = paysInRange.length > 1
+        ? `${paysInRange.length} واریز`
+        : (lastInRange?.depositorName || '')
+      s.paymentCount = paysInRange.length
+      s.paymentStatus = getWorstPaymentStatus({ payments: paysInRange })
+      s.hasRejected = productHasRejectedPayment({ payments: paysInRange })
+      s.dateFiltered = true
+    }
+
     return true
   })
 
@@ -255,6 +310,7 @@ export function renderSales() {
   const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
 
   populateSalesFilterDropdowns()
+  initSalesActionsMenu()
 
   let allSales = getFilteredSales()
 
@@ -284,13 +340,23 @@ export function renderSales() {
   }
 
   const countable = allSales.filter(s => s.countable)
+  const dateFilter = getSalesDateFilter()
   const cashSales = countable.filter(s => s.status === 'تکمیل')
   const depositSales = countable.filter(s => s.status === 'بیعانه')
 
-  const totalCash = cashSales.reduce((sum, s) => sum + s.price, 0)
-  const totalDeposit = depositSales.reduce((sum, s) => sum + s.deposit, 0)
-  const totalBalance = depositSales.reduce((sum, s) => sum + s.balance, 0)
-  // Actual received: full price of completed + approved deposits (not unpaid remainder)
+  let totalCash = 0
+  let totalDeposit = 0
+  let totalBalance = 0
+  if (dateFilter.hasDateFilter) {
+    // فقط مبالغ واریز تأییدشده داخل بازه
+    totalCash = cashSales.reduce((sum, s) => sum + (s.deposit || 0), 0)
+    totalDeposit = depositSales.reduce((sum, s) => sum + (s.deposit || 0), 0)
+    totalBalance = depositSales.reduce((sum, s) => sum + (s.balance || 0), 0)
+  } else {
+    totalCash = cashSales.reduce((sum, s) => sum + s.price, 0)
+    totalDeposit = depositSales.reduce((sum, s) => sum + s.deposit, 0)
+    totalBalance = depositSales.reduce((sum, s) => sum + s.balance, 0)
+  }
   const totalAll = totalCash + totalDeposit
 
   document.getElementById('stat-sales-count').textContent = countable.length
@@ -298,6 +364,8 @@ export function renderSales() {
   document.getElementById('stat-sales-deposit').textContent = formatNumber(totalDeposit) + ' ریال'
   document.getElementById('stat-sales-balance').textContent = formatNumber(totalBalance) + ' ریال'
   document.getElementById('stat-sales-total').textContent = formatNumber(totalAll) + ' ریال'
+
+  syncSalesActionsMenuVisibility()
 
   if (allSales.length === 0) {
     const colCount = hasPermission('customers_add') ? 14 : 13
@@ -324,4 +392,34 @@ export function sortSales(field) {
   if (salesSortState.field === field) salesSortState.asc = !salesSortState.asc
   else { salesSortState.field = field; salesSortState.asc = true }
   renderSales()
+}
+
+function syncSalesActionsMenuVisibility() {
+  const menu = document.getElementById('salesActionsMenu')
+  if (!menu) return
+  const canExport = hasPermission('sales_export')
+  const canImport = hasPermission('sales_import')
+  menu.style.display = (canExport || canImport) ? '' : 'none'
+}
+
+export function toggleSalesActionsMenu(event) {
+  event?.stopPropagation?.()
+  const dd = document.getElementById('salesActionsDropdown')
+  if (!dd) return
+  dd.hidden = !dd.hidden
+}
+
+export function closeSalesActionsMenu() {
+  const dd = document.getElementById('salesActionsDropdown')
+  if (dd) dd.hidden = true
+}
+
+let salesActionsMenuInited = false
+function initSalesActionsMenu() {
+  if (salesActionsMenuInited) return
+  salesActionsMenuInited = true
+  document.addEventListener('click', (e) => {
+    const wrap = document.getElementById('salesActionsMenu')
+    if (wrap && !wrap.contains(e.target)) closeSalesActionsMenu()
+  })
 }

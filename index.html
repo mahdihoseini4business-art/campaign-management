@@ -386,21 +386,28 @@
       </select>
       <span id="bulkCountSales" style="display:none;font-size:13px;color:var(--text-muted);"></span>
       <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchSales" oninput="app.renderSales()">
-      <select class="form-select" id="filterSalesPlatform" style="width:150px;" onchange="app.renderSales()">
+      <input type="text" class="form-input" id="filterSalesDateFrom" placeholder="از تاریخ واریز" data-jdp style="width:140px;" onchange="app.renderSales()">
+      <input type="text" class="form-input" id="filterSalesDateTo" placeholder="تا تاریخ واریز" data-jdp style="width:140px;" onchange="app.renderSales()">
+      <select class="form-select" id="filterSalesPlatform" style="width:140px;" onchange="app.renderSales()">
         <option value="">همه پلتفرم‌ها</option>
       </select>
-      <select class="form-select" id="filterSalesAdvisor" style="width:160px;" onchange="app.renderSales()">
+      <select class="form-select" id="filterSalesAdvisor" style="width:150px;" onchange="app.renderSales()">
         <option value="">همه کارشناسان</option>
       </select>
-      <select class="form-select" id="filterSalesLevel" style="width:150px;" onchange="app.renderSales()">
+      <select class="form-select" id="filterSalesLevel" style="width:130px;" onchange="app.renderSales()">
         <option value="">همه سطوح</option>
       </select>
-      <select class="form-select" id="filterSalesPaymentStatus" style="width:150px;" onchange="app.renderSales()">
+      <select class="form-select" id="filterSalesPaymentStatus" style="width:140px;" onchange="app.renderSales()">
         <option value="">همه وضعیت‌ها</option>
       </select>
-      <button class="btn" data-perm="sales_export" onclick="app.exportTabCSV('sales')">خروجی CSV</button>
-      <button class="btn" data-perm="sales_export" onclick="app.exportTabXLSX('sales')">خروجی Excel</button>
-      <button class="btn btn-primary" data-perm="sales_import" onclick="app.openSalesImportModal()">ایمپورت فروش از اکسل</button>
+      <div class="toolbar-actions" id="salesActionsMenu">
+        <button type="button" class="btn btn-primary" id="salesActionsBtn" onclick="app.toggleSalesActionsMenu(event)">خروجی / ایمپورت ▾</button>
+        <div class="toolbar-actions-dropdown" id="salesActionsDropdown" hidden>
+          <button type="button" class="toolbar-actions-item" data-perm="sales_export" onclick="app.exportTabCSV('sales');app.closeSalesActionsMenu()">خروجی CSV</button>
+          <button type="button" class="toolbar-actions-item" data-perm="sales_export" onclick="app.exportTabXLSX('sales');app.closeSalesActionsMenu()">خروجی Excel</button>
+          <button type="button" class="toolbar-actions-item" data-perm="sales_import" onclick="app.openSalesImportModal();app.closeSalesActionsMenu()">ایمپورت از اکسل</button>
+        </div>
+      </div>
     </div>
 
     <div class="table-wrapper">
