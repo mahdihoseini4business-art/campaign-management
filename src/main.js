@@ -2,7 +2,7 @@ import './styles.css'
 import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum, showToast, escapeAttr, getStatusOrder, toggleToolbarActions, closeAllToolbarActions, initToolbarActionsMenus } from './utils.js'
 import { getData, loadData, backfillAdvisorPhones } from './data.js'
 import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, addDestinationBank, removeDestinationBank, filterViewUserOptions, addPlatform, removePlatform, updatePlatformField, editPlatform, addStatus, removeStatus, updateStatusField, editStatus, onStatusDragStart, onStatusDragOver, onStatusDrop } from './auth.js'
-import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, saveProductField, updateProduct, removeProduct, onCustomerPhoneInput, addCustomerPhoneSlot, removeCustomerPhoneSlot, addProductPayment, savePaymentField, updatePaymentField, removeProductPayment, onDestinationBankSelect } from './customers.js'
+import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, saveProductField, updateProduct, removeProduct, onCustomerPhoneInput, addCustomerPhoneSlot, removeCustomerPhoneSlot, addProductPayment, savePaymentField, updatePaymentField, removeProductPayment, onDestinationBankSelect } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, updateFollowupBadge } from './followups.js'
 import { renderSales, sortSales } from './sales.js'
 import { renderAccounting, setAccountingFilter, approvePayment, openRejectPaymentModal, closeRejectPaymentModal, confirmRejectPayment } from './accounting.js'
@@ -134,6 +134,7 @@ const app = {
   deleteCustomer,
   openCustomerModal,
   saveCustomer,
+  saveCustomerDetail,
   closeCustomerModal,
   onCustomerPhoneInput,
   addCustomerPhoneSlot,

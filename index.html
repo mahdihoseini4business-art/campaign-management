@@ -324,7 +324,6 @@
             <th onclick="app.sortCustomersHeader('lastFollowup')">آخرین پیگیری</th>
             <th onclick="app.sortCustomersHeader('nextFollowupDate')">پیگیری بعدی</th>
             <th>توضیحات</th>
-            <th style="width: 80px;"></th>
           </tr>
         </thead>
         <tbody id="customerBody"></tbody>
@@ -708,7 +707,7 @@
       <button class="modal-close" onclick="app.closeDetailModal()">&times;</button>
     </div>
     <div class="modal-body" id="detailBody"></div>
-    <div class="modal-footer">
+    <div class="modal-footer" id="detailFooter">
       <button class="btn" onclick="app.closeDetailModal()">بستن</button>
     </div>
   </div>

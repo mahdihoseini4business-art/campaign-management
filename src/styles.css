@@ -1187,6 +1187,24 @@
     border-top: 1px solid var(--border);
   }
 
+  #detailFooter {
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .detail-footer-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .detail-info .form-input,
+  .detail-info .form-select,
+  .detail-info .form-textarea {
+    margin-top: 4px;
+    width: 100%;
+  }
+
   /* --- Form --- */
   .form-group { margin-bottom: 20px; }
   .form-group:last-child { margin-bottom: 0; }
