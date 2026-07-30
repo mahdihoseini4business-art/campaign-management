@@ -283,7 +283,7 @@ function buildSalesBuckets(fromStr, toStr, timeframe) {
 }
 
 function saleEventDate(sale) {
-  return jalaliDatePart(sale.soldAt) || jalaliDatePart(sale.settlementDate) || ''
+  return jalaliDatePart(sale.soldAt) || ''
 }
 
 function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
@@ -310,9 +310,11 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
     const customer = data.customers.find(c => c.id === s.customerId)
     if (!matchesSelectedUsers(customer)) return
 
-    // Respect global dash date filter when set
-    if ((dateFromNum > 0 || dateToNum < 99999999) && s.settlementDate) {
-      const sn = jalaliToNum(s.settlementDate)
+    // Respect global dash date filter when set — based on deposit/payment date
+    if (dateFromNum > 0 || dateToNum < 99999999) {
+      const d = saleEventDate(s)
+      if (!d) return
+      const sn = jalaliToNum(d)
       if (sn < dateFromNum || sn > dateToNum) return
     }
 
@@ -457,7 +459,7 @@ export async function renderDashboard() {
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
     const customer = data.customers.find(c => c.id === s.customerId)
     if (!inUserScope(customer)) return false
-    if ((dateFrom || dateTo) && s.settlementDate && !inDateRange(s.settlementDate)) return false
+    if ((dateFrom || dateTo) && !inDateRange(saleEventDate(s))) return false
     return true
   })
   const cashSales = allSales.filter(s => s.status === 'تکمیل')
@@ -571,7 +573,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
     const customer = data.customers.find(c => c.id === s.customerId)
     if (!inUserScope(customer)) return false
-    if (!inChartDateRange(s.settlementDate)) return false
+    if (!inChartDateRange(saleEventDate(s))) return false
     return true
   })
   chartSales.forEach(s => {
