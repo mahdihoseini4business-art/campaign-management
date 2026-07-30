@@ -247,30 +247,43 @@ export function filterBulkTransferOptions(query) {
 
 export function updateBulkTransferPreview() {
   const preview = document.getElementById('bulkTransferPreview')
-  if (!preview) return
+  const list = document.getElementById('bulkTransferAdvisorList')
+  if (!list) return
+
   const phones = getSelectedTransferPhones()
   const data = getData()
   const transferable = pendingTransferIds
     .map(id => data.customers.find(c => c.id === id))
     .filter(c => c && canTransferCustomer(c))
 
+  const destSet = new Set(phones)
+  const alreadyThere = transferable.filter(c => destSet.has(normalizePhone(c.advisorPhone))).length
+  const toDistribute = Math.max(0, transferable.length - alreadyThere)
+  const counts = evenSplitCounts(toDistribute, phones.length)
+  const shareByPhone = new Map(phones.map((phone, i) => [phone, counts[i] ?? 0]))
+
+  list.querySelectorAll('.view-users-option').forEach(el => {
+    const cb = el.querySelector('input[type="checkbox"]')
+    const shareEl = el.querySelector('.bulk-transfer-share')
+    if (!cb || !shareEl) return
+    if (cb.checked) {
+      const n = shareByPhone.get(normalizePhone(cb.value)) ?? 0
+      shareEl.textContent = `${n} سهم`
+      shareEl.hidden = false
+      el.classList.add('is-selected')
+    } else {
+      shareEl.textContent = ''
+      shareEl.hidden = true
+      el.classList.remove('is-selected')
+    }
+  })
+
+  if (!preview) return
   if (phones.length === 0) {
     preview.textContent = 'حداقل یک کارشناس مقصد انتخاب کنید.'
     return
   }
-
-  const destSet = new Set(phones)
-  const alreadyThere = transferable.filter(c => destSet.has(normalizePhone(c.advisorPhone))).length
-  const toDistribute = transferable.length - alreadyThere
-  const counts = evenSplitCounts(toDistribute, phones.length)
-
-  const labels = phones.map((phone, i) => {
-    const cb = document.querySelector(`#bulkTransferAdvisorList input[value="${phone}"]`)
-    const name = cb?.dataset.name || phone
-    return `${name}: ${counts[i] ?? 0}`
-  })
-
-  let text = `تقسیم پیشنهادی — ${labels.join('، ')}`
+  let text = `${toDistribute} مورد بین ${phones.length} کارشناس تقسیم می‌شود`
   if (alreadyThere) text += ` · ${alreadyThere} مورد از قبل نزد مقصدهاست و جابه‌جا نمی‌شود`
   preview.textContent = text
 }
@@ -295,7 +308,8 @@ export async function openBulkTransferModal(ids) {
     const label = `${name} · ${phone}`
     return `<label class="view-users-option" data-search="${escapeAttr(label.toLowerCase())}">
       <input type="checkbox" value="${escapeAttr(phone)}" data-name="${escapeAttr(name)}" onchange="app.updateBulkTransferPreview()">
-      <span>${escapeHtml(name)}</span>
+      <span class="bulk-transfer-name">${escapeHtml(name)}</span>
+      <span class="bulk-transfer-share" hidden></span>
       <span class="view-users-phone">${escapeHtml(phone)}</span>
     </label>`
   }).join('') || '<div style="font-size:12px;color:var(--text-muted);">کاربری برای انتخاب نیست</div>'
