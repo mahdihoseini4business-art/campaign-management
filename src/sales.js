@@ -3,14 +3,15 @@ import { getUsersSafe } from './auth.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser,
   jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr,
-  canViewScopedCustomer, formatSoldAt24h, matchesTabSearch,
+  canViewScopedCustomer, canViewOrgWideData, getVisibleAdvisorPhones,
+  formatSoldAt24h, matchesTabSearch,
   getPlatformLabels, getPlatformClass, PAYMENT_STATUS_LABELS,
   CUSTOMER_LEVELS, resolveCustomerLevel,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
   getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
   productHasRejectedPayment, getProductPayments,
   getCustomerPhones, getPrimaryPhone,
-  normalizePhone, normalizeViewUserPhones, userDisplayName
+  normalizePhone, userDisplayName
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -212,33 +213,35 @@ async function updateSalesAdvisorFilter() {
   if (!sel) return
 
   const currentUser = getCurrentUser()
-  const subordinates = normalizeViewUserPhones(
-    currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones
-  )
+  const currentVal = sel.value
+  const users = await getUsersSafe()
+  const withPhone = users.filter(u => u.phone)
+  const byPhone = new Map(withPhone.map(u => [normalizePhone(u.phone), u]))
+  const options = []
 
-  if (!subordinates.length) {
+  if (canViewOrgWideData(currentUser)) {
+    for (const u of withPhone) {
+      options.push({ phone: normalizePhone(u.phone), label: userDisplayName(u) })
+    }
+  } else {
+    const visible = getVisibleAdvisorPhones(currentUser)
+    if (visible.size <= 1) {
+      sel.style.display = 'none'
+      sel.value = ''
+      return
+    }
+    const selfPhone = normalizePhone(currentUser?.phone || '')
+    for (const phone of visible) {
+      const u = byPhone.get(phone)
+      const base = u ? userDisplayName(u) : phone
+      options.push({ phone, label: phone === selfPhone ? `${base} (خودم)` : base })
+    }
+  }
+
+  if (!options.length) {
     sel.style.display = 'none'
     sel.value = ''
     return
-  }
-
-  const currentVal = sel.value
-  const users = await getUsersSafe()
-  const byPhone = new Map(
-    users.filter(u => u.phone).map(u => [normalizePhone(u.phone), u])
-  )
-
-  const selfPhone = normalizePhone(currentUser?.phone || '')
-  const options = []
-  if (selfPhone) {
-    const selfUser = byPhone.get(selfPhone)
-    const selfLabel = selfUser ? userDisplayName(selfUser) : 'خودم'
-    options.push({ phone: selfPhone, label: `${selfLabel} (خودم)` })
-  }
-  for (const phone of subordinates) {
-    if (phone === selfPhone) continue
-    const u = byPhone.get(phone)
-    options.push({ phone, label: u ? userDisplayName(u) : phone })
   }
 
   sel.innerHTML = '<option value="">همه کارشناسان</option>' +
