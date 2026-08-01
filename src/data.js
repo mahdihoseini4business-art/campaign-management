@@ -294,6 +294,12 @@ export async function deleteCustomerFromDB(id) {
   if (error) throw new Error('خطا در حذف مشتری: ' + error.message)
 }
 
+/** Delete customer row only — followups must already be reassigned (e.g. after merge). */
+export async function deleteCustomerRowOnly(id) {
+  const { error } = await supabase.from('customers').delete().eq('id', id)
+  if (error) throw new Error('خطا در حذف مشتری: ' + error.message)
+}
+
 function mapOwnershipTransferRow(t) {
   return {
     id: t.id,

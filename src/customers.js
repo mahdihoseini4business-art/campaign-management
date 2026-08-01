@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn } from './data.js'
+import { getData, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { updateTransferInboxBadge } from './transfers.js'
 import {
@@ -38,8 +38,10 @@ function populateStatusDropdown(select) {
 
 export { populatePlatformDropdown, populateStatusDropdown }
 
-/** Phone-field check while creating/editing: ok | incomplete | own | blocked | transferable | taken | duplicate */
+/** Phone-field check while creating/editing: ok | incomplete | own | blocked | transferable | taken | mergeable | duplicate */
 let phoneFieldState = { status: 'ok', customer: null, lastActivity: null, index: 0 }
+/** Pending LD→phone-owner merge awaiting modal confirm. */
+let pendingMerge = null
 /** Visible phone input slots in the active phone form (1–3). */
 let phoneSlots = ['']
 /** Which phone form is active: always the customer detail panel. */
@@ -567,6 +569,17 @@ function validateCustomerPhones() {
     phoneFieldState.index = i
 
     if (editId) {
+      // LD + phone owned by another customer → offer merge (not hard block)
+      if (String(editId).startsWith('LD')) {
+        phoneFieldState.status = 'mergeable'
+        setPhoneFieldHint(
+          `این شماره متعلق به مشتری ${existing.id} است. با ذخیره، ${editId} با آن ادغام می‌شود` +
+          (lastActivity ? ` — آخرین فعالیت: ${formatActivityLabel(lastActivity)}` : ''),
+          'warning'
+        )
+        updatePreviewId()
+        return
+      }
       phoneFieldState.status = 'taken'
       setPhoneFieldError(
         `این شماره از قبل برای مشتری ${existing.id} ثبت شده است` +
@@ -888,6 +901,214 @@ export function closeDeleteModal() {
   document.getElementById('deleteModal').classList.remove('active')
 }
 
+function pickNonEmpty(primary, fallback) {
+  const a = String(primary || '').trim()
+  if (a) return a
+  return String(fallback || '').trim()
+}
+
+function mergePhoneLists(...lists) {
+  const out = []
+  const seen = new Set()
+  for (const list of lists) {
+    for (const raw of list || []) {
+      const n = normalizePhone(raw)
+      if (!n || !/^09\d{9}$/.test(n) || seen.has(n)) continue
+      seen.add(n)
+      out.push(n)
+      if (out.length >= MAX_CUSTOMER_PHONES) return out
+    }
+  }
+  return out
+}
+
+/** Prefer earlier (sooner) non-empty follow-up date. */
+function pickEarlierFollowupDate(a, b) {
+  const da = String(a || '').trim()
+  const db = String(b || '').trim()
+  if (!da) return db
+  if (!db) return da
+  const na = jalaliToNum(da)
+  const nb = jalaliToNum(db)
+  if (na === 99999999) return db
+  if (nb === 99999999) return da
+  return na <= nb ? da : db
+}
+
+function openMergeCustomerModal({ sourceId, survivorId, fields }) {
+  const data = getData()
+  const source = data.customers.find(c => c.id === sourceId)
+  const survivor = data.customers.find(c => c.id === survivorId)
+  if (!source || !survivor) {
+    showToast('مشتری برای ادغام یافت نشد')
+    return
+  }
+
+  pendingMerge = { sourceId, survivorId, fields }
+
+  const sourceProducts = (source.products || []).length
+  const sourceFollowups = data.followups.filter(f => f.customerId === sourceId).length
+  const survivorProducts = (survivor.products || []).length
+  const survivorFollowups = data.followups.filter(f => f.customerId === survivorId).length
+
+  const msg = document.getElementById('mergeCustomerMessage')
+  if (msg) {
+    msg.textContent =
+      `لید ${sourceId} با مشتری ${survivorId} (صاحب شماره) ادغام می‌شود.`
+  }
+  const summary = document.getElementById('mergeCustomerSummary')
+  if (summary) {
+    summary.innerHTML = `
+      <li>محصولات منتقل‌شونده از LD: ${sourceProducts}</li>
+      <li>پیگیری/یادداشت منتقل‌شونده از LD: ${sourceFollowups}</li>
+      <li>محصولات فعلی بازمانده: ${survivorProducts}</li>
+      <li>پیگیری‌های فعلی بازمانده: ${survivorFollowups}</li>
+      <li>کارشناس مسئول بازمانده: ${escapeHtml(survivor.advisor || '—')}</li>
+    `
+  }
+
+  const btn = document.getElementById('mergeCustomerConfirmBtn')
+  if (btn) { btn.disabled = false; btn.textContent = 'تأیید ادغام' }
+  document.getElementById('mergeCustomerModal')?.classList.add('active')
+}
+
+export function closeMergeCustomerModal() {
+  pendingMerge = null
+  document.getElementById('mergeCustomerModal')?.classList.remove('active')
+}
+
+export async function confirmMergeCustomers() {
+  if (!pendingMerge) {
+    closeMergeCustomerModal()
+    return
+  }
+  const { sourceId, survivorId, fields } = pendingMerge
+  const btn = document.getElementById('mergeCustomerConfirmBtn')
+  if (btn) { btn.disabled = true; btn.textContent = 'در حال ادغام...' }
+
+  try {
+    const resultId = await mergeLdIntoPhoneOwner({ sourceId, survivorId, fields })
+    closeMergeCustomerModal()
+    closeDetailModal()
+    await renderCustomers()
+    const survivor = getData().customers.find(c => c.id === resultId)
+    if (survivor && canViewCustomer(survivor)) {
+      await openCustomerDetail(resultId)
+    }
+    showToast(`ادغام انجام شد — ${sourceId} داخل ${resultId} ادغام شد`)
+  } catch (e) {
+    console.error('confirmMergeCustomers error:', e)
+    showToast(e?.message || 'خطا در ادغام مشتریان')
+    if (btn) { btn.disabled = false; btn.textContent = 'تأیید ادغام' }
+  }
+}
+
+/**
+ * Absorb LD source into the phone-owning survivor. Ownership of survivor is kept.
+ * @returns {Promise<string>} final survivor id
+ */
+async function mergeLdIntoPhoneOwner({ sourceId, survivorId, fields }) {
+  const data = getData()
+  const sourceIdx = data.customers.findIndex(c => c.id === sourceId)
+  let survivorIdx = data.customers.findIndex(c => c.id === survivorId)
+  if (sourceIdx === -1 || survivorIdx === -1) throw new Error('مشتری برای ادغام یافت نشد')
+
+  const source = data.customers[sourceIdx]
+  let survivor = data.customers[survivorIdx]
+  let finalSurvivorId = survivorId
+
+  if (!String(sourceId).startsWith('LD')) {
+    throw new Error('فقط لید (LD) قابل ادغام به این شکل است')
+  }
+  if (!canManageCustomer(source)) {
+    throw new Error('فقط کارشناس مسئول لید می‌تواند ادغام را انجام دهد')
+  }
+
+  const formPhones = normalizeCustomerPhones(fields?.phones || fields?.phone || [])
+  const phoneOwnerMatch = formPhones.some(p => {
+    const owner = findCustomerByPhone(p, data.customers, sourceId)
+    return owner && owner.id === survivorId
+  })
+  if (!phoneOwnerMatch) {
+    throw new Error('شماره دیگر متعلق به این مشتری نیست؛ دوباره ذخیره کنید')
+  }
+
+  // Legacy: survivor is LD but has the phone → convert to CS first
+  if (survivor.id.startsWith('LD')) {
+    const newId = await generateId('CS')
+    const phones = normalizeCustomerPhones(survivor)
+    const converted = {
+      ...survivor,
+      id: newId,
+      phones,
+      phone: phones[0] || ''
+    }
+    await saveCustomerToDB(converted)
+    await updateFollowupsCustomerId(survivor.id, newId)
+    data.followups.forEach(f => { if (f.customerId === survivor.id) f.customerId = newId })
+    await deleteCustomerRowOnly(survivor.id)
+    data.customers[survivorIdx] = converted
+    survivor = converted
+    finalSurvivorId = newId
+  }
+
+  const mergedPhones = mergePhoneLists(
+    getCustomerPhones(survivor),
+    formPhones,
+    getCustomerPhones(source)
+  )
+  const sourceNotes = String(source.notes || '').trim()
+  const survivorNotes = String(survivor.notes || '').trim()
+  let mergedNotes = survivorNotes
+  if (sourceNotes && survivorNotes && sourceNotes !== survivorNotes) {
+    mergedNotes = `${survivorNotes}\n---\n${sourceNotes}`
+  } else if (sourceNotes && !survivorNotes) {
+    mergedNotes = sourceNotes
+  }
+
+  const sourceProducts = Array.isArray(source.products) ? [...source.products] : []
+  const survivorProducts = Array.isArray(survivor.products) ? [...survivor.products] : []
+
+  const merged = {
+    ...survivor,
+    id: finalSurvivorId,
+    phones: mergedPhones,
+    phone: mergedPhones[0] || '',
+    name: pickNonEmpty(survivor.name, fields?.name || source.name),
+    platformId: pickNonEmpty(survivor.platformId, fields?.platformId || source.platformId),
+    platform: pickNonEmpty(survivor.platform, fields?.platform || source.platform) || survivor.platform || 'instagram',
+    status: pickNonEmpty(survivor.status, fields?.status || source.status) || survivor.status || 'new',
+    notes: mergedNotes,
+    nextFollowupDate: pickEarlierFollowupDate(survivor.nextFollowupDate, source.nextFollowupDate),
+    products: [...survivorProducts, ...sourceProducts],
+    advisor: survivor.advisor,
+    advisorPhone: survivor.advisorPhone
+  }
+
+  merged.products.forEach(p => {
+    ensureProductPayments(p)
+    syncProductStatus(p)
+  })
+  syncCustomerLevel(merged, data.customers, data.followups)
+
+  await saveCustomerToDB(merged)
+  // Re-find index in case array mutated
+  survivorIdx = data.customers.findIndex(c => c.id === finalSurvivorId)
+  if (survivorIdx === -1) throw new Error('مشتری بازمانده پس از ادغام یافت نشد')
+  data.customers[survivorIdx] = merged
+
+  await updateFollowupsCustomerId(sourceId, finalSurvivorId)
+  data.followups.forEach(f => { if (f.customerId === sourceId) f.customerId = finalSurvivorId })
+
+  await deleteCustomerRowOnly(sourceId)
+  data.customers = data.customers.filter(c => c.id !== sourceId)
+
+  await saveSetting('convertedCount', (data.convertedCount || 0) + 1)
+  data.convertedCount = (data.convertedCount || 0) + 1
+
+  return finalSurvivorId
+}
+
 // ============================================
 // Customer Detail Panel
 // ============================================
@@ -1063,6 +1284,15 @@ export async function saveCustomerDetail(customerId) {
 
     if (isNew) {
       await createCustomerFromDetail(fields, users)
+      return
+    }
+
+    if (phoneFieldState.status === 'mergeable' && phoneFieldState.customer) {
+      openMergeCustomerModal({
+        sourceId: customerId,
+        survivorId: phoneFieldState.customer.id,
+        fields
+      })
       return
     }
 
