@@ -1,5 +1,5 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB } from './data.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, getCurrentUser, normalizePhone, ownsCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, ownsCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
 let followupFilter = 'today' // today | waiting | overdue | done
@@ -408,7 +408,7 @@ export function openFollowupModal(editFollowupId) {
   const select = document.getElementById('followupCustomer')
 
   select.innerHTML = '<option value="">انتخاب کنید...</option>' +
-    data.customers.filter(c => canViewCustomer(c)).map(c =>
+    data.customers.filter(c => canAddNoteOnCustomer(c)).map(c =>
       `<option value="${c.id}">${c.id} — ${escapeHtml(c.name || c.platformId)}</option>`
     ).join('')
 
@@ -459,6 +459,10 @@ export async function saveFollowup() {
   const customer = data.customers.find(c => c.id === customerId)
   if (!customer || !canViewCustomer(customer)) {
     showToast('شما به این مشتری دسترسی ندارید')
+    return
+  }
+  if (!canAddNoteOnCustomer(customer)) {
+    showToast('شما دسترسی ثبت یادداشت برای این مشتری را ندارید')
     return
   }
 

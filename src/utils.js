@@ -690,6 +690,7 @@ export const ALL_PERMISSIONS = {
   customers_export: 'خروجی مشتریان',
   followups_view: 'مشاهده پیگیری‌ها',
   followups_add: 'افزودن و ویرایش پیگیری',
+  followups_add_others: 'ثبت یادداشت برای مشتریان دیگران',
   followups_delete: 'حذف پیگیری',
   followups_export: 'خروجی پیگیری‌ها',
   sales_view: 'مشاهده فروش‌ها',
@@ -702,7 +703,7 @@ export const ALL_PERMISSIONS = {
 export const PERMISSION_GROUPS = [
   { label: 'داشبورد', keys: ['dashboard'] },
   { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_delete', 'customers_transfer', 'customers_import', 'customers_export'] },
-  { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_delete', 'followups_export'] },
+  { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_add_others', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_add_others', 'sales_import', 'sales_export'] },
   { label: 'حسابداری', keys: ['accounting'] }
 ]
@@ -910,9 +911,36 @@ export function getDefaultPermissions() {
   Object.keys(ALL_PERMISSIONS).forEach(k => p[k] = true)
   p.customers_delete = false
   p.followups_delete = false
+  p.followups_add_others = false
   p.sales_add_others = false
   p.accounting = false
   return p
+}
+
+/** Who registered a sale/payment — falls back to customer owner for legacy rows. */
+export function getSaleRegistrantPhone(product, payment = null, customer = null) {
+  const fromPay = normalizePhone(payment?.soldByPhone)
+  if (fromPay) return fromPay
+  const fromProduct = normalizePhone(product?.soldByPhone)
+  if (fromProduct) return fromProduct
+  return normalizePhone(customer?.advisorPhone)
+}
+
+/** Register/edit sales on a customer (owner with customers_add, or sales_add_others). */
+export function canAddSaleOnCustomer(customer, user = getCurrentUser()) {
+  if (!customer || !canViewCustomer(customer, user)) return false
+  if (user?.role === 'admin') return true
+  if (hasPermission('customers_add') && canManageCustomer(customer, user)) return true
+  return hasPermission('sales_add_others')
+}
+
+/** Add notes/followups on a customer (owner, or followups_add_others). */
+export function canAddNoteOnCustomer(customer, user = getCurrentUser()) {
+  if (!customer || !canViewCustomer(customer, user)) return false
+  if (!hasPermission('followups_add') && user?.role !== 'admin') return false
+  if (user?.role === 'admin') return true
+  if (canManageCustomer(customer, user)) return true
+  return hasPermission('followups_add_others')
 }
 
 export function hasPermission(key) {

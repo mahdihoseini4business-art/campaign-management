@@ -7,7 +7,7 @@ import {
   getVisibleAdvisorPhones, getStatusLabels, formatPhonesDisplay,
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
   getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
-  gregorianToJalaliStr, normalizeViewUserPhones
+  getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones
 } from './utils.js'
 
 let dashCharts = {}
@@ -77,6 +77,13 @@ function matchesSelectedUsers(customer) {
   const phone = normalizePhone(customer.advisorPhone)
   if (!phone) return false
   return selectedAdvisorPhones.has(phone)
+}
+
+/** Sales metrics: match by who registered the payment (soldByPhone), not customer owner. */
+function matchesSelectedSaleRegistrant({ customer, product, payment }) {
+  if (!selectedAdvisorPhones || selectedAdvisorPhones.size === 0) return false
+  const phone = getSaleRegistrantPhone(product, payment, customer)
+  return !!(phone && selectedAdvisorPhones.has(phone))
 }
 
 /**
@@ -315,12 +322,11 @@ function buildSalesBuckets(fromStr, toStr, timeframe) {
   return buckets
 }
 
-function forEachDashSalePayment(inUserScope, hasDateFilter, inDateRange, onPayment, onProduct = null, statusFilter = PAYMENT_STATUS.approved) {
+function forEachDashSalePayment(matchPayment, hasDateFilter, inDateRange, onPayment, onProduct = null, statusFilter = PAYMENT_STATUS.approved) {
   const data = getData()
   data.customers.forEach(c => {
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
     if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
-    if (!inUserScope(c)) return
     ;(c.products || []).forEach(p => {
       ensureProductPayments(p)
       syncProductStatus(p)
@@ -331,11 +337,11 @@ function forEachDashSalePayment(inUserScope, hasDateFilter, inDateRange, onPayme
         if (amount <= 0) return false
         if (getPaymentEntryStatus(pay) !== statusFilter) return false
         if (hasDateFilter && !inDateRange(jalaliDatePart(pay.soldAt))) return false
+        if (matchPayment && !matchPayment({ customer: c, product: p, payment: pay })) return false
         return true
       })
 
-      if (hasDateFilter && pays.length === 0) return
-      if (!hasDateFilter && pays.length === 0 && statusFilter !== PAYMENT_STATUS.approved) return
+      if (pays.length === 0) return
 
       if (onProduct) {
         onProduct({
@@ -361,7 +367,7 @@ function forEachDashSalePayment(inUserScope, hasDateFilter, inDateRange, onPayme
   })
 }
 
-function computeDashSalesMetrics(inUserScope, hasDateFilter, inDateRange) {
+function computeDashSalesMetrics(hasDateFilter, inDateRange) {
   let salesCount = 0
   let totalCash = 0
   let totalDeposit = 0
@@ -369,29 +375,21 @@ function computeDashSalesMetrics(inUserScope, hasDateFilter, inDateRange) {
   let totalApproved = 0
   let totalPending = 0
 
-  // Approved payments — used for cash/deposit/balance/total cards
-  forEachDashSalePayment(inUserScope, hasDateFilter, inDateRange, ({ amount }) => {
+  // Approved payments — attributed to registrant (soldByPhone)
+  forEachDashSalePayment(matchesSelectedSaleRegistrant, hasDateFilter, inDateRange, ({ amount }) => {
     totalApproved += amount
-  }, ({ product, paidInScope, deposit, balance }) => {
+  }, ({ product, paidInScope, balance }) => {
     salesCount++
-    if (hasDateFilter) {
-      if (product.status === 'تکمیل') totalCash += paidInScope
-      else {
-        totalDeposit += paidInScope
-        totalBalance += balance
-      }
-    } else if (product.status === 'تکمیل') {
-      // Sum approved payments only (not full list price)
-      totalCash += deposit
-    } else {
-      totalDeposit += deposit
+    if (product.status === 'تکمیل') totalCash += paidInScope
+    else {
+      totalDeposit += paidInScope
       totalBalance += balance
     }
   })
 
   // Pending accounting approval amounts
   forEachDashSalePayment(
-    inUserScope,
+    matchesSelectedSaleRegistrant,
     hasDateFilter,
     inDateRange,
     ({ amount }) => { totalPending += amount },
@@ -429,7 +427,7 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
   const chartToNum = jalaliToNum(to)
 
   forEachDashSalePayment(
-    matchesSelectedUsers,
+    matchesSelectedSaleRegistrant,
     true,
     (dateStr) => {
       if (!dateStr) return false
@@ -731,7 +729,7 @@ export async function renderDashboard() {
   document.getElementById('dash-active-customers').textContent = activeCustomers.length
 
   const hasDateFilter = !!(dateFrom || dateTo)
-  const salesMetrics = computeDashSalesMetrics(inUserScope, hasDateFilter, inDateRange)
+  const salesMetrics = computeDashSalesMetrics(hasDateFilter, inDateRange)
 
   document.getElementById('dash-sales-count').textContent = salesMetrics.salesCount
   document.getElementById('dash-sales-cash').textContent = formatNumber(salesMetrics.totalCash) + ' ریال'
@@ -838,14 +836,12 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
   const hasDateFilter = dateFromNum > 0 || dateToNum < 99999999
 
   forEachDashSalePayment(
-    inUserScope,
+    matchesSelectedSaleRegistrant,
     hasDateFilter,
     inChartDateRange,
     () => {},
-    ({ product, paidInScope, price }) => {
-      const value = hasDateFilter
-        ? paidInScope
-        : (product.status === 'تکمیل' ? price : getApprovedPaid(product))
+    ({ product, paidInScope }) => {
+      const value = paidInScope
       const statusKey = product.status === 'تکمیل' ? 'تکمیل' : 'بیعانه'
       salesStatus[statusKey] = (salesStatus[statusKey] || 0) + value
       const name = product.name || '—'
@@ -899,19 +895,18 @@ function buildAdvisorCompareRows(dateFromNum, dateToNum) {
 
   const totals = new Map()
   forEachDashSalePayment(
-    matchesSelectedUsers,
+    matchesSelectedSaleRegistrant,
     hasDateFilter,
     inChartDateRange,
-    () => {},
-    ({ customer, product, paidInScope, price }) => {
-      const phone = normalizePhone(customer.advisorPhone)
-      if (!phone) return
-      const value = hasDateFilter
-        ? paidInScope
-        : (product.status === 'تکمیل' ? price : getApprovedPaid(product))
-      if (value <= 0) return
-      const prev = totals.get(phone) || { phone, label: advisorLabelForPhone(phone, customer.advisor), value: 0 }
-      prev.value += value
+    ({ customer, product, payment, amount }) => {
+      const phone = getSaleRegistrantPhone(product, payment, customer)
+      if (!phone || amount <= 0) return
+      const prev = totals.get(phone) || {
+        phone,
+        label: advisorLabelForPhone(phone, customer.advisor),
+        value: 0
+      }
+      prev.value += amount
       if (!prev.label) prev.label = advisorLabelForPhone(phone, customer.advisor)
       totals.set(phone, prev)
     }

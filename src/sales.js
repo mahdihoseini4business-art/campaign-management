@@ -10,7 +10,7 @@ import {
   ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
   getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
   productHasRejectedPayment, getProductPayments, getPaymentEntryStatus,
-  getCustomerPhones, getPrimaryPhone,
+  getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
   normalizePhone, userDisplayName
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
@@ -32,6 +32,7 @@ export function getAllSales() {
         const balance = getProductBalance(p)
         const pays = getProductPayments(p)
         const lastPay = pays[pays.length - 1]
+        const soldByPhone = getSaleRegistrantPhone(p, lastPay, c)
         sales.push({
           customerId: c.id,
           productIndex,
@@ -39,7 +40,10 @@ export function getAllSales() {
           customerPhone: getPrimaryPhone(c),
           customerPhones: getCustomerPhones(c),
           advisor: c.advisor || '',
-          advisorPhone: normalizePhone(c.advisorPhone || ''),
+          advisorPhone: soldByPhone,
+          ownerAdvisor: c.advisor || '',
+          ownerAdvisorPhone: normalizePhone(c.advisorPhone || ''),
+          soldByPhone,
           platform: c.platform,
           productName: p.name,
           status: p.status,
@@ -133,23 +137,31 @@ export function getFilteredSales() {
     if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
     const customer = data.customers.find(c => c.id === s.customerId)
-    if (!canViewScopedCustomer(customer, currentUser)) return false
+    const product = customer?.products?.[s.productIndex]
+    const myPhone = normalizePhone(currentUser?.phone || '')
+    const registeredByMe = !!(myPhone && (
+      s.soldByPhone === myPhone ||
+      (product && getProductPayments(product).some(pay => normalizePhone(pay.soldByPhone) === myPhone))
+    ))
+    if (!canViewScopedCustomer(customer, currentUser) && !registeredByMe) return false
     if (platformFilter && s.platform !== platformFilter) return false
-    if (advisorFilter) {
-      const ownerPhone = s.advisorPhone || normalizePhone(customer?.advisorPhone || '')
-      if (ownerPhone !== normalizePhone(advisorFilter)) return false
-    }
     if (payStatusFilter && s.paymentStatus !== payStatusFilter) return false
     if (levelFilter && customer) {
       const resolved = resolveCustomerLevel(customer, data.customers, data.followups)
       if (resolved !== levelFilter) return false
     }
 
+    const advisorPhoneFilter = advisorFilter ? normalizePhone(advisorFilter) : ''
+
     if (dateFilter.hasDateFilter) {
-      const product = customer?.products?.[s.productIndex]
       if (!product) return false
       ensureProductPayments(product)
-      const paysInRange = getApprovedPaymentsInRange(product, dateFilter)
+      let paysInRange = getApprovedPaymentsInRange(product, dateFilter)
+      if (advisorPhoneFilter) {
+        paysInRange = paysInRange.filter(pay =>
+          getSaleRegistrantPhone(product, pay, customer) === advisorPhoneFilter
+        )
+      }
       if (!paysInRange.length) return false
       const paidInRange = sumPayments(paysInRange)
       const lastInRange = paysInRange[paysInRange.length - 1]
@@ -163,6 +175,18 @@ export function getFilteredSales() {
       s.paymentStatus = getWorstPaymentStatus({ payments: paysInRange })
       s.hasRejected = productHasRejectedPayment({ payments: paysInRange })
       s.dateFiltered = true
+      s.soldByPhone = getSaleRegistrantPhone(product, lastInRange, customer)
+      s.advisorPhone = s.soldByPhone
+    } else if (advisorPhoneFilter) {
+      const sellerMatch = s.soldByPhone === advisorPhoneFilter ||
+        (product && getProductPayments(product).some(pay =>
+          getSaleRegistrantPhone(product, pay, customer) === advisorPhoneFilter
+        ))
+      if (!sellerMatch) return false
+      if (product && s.soldByPhone !== advisorPhoneFilter) {
+        s.soldByPhone = advisorPhoneFilter
+        s.advisorPhone = advisorPhoneFilter
+      }
     }
 
     return true
@@ -307,13 +331,24 @@ async function updateSalesAdvisorFilter() {
   sel.style.display = ''
 }
 
-export function renderSales() {
+export async function renderSales() {
   const tbody = document.getElementById('salesBody')
   const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
 
   populateSalesFilterDropdowns()
 
   let allSales = getFilteredSales()
+
+  try {
+    const users = await getUsersSafe()
+    const nameByPhone = new Map(
+      users.filter(u => u.phone).map(u => [normalizePhone(u.phone), userDisplayName(u)])
+    )
+    allSales.forEach(s => {
+      const phone = s.soldByPhone || s.advisorPhone
+      s.advisor = nameByPhone.get(phone) || s.ownerAdvisor || s.advisor || '—'
+    })
+  } catch (_) { /* keep fallback advisor names */ }
 
   if (salesSortState.field) {
     allSales.sort((a, b) => {
