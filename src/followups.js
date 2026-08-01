@@ -1,5 +1,5 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB } from './data.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, getNowJalaliDateTime, getCustomerPhones } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, getCurrentUser, normalizePhone, ownsCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, getNowJalaliDateTime, getCustomerPhones } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
 let followupFilter = 'today' // today | waiting | overdue | done
@@ -41,8 +41,10 @@ function canSeeCustomer(customer, currentUser) {
   if (!customer) return false
   if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
   if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
-  if (!canViewScopedCustomer(customer, currentUser)) return false
-  return true
+  // Follow-ups tab: only the current user's own customers (not subordinates).
+  // Admin / accounting keep org-wide visibility.
+  if (canViewOrgWideData(currentUser)) return true
+  return ownsCustomer(customer, currentUser)
 }
 
 function safeSearchExtras(customer) {

@@ -189,7 +189,8 @@
       <div class="stat-card"><div class="label">فروش نقد</div><div class="value" style="color:var(--success)" id="dash-sales-cash">۰</div></div>
       <div class="stat-card"><div class="label">بیعانه‌ها</div><div class="value" style="color:var(--warning)" id="dash-sales-deposit">۰</div></div>
       <div class="stat-card"><div class="label">مانده حساب‌ها</div><div class="value" style="color:var(--danger)" id="dash-sales-balance">۰</div></div>
-      <div class="stat-card highlight"><div class="label">جمع کل مبلغ فروش</div><div class="value" style="color:var(--accent);font-size:24px;" id="dash-sales-total">۰</div></div>
+      <div class="stat-card highlight"><div class="label">جمع فروش‌های تأییدشده</div><div class="value" style="color:var(--accent);font-size:24px;" id="dash-sales-total">۰</div></div>
+      <div class="stat-card"><div class="label">در انتظار تأیید حسابداری</div><div class="value" style="color:var(--warning);font-size:20px;" id="dash-sales-pending">۰</div></div>
       <div class="stat-card"><div class="label">میانگین مبلغ فروش</div><div class="value" style="color:var(--text)" id="dash-avg-sale">۰</div></div>
     </div>
 
@@ -274,7 +275,7 @@
     <div class="dash-collapsible-body" id="dash-overdue-body" role="region" aria-labelledby="dash-overdue-toggle">
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>نام</th><th>شماره</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
+          <thead><tr><th>نام</th><th>شماره</th><th>نام کارشناس</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
           <tbody id="dashOverdueBody"></tbody>
         </table>
       </div>
@@ -289,7 +290,7 @@
     <div class="dash-collapsible-body" id="dash-soon-body" role="region" aria-labelledby="dash-soon-toggle">
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>نام</th><th>شماره</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
+          <thead><tr><th>نام</th><th>شماره</th><th>نام کارشناس</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
           <tbody id="dashSoonBody"></tbody>
         </table>
       </div>

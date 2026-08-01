@@ -7,7 +7,7 @@ import {
   getVisibleAdvisorPhones, getStatusLabels, formatPhonesDisplay,
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
   getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
-  gregorianToJalaliStr
+  gregorianToJalaliStr, normalizeViewUserPhones
 } from './utils.js'
 
 let dashCharts = {}
@@ -77,6 +77,32 @@ function matchesSelectedUsers(customer) {
   const phone = normalizePhone(customer.advisorPhone)
   if (!phone) return false
   return selectedAdvisorPhones.has(phone)
+}
+
+/**
+ * Overdue/soon follow-up tables:
+ * - Managers (viewUserPhones set) → only subordinates' customers
+ * - Everyone else → selected advisors as usual
+ */
+function matchesFollowupMonitorScope(customer) {
+  if (!matchesSelectedUsers(customer)) return false
+  const currentUser = getCurrentUser()
+  if (canViewOrgWideData(currentUser)) return true
+  const teamPhones = normalizeViewUserPhones(
+    currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones
+  )
+  if (teamPhones.length === 0) return true
+  const phone = normalizePhone(customer.advisorPhone)
+  return !!(phone && teamPhones.includes(phone))
+}
+
+function advisorNameForCustomer(customer) {
+  const phone = normalizePhone(customer?.advisorPhone)
+  if (phone) {
+    const user = dashUsersCache.find(u => normalizePhone(u.phone) === phone)
+    if (user) return userDisplayName(user)
+  }
+  return (customer?.advisor || '').trim() || '—'
 }
 
 // ============================================
@@ -289,7 +315,7 @@ function buildSalesBuckets(fromStr, toStr, timeframe) {
   return buckets
 }
 
-function forEachDashSalePayment(inUserScope, hasDateFilter, inDateRange, onPayment, onProduct = null) {
+function forEachDashSalePayment(inUserScope, hasDateFilter, inDateRange, onPayment, onProduct = null, statusFilter = PAYMENT_STATUS.approved) {
   const data = getData()
   data.customers.forEach(c => {
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
@@ -303,12 +329,13 @@ function forEachDashSalePayment(inUserScope, hasDateFilter, inDateRange, onPayme
       const pays = getProductPayments(p).filter(pay => {
         const amount = parseFloat(pay.amount) || 0
         if (amount <= 0) return false
-        if (getPaymentEntryStatus(pay) !== PAYMENT_STATUS.approved) return false
+        if (getPaymentEntryStatus(pay) !== statusFilter) return false
         if (hasDateFilter && !inDateRange(jalaliDatePart(pay.soldAt))) return false
         return true
       })
 
       if (hasDateFilter && pays.length === 0) return
+      if (!hasDateFilter && pays.length === 0 && statusFilter !== PAYMENT_STATUS.approved) return
 
       if (onProduct) {
         onProduct({
@@ -339,8 +366,13 @@ function computeDashSalesMetrics(inUserScope, hasDateFilter, inDateRange) {
   let totalCash = 0
   let totalDeposit = 0
   let totalBalance = 0
+  let totalApproved = 0
+  let totalPending = 0
 
-  forEachDashSalePayment(inUserScope, hasDateFilter, inDateRange, () => {}, ({ product, paidInScope, price, deposit, balance }) => {
+  // Approved payments — used for cash/deposit/balance/total cards
+  forEachDashSalePayment(inUserScope, hasDateFilter, inDateRange, ({ amount }) => {
+    totalApproved += amount
+  }, ({ product, paidInScope, deposit, balance }) => {
     salesCount++
     if (hasDateFilter) {
       if (product.status === 'تکمیل') totalCash += paidInScope
@@ -349,19 +381,32 @@ function computeDashSalesMetrics(inUserScope, hasDateFilter, inDateRange) {
         totalBalance += balance
       }
     } else if (product.status === 'تکمیل') {
-      totalCash += price
+      // Sum approved payments only (not full list price)
+      totalCash += deposit
     } else {
       totalDeposit += deposit
       totalBalance += balance
     }
   })
 
+  // Pending accounting approval amounts
+  forEachDashSalePayment(
+    inUserScope,
+    hasDateFilter,
+    inDateRange,
+    ({ amount }) => { totalPending += amount },
+    null,
+    PAYMENT_STATUS.pending
+  )
+
   return {
     salesCount,
     totalCash,
     totalDeposit,
     totalBalance,
-    totalAll: totalCash + totalDeposit
+    totalAll: totalCash + totalDeposit,
+    totalApproved,
+    totalPending
   }
 }
 
@@ -380,11 +425,17 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
   const timeframe = document.getElementById('salesChartTimeframe').value || 'day'
   const buckets = buildSalesBuckets(from, to, timeframe)
   const totals = buckets.map(() => 0)
+  const chartFromNum = jalaliToNum(from)
+  const chartToNum = jalaliToNum(to)
 
   forEachDashSalePayment(
     matchesSelectedUsers,
-    hasDashDateFilter,
-    inDashRange,
+    true,
+    (dateStr) => {
+      if (!dateStr) return false
+      const n = jalaliToNum(dateStr)
+      return n >= chartFromNum && n <= chartToNum
+    },
     ({ amount, date }) => {
       if (!date || jalaliToNum(date) === 99999999) return
       const n = jalaliToNum(date)
@@ -658,8 +709,11 @@ export async function renderDashboard() {
   scopedCustomers.forEach(c => {
     if (c.nextFollowupDate) {
       const dNum = jalaliToNum(c.nextFollowupDate)
-      if (dNum < todayNum) overdueList.push(c)
-      else if (dNum <= in3DaysNum) soonList.push(c)
+      // Overdue/soon lists: managers only see subordinates
+      if (matchesFollowupMonitorScope(c)) {
+        if (dNum < todayNum) overdueList.push(c)
+        else if (dNum <= in3DaysNum) soonList.push(c)
+      }
       setCount++
     } else {
       noSetCount++
@@ -683,10 +737,12 @@ export async function renderDashboard() {
   document.getElementById('dash-sales-cash').textContent = formatNumber(salesMetrics.totalCash) + ' ریال'
   document.getElementById('dash-sales-deposit').textContent = formatNumber(salesMetrics.totalDeposit) + ' ریال'
   document.getElementById('dash-sales-balance').textContent = formatNumber(salesMetrics.totalBalance) + ' ریال'
-  document.getElementById('dash-sales-total').textContent = formatNumber(salesMetrics.totalAll) + ' ریال'
+  document.getElementById('dash-sales-total').textContent = formatNumber(salesMetrics.totalApproved) + ' ریال'
+  const pendingEl = document.getElementById('dash-sales-pending')
+  if (pendingEl) pendingEl.textContent = formatNumber(salesMetrics.totalPending) + ' ریال'
 
   const avgSale = salesMetrics.salesCount > 0
-    ? Math.round(salesMetrics.totalAll / salesMetrics.salesCount)
+    ? Math.round(salesMetrics.totalApproved / salesMetrics.salesCount)
     : 0
   document.getElementById('dash-avg-sale').textContent = formatNumber(avgSale) + ' ریال'
 
@@ -694,7 +750,7 @@ export async function renderDashboard() {
 
   const overdueBody = document.getElementById('dashOverdueBody')
   if (overdueList.length === 0) {
-    overdueBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری عقب افتاده‌ای وجود ندارد</td></tr>'
+    overdueBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری عقب افتاده‌ای وجود ندارد</td></tr>'
   } else {
     overdueBody.innerHTML = overdueList.map(c => {
       const disp = formatPhonesDisplay(c)
@@ -704,6 +760,7 @@ export async function renderDashboard() {
       return `<tr class="clickable-row" style="background:#fff8f0;" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
       <td>${escapeHtml(c.name || c.platformId)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${phoneHtml}</td>
+      <td>${escapeHtml(advisorNameForCustomer(c))}</td>
       <td><span class="settlement-badge settlement-overdue-badge">⚠ ${c.nextFollowupDate}</span></td>
       <td style="text-align:center;">${(c.products || []).length}</td>
     </tr>`
@@ -712,7 +769,7 @@ export async function renderDashboard() {
 
   const soonBody = document.getElementById('dashSoonBody')
   if (soonList.length === 0) {
-    soonBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری نزدیکی وجود ندارد</td></tr>'
+    soonBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری نزدیکی وجود ندارد</td></tr>'
   } else {
     soonBody.innerHTML = soonList.map(c => {
       const disp = formatPhonesDisplay(c)
@@ -722,6 +779,7 @@ export async function renderDashboard() {
       return `<tr class="clickable-row" style="background:#f0fff4;" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
       <td>${escapeHtml(c.name || c.platformId)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${phoneHtml}</td>
+      <td>${escapeHtml(advisorNameForCustomer(c))}</td>
       <td><span class="settlement-badge settlement-soon-badge">${c.nextFollowupDate}</span></td>
       <td style="text-align:center;">${(c.products || []).length}</td>
     </tr>`
