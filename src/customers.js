@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn } from './data.js'
+import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { updateTransferInboxBadge } from './transfers.js'
 import {
@@ -90,7 +90,22 @@ export function getFilteredCustomers() {
     if (isCS && !hasPermission('customers_cs')) return false
     if (isLD && !hasPermission('customers_ld')) return false
 
-    if (!search && !canViewScopedCustomer(c, currentUser)) return false
+    const matchesTransferIn = (transferFilter === 'recent' || transferFilter === 'in')
+      ? isRecentTransferredIn(c.id, myPhone, 7)
+      : false
+    const matchesTransferOut = transferFilter === 'out'
+      ? isRecentTransferredOut(c.id, myPhone, 7)
+      : false
+    const matchesTransferFilter = transferFilter === 'out'
+      ? matchesTransferOut
+      : (transferFilter === 'recent' || transferFilter === 'in')
+        ? matchesTransferIn
+        : false
+
+    // Normal scope, unless this row matches an active transfer filter (e.g. sender after handoff).
+    if (!search && !canViewScopedCustomer(c, currentUser)) {
+      if (!transferFilter || !matchesTransferFilter) return false
+    }
 
     if (advisorFilter === '__team__') {
       const owner = normalizePhone(c.advisorPhone)
@@ -104,9 +119,7 @@ export function getFilteredCustomers() {
       const resolved = resolveCustomerLevel(c, data.customers, data.followups)
       if (resolved !== levelFilter) return false
     }
-    if (transferFilter === 'recent' && !isRecentTransferredIn(c.id, myPhone, 7)) {
-      return false
-    }
+    if (transferFilter && !matchesTransferFilter) return false
     return true
   })
 }
@@ -186,6 +199,8 @@ export async function renderCustomers() {
     )
     const isMine = ownsCustomer(c, currentUser) || canViewOrgWideData()
     const transferredIn = isRecentTransferredIn(c.id, myPhone, 7)
+    const transferredUnread = transferredIn && isUnreadTransferredIn(c.id, myPhone, 7)
+    const transferredOut = isRecentTransferredOut(c.id, myPhone, 7) && !transferredIn
     const selectCell = showSelectCol
       ? `<td>${canSelect ? `<input type="checkbox" data-id="${escapeAttr(c.id)}" onchange="app.toggleRowSelect('customers', '${escapeAttr(c.id)}', this.checked)">` : ''}</td>`
       : ''
@@ -226,9 +241,17 @@ export async function renderCustomers() {
       }
     }
 
-    const nameBadges = `${!isMine ? '<span class="owner-badge">همکار</span>' : ''}${transferredIn ? '<span class="transfer-in-badge" title="تازه‌منتقل‌شده به شما">منتقل‌شده</span>' : ''}`
+    const nameBadges = [
+      !isMine ? '<span class="owner-badge">همکار</span>' : '',
+      transferredIn
+        ? `<span class="transfer-in-badge${transferredUnread ? ' is-unread' : ''}" title="تازه‌منتقل‌شده به شما">منتقل‌شده</span>`
+        : '',
+      transferredOut
+        ? '<span class="transfer-out-badge" title="تازه‌ارسال‌شده توسط شما">ارسال‌شده</span>'
+        : ''
+    ].join('')
 
-    return `<tr class="clickable-row ${nextFollowupClass}${isMine ? '' : ' row-other-owner'}${transferredIn ? ' row-transferred-in' : ''}" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
+    return `<tr class="clickable-row ${nextFollowupClass}${isMine ? '' : ' row-other-owner'}${transferredIn ? ' row-transferred-in' : ''}${transferredOut ? ' row-transferred-out' : ''}" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
       ${selectCell}
       <td>${platformIdHtml}</td>
       <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>

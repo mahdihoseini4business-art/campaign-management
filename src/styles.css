@@ -1362,8 +1362,30 @@
     margin-right: 4px;
   }
 
+  .transfer-in-badge.is-unread {
+    color: #9a3412;
+    background: #ffedd5;
+    border-color: #fdba74;
+  }
+
+  .transfer-out-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #1d4ed8;
+    background: #dbeafe;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    padding: 1px 6px;
+    margin-right: 4px;
+  }
+
   .row-transferred-in {
     background: #f0fdfa;
+  }
+
+  .row-transferred-out {
+    background: #eff6ff;
   }
 
   .transfer-inbox-badge {

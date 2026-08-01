@@ -479,8 +479,53 @@ export function countUnreadReceivedBatches(userPhone) {
   return getTransferBatchesForUser(userPhone, 'received').filter(b => !b.seen).length
 }
 
-/** True if customer has an unacked incoming transfer to user within the last `days` days. */
+function latestTransferMatch(customerId, predicate) {
+  let latest = null
+  for (const t of (data.ownershipTransfers || [])) {
+    if (t.customerId !== customerId) continue
+    if (!predicate(t)) continue
+    const at = t.createdAt ? new Date(t.createdAt).getTime() : 0
+    if (!at || Number.isNaN(at)) continue
+    if (!latest || at > latest.at) {
+      latest = { at, batchId: transferBatchKey(t), transfer: t }
+    }
+  }
+  return latest
+}
+
+/** True if customer was transferred TO user within the last `days` days (ignore ack). */
 export function isRecentTransferredIn(customerId, userPhone, days = 7) {
+  const phone = normalizePhoneLocal(userPhone)
+  if (!phone || !customerId) return false
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+  const latest = latestTransferMatch(
+    customerId,
+    t => normalizePhoneLocal(t.toAdvisorPhone) === phone
+  )
+  return !!(latest && latest.at >= cutoff)
+}
+
+/**
+ * True if customer was transferred OUT by user within the last `days` days
+ * (acted_by or previous owner = user).
+ */
+export function isRecentTransferredOut(customerId, userPhone, days = 7) {
+  const phone = normalizePhoneLocal(userPhone)
+  if (!phone || !customerId) return false
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+  const latest = latestTransferMatch(
+    customerId,
+    t => {
+      const from = normalizePhoneLocal(t.fromAdvisorPhone)
+      const acted = normalizePhoneLocal(t.actedByPhone)
+      return acted === phone || from === phone
+    }
+  )
+  return !!(latest && latest.at >= cutoff)
+}
+
+/** Unacked incoming transfer within `days` — used for row badge emphasis. */
+export function isUnreadTransferredIn(customerId, userPhone, days = 7) {
   const phone = normalizePhoneLocal(userPhone)
   if (!phone || !customerId) return false
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
@@ -489,16 +534,10 @@ export function isRecentTransferredIn(customerId, userPhone, days = 7) {
       .filter(a => normalizePhoneLocal(a.userPhone) === phone)
       .map(a => a.batchId)
   )
-
-  let latest = null
-  for (const t of (data.ownershipTransfers || [])) {
-    if (t.customerId !== customerId) continue
-    if (normalizePhoneLocal(t.toAdvisorPhone) !== phone) continue
-    const at = t.createdAt ? new Date(t.createdAt).getTime() : 0
-    if (!latest || at > latest.at) {
-      latest = { at, batchId: transferBatchKey(t) }
-    }
-  }
+  const latest = latestTransferMatch(
+    customerId,
+    t => normalizePhoneLocal(t.toAdvisorPhone) === phone
+  )
   if (!latest || latest.at < cutoff) return false
   return !ackSet.has(latest.batchId)
 }

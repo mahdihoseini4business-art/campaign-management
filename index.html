@@ -325,9 +325,10 @@
       <select class="form-select" id="filterCustomerLevel" style="width:150px;" onchange="app.renderCustomers()">
         <option value="">همه سطوح</option>
       </select>
-      <select class="form-select" id="filterTransferIn" style="width:170px;" onchange="app.renderCustomers()">
+      <select class="form-select" id="filterTransferIn" style="width:190px;" onchange="app.renderCustomers()">
         <option value="">همه انتقال‌ها</option>
         <option value="recent">تازه‌منتقل‌شده به من</option>
+        <option value="out">تازه‌ارسال‌شده توسط من</option>
       </select>
       <button type="button" class="btn" id="transferInboxBtn" onclick="app.openTransferInbox()" style="position:relative;">
         انتقال‌ها
