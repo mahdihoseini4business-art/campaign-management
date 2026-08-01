@@ -185,7 +185,9 @@ function renderSalesRows(allSales) {
 
     let settlementHtml = '—'
     let rowClass = ''
-    if (s.settlementDate) {
+    if (s.status === 'تکمیل') {
+      settlementHtml = '<span class="settlement-badge settlement-ok-badge">تسویه شد</span>'
+    } else if (s.settlementDate) {
       const dateNum = jalaliToNum(s.settlementDate)
       const in3DaysNum = jalaliAddDays(getTodayJalaliStr(), 3)
       if (dateNum < todayNum) {
@@ -329,10 +331,12 @@ export function renderSales() {
       const bRej = b.hasRejected ? 0 : 1
       if (aRej !== bRej) return aRej - bRej
 
-      const aNum = a.settlementDate ? jalaliToNum(a.settlementDate) : 99999999
-      const bNum = b.settlementDate ? jalaliToNum(b.settlementDate) : 99999999
-      const aOverdue = aNum < getTodayJalaliNum() && a.settlementDate ? 0 : 1
-      const bOverdue = bNum < getTodayJalaliNum() && b.settlementDate ? 0 : 1
+      const aPending = a.status === 'بیعانه' && a.settlementDate
+      const bPending = b.status === 'بیعانه' && b.settlementDate
+      const aNum = aPending ? jalaliToNum(a.settlementDate) : 99999999
+      const bNum = bPending ? jalaliToNum(b.settlementDate) : 99999999
+      const aOverdue = aPending && aNum < getTodayJalaliNum() ? 0 : 1
+      const bOverdue = bPending && bNum < getTodayJalaliNum() ? 0 : 1
       if (aOverdue !== bOverdue) return aOverdue - bOverdue
       return aNum - bNum
     })
