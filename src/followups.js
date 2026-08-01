@@ -331,6 +331,8 @@ export function openFollowupDoneModal(customerId) {
 
   document.getElementById('followupDoneId').value = customerId
   document.getElementById('followupDoneNote').value = ''
+  const nextDateEl = document.getElementById('followupDoneNextDate')
+  if (nextDateEl) nextDateEl.value = ''
   document.getElementById('followupDoneInfo').innerHTML = `
     <div><strong>مشتری:</strong> ${escapeHtml(name)} (${escapeHtml(customerId)})</div>
     <div><strong>تاریخ پیگیری:</strong> ${escapeHtml(customer.nextFollowupDate || '—')}</div>
