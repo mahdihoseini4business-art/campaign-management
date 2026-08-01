@@ -94,9 +94,17 @@ export function renderAccounting() {
     const el = document.getElementById(id)
     if (el) el.textContent = String(n)
   }
-  setStat('stat-acc-pending', allPayments.filter(p => p.paymentStatus === 'pending').length)
+  const pendingPayments = allPayments.filter(p => p.paymentStatus === 'pending')
+  setStat('stat-acc-pending', pendingPayments.length)
   setStat('stat-acc-approved', allPayments.filter(p => p.paymentStatus === 'approved').length)
   setStat('stat-acc-rejected', allPayments.filter(p => p.paymentStatus === 'rejected').length)
+
+  // Same formula as dashboard «در انتظار تأیید حسابداری»: sum of pending payment amounts
+  const pendingAmountEl = document.getElementById('stat-acc-pending-amount')
+  if (pendingAmountEl) {
+    const pendingAmount = pendingPayments.reduce((sum, p) => sum + (p.amount || 0), 0)
+    pendingAmountEl.textContent = formatNumber(pendingAmount) + ' ریال'
+  }
 
   if (payments.length === 0) {
     tbody.innerHTML = `
