@@ -1,5 +1,5 @@
 import './styles.css'
-import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum, showToast, escapeAttr, getStatusOrder, toggleToolbarActions, closeAllToolbarActions, initToolbarActionsMenus } from './utils.js'
+import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum, showToast, escapeAttr, getStatusOrder, toggleToolbarActions, closeAllToolbarActions, initToolbarActionsMenus, getPrimaryPhone } from './utils.js'
 import { getData, loadData, backfillAdvisorPhones } from './data.js'
 import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, addDestinationBank, removeDestinationBank, filterViewUserOptions, addPlatform, removePlatform, updatePlatformField, editPlatform, addStatus, removeStatus, updateStatusField, editStatus, onStatusDragStart, onStatusDragOver, onStatusDrop } from './auth.js'
 import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, saveProductField, updateProduct, removeProduct, onCustomerPhoneInput, addCustomerPhoneSlot, removeCustomerPhoneSlot, addProductPayment, savePaymentField, updatePaymentField, removeProductPayment, onDestinationBankSelect } from './customers.js'
@@ -113,6 +113,14 @@ function sortFollowups(field) {
     if (field === 'customerName') {
       va = (data.customers.find(c => c.id === a.customerId) || {}).name || ''
       vb = (data.customers.find(c => c.id === b.customerId) || {}).name || ''
+    } else if (field === 'customerPhone') {
+      const ca = data.customers.find(c => c.id === a.customerId)
+      const cb = data.customers.find(c => c.id === b.customerId)
+      va = getPrimaryPhone(ca) || ''
+      vb = getPrimaryPhone(cb) || ''
+    } else if (field === 'advisor') {
+      va = (data.customers.find(c => c.id === a.customerId) || {}).advisor || ''
+      vb = (data.customers.find(c => c.id === b.customerId) || {}).advisor || ''
     }
     return followupSortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa')
   })

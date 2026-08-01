@@ -1,5 +1,5 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB } from './data.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, getCurrentUser, normalizePhone, ownsCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, getNowJalaliDateTime, getCustomerPhones } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, getCurrentUser, normalizePhone, ownsCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
 let followupFilter = 'today' // today | waiting | overdue | done
@@ -71,10 +71,13 @@ function getPendingItems(applySearch = true) {
     if (!category) continue
 
     const last = [...data.followups].reverse().find(f => f.customerId === c.id && !isDoneFollowup(f))
+    const phones = formatPhonesDisplay(c)
     const item = {
       kind: 'pending',
       customerId: c.id,
       customerName: c.name || c.platformId || c.id,
+      customerPhone: phones.text || '',
+      customerPhoneExtra: phones.extra,
       advisor: c.advisor || '',
       date: last?.date || '',
       type: last?.type || '—',
@@ -137,11 +140,14 @@ function getDoneItems(applySearch = true) {
       ])) continue
     }
 
+    const phones = customer ? formatPhonesDisplay(customer) : { text: '', extra: 0 }
     items.push({
       kind: 'done',
       id: f.id,
       customerId: f.customerId,
       customerName: customer ? (customer.name || customer.platformId || customer.id) : '—',
+      customerPhone: phones.text || '',
+      customerPhoneExtra: phones.extra,
       advisor: customer?.advisor || '',
       date: f.date,
       type: f.type,
@@ -243,7 +249,7 @@ export function renderFollowups() {
       : pending.filter(i => i.category === followupFilter)
 
     const showSelectCol = hasPermission('followups_delete') && followupFilter === 'done'
-    const colCount = (hasPermission('followups_delete') ? 1 : 0) + 8
+    const colCount = (hasPermission('followups_delete') ? 1 : 0) + 9
 
     if (filtered.length === 0) {
       tbody.innerHTML = `
@@ -282,10 +288,17 @@ export function renderFollowups() {
       }
 
       const overdueBadge = item.wasOverdue ? ' <span class="overdue-tag">معوقه</span>' : ''
+      const phoneExtra = item.customerPhoneExtra > 0
+        ? ` <span style="color:var(--text-muted);font-size:11px;">+${item.customerPhoneExtra}</span>`
+        : ''
+      const phoneHtml = item.customerPhone
+        ? `${escapeHtml(item.customerPhone)}${phoneExtra}`
+        : '—'
 
       return `<tr class="clickable-row" onclick="app.onCustomerRowClick(event, '${escapeAttr(item.customerId)}')">
         ${selectCell}
         <td>${escapeHtml(item.customerName)}${overdueBadge}</td>
+        <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${phoneHtml}</td>
         <td style="font-size:12px;">${escapeHtml(item.advisor) || '—'}</td>
         <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(item.date) || '—'}</td>
         <td>${escapeHtml(item.type)}</td>
@@ -299,7 +312,7 @@ export function renderFollowups() {
     renderPaginationBar('followupPagination', 'followups', page)
   } catch (e) {
     console.error('renderFollowups error:', e)
-    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><h3>خطا در نمایش فالوآپ‌ها</h3><p>${escapeHtml(e.message || String(e))}</p></div></td></tr>`
+    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><h3>خطا در نمایش فالوآپ‌ها</h3><p>${escapeHtml(e.message || String(e))}</p></div></td></tr>`
   }
 }
 
