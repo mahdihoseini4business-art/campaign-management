@@ -9,6 +9,14 @@ import { renderAccounting, setAccountingFilter, approvePayment, openRejectPaymen
 import { renderDashboard, toggleDashSection, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareTypeChange } from './dashboard.js'
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, initSalesImportListeners } from './import-export.js'
 import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection, openBulkTransferModal, closeBulkTransferModal, confirmBulkTransfer, refreshCustomerBulkOptions, updateBulkTransferPreview, filterBulkTransferOptions } from './bulk.js'
+import {
+  openTransferInbox,
+  closeTransferInbox,
+  setTransferInboxTab,
+  openTransferBatchDetail,
+  openCustomerFromTransfer,
+  updateTransferInboxBadge
+} from './transfers.js'
 import { setPage } from './pagination.js'
 
 // ============================================
@@ -234,6 +242,12 @@ const app = {
   confirmBulkTransfer,
   updateBulkTransferPreview,
   filterBulkTransferOptions,
+  openTransferInbox,
+  closeTransferInbox,
+  setTransferInboxTab,
+  openTransferBatchDetail,
+  openCustomerFromTransfer,
+  updateTransferInboxBadge,
   formatInput: (el) => {
     let raw = el.value.replace(/[^\d]/g, '')
     el.value = raw ? Number(raw).toLocaleString('en-US') : ''
@@ -359,6 +373,7 @@ async function init() {
 
   applyPermissions()
   refreshCustomerBulkOptions()
+  updateTransferInboxBadge()
 
   // Modal accessibility: focus trap + aria (A11Y-H3)
   initModalFocusTrap()

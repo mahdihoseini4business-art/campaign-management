@@ -1,5 +1,6 @@
-import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getPlatforms, getStatuses, saveOwnershipTransferToDB } from './data.js'
+import { getData, saveCustomerToDB, deleteCustomerFromDB, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn } from './data.js'
 import { getUsersSafe } from './auth.js'
+import { updateTransferInboxBadge } from './transfers.js'
 import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
   canViewCustomer, canManageCustomer, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
@@ -64,8 +65,10 @@ export function getFilteredCustomers() {
   const platformFilter = document.getElementById('filterPlatform')?.value || ''
   const statusFilter = document.getElementById('filterStatus')?.value || ''
   const levelFilter = document.getElementById('filterCustomerLevel')?.value || ''
+  const transferFilter = document.getElementById('filterTransferIn')?.value || ''
   const currentUser = getCurrentUser()
   const teamPhones = normalizeViewUserPhones(currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones)
+  const myPhone = normalizePhone(currentUser?.phone)
 
   return data.customers.filter(c => {
     const extras = getCustomerSearchExtras(c)
@@ -101,6 +104,9 @@ export function getFilteredCustomers() {
       const resolved = resolveCustomerLevel(c, data.customers, data.followups)
       if (resolved !== levelFilter) return false
     }
+    if (transferFilter === 'recent' && !isRecentTransferredIn(c.id, myPhone, 7)) {
+      return false
+    }
     return true
   })
 }
@@ -135,16 +141,20 @@ export async function renderCustomers() {
   if (!tbody) return
   const search = toEnDigits(document.getElementById('searchCustomers').value).toLowerCase()
   const advisorFilter = document.getElementById('filterAdvisor').value
+  const transferFilter = document.getElementById('filterTransferIn')?.value || ''
 
   populateCustomerFilterDropdowns()
 
   const currentUser = getCurrentUser()
+  const myPhone = normalizePhone(currentUser?.phone)
   const filtered = getFilteredCustomers()
 
   const showSelectCol = hasPermission('customers_delete') || hasPermission('customers_transfer')
   const colCount = showSelectCol ? 11 : 10
   const selectTh = document.querySelector('#sheet-customers thead th.customer-select-col')
   if (selectTh) selectTh.style.display = showSelectCol ? '' : 'none'
+
+  updateTransferInboxBadge()
 
   if (filtered.length === 0) {
     tbody.innerHTML = `
@@ -162,7 +172,7 @@ export async function renderCustomers() {
     return
   }
 
-  const filterSig = `${search}|${advisorFilter}`
+  const filterSig = `${search}|${advisorFilter}|${transferFilter}`
   const page = paginateList('customers', filtered, filterSig)
 
   tbody.innerHTML = page.items.map(c => {
@@ -175,6 +185,7 @@ export async function renderCustomers() {
       canTransferCustomer(c, currentUser)
     )
     const isMine = ownsCustomer(c, currentUser) || canViewOrgWideData()
+    const transferredIn = isRecentTransferredIn(c.id, myPhone, 7)
     const selectCell = showSelectCol
       ? `<td>${canSelect ? `<input type="checkbox" data-id="${escapeAttr(c.id)}" onchange="app.toggleRowSelect('customers', '${escapeAttr(c.id)}', this.checked)">` : ''}</td>`
       : ''
@@ -215,11 +226,13 @@ export async function renderCustomers() {
       }
     }
 
-    return `<tr class="clickable-row ${nextFollowupClass}${isMine ? '' : ' row-other-owner'}" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
+    const nameBadges = `${!isMine ? '<span class="owner-badge">همکار</span>' : ''}${transferredIn ? '<span class="transfer-in-badge" title="تازه‌منتقل‌شده به شما">منتقل‌شده</span>' : ''}`
+
+    return `<tr class="clickable-row ${nextFollowupClass}${isMine ? '' : ' row-other-owner'}${transferredIn ? ' row-transferred-in' : ''}" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
       ${selectCell}
       <td>${platformIdHtml}</td>
       <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>
-      <td>${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}${!isMine ? '<span class="owner-badge">همکار</span>' : ''}</td>
+      <td>${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}${nameBadges}</td>
       <td style="font-family: monospace; direction: ltr; text-align: right;">${(() => {
         const disp = formatPhonesDisplay(c)
         if (!disp.text) return '<span style="color:var(--text-muted)">—</span>'
@@ -774,12 +787,13 @@ export async function reassignCustomerOwnership({
 
   const transferPayload = {
     customerId: existing.id,
+    customerPhone: getPrimaryPhone(existing) || existing.phone || '',
     fromAdvisorPhone: fromPhone,
     fromAdvisorName: fromName,
     toAdvisorPhone: advisorPhone,
     toAdvisorName: advisor || '',
     actedByPhone: normalizePhone(actedBy?.phone || ''),
-    batchId: batchId || '',
+    batchId: batchId || generateTransferBatchId(),
     reason: reason || 'handoff',
     customerStatusAtTransfer: existing.status || ''
   }
@@ -1512,6 +1526,7 @@ export async function updateCustomerAdvisor(customerId, advisorPhoneValue) {
       reason: 'handoff'
     })
     await renderCustomers()
+    updateTransferInboxBadge()
     if (result.skipped) showToast('کارشناس مسئول تغییری نکرد')
     else showToast('کارشناس مسئول تغییر کرد')
     if (document.getElementById('detailBody') && document.getElementById('detailModal')?.classList.contains('active')) {

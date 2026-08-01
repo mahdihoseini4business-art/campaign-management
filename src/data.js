@@ -36,7 +36,16 @@ function normalizeCustomerPhonesLocal(source) {
   return out
 }
 
-let data = { customers: [], followups: [], ownershipTransfers: [], convertedCount: 0, destinationBanks: [], platforms: [], statuses: [] }
+let data = {
+  customers: [],
+  followups: [],
+  ownershipTransfers: [],
+  ownershipTransferAcks: [],
+  convertedCount: 0,
+  destinationBanks: [],
+  platforms: [],
+  statuses: []
+}
 
 const DEFAULT_PLATFORMS = [
   { key: 'instagram', label: 'اینستاگرام', color: '#E1306C', linkTemplate: 'https://instagram.com/{id}' },
@@ -68,11 +77,12 @@ const DEFAULT_STATUSES = [
 // ============================================
 
 export async function loadData() {
-  const [customersRes, followupsRes, settingsRes, transfersRes] = await Promise.all([
+  const [customersRes, followupsRes, settingsRes, transfersRes, acksRes] = await Promise.all([
     supabase.from('customers').select('*'),
     supabase.from('followups').select('*'),
     supabase.from('app_settings').select('*'),
-    supabase.from('ownership_transfers').select('*').order('created_at', { ascending: true })
+    supabase.from('ownership_transfers').select('*').order('created_at', { ascending: true }),
+    supabase.from('ownership_transfer_acks').select('*')
   ])
 
   const errors = []
@@ -82,6 +92,10 @@ export async function loadData() {
   // ownership_transfers may be missing before migration 008 — treat as empty
   if (transfersRes.error && !/ownership_transfers|does not exist|relation/i.test(transfersRes.error.message || '')) {
     errors.push('انتقال‌ها: ' + transfersRes.error.message)
+  }
+  // ownership_transfer_acks may be missing before migration 009 — treat as empty
+  if (acksRes.error && !/ownership_transfer_acks|does not exist|relation/i.test(acksRes.error.message || '')) {
+    errors.push('تأیید انتقال‌ها: ' + acksRes.error.message)
   }
 
   if (errors.length > 0) {
@@ -133,6 +147,10 @@ export async function loadData() {
   data.ownershipTransfers = (transfersRes.error || !transfersRes.data)
     ? []
     : transfersRes.data.map(mapOwnershipTransferRow)
+
+  data.ownershipTransferAcks = (acksRes.error || !acksRes.data)
+    ? []
+    : acksRes.data.map(mapOwnershipTransferAckRow)
 
   // Load settings (convertedCount, destination banks, …)
   const settings = {}
@@ -280,6 +298,7 @@ function mapOwnershipTransferRow(t) {
   return {
     id: t.id,
     customerId: t.customer_id,
+    customerPhone: t.customer_phone || '',
     fromAdvisorPhone: t.from_advisor_phone || '',
     fromAdvisorName: t.from_advisor_name || '',
     toAdvisorPhone: t.to_advisor_phone || '',
@@ -292,6 +311,235 @@ function mapOwnershipTransferRow(t) {
   }
 }
 
+function mapOwnershipTransferAckRow(a) {
+  return {
+    id: a.id,
+    userPhone: a.user_phone || '',
+    batchId: a.batch_id || '',
+    seenAt: a.seen_at || null
+  }
+}
+
+export const TRANSFER_REASON_LABELS = {
+  distribution: 'توزیع بین تیم',
+  handoff: 'تحویل به مسئول بالاتر',
+  reassign: 'جابه‌جایی مسئول',
+  reclaim: 'بازپس‌گیری شماره'
+}
+
+export function generateTransferBatchId() {
+  return `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+function transferBatchKey(t) {
+  return t.batchId || `single_${t.id}`
+}
+
+function formatTransferCreatedAt(iso) {
+  if (!iso) return { date: '—', time: '', dateTime: '—' }
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return { date: '—', time: '', dateTime: '—' }
+  const tehran = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Tehran' }))
+  // Same algorithm as utils.toJalali (kept local to avoid circular import)
+  const gy = tehran.getFullYear()
+  const gm = tehran.getMonth() + 1
+  const gd = tehran.getDate()
+  const g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
+  let gy2 = (gm > 2) ? (gy + 1) : gy
+  let days = 355666 + (365 * gy) + Math.floor((gy2 + 3) / 4) - Math.floor((gy2 + 99) / 100) + Math.floor((gy2 + 399) / 400) + gd + g_d_m[gm - 1]
+  let jy = -1595 + (33 * Math.floor(days / 12053))
+  days %= 12053
+  jy += 4 * Math.floor(days / 1461)
+  days %= 1461
+  if (days > 365) {
+    jy += Math.floor((days - 1) / 365)
+    days = (days - 1) % 365
+  }
+  let jm, jd
+  if (days < 186) {
+    jm = 1 + Math.floor(days / 31)
+    jd = 1 + (days % 31)
+  } else {
+    jm = 7 + Math.floor((days - 186) / 30)
+    jd = 1 + ((days - 186) % 30)
+  }
+  const date = `${jy}/${String(jm).padStart(2, '0')}/${String(jd).padStart(2, '0')}`
+  const time = `${String(tehran.getHours()).padStart(2, '0')}:${String(tehran.getMinutes()).padStart(2, '0')}`
+  return { date, time, dateTime: `${date} ${time}` }
+}
+
+/**
+ * Group ownership_transfers into inbox batches for a user.
+ * @param {string} userPhone
+ * @param {'received'|'sent'|'all'} [direction='all']
+ */
+export function getTransferBatchesForUser(userPhone, direction = 'all') {
+  const phone = normalizePhoneLocal(userPhone)
+  if (!phone) return []
+
+  const ackSet = new Set(
+    (data.ownershipTransferAcks || [])
+      .filter(a => normalizePhoneLocal(a.userPhone) === phone)
+      .map(a => a.batchId)
+  )
+
+  const groups = new Map()
+
+  for (const t of (data.ownershipTransfers || [])) {
+    const from = normalizePhoneLocal(t.fromAdvisorPhone)
+    const to = normalizePhoneLocal(t.toAdvisorPhone)
+    const acted = normalizePhoneLocal(t.actedByPhone)
+    const isReceived = to === phone
+    const isSent = acted === phone || from === phone
+    if (!isReceived && !isSent) continue
+
+    const dirs = []
+    if (isReceived) dirs.push('received')
+    if (isSent) dirs.push('sent')
+
+    for (const dir of dirs) {
+      if (direction !== 'all' && direction !== dir) continue
+
+      const batchId = transferBatchKey(t)
+      // Sent multi-dest: one row per destination; received: one row per batch (to=me)
+      const counterpartPhone = dir === 'received' ? from : to
+      const groupId = dir === 'received'
+        ? `${batchId}|received|${to}`
+        : `${batchId}|sent|${to}`
+
+      let g = groups.get(groupId)
+      if (!g) {
+        g = {
+          id: groupId,
+          batchId,
+          direction: dir,
+          fromAdvisorPhone: from,
+          fromAdvisorName: t.fromAdvisorName || '',
+          toAdvisorPhone: to,
+          toAdvisorName: t.toAdvisorName || '',
+          actedByPhone: acted,
+          counterpartPhone,
+          counterpartName: dir === 'received' ? (t.fromAdvisorName || '') : (t.toAdvisorName || ''),
+          reason: t.reason || '',
+          createdAt: t.createdAt,
+          seen: dir === 'received' ? ackSet.has(batchId) : true,
+          customers: []
+        }
+        groups.set(groupId, g)
+      }
+
+      const customer = (data.customers || []).find(c => c.id === t.customerId)
+      const phoneSnap = t.customerPhone
+        || (customer ? (normalizeCustomerPhonesLocal(customer)[0] || customer.phone || '') : '')
+      g.customers.push({
+        customerId: t.customerId,
+        phone: phoneSnap,
+        name: customer?.name || '',
+        transferId: t.id
+      })
+
+      // Keep earliest createdAt as batch time; enrich names if missing
+      if (t.createdAt && (!g.createdAt || new Date(t.createdAt) < new Date(g.createdAt))) {
+        g.createdAt = t.createdAt
+      }
+      if (dir === 'received' && t.fromAdvisorName && !g.counterpartName) g.counterpartName = t.fromAdvisorName
+      if (dir === 'sent' && t.toAdvisorName && !g.counterpartName) g.counterpartName = t.toAdvisorName
+      if (t.fromAdvisorName) g.fromAdvisorName = g.fromAdvisorName || t.fromAdvisorName
+      if (t.toAdvisorName) g.toAdvisorName = g.toAdvisorName || t.toAdvisorName
+      if (t.reason && !g.reason) g.reason = t.reason
+    }
+  }
+
+  const list = [...groups.values()].map(g => {
+    const { date, time, dateTime } = formatTransferCreatedAt(g.createdAt)
+    // Deduplicate customers by id
+    const seenIds = new Set()
+    const customers = []
+    for (const c of g.customers) {
+      if (seenIds.has(c.customerId)) continue
+      seenIds.add(c.customerId)
+      customers.push(c)
+    }
+    return {
+      ...g,
+      customers,
+      count: customers.length,
+      date,
+      time,
+      dateTime,
+      reasonLabel: TRANSFER_REASON_LABELS[g.reason] || g.reason || '—'
+    }
+  })
+
+  list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+  return list
+}
+
+export function countUnreadReceivedBatches(userPhone) {
+  return getTransferBatchesForUser(userPhone, 'received').filter(b => !b.seen).length
+}
+
+/** True if customer has an unacked incoming transfer to user within the last `days` days. */
+export function isRecentTransferredIn(customerId, userPhone, days = 7) {
+  const phone = normalizePhoneLocal(userPhone)
+  if (!phone || !customerId) return false
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+  const ackSet = new Set(
+    (data.ownershipTransferAcks || [])
+      .filter(a => normalizePhoneLocal(a.userPhone) === phone)
+      .map(a => a.batchId)
+  )
+
+  let latest = null
+  for (const t of (data.ownershipTransfers || [])) {
+    if (t.customerId !== customerId) continue
+    if (normalizePhoneLocal(t.toAdvisorPhone) !== phone) continue
+    const at = t.createdAt ? new Date(t.createdAt).getTime() : 0
+    if (!latest || at > latest.at) {
+      latest = { at, batchId: transferBatchKey(t) }
+    }
+  }
+  if (!latest || latest.at < cutoff) return false
+  return !ackSet.has(latest.batchId)
+}
+
+export async function markTransferBatchSeen(batchId, userPhone) {
+  const phone = normalizePhoneLocal(userPhone)
+  const bid = String(batchId || '').trim()
+  if (!phone || !bid || bid.startsWith('single_')) {
+    // Still allow ack for synthetic single_* keys locally even if DB rejects weird ids
+  }
+  if (!phone || !bid) return null
+
+  const existing = (data.ownershipTransferAcks || []).find(
+    a => normalizePhoneLocal(a.userPhone) === phone && a.batchId === bid
+  )
+  if (existing) return existing
+
+  const row = { user_phone: phone, batch_id: bid }
+  const { data: inserted, error } = await supabase
+    .from('ownership_transfer_acks')
+    .upsert(row, { onConflict: 'user_phone,batch_id' })
+    .select('*')
+    .single()
+
+  if (error) {
+    if (/ownership_transfer_acks|does not exist|relation/i.test(error.message || '')) {
+      console.warn('ownership_transfer_acks save skipped (migration 009?):', error.message)
+      const local = { id: `local_${Date.now()}`, userPhone: phone, batchId: bid, seenAt: new Date().toISOString() }
+      if (!Array.isArray(data.ownershipTransferAcks)) data.ownershipTransferAcks = []
+      data.ownershipTransferAcks.push(local)
+      return local
+    }
+    throw new Error('خطا در علامت‌گذاری انتقال: ' + error.message)
+  }
+
+  const mapped = mapOwnershipTransferAckRow(inserted)
+  if (!Array.isArray(data.ownershipTransferAcks)) data.ownershipTransferAcks = []
+  data.ownershipTransferAcks.push(mapped)
+  return mapped
+}
+
 // ============================================
 // Ownership transfers
 // ============================================
@@ -299,6 +547,7 @@ function mapOwnershipTransferRow(t) {
 export async function saveOwnershipTransferToDB(transfer) {
   const row = {
     customer_id: transfer.customerId,
+    customer_phone: transfer.customerPhone || null,
     from_advisor_phone: transfer.fromAdvisorPhone || null,
     from_advisor_name: transfer.fromAdvisorName || null,
     to_advisor_phone: transfer.toAdvisorPhone || null,
@@ -308,11 +557,20 @@ export async function saveOwnershipTransferToDB(transfer) {
     reason: transfer.reason || null,
     customer_status_at_transfer: transfer.customerStatusAtTransfer || null
   }
-  const { data: inserted, error } = await supabase
+  let { data: inserted, error } = await supabase
     .from('ownership_transfers')
     .insert(row)
     .select('*')
     .single()
+  // Graceful fallback before migration 009 is applied
+  if (error && /customer_phone/i.test(error.message || '')) {
+    const { customer_phone: _omit, ...legacy } = row
+    ;({ data: inserted, error } = await supabase
+      .from('ownership_transfers')
+      .insert(legacy)
+      .select('*')
+      .single())
+  }
   if (error) throw new Error('خطا در ثبت انتقال: ' + error.message)
   return mapOwnershipTransferRow(inserted)
 }

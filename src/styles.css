@@ -1350,6 +1350,153 @@
     margin-right: 4px;
   }
 
+  .transfer-in-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #0f766e;
+    background: #ccfbf1;
+    border: 1px solid #99f6e4;
+    border-radius: 6px;
+    padding: 1px 6px;
+    margin-right: 4px;
+  }
+
+  .row-transferred-in {
+    background: #f0fdfa;
+  }
+
+  .transfer-inbox-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    margin-right: 4px;
+    border-radius: 999px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .transfer-inbox-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .transfer-inbox-tab.active {
+    background: var(--secondary-light);
+    color: var(--secondary);
+    border-color: var(--secondary);
+    font-weight: 600;
+  }
+
+  .transfer-inbox-layout {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.2fr);
+    gap: 12px;
+    min-height: 320px;
+  }
+
+  .transfer-inbox-list {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: auto;
+    max-height: 380px;
+    background: var(--surface);
+  }
+
+  .transfer-inbox-item {
+    display: block;
+    width: 100%;
+    text-align: right;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+    padding: 10px 12px;
+    cursor: pointer;
+    font-family: inherit;
+    color: inherit;
+  }
+
+  .transfer-inbox-item:hover {
+    background: #f8fafc;
+  }
+
+  .transfer-inbox-item.is-active {
+    background: var(--secondary-light);
+  }
+
+  .transfer-inbox-item.is-unread {
+    font-weight: 600;
+  }
+
+  .transfer-inbox-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+
+  .transfer-inbox-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--danger);
+    flex: 0 0 auto;
+  }
+
+  .transfer-inbox-item-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .transfer-inbox-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--secondary);
+    background: var(--secondary-light);
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+  }
+
+  .transfer-inbox-item-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .transfer-inbox-detail {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    background: var(--surface);
+    max-height: 380px;
+    overflow: auto;
+  }
+
+  .transfer-inbox-detail-head {
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  @media (max-width: 720px) {
+    .transfer-inbox-layout {
+      grid-template-columns: 1fr;
+    }
+  }
+
   /* --- Empty State --- */
   .empty-state {
     text-align: center;

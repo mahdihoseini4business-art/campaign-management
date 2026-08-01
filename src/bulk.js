@@ -1,9 +1,10 @@
-import { getData, deleteCustomerFromDB, deleteFollowupFromDB, saveCustomerToDB } from './data.js'
+import { getData, deleteCustomerFromDB, deleteFollowupFromDB, saveCustomerToDB, generateTransferBatchId } from './data.js'
 import { showToast, requirePermission, hasPermission, canTransferCustomer, normalizePhone, escapeHtml, escapeAttr, userDisplayName, resolveAdvisor } from './utils.js'
 import { renderCustomers, reassignCustomerOwnership } from './customers.js'
 import { renderFollowups } from './followups.js'
 import { renderSales } from './sales.js'
 import { getUsersSafe } from './auth.js'
+import { updateTransferInboxBadge } from './transfers.js'
 
 const selectedIds = { customers: new Set(), followups: new Set(), sales: new Set() }
 
@@ -352,7 +353,7 @@ export async function confirmBulkTransfer() {
 
   const reasonEl = document.getElementById('bulkTransferReason')
   const reason = (reasonEl?.value || 'distribution').trim() || 'distribution'
-  const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const batchId = generateTransferBatchId()
   const data = getData()
 
   const candidates = []
@@ -406,6 +407,7 @@ export async function confirmBulkTransfer() {
   updateBulkUI('customers')
   closeBulkTransferModal()
   await renderCustomers()
+  updateTransferInboxBadge()
 
   const destLabel = destinations.length === 1
     ? destinations[0].advisor
