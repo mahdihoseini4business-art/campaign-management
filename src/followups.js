@@ -351,8 +351,15 @@ export async function confirmFollowupDone() {
   const data = getData()
   const customerId = document.getElementById('followupDoneId').value
   const note = document.getElementById('followupDoneNote').value.trim()
+  const nextDate = toEnDigits(
+    document.getElementById('followupDoneNextDate')?.value || ''
+  ).trim()
 
   if (!note) { showToast('یادداشت را وارد کنید'); return }
+  if (nextDate && !/^\d{4}\/\d{2}\/\d{2}$/.test(nextDate)) {
+    showToast('فرمت تاریخ پیگیری بعدی صحیح نیست (1405/05/01)')
+    return
+  }
 
   const idx = data.customers.findIndex(c => c.id === customerId)
   if (idx === -1) { showToast('مشتری یافت نشد'); return }
@@ -371,7 +378,7 @@ export async function confirmFollowupDone() {
       date: today,
       type: noteType,
       result: 'انجام شد',
-      nextDate: '',
+      nextDate: nextDate || '',
       notes: note,
       createdByPhone: doneByPhone,
       status: 'done',
@@ -384,13 +391,13 @@ export async function confirmFollowupDone() {
     noteFollowup.id = noteId
     data.followups.push(noteFollowup)
 
-    // Clear schedule on the same in-memory customer object
-    data.customers[idx].nextFollowupDate = ''
+    // Set optional next follow-up, otherwise clear the schedule
+    data.customers[idx].nextFollowupDate = nextDate || ''
     await saveCustomerToDB(data.customers[idx])
 
     closeFollowupDoneModal()
     renderFollowups()
-    showToast('پیگیری انجام شد')
+    showToast(nextDate ? 'پیگیری انجام شد و پیگیری بعدی تنظیم شد' : 'پیگیری انجام شد')
   } catch (e) {
     console.error('confirmFollowupDone error:', e)
     showToast(e.message || 'خطا در ثبت انجام پیگیری')
