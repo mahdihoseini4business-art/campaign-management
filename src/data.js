@@ -4,6 +4,10 @@
 
 import { supabase } from './supabase.js'
 
+function bumpLocalWrite() {
+  import('./live-sync.js').then(m => m.noteLocalWrite()).catch(() => {})
+}
+
 function toEnDigitsLocal(str) {
   return String(str || '').replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
 }
@@ -281,6 +285,7 @@ export async function saveCustomerToDB(customer) {
     ;({ error } = await supabase.from('customers').upsert(legacy, { onConflict: 'id' }))
   }
   if (error) throw new Error('خطا در ذخیره مشتری: ' + error.message)
+  bumpLocalWrite()
 }
 
 // ============================================
@@ -294,12 +299,14 @@ export async function deleteCustomerFromDB(id) {
   // Delete customer
   const { error } = await supabase.from('customers').delete().eq('id', id)
   if (error) throw new Error('خطا در حذف مشتری: ' + error.message)
+  bumpLocalWrite()
 }
 
 /** Delete customer row only — followups must already be reassigned (e.g. after merge). */
 export async function deleteCustomerRowOnly(id) {
   const { error } = await supabase.from('customers').delete().eq('id', id)
   if (error) throw new Error('خطا در حذف مشتری: ' + error.message)
+  bumpLocalWrite()
 }
 
 function mapOwnershipTransferRow(t) {
@@ -669,16 +676,21 @@ export async function saveFollowupToDB(followup) {
       was_overdue: !!followup.wasOverdue
     }).select('id').single()
 
-    if (!full.error) return full.data ? full.data.id : null
+    if (!full.error) {
+      bumpLocalWrite()
+      return full.data ? full.data.id : null
+    }
 
     // Fallback without optional columns
     const fallback = await supabase.from('followups').insert(baseRow).select('id').single()
     if (fallback.error) throw new Error('خطا در درج پیگیری: ' + fallback.error.message)
+    bumpLocalWrite()
     return fallback.data ? fallback.data.id : null
   }
 
   const { data: inserted, error } = await supabase.from('followups').insert(baseRow).select('id').single()
   if (error) throw new Error('خطا در درج پیگیری: ' + error.message)
+  bumpLocalWrite()
   return inserted ? inserted.id : null
 }
 
@@ -697,6 +709,7 @@ export async function updateFollowupInDB(followup) {
   }
   const { error } = await supabase.from('followups').update(row).eq('id', followup.id)
   if (error) throw new Error('خطا در ویرایش پیگیری: ' + error.message)
+  bumpLocalWrite()
 }
 
 // ============================================
@@ -712,11 +725,13 @@ export async function markFollowupDoneInDB(id, { doneAt, doneByPhone, doneNote, 
     was_overdue: !!wasOverdue
   }).eq('id', id)
   if (error) throw new Error('خطا در ثبت انجام پیگیری: ' + error.message)
+  bumpLocalWrite()
 }
 
 export async function deleteFollowupFromDB(id) {
   const { error } = await supabase.from('followups').delete().eq('id', id)
   if (error) throw new Error('خطا در حذف پیگیری: ' + error.message)
+  bumpLocalWrite()
 }
 
 // ============================================
@@ -727,6 +742,7 @@ export async function updateFollowupsCustomerId(oldId, newId) {
   // Update customer_id directly instead of delete+re-insert
   const { error } = await supabase.from('followups').update({ customer_id: newId }).eq('customer_id', oldId)
   if (error) throw new Error('خطا در بروزرسانی پیگیری‌ها: ' + error.message)
+  bumpLocalWrite()
 }
 
 // ============================================

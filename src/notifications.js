@@ -206,6 +206,7 @@ async function markMyNotificationsRead() {
     console.error('markMyNotificationsRead error:', error)
     return
   }
+  import('./live-sync.js').then(m => m.noteLocalWrite()).catch(() => {})
   for (const n of unread) cachedReads.add(Number(n.id))
   updateNotificationBadge()
 }
@@ -329,6 +330,7 @@ export function deleteNotification(id) {
     try {
       const { error } = await supabase.from('notifications').delete().eq('id', n.id)
       if (error) throw error
+      import('./live-sync.js').then(m => m.noteLocalWrite()).catch(() => {})
       document.getElementById('deleteModal')?.classList.remove('active')
       closeNotificationDetail()
       showToast('اعلان حذف شد')
@@ -500,6 +502,7 @@ export async function sendNotification() {
   try {
     const { error } = await supabase.from('notifications').insert(row)
     if (error) throw error
+    import('./live-sync.js').then(m => m.noteLocalWrite()).catch(() => {})
     showToast(`اعلان برای ${phones.length} نفر ارسال شد`)
     clearComposeFields()
     await refreshNotifications()

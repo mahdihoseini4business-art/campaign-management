@@ -31,6 +31,7 @@ import {
   deleteNotification
 } from './notifications.js'
 import { initSaleToastFeed, toggleSaleToastSetting, syncSaleToastToggleUi } from './sale-toasts.js'
+import { initLiveSync } from './live-sync.js'
 import { setPage } from './pagination.js'
 
 // ============================================
@@ -416,6 +417,7 @@ async function init() {
   updateTransferInboxBadge()
   refreshNotifications().catch(e => console.error('notifications init error:', e))
   initSaleToastFeed().catch(e => console.error('sale toast init error:', e))
+  initLiveSync().catch(e => console.error('live sync init error:', e))
 
   // Modal accessibility: focus trap + aria (A11Y-H3)
   initModalFocusTrap()
