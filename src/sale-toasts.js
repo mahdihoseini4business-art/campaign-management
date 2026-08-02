@@ -1,5 +1,6 @@
 // ============================================
-// Live sale toast feed (bottom-left stack + Realtime broadcast)
+// Live sale toast feed (bottom-right stack + Realtime broadcast)
+// Design aligned with temporary toast.html mock
 // ============================================
 
 import { supabase } from './supabase.js'
@@ -8,13 +9,37 @@ import { escapeHtml, formatNumber, requireMainAdmin, userDisplayName, getCurrent
 
 const CHANNEL_NAME = 'sale-live-toasts'
 const TOAST_MS = 5000
-const SLIDE_MS = 380
+const NOTIF_SOUND_URL = '/notif.mp3'
 
 let channel = null
-let toastSeq = 0
 
 function stackEl() {
   return document.getElementById('saleToastStack')
+}
+
+function playNotifSound() {
+  try {
+    const audio = new Audio(NOTIF_SOUND_URL)
+    audio.play().catch(() => { /* autoplay may be blocked until user gesture */ })
+  } catch (_) { /* ignore */ }
+}
+
+function removeSaleToastEl(toast) {
+  if (!toast || toast.dataset.removing === '1') return
+  toast.dataset.removing = '1'
+  const timeoutId = Number(toast.dataset.timeoutId || 0)
+  if (timeoutId) clearTimeout(timeoutId)
+  toast.classList.remove('show')
+  const onEnd = (e) => {
+    if (e && e.target !== toast) return
+    toast.removeEventListener('transitionend', onEnd)
+    toast.remove()
+  }
+  toast.addEventListener('transitionend', onEnd)
+  // Fallback if transitionend doesn't fire
+  setTimeout(() => {
+    if (toast.isConnected) toast.remove()
+  }, 400)
 }
 
 export function showSaleToast(payload) {
@@ -24,44 +49,40 @@ export function showSaleToast(payload) {
 
   const seller = (payload.sellerName || '').trim() || 'کارشناس'
   const product = (payload.productName || '').trim() || 'محصول'
-  const customer = (payload.customerName || '').trim() || payload.customerId || 'مشتری'
-  const amount = parseFloat(payload.amount) || 0
-  const amountLabel = amount > 0 ? `${formatNumber(amount)} ریال` : ''
+  const amountRial = parseFloat(payload.amount) || 0
+  // مبالغ در سیستم به ریال است؛ در توست مطابق دیزاین به تومان نشان داده می‌شود
+  const amountToman = amountRial > 0 ? formatNumber(Math.round(amountRial / 10)) : ''
 
-  const el = document.createElement('div')
-  el.className = 'sale-toast'
-  el.setAttribute('role', 'status')
-  el.dataset.id = String(++toastSeq)
-  el.innerHTML = `
-    <div class="sale-toast-title">فروش جدید</div>
-    <div class="sale-toast-body">
-      <span class="sale-toast-seller">${escapeHtml(seller)}</span>
-      · ${escapeHtml(product)}
-      ${customer ? ` · ${escapeHtml(customer)}` : ''}
-      ${amountLabel ? ` · <span class="sale-toast-amount">${escapeHtml(amountLabel)}</span>` : ''}
+  const toast = document.createElement('div')
+  toast.className = 'sale-toast-card'
+  toast.setAttribute('role', 'status')
+  toast.innerHTML = `
+    <div class="sale-toast-content">
+      <div class="sale-toast-title">⚡ فروش جدید از ${escapeHtml(seller)}</div>
+      <div class="sale-toast-details">
+        ${escapeHtml(product)}${amountToman ? ` — <span class="sale-toast-amount">${escapeHtml(amountToman)} تومان</span>` : ''}
+      </div>
     </div>
+    <button type="button" class="sale-toast-close" aria-label="بستن">&times;</button>
   `
 
-  stack.appendChild(el)
-  // Next frame so transition runs from off-screen
+  const closeBtn = toast.querySelector('.sale-toast-close')
+  closeBtn?.addEventListener('click', (e) => {
+    e.stopPropagation()
+    removeSaleToastEl(toast)
+  })
+
+  stack.appendChild(toast)
+  playNotifSound()
+
   requestAnimationFrame(() => {
-    requestAnimationFrame(() => el.classList.add('is-visible'))
+    requestAnimationFrame(() => toast.classList.add('show'))
   })
 
-  const hideTimer = setTimeout(() => {
-    el.classList.remove('is-visible')
-    el.classList.add('is-leaving')
-    setTimeout(() => {
-      el.remove()
-    }, SLIDE_MS)
+  const autoCloseTimeout = setTimeout(() => {
+    removeSaleToastEl(toast)
   }, TOAST_MS)
-
-  el.addEventListener('click', () => {
-    clearTimeout(hideTimer)
-    el.classList.remove('is-visible')
-    el.classList.add('is-leaving')
-    setTimeout(() => el.remove(), SLIDE_MS)
-  })
+  toast.dataset.timeoutId = String(autoCloseTimeout)
 }
 
 async function ensureChannel() {
