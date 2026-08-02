@@ -1,6 +1,7 @@
 import { getData, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { updateTransferInboxBadge } from './transfers.js'
+import { broadcastSaleToast, buildSaleToastPayload } from './sale-toasts.js'
 import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
   canViewCustomer, canManageCustomer, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
@@ -2134,11 +2135,22 @@ export async function savePaymentField(customerId, productIndex, paymentIndex, f
     showToast('واریز تأییدشده قابل ویرایش نیست')
     return
   }
+  const wasFilled = isPaymentFilled(pay)
   pay[field] = value
   resetPaymentEntry(pay)
   syncProductStatus(product)
   await setProducts(customerId, products)
   renderProducts(customerId)
+  maybeBroadcastSaleToast(customer, product, pay, wasFilled)
+}
+
+async function maybeBroadcastSaleToast(customer, product, payment, wasFilled) {
+  if (wasFilled || !isPaymentFilled(payment)) return
+  try {
+    await broadcastSaleToast(buildSaleToastPayload({ customer, product, payment }))
+  } catch (e) {
+    console.error('sale toast broadcast error:', e)
+  }
 }
 
 function renderDestinationBankField(customerId, productIndex, paymentIndex, pay, editable) {
@@ -2201,6 +2213,8 @@ export async function updatePaymentField(customerId, productIndex, paymentIndex,
     return
   }
 
+  const wasFilled = isPaymentFilled(pay)
+
   if (field === 'soldAtDate') {
     const oldTime = soldAtTimePart(pay.soldAt)
     pay.soldAt = oldTime ? `${value} ${oldTime}` : value
@@ -2220,6 +2234,7 @@ export async function updatePaymentField(customerId, productIndex, paymentIndex,
   syncProductStatus(product)
   await setProducts(customerId, products)
   renderProducts(customerId)
+  maybeBroadcastSaleToast(customer, product, pay, wasFilled)
 }
 
 export async function removeProduct(customerId, index) {

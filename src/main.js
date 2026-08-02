@@ -30,6 +30,7 @@ import {
   closeNotificationDetail,
   deleteNotification
 } from './notifications.js'
+import { initSaleToastFeed, toggleSaleToastSetting, syncSaleToastToggleUi } from './sale-toasts.js'
 import { setPage } from './pagination.js'
 
 // ============================================
@@ -160,6 +161,7 @@ async function openSettingsModal() {
   await openSettingsModalBase()
   if (!document.getElementById('settingsModal')?.classList.contains('active')) return
   await renderNotificationAdminSection()
+  syncSaleToastToggleUi()
 }
 
 const app = {
@@ -284,6 +286,7 @@ const app = {
   openNotificationDetail,
   closeNotificationDetail,
   deleteNotification,
+  toggleSaleToastSetting,
   formatInput: (el) => {
     let raw = el.value.replace(/[^\d]/g, '')
     el.value = raw ? Number(raw).toLocaleString('en-US') : ''
@@ -412,6 +415,7 @@ async function init() {
   refreshCustomerBulkOptions()
   updateTransferInboxBadge()
   refreshNotifications().catch(e => console.error('notifications init error:', e))
+  initSaleToastFeed().catch(e => console.error('sale toast init error:', e))
 
   // Modal accessibility: focus trap + aria (A11Y-H3)
   initModalFocusTrap()

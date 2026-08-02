@@ -44,7 +44,8 @@ let data = {
   convertedCount: 0,
   destinationBanks: [],
   platforms: [],
-  statuses: []
+  statuses: [],
+  saleToastEnabled: true
 }
 
 const DEFAULT_PLATFORMS = [
@@ -161,6 +162,7 @@ export async function loadData() {
   data.statuses = Array.isArray(settings.statuses) && settings.statuses.length > 0
     ? [...settings.statuses].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [...DEFAULT_STATUSES]
+  data.saleToastEnabled = settings.sale_toast_enabled !== false && settings.sale_toast_enabled !== 'false'
 
   injectDynamicStyles()
 
@@ -734,6 +736,19 @@ export async function updateFollowupsCustomerId(oldId, newId) {
 export async function saveSetting(key, value) {
   const { error } = await supabase.from('app_settings').upsert({ key, value }, { onConflict: 'key' })
   if (error) throw new Error('خطا در ذخیره تنظیمات: ' + error.message)
+}
+
+export function getSaleToastEnabled() {
+  return data.saleToastEnabled !== false
+}
+
+export function setSaleToastEnabledLocal(enabled) {
+  data.saleToastEnabled = !!enabled
+}
+
+export async function saveSaleToastEnabled(enabled) {
+  data.saleToastEnabled = !!enabled
+  await saveSetting('sale_toast_enabled', !!enabled)
 }
 
 // ============================================
