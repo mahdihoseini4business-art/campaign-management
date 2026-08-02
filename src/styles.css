@@ -76,6 +76,37 @@
 
   .header-actions { display: flex; gap: 8px; align-items: center; }
 
+  .app-update-banner {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 12000;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    background: #0f172a;
+    color: #f8fafc;
+    font-size: 13px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+  }
+
+  .app-update-banner.is-visible {
+    display: flex;
+  }
+
+  .app-update-banner-text {
+    text-align: center;
+  }
+
+  .app-update-banner .btn-sm {
+    height: 32px;
+    padding: 6px 14px;
+  }
+
   .profile-menu,
   .notification-menu { position: relative; }
 

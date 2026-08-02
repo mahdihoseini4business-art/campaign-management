@@ -77,6 +77,89 @@ const DEFAULT_STATUSES = [
   { key: 'cancelled', label: 'منصرف شده', bgColor: '#e9ecef', textColor: '#495057', order: 8 },
 ]
 
+/** Map a customers DB row → in-memory customer object */
+export function mapCustomerFromDb(c) {
+  if (!c || !c.id) return null
+  const phones = normalizeCustomerPhonesLocal({
+    phones: c.phones,
+    phone: c.phone || ''
+  })
+  return {
+    id: c.id,
+    platformId: c.platform_id || '',
+    platform: c.platform || 'instagram',
+    name: c.name || '',
+    phones,
+    phone: phones[0] || '',
+    status: c.status || 'new',
+    notes: c.notes || '',
+    advisor: c.advisor || '',
+    advisorPhone: c.advisor_phone || '',
+    nextFollowupDate: c.next_followup_date || '',
+    products: c.products || [],
+    createdAt: c.created_at || null,
+    customerLevel: c.customer_level || '',
+    customerLevelLocked: !!c.customer_level_locked,
+    referredByPhone: c.referred_by_phone || ''
+  }
+}
+
+/** Map a followups DB row → in-memory followup object */
+export function mapFollowupFromDb(f) {
+  if (!f || f.id == null) return null
+  return {
+    id: f.id,
+    customerId: f.customer_id,
+    date: f.date || '',
+    type: f.type || '',
+    result: f.result || '',
+    nextDate: f.next_date || '',
+    notes: f.notes || '',
+    createdByPhone: f.created_by_phone || '',
+    status: f.status || 'pending',
+    doneAt: f.done_at || '',
+    doneByPhone: f.done_by_phone || '',
+    doneNote: f.done_note || '',
+    wasOverdue: !!f.was_overdue
+  }
+}
+
+/** Insert or replace a customer in the in-memory cache. Returns false if row invalid. */
+export function upsertCustomerInCache(dbRow) {
+  const mapped = mapCustomerFromDb(dbRow)
+  if (!mapped) return false
+  const idx = data.customers.findIndex(c => c.id === mapped.id)
+  if (idx >= 0) data.customers[idx] = mapped
+  else data.customers.push(mapped)
+  return true
+}
+
+export function removeCustomerFromCache(id) {
+  if (!id) return false
+  const before = data.customers.length
+  data.customers = data.customers.filter(c => c.id !== id)
+  return data.customers.length !== before
+}
+
+/** Insert or replace a followup in the in-memory cache. Returns false if row invalid. */
+export function upsertFollowupInCache(dbRow) {
+  const mapped = mapFollowupFromDb(dbRow)
+  if (!mapped) return false
+  const id = Number(mapped.id)
+  const idx = data.followups.findIndex(f => Number(f.id) === id)
+  if (idx >= 0) data.followups[idx] = mapped
+  else data.followups.push(mapped)
+  return true
+}
+
+export function removeFollowupFromCache(id) {
+  if (id == null || id === '') return false
+  const nid = Number(id)
+  const before = data.followups.length
+  data.followups = data.followups.filter(f => Number(f.id) !== nid)
+  return data.followups.length !== before
+}
+
 // ============================================
 // Load all data from Supabase
 // ============================================
@@ -108,46 +191,9 @@ export async function loadData() {
   }
 
   // Map DB rows to app format
-  data.customers = (customersRes.data || []).map(c => {
-    const phones = normalizeCustomerPhonesLocal({
-      phones: c.phones,
-      phone: c.phone || ''
-    })
-    return {
-      id: c.id,
-      platformId: c.platform_id || '',
-      platform: c.platform || 'instagram',
-      name: c.name || '',
-      phones,
-      phone: phones[0] || '',
-      status: c.status || 'new',
-      notes: c.notes || '',
-      advisor: c.advisor || '',
-      advisorPhone: c.advisor_phone || '',
-      nextFollowupDate: c.next_followup_date || '',
-      products: c.products || [],
-      createdAt: c.created_at || null,
-      customerLevel: c.customer_level || '',
-      customerLevelLocked: !!c.customer_level_locked,
-      referredByPhone: c.referred_by_phone || ''
-    }
-  })
+  data.customers = (customersRes.data || []).map(mapCustomerFromDb).filter(Boolean)
 
-  data.followups = (followupsRes.data || []).map(f => ({
-    id: f.id,
-    customerId: f.customer_id,
-    date: f.date || '',
-    type: f.type || '',
-    result: f.result || '',
-    nextDate: f.next_date || '',
-    notes: f.notes || '',
-    createdByPhone: f.created_by_phone || '',
-    status: f.status || 'pending',
-    doneAt: f.done_at || '',
-    doneByPhone: f.done_by_phone || '',
-    doneNote: f.done_note || '',
-    wasOverdue: !!f.was_overdue
-  }))
+  data.followups = (followupsRes.data || []).map(mapFollowupFromDb).filter(Boolean)
 
   data.ownershipTransfers = (transfersRes.error || !transfersRes.data)
     ? []

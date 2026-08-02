@@ -32,6 +32,7 @@ import {
 } from './notifications.js'
 import { initSaleToastFeed, toggleSaleToastSetting, syncSaleToastToggleUi } from './sale-toasts.js'
 import { initLiveSync } from './live-sync.js'
+import { initAppUpdate } from './app-update.js'
 import { setPage } from './pagination.js'
 
 // ============================================
@@ -382,6 +383,7 @@ async function init() {
   initToolbarActionsMenus()
   initImportListeners()
   initSalesImportListeners()
+  initAppUpdate().catch(e => console.error('app update init error:', e))
 
   // Show loading overlay
   const loadingOverlay = document.getElementById('loadingOverlay')

@@ -329,6 +329,39 @@
   .step-dot.active { background: #25b88b; width: 24px; border-radius: 4px; }
   .step-dot.completed { background: #16A34A; }
 
+  .app-update-banner {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 12000;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    background: #0f172a;
+    color: #f8fafc;
+    font-size: 13px;
+    font-family: 'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+  }
+  .app-update-banner.is-visible { display: flex; }
+  .app-update-banner-text { text-align: center; }
+  .app-update-btn {
+    border: none;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    background: #0155d2;
+    color: #fff;
+  }
+  .app-update-btn:hover { background: #0146b0; }
+
   /* Responsive */
   @media (max-width: 480px) {
     body { padding: 16px; }
@@ -346,6 +379,11 @@
 </style>
 </head>
 <body>
+
+<div id="appUpdateBanner" class="app-update-banner" hidden role="status" aria-live="polite">
+  <span class="app-update-banner-text">نسخه جدید آماده است. برای اعمال بروزرسانی کنید.</span>
+  <button type="button" class="app-update-btn" id="appUpdateReloadBtn">بروزرسانی</button>
+</div>
 
 <div class="login-card">
   <img src="/logo.webp" alt="لوگو" class="login-logo">
@@ -428,6 +466,9 @@
   import { supabase } from './src/supabase.js'
   import { setCurrentUser, restoreSession, toEnDigits } from './src/utils.js'
   import { sendOTP, verifyOTP } from './src/sms.js'
+  import { initAppUpdate } from './src/app-update.js'
+
+  initAppUpdate().catch(e => console.warn('app update init error:', e))
 
   // State
   let currentPhone = ''

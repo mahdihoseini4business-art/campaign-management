@@ -1,10 +1,17 @@
 // ============================================
-// Hybrid live sync: Realtime + polling backup
-// Keeps customers / sales(products) / followups / notifications fresh
+// Hybrid live sync: Realtime patch + polling backup
+// Customers/followups: single-row patch on postgres_changes
+// Polling/visibility: full loadData()
 // ============================================
 
 import { supabase } from './supabase.js'
-import { loadData } from './data.js'
+import {
+  loadData,
+  upsertCustomerInCache,
+  removeCustomerFromCache,
+  upsertFollowupInCache,
+  removeFollowupFromCache
+} from './data.js'
 import { refreshNotifications, updateNotificationBadge } from './notifications.js'
 import { renderCustomers, updateStats } from './customers.js'
 import { renderFollowups, updateFollowupBadge } from './followups.js'
@@ -22,7 +29,6 @@ const LOCAL_WRITE_SUPPRESS_MS = 2000
 let channel = null
 let pollTimer = null
 let uiTimer = null
-let coreRefreshTimer = null
 let notifRefreshTimer = null
 let refreshingCore = false
 let refreshingNotif = false
@@ -125,14 +131,6 @@ async function refreshNotifData(reason = 'sync') {
   }
 }
 
-function scheduleCoreRefresh(reason) {
-  if (coreRefreshTimer) clearTimeout(coreRefreshTimer)
-  coreRefreshTimer = setTimeout(() => {
-    coreRefreshTimer = null
-    refreshCoreData(reason)
-  }, UI_DEBOUNCE_MS)
-}
-
 function scheduleNotifRefresh(reason) {
   if (notifRefreshTimer) clearTimeout(notifRefreshTimer)
   notifRefreshTimer = setTimeout(() => {
@@ -148,9 +146,62 @@ async function refreshAll(reason) {
   ])
 }
 
-function onRemoteCoreChange() {
+function fallbackFullCore(reason) {
+  refreshCoreData(reason || 'realtime-fallback')
+}
+
+function onCustomerChange(payload) {
   if (isLocalWriteSuppressed()) return
-  scheduleCoreRefresh('realtime')
+  const event = payload?.eventType || payload?.event
+  try {
+    if (event === 'DELETE') {
+      const id = payload.old?.id
+      if (!id || !removeCustomerFromCache(id)) {
+        fallbackFullCore('customer-delete')
+        return
+      }
+      lastSyncAt = Date.now()
+      scheduleUiRefresh()
+      return
+    }
+    const row = payload.new
+    if (!row?.id || !upsertCustomerInCache(row)) {
+      fallbackFullCore('customer-upsert')
+      return
+    }
+    lastSyncAt = Date.now()
+    scheduleUiRefresh()
+  } catch (e) {
+    console.error('onCustomerChange error:', e)
+    fallbackFullCore('customer-error')
+  }
+}
+
+function onFollowupChange(payload) {
+  if (isLocalWriteSuppressed()) return
+  const event = payload?.eventType || payload?.event
+  try {
+    if (event === 'DELETE') {
+      const id = payload.old?.id
+      if (id == null || !removeFollowupFromCache(id)) {
+        fallbackFullCore('followup-delete')
+        return
+      }
+      lastSyncAt = Date.now()
+      scheduleUiRefresh()
+      return
+    }
+    const row = payload.new
+    if (row?.id == null || !upsertFollowupInCache(row)) {
+      fallbackFullCore('followup-upsert')
+      return
+    }
+    lastSyncAt = Date.now()
+    scheduleUiRefresh()
+  } catch (e) {
+    console.error('onFollowupChange error:', e)
+    fallbackFullCore('followup-error')
+  }
 }
 
 function onRemoteNotifChange() {
@@ -163,8 +214,8 @@ async function ensureRealtimeChannel() {
 
   channel = supabase
     .channel(CHANNEL_NAME)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, onRemoteCoreChange)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'followups' }, onRemoteCoreChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, onCustomerChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'followups' }, onFollowupChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, onRemoteNotifChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'notification_reads' }, onRemoteNotifChange)
 
@@ -221,10 +272,6 @@ export function disposeLiveSync() {
   if (uiTimer) {
     clearTimeout(uiTimer)
     uiTimer = null
-  }
-  if (coreRefreshTimer) {
-    clearTimeout(coreRefreshTimer)
-    coreRefreshTimer = null
   }
   if (notifRefreshTimer) {
     clearTimeout(notifRefreshTimer)
