@@ -322,7 +322,10 @@ export async function openSettingsModal() {
   renderPlatformsSettings()
   renderStatusesSettings()
   document.getElementById('settingsModal').classList.add('active')
-  document.getElementById('profileDropdown').classList.remove('active')
+  document.getElementById('profileDropdown')?.classList.remove('active')
+  const profileDd = document.getElementById('profileDropdown')
+  if (profileDd) profileDd.hidden = true
+  document.getElementById('profileMenuBtn')?.setAttribute('aria-expanded', 'false')
 }
 
 export function closeSettingsModal() {
@@ -868,6 +871,15 @@ export function toggleProfileMenu() {
   if (!dropdown) return
 
   const willOpen = !dropdown.classList.contains('active')
+
+  // Close notification menu if open
+  const notifDd = document.getElementById('notificationDropdown')
+  if (notifDd) {
+    notifDd.classList.remove('active')
+    notifDd.hidden = true
+  }
+  document.getElementById('notificationMenuBtn')?.setAttribute('aria-expanded', 'false')
+
   dropdown.classList.toggle('active', willOpen)
   dropdown.hidden = !willOpen
   btn?.setAttribute('aria-expanded', willOpen ? 'true' : 'false')

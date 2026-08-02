@@ -1,7 +1,7 @@
 import './styles.css'
 import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum, showToast, escapeAttr, getStatusOrder, toggleToolbarActions, closeAllToolbarActions, initToolbarActionsMenus, getPrimaryPhone } from './utils.js'
 import { getData, loadData, backfillAdvisorPhones } from './data.js'
-import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, addDestinationBank, removeDestinationBank, filterViewUserOptions, addPlatform, removePlatform, updatePlatformField, editPlatform, addStatus, removeStatus, updateStatusField, editStatus, onStatusDragStart, onStatusDragOver, onStatusDrop } from './auth.js'
+import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal as openSettingsModalBase, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, addDestinationBank, removeDestinationBank, filterViewUserOptions, addPlatform, removePlatform, updatePlatformField, editPlatform, addStatus, removeStatus, updateStatusField, editStatus, onStatusDragStart, onStatusDragOver, onStatusDrop } from './auth.js'
 import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, saveProductField, updateProduct, removeProduct, onCustomerPhoneInput, addCustomerPhoneSlot, removeCustomerPhoneSlot, addProductPayment, savePaymentField, updatePaymentField, removeProductPayment, onDestinationBankSelect, closeMergeCustomerModal, confirmMergeCustomers } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, updateFollowupBadge } from './followups.js'
 import { renderSales, sortSales } from './sales.js'
@@ -17,6 +17,16 @@ import {
   openCustomerFromTransfer,
   updateTransferInboxBadge
 } from './transfers.js'
+import {
+  toggleNotificationMenu,
+  initNotificationMenu,
+  refreshNotifications,
+  sendNotification,
+  filterNotifRecipients,
+  toggleAllNotifRecipients,
+  renderNotificationAdminSection,
+  closeNotificationMenu
+} from './notifications.js'
 import { setPage } from './pagination.js'
 
 // ============================================
@@ -143,6 +153,12 @@ function goToPage(key, page) {
 // Single app namespace (QC-H1: avoid polluting window)
 // ============================================
 
+async function openSettingsModal() {
+  await openSettingsModalBase()
+  if (!document.getElementById('settingsModal')?.classList.contains('active')) return
+  await renderNotificationAdminSection()
+}
+
 const app = {
   openCustomerDetail,
   onCustomerRowClick,
@@ -258,6 +274,10 @@ const app = {
   openTransferBatchDetail,
   openCustomerFromTransfer,
   updateTransferInboxBadge,
+  toggleNotificationMenu,
+  sendNotification,
+  filterNotifRecipients,
+  toggleAllNotifRecipients,
   formatInput: (el) => {
     let raw = el.value.replace(/[^\d]/g, '')
     el.value = raw ? Number(raw).toLocaleString('en-US') : ''
@@ -348,6 +368,7 @@ function initModalFocusTrap() {
 async function init() {
   initDigitConversion()
   initProfileMenu()
+  initNotificationMenu()
   initToolbarActionsMenus()
   initImportListeners()
   initSalesImportListeners()
@@ -384,6 +405,7 @@ async function init() {
   applyPermissions()
   refreshCustomerBulkOptions()
   updateTransferInboxBadge()
+  refreshNotifications().catch(e => console.error('notifications init error:', e))
 
   // Modal accessibility: focus trap + aria (A11Y-H3)
   initModalFocusTrap()
@@ -409,6 +431,7 @@ async function init() {
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
       document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'))
+      closeNotificationMenu()
     }
   })
 
