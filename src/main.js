@@ -27,7 +27,8 @@ import {
   renderNotificationAdminSection,
   closeNotificationMenu,
   openNotificationDetail,
-  closeNotificationDetail
+  closeNotificationDetail,
+  deleteNotification
 } from './notifications.js'
 import { setPage } from './pagination.js'
 
@@ -282,6 +283,7 @@ const app = {
   toggleAllNotifRecipients,
   openNotificationDetail,
   closeNotificationDetail,
+  deleteNotification,
   formatInput: (el) => {
     let raw = el.value.replace(/[^\d]/g, '')
     el.value = raw ? Number(raw).toLocaleString('en-US') : ''

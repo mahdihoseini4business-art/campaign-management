@@ -225,6 +225,64 @@ export function toJalali(gregorian) {
   return { year: jy, month: jm, day: jd }
 }
 
+/** Jalali Y/M/D → Gregorian Y/M/D */
+export function toGregorian(jy, jm, jd) {
+  jy = Number(jy)
+  jm = Number(jm)
+  jd = Number(jd)
+  let gy, gm, gd
+  jy -= 979
+  let days = 365 * jy + Math.floor(jy / 33) * 8 + Math.floor(((jy % 33) + 3) / 4) + 78 + jd +
+    ((jm < 7) ? (jm - 1) * 31 : ((jm - 7) * 30 + 186))
+  gy = 1600 + 400 * Math.floor(days / 146097)
+  days %= 146097
+  let leap = true
+  if (days >= 36525) {
+    days--
+    gy += 100 * Math.floor(days / 36524)
+    days %= 36524
+    if (days >= 365) days++
+    else leap = false
+  }
+  gy += 4 * Math.floor(days / 1461)
+  days %= 1461
+  if (days >= 366) {
+    leap = false
+    days--
+    gy += Math.floor(days / 365)
+    days %= 365
+  }
+  const g_d_m = [0, 31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  for (gm = 1; gm <= 12 && days >= g_d_m[gm]; gm++) days -= g_d_m[gm]
+  gd = days + 1
+  return { year: gy, month: gm, day: gd }
+}
+
+/**
+ * Jalali date "YYYY/MM/DD" + optional "HH:MM" → ISO string (Asia/Tehran, UTC+03:30).
+ * Returns null if invalid.
+ */
+export function jalaliDateTimeToIso(dateStr, timeStr = '00:00') {
+  const datePart = toEnDigits(String(dateStr || '')).trim().split(/\s+/)[0] || ''
+  const parts = datePart.split('/')
+  if (parts.length !== 3) return null
+  const jy = parseInt(parts[0], 10)
+  const jm = parseInt(parts[1], 10)
+  const jd = parseInt(parts[2], 10)
+  if (!jy || !jm || !jd || jm < 1 || jm > 12 || jd < 1 || jd > 31) return null
+
+  const time24 = normalizeTimeTo24h(timeStr || '00:00') || '00:00'
+  const [hh, mm] = time24.split(':').map(n => parseInt(n, 10))
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return null
+
+  const g = toGregorian(jy, jm, jd)
+  const pad = n => String(n).padStart(2, '0')
+  const isoLocal = `${g.year}-${pad(g.month)}-${pad(g.day)}T${pad(hh)}:${pad(mm)}:00+03:30`
+  const d = new Date(isoLocal)
+  if (!Number.isFinite(d.getTime())) return null
+  return d.toISOString()
+}
+
 // Returns a numeric representation of a Jalali date for comparison/sorting.
 // Empty/invalid dates return 99999999 (sorts to end of list).
 export function jalaliToNum(dateStr) {
