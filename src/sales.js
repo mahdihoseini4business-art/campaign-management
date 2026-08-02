@@ -240,7 +240,7 @@ function renderSalesRows(allSales) {
 
     return `<tr class="clickable-row ${rowClass}" onclick="app.onCustomerRowClick(event, '${escapeAttr(s.customerId)}')">
       ${selectCell}
-      <td>${escapeHtml(s.customerName)}</td>
+      <td class="truncate-cell" title="${escapeAttr(s.customerName)}">${escapeHtml(s.customerName)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${(() => {
         const phones = s.customerPhones || (s.customerPhone ? [s.customerPhone] : [])
         if (!phones.length) return '—'

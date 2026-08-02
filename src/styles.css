@@ -606,7 +606,8 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     box-shadow: var(--shadow-subtle);
   }
 
@@ -752,6 +753,13 @@
     text-overflow: ellipsis;
     color: var(--text-muted);
     font-size: 13px;
+  }
+
+  .truncate-cell {
+    max-width: 160px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* --- Actions Column --- */
