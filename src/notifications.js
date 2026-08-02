@@ -12,7 +12,8 @@ import {
   normalizePhone,
   userDisplayName,
   requireMainAdmin,
-  isMainAdmin
+  isMainAdmin,
+  toJalali
 } from './utils.js'
 
 let cachedNotifications = []
@@ -36,6 +37,25 @@ export function formatNotificationAge(isoDate) {
   if (hours < 24) return `${hours} ساعت پیش`
   const days = Math.floor(hours / 24)
   return `${days} روز پیش`
+}
+
+/** ISO → Jalali "YYYY/MM/DD HH:MM" in Asia/Tehran */
+function formatNotificationDateTime(isoDate) {
+  const d = new Date(isoDate)
+  if (!Number.isFinite(d.getTime())) return '—'
+  const tehran = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Tehran' }))
+  const j = toJalali(tehran)
+  const date = `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.day).padStart(2, '0')}`
+  const time = `${String(tehran.getHours()).padStart(2, '0')}:${String(tehran.getMinutes()).padStart(2, '0')}`
+  return `${date} ${time}`
+}
+
+function notificationTitle(n) {
+  const t = (n?.title || '').trim()
+  if (t) return t
+  const msg = (n?.message || '').trim()
+  if (!msg) return 'بدون عنوان'
+  return msg.length > 60 ? `${msg.slice(0, 60)}…` : msg
 }
 
 function recipientsOf(row) {
@@ -104,10 +124,11 @@ function renderNotificationList() {
 
   list.innerHTML = items.map(n => {
     const unread = !cachedReads.has(Number(n.id))
-    return `<div class="notification-item${unread ? ' is-unread' : ''}" role="listitem">
-      <div class="notification-item-body">${escapeHtml(n.message || '')}</div>
+    const title = notificationTitle(n)
+    return `<button type="button" class="notification-item${unread ? ' is-unread' : ''}" role="listitem" onclick="app.openNotificationDetail(${Number(n.id)})">
+      <div class="notification-item-title">${escapeHtml(title)}</div>
       <div class="notification-item-meta">${escapeHtml(formatNotificationAge(n.created_at))}</div>
-    </div>`
+    </button>`
   }).join('')
 }
 
@@ -189,6 +210,38 @@ export async function toggleNotificationMenu() {
   }
 }
 
+export function openNotificationDetail(id) {
+  const n = cachedNotifications.find(x => Number(x.id) === Number(id))
+  if (!n) {
+    showToast('اعلان پیدا نشد')
+    return
+  }
+
+  const titleEl = document.getElementById('notifDetailTitle')
+  const messageEl = document.getElementById('notifDetailMessage')
+  const metaEl = document.getElementById('notifDetailMeta')
+  const modal = document.getElementById('notificationDetailModal')
+  if (!modal) return
+
+  if (titleEl) titleEl.textContent = notificationTitle(n)
+  if (messageEl) messageEl.textContent = n.message || ''
+  if (metaEl) {
+    const when = formatNotificationDateTime(n.created_at)
+    const who = (n.created_by_name || '').trim() || 'نامشخص'
+    metaEl.innerHTML = `
+      <div><span class="notif-detail-label">تاریخ و ساعت:</span> ${escapeHtml(when)}</div>
+      <div><span class="notif-detail-label">فرستنده:</span> ${escapeHtml(who)}</div>
+    `
+  }
+
+  closeNotificationMenu()
+  modal.classList.add('active')
+}
+
+export function closeNotificationDetail() {
+  document.getElementById('notificationDetailModal')?.classList.remove('active')
+}
+
 export function initNotificationMenu() {
   document.addEventListener('click', (e) => {
     const menu = document.querySelector('.notification-menu')
@@ -221,8 +274,10 @@ export async function renderNotificationAdminSection() {
   }
   section.style.display = ''
 
+  const titleEl = document.getElementById('notifTitle')
   const msgEl = document.getElementById('notifMessage')
   const searchEl = document.getElementById('notifRecipientSearch')
+  if (titleEl) titleEl.value = ''
   if (msgEl) msgEl.value = ''
   if (searchEl) searchEl.value = ''
 
@@ -258,8 +313,15 @@ export function toggleAllNotifRecipients(checked) {
 export async function sendNotification() {
   if (!requireMainAdmin()) return
 
+  const titleEl = document.getElementById('notifTitle')
   const msgEl = document.getElementById('notifMessage')
+  const title = (titleEl?.value || '').trim()
   const message = (msgEl?.value || '').trim()
+
+  if (!title) {
+    showToast('عنوان اعلان را وارد کنید')
+    return
+  }
   if (!message) {
     showToast('متن اعلان را وارد کنید')
     return
@@ -276,6 +338,7 @@ export async function sendNotification() {
 
   const user = getCurrentUser()
   const row = {
+    title,
     message,
     recipient_phones: phones,
     created_by_phone: normalizePhone(user?.phone) || null,
@@ -288,6 +351,7 @@ export async function sendNotification() {
     const { error } = await supabase.from('notifications').insert(row)
     if (error) throw error
     showToast(`اعلان برای ${phones.length} نفر ارسال شد`)
+    if (titleEl) titleEl.value = ''
     if (msgEl) msgEl.value = ''
     document.querySelectorAll('#notifRecipientList .notif-recipient-cb').forEach(cb => { cb.checked = false })
     const selectAll = document.getElementById('notifSelectAll')

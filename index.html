@@ -109,10 +109,14 @@
       </div>
       <div id="settingsNotificationsSection" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
         <div style="font-size:14px;font-weight:600;margin-bottom:8px;">اعلان‌های دستی</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">متن اعلان را بنویسید و اعضایی که باید دریافت کنند را انتخاب کنید.</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">عنوان و متن اعلان را بنویسید و اعضایی که باید دریافت کنند را انتخاب کنید.</div>
+        <div class="form-group">
+          <label for="notifTitle">عنوان اعلان <span class="required">*</span></label>
+          <input type="text" class="form-input" id="notifTitle" placeholder="عنوان کوتاه اعلان" maxlength="120">
+        </div>
         <div class="form-group">
           <label for="notifMessage">متن اعلان <span class="required">*</span></label>
-          <textarea class="form-input" id="notifMessage" rows="3" placeholder="متن اعلان را اینجا بنویسید..." style="resize:vertical;min-height:72px;"></textarea>
+          <textarea class="form-input" id="notifMessage" rows="3" placeholder="متن کامل اعلان را اینجا بنویسید..." style="resize:vertical;min-height:72px;"></textarea>
         </div>
         <div class="form-group">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
@@ -130,6 +134,23 @@
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="app.closeSettingsModal()">بستن</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال جزئیات اعلان -->
+<div class="modal-overlay" id="notificationDetailModal">
+  <div class="modal" style="max-width: 520px;">
+    <div class="modal-header">
+      <h2 id="notifDetailTitle">اعلان</h2>
+      <button class="modal-close" onclick="app.closeNotificationDetail()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="notifDetailMeta" class="notif-detail-meta"></div>
+      <div id="notifDetailMessage" class="notif-detail-message"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeNotificationDetail()">بستن</button>
     </div>
   </div>
 </div>

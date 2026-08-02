@@ -2,6 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS notifications (
   id BIGSERIAL PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '',
   message TEXT NOT NULL,
   recipient_phones JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_by_phone TEXT,
