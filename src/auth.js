@@ -333,6 +333,8 @@ let _editingProductIdx = null
 let _editingPlatformIdx = null
 let _editingStatusIdx = null
 let _editingSalesTargetId = null
+/** @type {Array<{id?: string, metric: string, value: number, productNames: string[], startDate: string, endDate: string, createdAt?: string}>} */
+let _draftTargetBars = []
 
 function ensureSettingsEscapeHandler() {
   if (_settingsEscapeBound) return
@@ -1078,12 +1080,7 @@ function renderSalesTargetProductChecks(selectedNames = []) {
   `).join('')
 }
 
-function clearSalesTargetForm() {
-  _editingSalesTargetId = null
-  const idEl = document.getElementById('editSalesTargetId')
-  if (idEl) idEl.value = ''
-  const titleEl = document.getElementById('salesTargetTitle')
-  if (titleEl) titleEl.value = ''
+function clearSalesTargetBarFields() {
   const metricEl = document.getElementById('salesTargetMetric')
   if (metricEl) metricEl.value = 'amount'
   const valueEl = document.getElementById('salesTargetValue')
@@ -1094,10 +1091,31 @@ function clearSalesTargetForm() {
   if (endEl) endEl.value = ''
   renderSalesTargetProductChecks([])
   onSalesTargetMetricChange()
+}
+
+function clearSalesTargetForm() {
+  _editingSalesTargetId = null
+  _draftTargetBars = []
+  const idEl = document.getElementById('editSalesTargetId')
+  if (idEl) idEl.value = ''
+  const titleEl = document.getElementById('salesTargetTitle')
+  if (titleEl) titleEl.value = ''
+  clearSalesTargetBarFields()
   const saveBtn = document.getElementById('salesTargetSaveBtn')
-  if (saveBtn) saveBtn.textContent = 'افزودن تارگت'
+  if (saveBtn) saveBtn.textContent = 'ذخیره گروه'
   const cancelBtn = document.getElementById('salesTargetCancelBtn')
   if (cancelBtn) cancelBtn.hidden = true
+  renderSalesTargetDraftBars()
+}
+
+function refreshDashboardTargets() {
+  try {
+    if (typeof window.app?.renderDashboard === 'function') {
+      window.app.renderDashboard()
+    }
+  } catch (e) {
+    console.error('refreshDashboardTargets error:', e)
+  }
 }
 
 export function onSalesTargetMetricChange() {
@@ -1108,69 +1126,125 @@ export function onSalesTargetMetricChange() {
   if (input) input.placeholder = metric === 'count' ? 'مثلاً ۵۰' : 'مثلاً ۱۰۰۰۰۰۰۰۰'
 }
 
-function salesTargetMetaText(t) {
-  const metricLabel = t.metric === 'count' ? 'تعداد' : 'مبلغ'
-  const valueLabel = t.metric === 'count'
-    ? `${formatNumber(t.value)} فروش`
-    : `${formatNumber(t.value)} ریال`
-  const products = (t.productNames || []).length
-    ? t.productNames.join('، ')
+function salesTargetBarMetaText(bar) {
+  const metricLabel = bar.metric === 'count' ? 'تعداد' : 'مبلغ'
+  const valueLabel = bar.metric === 'count'
+    ? `${formatNumber(bar.value)} فروش`
+    : `${formatNumber(bar.value)} ریال`
+  const products = (bar.productNames || []).length
+    ? bar.productNames.join('، ')
     : 'همه محصولات'
   const rangeParts = []
-  if (t.startDate) rangeParts.push(`از ${t.startDate}`)
-  if (t.endDate) rangeParts.push(`تا ${t.endDate}`)
+  if (bar.startDate) rangeParts.push(`از ${bar.startDate}`)
+  if (bar.endDate) rangeParts.push(`تا ${bar.endDate}`)
   const range = rangeParts.length ? rangeParts.join(' ') : 'بدون بازه زمانی'
   return `${metricLabel}: ${valueLabel} · ${products} · ${range}`
 }
 
+function renderSalesTargetDraftBars() {
+  const box = document.getElementById('salesTargetDraftBars')
+  if (!box) return
+  if (!_draftTargetBars.length) {
+    box.innerHTML = '<div class="settings-target-draft-empty">هنوز نواری به این گروه اضافه نشده</div>'
+    return
+  }
+  box.innerHTML = _draftTargetBars.map((bar, idx) => `
+    <div class="settings-target-draft-row">
+      <div class="settings-config-meta">${escapeHtml(salesTargetBarMetaText(bar))}</div>
+      <button type="button" class="btn-icon" title="حذف نوار" onclick="app.removeSalesTargetBarFromDraft(${idx})" style="color:var(--danger);">🗑</button>
+    </div>
+  `).join('')
+}
+
+function readSalesTargetBarFromForm() {
+  const metric = document.getElementById('salesTargetMetric')?.value === 'count' ? 'count' : 'amount'
+  const value = parseSalesTargetValueInput(document.getElementById('salesTargetValue')?.value)
+  const startDate = toEnDigits((document.getElementById('salesTargetStart')?.value || '').trim())
+  const endDate = toEnDigits((document.getElementById('salesTargetEnd')?.value || '').trim())
+  const productNames = getSelectedSalesTargetProducts()
+  const hasValueInput = String(document.getElementById('salesTargetValue')?.value || '').trim() !== ''
+
+  if (!hasValueInput) return { empty: true }
+  if (!Number.isFinite(value) || value <= 0) return { error: 'مقدار هدف باید عدد مثبت باشد' }
+  if (startDate && endDate && jalaliToNum(startDate) > jalaliToNum(endDate)) {
+    return { error: 'تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد' }
+  }
+  return {
+    bar: {
+      id: `tgt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      metric,
+      value,
+      productNames,
+      startDate,
+      endDate,
+      createdAt: new Date().toISOString()
+    }
+  }
+}
+
+export function addSalesTargetBarToDraft() {
+  if (!requireMainAdmin()) return
+  const parsed = readSalesTargetBarFromForm()
+  if (parsed.empty) { showToast('مقدار هدف را وارد کنید'); return }
+  if (parsed.error) { showToast(parsed.error); return }
+
+  _draftTargetBars.push(parsed.bar)
+  clearSalesTargetBarFields()
+  renderSalesTargetDraftBars()
+  showToast('نوار به گروه اضافه شد')
+}
+
+export function removeSalesTargetBarFromDraft(index) {
+  if (!requireMainAdmin()) return
+  const idx = Number(index)
+  if (!Number.isInteger(idx) || idx < 0 || idx >= _draftTargetBars.length) return
+  _draftTargetBars.splice(idx, 1)
+  renderSalesTargetDraftBars()
+}
+
 export function renderSalesTargetsSettings() {
-  renderSalesTargetProductChecks(
-    _editingSalesTargetId
-      ? (getSalesTargets().find(t => t.id === _editingSalesTargetId)?.productNames || [])
-      : getSelectedSalesTargetProducts()
-  )
+  renderSalesTargetProductChecks(getSelectedSalesTargetProducts())
   onSalesTargetMetricChange()
+  renderSalesTargetDraftBars()
 
   const list = document.getElementById('settingsSalesTargetsList')
   if (!list) return
-  const targets = getSalesTargets()
-  if (targets.length === 0) {
-    list.innerHTML = '<div class="settings-empty-detail">هنوز تارگتی ثبت نشده</div>'
+  const groups = getSalesTargets()
+  if (groups.length === 0) {
+    list.innerHTML = '<div class="settings-empty-detail">هنوز گروهی ثبت نشده</div>'
     return
   }
-  list.innerHTML = targets.map(t => `
-    <div class="settings-config-row settings-target-row${_editingSalesTargetId === t.id ? ' is-editing' : ''}">
+  list.innerHTML = groups.map(group => `
+    <div class="settings-config-row settings-target-row${_editingSalesTargetId === group.id ? ' is-editing' : ''}">
       <div class="settings-config-label">
-        <div>${escapeHtml(t.title)}</div>
-        <div class="settings-config-meta">${escapeHtml(salesTargetMetaText(t))}</div>
+        <div>${escapeHtml(group.title)}</div>
+        <div class="settings-config-meta">${(group.items || []).length} نوار</div>
+        <div class="settings-target-group-bars">
+          ${(group.items || []).map(bar => `<div class="settings-config-meta">${escapeHtml(salesTargetBarMetaText(bar))}</div>`).join('')}
+        </div>
       </div>
-      <button type="button" class="btn-icon" title="ویرایش" onclick="app.startSalesTargetEdit('${escapeAttr(t.id)}')">✏️</button>
-      <button type="button" class="btn-icon" title="حذف" onclick="app.removeSalesTarget('${escapeAttr(t.id)}')" style="color:var(--danger);">🗑</button>
+      <button type="button" class="btn-icon" title="ویرایش گروه" onclick="app.startSalesTargetEdit('${escapeAttr(group.id)}')">✏️</button>
+      <button type="button" class="btn-icon" title="حذف گروه" onclick="app.removeSalesTarget('${escapeAttr(group.id)}')" style="color:var(--danger);">🗑</button>
     </div>
   `).join('')
 }
 
 export function startSalesTargetEdit(id) {
   if (!requireMainAdmin()) return
-  const target = getSalesTargets().find(t => t.id === id)
-  if (!target) return
+  const group = getSalesTargets().find(t => t.id === id)
+  if (!group) return
   _editingSalesTargetId = id
+  _draftTargetBars = (group.items || []).map(bar => ({
+    ...bar,
+    productNames: [...(bar.productNames || [])]
+  }))
   const idEl = document.getElementById('editSalesTargetId')
   if (idEl) idEl.value = id
   const titleEl = document.getElementById('salesTargetTitle')
-  if (titleEl) titleEl.value = target.title || ''
-  const metricEl = document.getElementById('salesTargetMetric')
-  if (metricEl) metricEl.value = target.metric === 'count' ? 'count' : 'amount'
-  const valueEl = document.getElementById('salesTargetValue')
-  if (valueEl) valueEl.value = formatNumber(target.value) || String(target.value)
-  const startEl = document.getElementById('salesTargetStart')
-  if (startEl) startEl.value = target.startDate || ''
-  const endEl = document.getElementById('salesTargetEnd')
-  if (endEl) endEl.value = target.endDate || ''
-  renderSalesTargetProductChecks(target.productNames || [])
-  onSalesTargetMetricChange()
+  if (titleEl) titleEl.value = group.title || ''
+  clearSalesTargetBarFields()
   const saveBtn = document.getElementById('salesTargetSaveBtn')
-  if (saveBtn) saveBtn.textContent = 'ذخیره تغییرات'
+  if (saveBtn) saveBtn.textContent = 'ذخیره تغییرات گروه'
   const cancelBtn = document.getElementById('salesTargetCancelBtn')
   if (cancelBtn) cancelBtn.hidden = false
   renderSalesTargetsSettings()
@@ -1185,19 +1259,22 @@ export function cancelSalesTargetEdit() {
 export async function saveSalesTargetForm() {
   if (!requireMainAdmin()) return
   const title = (document.getElementById('salesTargetTitle')?.value || '').trim()
-  const metric = document.getElementById('salesTargetMetric')?.value === 'count' ? 'count' : 'amount'
-  const value = parseSalesTargetValueInput(document.getElementById('salesTargetValue')?.value)
-  const startDate = toEnDigits((document.getElementById('salesTargetStart')?.value || '').trim())
-  const endDate = toEnDigits((document.getElementById('salesTargetEnd')?.value || '').trim())
-  const productNames = getSelectedSalesTargetProducts()
+  if (!title) { showToast('عنوان گروه را وارد کنید'); return }
 
-  if (!title) { showToast('عنوان تارگت را وارد کنید'); return }
-  if (!Number.isFinite(value) || value <= 0) { showToast('مقدار هدف باید عدد مثبت باشد'); return }
-  if (startDate && endDate) {
-    if (jalaliToNum(startDate) > jalaliToNum(endDate)) {
-      showToast('تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد')
-      return
-    }
+  const pending = readSalesTargetBarFromForm()
+  if (pending.error) { showToast(pending.error); return }
+
+  const items = [
+    ..._draftTargetBars.map(bar => ({
+      ...bar,
+      productNames: [...(bar.productNames || [])]
+    })),
+    ...(pending.bar ? [{ ...pending.bar, productNames: [...(pending.bar.productNames || [])] }] : [])
+  ]
+
+  if (!items.length) {
+    showToast('حداقل یک نوار به گروه اضافه کنید')
+    return
   }
 
   const existing = getSalesTargets()
@@ -1207,21 +1284,13 @@ export async function saveSalesTargetForm() {
     next = existing.map(t => t.id === editingId ? {
       ...t,
       title,
-      metric,
-      value,
-      productNames,
-      startDate,
-      endDate
+      items
     } : t)
   } else {
     next = [...existing, {
-      id: `tgt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       title,
-      metric,
-      value,
-      productNames,
-      startDate,
-      endDate,
+      items,
       createdAt: new Date().toISOString()
     }]
   }
@@ -1230,26 +1299,28 @@ export async function saveSalesTargetForm() {
     await saveSalesTargets(next)
     clearSalesTargetForm()
     renderSalesTargetsSettings()
-    showToast(editingId ? 'تارگت ذخیره شد' : 'تارگت اضافه شد')
+    refreshDashboardTargets()
+    showToast(editingId ? 'گروه تارگت ذخیره شد' : 'گروه تارگت اضافه شد')
   } catch (e) {
     console.error('saveSalesTargetForm error:', e)
-    showToast('خطا در ذخیره تارگت')
+    showToast('خطا در ذخیره گروه تارگت')
   }
 }
 
 export async function removeSalesTarget(id) {
   if (!requireMainAdmin()) return
-  const target = getSalesTargets().find(t => t.id === id)
-  if (!target) return
-  openSettingsConfirm(`حذف تارگت «${target.title}»؟`, async () => {
+  const group = getSalesTargets().find(t => t.id === id)
+  if (!group) return
+  openSettingsConfirm(`حذف گروه «${group.title}» و تمام نوارهایش؟`, async () => {
     try {
       await saveSalesTargets(getSalesTargets().filter(t => t.id !== id))
       if (_editingSalesTargetId === id) clearSalesTargetForm()
       renderSalesTargetsSettings()
-      showToast('تارگت حذف شد')
+      refreshDashboardTargets()
+      showToast('گروه تارگت حذف شد')
     } catch (e) {
       console.error('removeSalesTarget error:', e)
-      showToast('خطا در حذف تارگت')
+      showToast('خطا در حذف گروه تارگت')
     }
   }, 'حذف')
 }

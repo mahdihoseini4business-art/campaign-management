@@ -138,43 +138,50 @@
         <section class="settings-pane" data-settings-pane="sales-targets" hidden>
           <div class="settings-pane-header">
             <h3>تارگت‌های فروش</h3>
-            <p class="settings-pane-desc">تارگت‌های مبلغی یا تعدادی برای نمایش پیشرفت در داشبورد. بازه زمانی و فیلتر محصول اختیاری است.</p>
+            <p class="settings-pane-desc">گروه‌های تارگت با عنوان مشترک و چند نوار پیشرفت (مبلغی یا تعدادی). بازه زمانی و فیلتر محصول برای هر نوار اختیاری است.</p>
           </div>
           <div class="settings-target-form" id="settingsTargetForm">
             <input type="hidden" id="editSalesTargetId" value="">
-            <div class="form-row">
-              <div class="form-group" style="flex:1;">
-                <label for="salesTargetTitle">عنوان</label>
-                <input type="text" class="form-input" id="salesTargetTitle" placeholder="مثلاً تارگت خرداد">
-              </div>
-              <div class="form-group" style="flex:0.7;">
-                <label for="salesTargetMetric">نوع تارگت</label>
-                <select class="form-select" id="salesTargetMetric" onchange="app.onSalesTargetMetricChange()">
-                  <option value="amount">مبلغ فروش (تأییدشده)</option>
-                  <option value="count">تعداد فروش محصول</option>
-                </select>
-              </div>
-              <div class="form-group" style="flex:0.7;">
-                <label for="salesTargetValue" id="salesTargetValueLabel">مقدار هدف (ریال)</label>
-                <input type="text" class="form-input" id="salesTargetValue" placeholder="مثلاً ۱۰۰۰۰۰۰۰۰" dir="ltr" style="text-align:left;" oninput="app.formatInput(this)">
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group" style="flex:1;margin-bottom:0;">
-                <label for="salesTargetStart">از تاریخ <span class="settings-optional">(اختیاری)</span></label>
-                <input type="text" class="form-input" id="salesTargetStart" placeholder="از تاریخ" data-jdp autocomplete="off">
-              </div>
-              <div class="form-group" style="flex:1;margin-bottom:0;">
-                <label for="salesTargetEnd">تا تاریخ / ددلاین <span class="settings-optional">(اختیاری)</span></label>
-                <input type="text" class="form-input" id="salesTargetEnd" placeholder="تا تاریخ" data-jdp autocomplete="off">
-              </div>
-            </div>
             <div class="form-group">
-              <label>محصولات <span class="settings-optional">(خالی = همه)</span></label>
-              <div id="salesTargetProducts" class="settings-target-products"></div>
+              <label for="salesTargetTitle">عنوان گروه</label>
+              <input type="text" class="form-input" id="salesTargetTitle" placeholder="مثلاً تارگت خرداد">
+            </div>
+            <div class="settings-target-bars-block">
+              <div class="settings-target-bars-heading">نوارهای این گروه</div>
+              <div id="salesTargetDraftBars" class="settings-target-draft-bars"></div>
+              <div class="settings-target-bar-fields">
+                <div class="form-row">
+                  <div class="form-group" style="flex:0.7;">
+                    <label for="salesTargetMetric">نوع نوار</label>
+                    <select class="form-select" id="salesTargetMetric" onchange="app.onSalesTargetMetricChange()">
+                      <option value="amount">مبلغ فروش (تأییدشده)</option>
+                      <option value="count">تعداد فروش محصول</option>
+                    </select>
+                  </div>
+                  <div class="form-group" style="flex:0.7;">
+                    <label for="salesTargetValue" id="salesTargetValueLabel">مقدار هدف (ریال)</label>
+                    <input type="text" class="form-input" id="salesTargetValue" placeholder="مثلاً ۱۰۰۰۰۰۰۰۰" dir="ltr" style="text-align:left;" oninput="app.formatInput(this)">
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group" style="flex:1;margin-bottom:0;">
+                    <label for="salesTargetStart">از تاریخ <span class="settings-optional">(اختیاری)</span></label>
+                    <input type="text" class="form-input" id="salesTargetStart" placeholder="از تاریخ" data-jdp autocomplete="off">
+                  </div>
+                  <div class="form-group" style="flex:1;margin-bottom:0;">
+                    <label for="salesTargetEnd">تا تاریخ / ددلاین <span class="settings-optional">(اختیاری)</span></label>
+                    <input type="text" class="form-input" id="salesTargetEnd" placeholder="تا تاریخ" data-jdp autocomplete="off">
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label>محصولات <span class="settings-optional">(خالی = همه)</span></label>
+                  <div id="salesTargetProducts" class="settings-target-products"></div>
+                </div>
+                <button type="button" class="btn btn-sm" onclick="app.addSalesTargetBarToDraft()">افزودن نوار به گروه</button>
+              </div>
             </div>
             <div class="settings-target-form-actions">
-              <button type="button" class="btn btn-primary" id="salesTargetSaveBtn" onclick="app.saveSalesTargetForm()">افزودن تارگت</button>
+              <button type="button" class="btn btn-primary" id="salesTargetSaveBtn" onclick="app.saveSalesTargetForm()">ذخیره گروه</button>
               <button type="button" class="btn" id="salesTargetCancelBtn" hidden onclick="app.cancelSalesTargetEdit()">لغو ویرایش</button>
             </div>
           </div>

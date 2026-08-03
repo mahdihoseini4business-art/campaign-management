@@ -1006,49 +1006,57 @@ function computeSalesTargetCurrent(target, dateFromNum, dateToNum) {
   return current
 }
 
+function renderDashTargetBar(bar, dateFromNum, dateToNum, groupTitle) {
+  const goal = Number(bar.value) || 0
+  const current = computeSalesTargetCurrent(bar, dateFromNum, dateToNum)
+  const pct = goal > 0 ? Math.min(100, Math.round((current / goal) * 1000) / 10) : 0
+  const complete = goal > 0 && current >= goal
+  const deadline = targetDeadlineInfo(bar.endDate)
+  let fillClass = ''
+  if (complete) fillClass = 'is-complete'
+  else if (deadline?.overdue) fillClass = 'is-overdue'
+  else if (deadline?.warning) fillClass = 'is-warning'
+
+  const unit = bar.metric === 'count' ? 'فروش' : 'ریال'
+  const currentLabel = `${formatNumber(current)} ${unit}`
+  const goalLabel = `${formatNumber(goal)} ${unit}`
+  const productsHint = (bar.productNames || []).length
+    ? escapeHtml(bar.productNames.join('، '))
+    : 'همه محصولات'
+  const metricHint = bar.metric === 'count' ? 'تعداد' : 'مبلغ تأییدشده'
+  const ariaLabel = `${groupTitle} — ${metricHint} · ${productsHint}`
+
+  return `
+    <div class="dash-target-row">
+      <div class="dash-target-meta">${metricHint} · ${productsHint}</div>
+      <div class="dash-target-values">
+        <span>${currentLabel} / ${goalLabel}</span>
+        <span class="dash-target-pct">${formatNumber(pct)}٪</span>
+      </div>
+      <div class="dash-target-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}" aria-label="${escapeAttr(ariaLabel)}">
+        <div class="dash-target-bar-fill ${fillClass}" style="width:${pct}%;"></div>
+      </div>
+      ${deadline ? `<div class="dash-target-deadline ${deadline.className}">${escapeHtml(deadline.text)}${bar.endDate ? ` · تا ${escapeHtml(bar.endDate)}` : ''}</div>` : ''}
+    </div>
+  `
+}
+
 function renderDashTargetsProgress(dateFromNum, dateToNum) {
   const el = document.getElementById('dashTargetsProgress')
   if (!el) return
 
-  const targets = getSalesTargets()
-  if (targets.length === 0) {
+  const groups = getSalesTargets()
+  if (groups.length === 0) {
     el.innerHTML = '<div class="dash-targets-empty">هنوز تارگتی تعریف نشده. از تنظیمات سیستم اضافه کنید.</div>'
     return
   }
 
-  el.innerHTML = targets.map(target => {
-    const goal = Number(target.value) || 0
-    const current = computeSalesTargetCurrent(target, dateFromNum, dateToNum)
-    const pct = goal > 0 ? Math.min(100, Math.round((current / goal) * 1000) / 10) : 0
-    const complete = goal > 0 && current >= goal
-    const deadline = targetDeadlineInfo(target.endDate)
-    let fillClass = ''
-    if (complete) fillClass = 'is-complete'
-    else if (deadline?.overdue) fillClass = 'is-overdue'
-    else if (deadline?.warning) fillClass = 'is-warning'
-
-    const unit = target.metric === 'count' ? 'فروش' : 'ریال'
-    const currentLabel = `${formatNumber(current)} ${unit}`
-    const goalLabel = `${formatNumber(goal)} ${unit}`
-    const productsHint = (target.productNames || []).length
-      ? escapeHtml(target.productNames.join('، '))
-      : 'همه محصولات'
-    const metricHint = target.metric === 'count' ? 'تعداد' : 'مبلغ تأییدشده'
-
+  el.innerHTML = groups.map(group => {
+    const bars = (group.items || []).map(bar => renderDashTargetBar(bar, dateFromNum, dateToNum, group.title)).join('')
     return `
-      <div class="dash-target-row">
-        <div class="dash-target-head">
-          <div class="dash-target-title">${escapeHtml(target.title)}</div>
-          <div class="dash-target-meta">${metricHint} · ${productsHint}</div>
-        </div>
-        <div class="dash-target-values">
-          <span>${currentLabel} / ${goalLabel}</span>
-          <span class="dash-target-pct">${formatNumber(pct)}٪</span>
-        </div>
-        <div class="dash-target-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}" aria-label="${escapeAttr(target.title)}">
-          <div class="dash-target-bar-fill ${fillClass}" style="width:${pct}%;"></div>
-        </div>
-        ${deadline ? `<div class="dash-target-deadline ${deadline.className}">${escapeHtml(deadline.text)}${target.endDate ? ` · تا ${escapeHtml(target.endDate)}` : ''}</div>` : ''}
+      <div class="dash-target-group">
+        <div class="dash-target-group-title">${escapeHtml(group.title)}</div>
+        <div class="dash-target-group-bars">${bars}</div>
       </div>
     `
   }).join('')

@@ -328,6 +328,25 @@ export async function saveProductCatalog(products) {
 // Sales targets
 // ============================================
 
+function normalizeSalesTargetBar(item) {
+  if (!item || typeof item !== 'object') return null
+  const metric = item.metric === 'count' ? 'count' : 'amount'
+  const value = Number(item.value)
+  if (!Number.isFinite(value) || value <= 0) return null
+  const productNames = Array.isArray(item.productNames)
+    ? [...new Set(item.productNames.map(p => String(p || '').trim()).filter(Boolean))]
+    : []
+  return {
+    id: String(item.id || '').trim() || `tgt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    metric,
+    value,
+    productNames,
+    startDate: String(item.startDate || '').trim(),
+    endDate: String(item.endDate || '').trim(),
+    createdAt: String(item.createdAt || '').trim() || new Date().toISOString()
+  }
+}
+
 function normalizeSalesTargets(raw) {
   let list = raw
   if (typeof list === 'string' && list.trim()) {
@@ -336,31 +355,42 @@ function normalizeSalesTargets(raw) {
   if (!Array.isArray(list)) return []
   return list.map(item => {
     if (!item || typeof item !== 'object') return null
-    const metric = item.metric === 'count' ? 'count' : 'amount'
-    const value = Number(item.value)
-    if (!Number.isFinite(value) || value <= 0) return null
-    const productNames = Array.isArray(item.productNames)
-      ? [...new Set(item.productNames.map(p => String(p || '').trim()).filter(Boolean))]
-      : []
-    const title = String(item.title || '').trim() || (metric === 'count' ? 'تارگت تعداد' : 'تارگت مبلغ')
-    const startDate = String(item.startDate || '').trim()
-    const endDate = String(item.endDate || '').trim()
-    const id = String(item.id || '').trim() || `tgt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+
+    // New grouped format: { id, title, items: [...] }
+    if (Array.isArray(item.items)) {
+      const items = item.items.map(normalizeSalesTargetBar).filter(Boolean)
+      if (!items.length) return null
+      const title = String(item.title || '').trim() || 'گروه تارگت'
+      return {
+        id: String(item.id || '').trim() || `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        title,
+        items,
+        createdAt: String(item.createdAt || '').trim() || new Date().toISOString()
+      }
+    }
+
+    // Legacy flat format: one bar with its own title → wrap as single-item group
+    const bar = normalizeSalesTargetBar(item)
+    if (!bar) return null
+    const title = String(item.title || '').trim() || (bar.metric === 'count' ? 'تارگت تعداد' : 'تارگت مبلغ')
     return {
-      id,
+      id: String(item.id || '').trim() || `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       title,
-      metric,
-      value,
-      productNames,
-      startDate,
-      endDate,
-      createdAt: String(item.createdAt || '').trim() || new Date().toISOString()
+      items: [bar],
+      createdAt: String(item.createdAt || '').trim() || bar.createdAt
     }
   }).filter(Boolean)
 }
 
+function cloneSalesTargetGroup(group) {
+  return {
+    ...group,
+    items: (group.items || []).map(bar => ({ ...bar, productNames: [...(bar.productNames || [])] }))
+  }
+}
+
 export function getSalesTargets() {
-  return Array.isArray(data.salesTargets) ? data.salesTargets.map(t => ({ ...t, productNames: [...(t.productNames || [])] })) : []
+  return Array.isArray(data.salesTargets) ? data.salesTargets.map(cloneSalesTargetGroup) : []
 }
 
 export async function saveSalesTargets(targets) {
