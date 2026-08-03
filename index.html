@@ -821,13 +821,14 @@
 
 <!-- مودال ایمپورت فروش -->
 <div class="modal-overlay" id="salesImportModal">
-  <div class="modal" style="max-width: 600px;">
+  <div class="modal" style="max-width: 720px;">
     <div class="modal-header"><h2>ایمپورت فروش از اکسل</h2><button class="modal-close" onclick="app.closeSalesImportModal()">&times;</button></div>
     <div class="modal-body">
       <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
-        فایل اکسپورت فروش (یا اکسل با ستون‌های مشابه) پشتیبانی می‌شود.
-        ستون‌های مهم: <b>شماره موبایل</b> یا <b>شناسه مشتری</b>، <b>محصول</b>، <b>مبلغ کل</b>، <b>مبلغ واریز</b>، <b>تاریخ واریز</b>، <b>بانک مقصد</b>، <b>نام واریزکننده</b>، <b>وضعیت واریزی</b>.
-        <br>شماره موبایل یا شناسه مشتری الزامی است. اگر مشتری وجود نداشته باشد خودکار ساخته می‌شود. چند واریز برای یک محصول در ردیف‌های جداگانه قابل ایمپورت است.
+        هم خروجی فروش برنامه و هم خروجی فروش سایت پشتیبانی می‌شود.
+        <br><b>سایت:</b> تاریخ، نام مشتری، شماره تماس، محصول، مبلغ، وضعیت (تکمیل/بیعانه)، کارشناس، ساعت، مقصد — و در بیعانه ستون مبلغ کل.
+        واریزهای سایت تأییدشده وارد می‌شوند؛ بعد از مپ ستون‌ها، نام محصولات و مقصدها را به مقادیر سیستم وصل کنید.
+        <br><b>برنامه:</b> شناسه/موبایل، محصول، مبلغ کل، مبلغ واریز، تاریخ واریز، بانک مقصد، وضعیت واریزی.
       </div>
       <div class="form-group"><label>فایل اکسل را انتخاب کنید</label><input type="file" id="salesImportFileInput" accept=".xlsx,.xls,.csv" style="font-size:13px;"></div>
       <div id="salesImportMapping" style="display:none;"></div>

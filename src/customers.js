@@ -1834,7 +1834,17 @@ export function closeDetailModal() {
 // Product Management
 // ============================================
 
-const PRODUCTS = ['آنلاین چینی', 'حضوری چینی', 'کتاب', 'کره ای حضوری', 'کره ای آنلاین', 'حضوری فرمان', 'آنلاین فرمان', 'دوره زبان فنی', 'دوره GDS', 'آنلاین داخلی', 'تنظیم موتور', 'دیاگ لانچ', 'دیاگ I700', 'دیاگ blu', 'دیاگ newlite', 'تست باکس شبکه']
+/** Canonical product names used in UI selects and sales import value-mapping */
+export const PRODUCT_CATALOG = [
+  'آنلاین چینی', 'حضوری چینی', 'کتاب', 'کره ای حضوری', 'کره ای آنلاین',
+  'حضوری فرمان', 'آنلاین فرمان', 'دوره زبان فنی', 'دوره GDS', 'آنلاین داخلی',
+  'تنظیم موتور', 'دیاگ لانچ', 'دیاگ I700', 'دیاگ blu', 'دیاگ newlite', 'تست باکس شبکه'
+]
+export function getProductCatalog() {
+  return PRODUCT_CATALOG.slice()
+}
+
+const PRODUCTS = PRODUCT_CATALOG
 const PRODUCT_STATUSES = ['تکمیل', 'بیعانه'] // kept for legacy references
 
 export function getProducts(customerId) {

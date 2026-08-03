@@ -1446,6 +1446,19 @@
     font-family: inherit;
   }
 
+  .import-value-map {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .import-value-title {
+    margin: 0 0 6px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
   .import-unused {
     margin-top: 10px;
     font-size: 12px;
