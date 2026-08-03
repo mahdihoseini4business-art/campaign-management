@@ -96,6 +96,11 @@ export function showSaleToast(payload) {
   if (!getSaleToastEnabled()) return
   if (!payload) return
 
+  // Don't notify the seller about their own sale
+  const myPhone = normalizePhone(getCurrentUser()?.phone)
+  const sellerPhone = normalizePhone(payload.sellerPhone)
+  if (myPhone && sellerPhone && myPhone === sellerPhone) return
+
   const seller = (payload.sellerName || '').trim() || 'کارشناس'
   const product = (payload.productName || '').trim() || 'محصول'
   const amountRial = parseFloat(payload.amount) || 0
@@ -168,8 +173,7 @@ export async function initSaleToastFeed() {
 
 export async function broadcastSaleToast(payload) {
   if (!getSaleToastEnabled()) return
-  // Show locally immediately (broadcast does not echo to sender by default)
-  showSaleToast(payload)
+  // Only broadcast to others — seller does not see their own sale toast
   try {
     const ch = await ensureChannel()
     await ch.send({ type: 'broadcast', event: 'sale', payload })
