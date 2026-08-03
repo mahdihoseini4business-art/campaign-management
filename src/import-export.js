@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, generateId, getStatuses, saveFollowupToDB, getDestinationBanks } from './data.js'
+import { getData, saveCustomerToDB, generateId, getStatuses, saveFollowupToDB, getDestinationBanks, getProductCatalog } from './data.js'
 import {
   toEnDigits, showToast, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
@@ -9,7 +9,7 @@ import {
   jalaliDatePart, jalaliToNum, escapeHtml, escapeAttr, normalizeTimeTo24h, getNowJalaliDateTime
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
-import { renderCustomers, getFilteredCustomers, getProductCatalog } from './customers.js'
+import { renderCustomers, getFilteredCustomers } from './customers.js'
 import { getFollowupsForExport, renderFollowups } from './followups.js'
 import { renderSales, getFilteredSales, getSalesDateFilter } from './sales.js'
 
@@ -1123,7 +1123,11 @@ const SALES_IMPORT_FIELDS = [
   { key: 'paymentStatus', label: 'وضعیت واریزی' },
 ]
 
-const SALES_STATUS_MAP = {
+/** Only two sale statuses are accepted in the system (hardcoded). */
+const SALE_STATUS_OPTIONS = ['تکمیل', 'بیعانه']
+
+/** Soft hints for auto-suggesting status value map — final choice is always تکمیل|بیعانه */
+const SALE_STATUS_HINTS = {
   'تکمیل': 'تکمیل',
   'تکمیل شده': 'تکمیل',
   'تکمیل‌شده': 'تکمیل',
@@ -1147,10 +1151,13 @@ function emptySalesImportState() {
     isSiteFormat: false,
     uniqueProducts: [],
     uniqueDestinations: [],
+    uniqueStatuses: [],
     productValueMap: {},
     destinationValueMap: {},
+    statusValueMap: {},
     productAutoMap: {},
-    destinationAutoMap: {}
+    destinationAutoMap: {},
+    statusAutoMap: {}
   }
 }
 
@@ -1205,6 +1212,15 @@ function autoMapValueNames(excelNames, catalogNames) {
   return map
 }
 
+function hintSaleStatus(excelValue) {
+  const raw = String(excelValue || '').trim()
+  if (!raw) return ''
+  return SALE_STATUS_HINTS[raw]
+    || SALE_STATUS_HINTS[normalizeHeaderLabel(raw)]
+    || SALE_STATUS_HINTS[raw.toLowerCase()]
+    || ''
+}
+
 function refreshSalesValueMaps() {
   const mapping = salesImportData.mapping
   salesImportData.uniqueProducts = collectUniqueMappedValues(
@@ -1213,13 +1229,20 @@ function refreshSalesValueMaps() {
   salesImportData.uniqueDestinations = collectUniqueMappedValues(
     salesImportData.rows, mapping.destinationBank
   )
+  salesImportData.uniqueStatuses = collectUniqueMappedValues(
+    salesImportData.rows, mapping.status
+  )
 
   const catalog = getProductCatalog()
   const banks = getDestinationBanks()
   const productAuto = autoMapValueNames(salesImportData.uniqueProducts, catalog)
   const destAuto = autoMapValueNames(salesImportData.uniqueDestinations, banks)
+  const statusAuto = {}
+  for (const name of salesImportData.uniqueStatuses) {
+    const hint = hintSaleStatus(name)
+    if (hint) statusAuto[name] = hint
+  }
 
-  // Keep manual choices; fill gaps from auto
   const nextProduct = { ...productAuto }
   for (const [k, v] of Object.entries(salesImportData.productValueMap || {})) {
     if (salesImportData.uniqueProducts.includes(k) && v) nextProduct[k] = v
@@ -1228,11 +1251,19 @@ function refreshSalesValueMaps() {
   for (const [k, v] of Object.entries(salesImportData.destinationValueMap || {})) {
     if (salesImportData.uniqueDestinations.includes(k) && v) nextDest[k] = v
   }
+  const nextStatus = { ...statusAuto }
+  for (const [k, v] of Object.entries(salesImportData.statusValueMap || {})) {
+    if (salesImportData.uniqueStatuses.includes(k) && SALE_STATUS_OPTIONS.includes(v)) {
+      nextStatus[k] = v
+    }
+  }
 
   salesImportData.productAutoMap = productAuto
   salesImportData.destinationAutoMap = destAuto
+  salesImportData.statusAutoMap = statusAuto
   salesImportData.productValueMap = nextProduct
   salesImportData.destinationValueMap = nextDest
+  salesImportData.statusValueMap = nextStatus
 }
 
 function renderValueMappingSection({
@@ -1354,12 +1385,23 @@ function renderSalesImportMapping() {
 
   const productSection = renderValueMappingSection({
     title: 'مپینگ نام محصول',
-    hint: 'هر نام محصول در فایل اکسل را به یکی از محصولات سیستم وصل کنید.',
+    hint: 'هر نام محصول در فایل اکسل را به یکی از محصولات کاتالوگ تنظیمات وصل کنید.',
     excelValues: salesImportData.uniqueProducts,
     valueMap: salesImportData.productValueMap,
     autoMap: salesImportData.productAutoMap,
     options: getProductCatalog(),
     onChangeFn: 'setSalesProductValueMap',
+    required: true
+  })
+
+  const statusSection = renderValueMappingSection({
+    title: 'مپینگ وضعیت فروش',
+    hint: 'فقط دو مقدار سیستم پذیرفته می‌شود: تکمیل یا بیعانه. برای هر عبارت ستون وضعیت در اکسل یکی را انتخاب کنید.',
+    excelValues: salesImportData.uniqueStatuses,
+    valueMap: salesImportData.statusValueMap,
+    autoMap: salesImportData.statusAutoMap,
+    options: SALE_STATUS_OPTIONS,
+    onChangeFn: 'setSalesStatusValueMap',
     required: true
   })
 
@@ -1379,6 +1421,10 @@ function renderSalesImportMapping() {
       ? `<p class="import-map-hint" style="color:var(--danger);">بانک مقصدی در تنظیمات تعریف نشده — اول از تنظیمات اضافه کنید، یا ستون مقصد را خالی بگذارید.</p>`
       : '')
 
+  const catalogEmpty = getProductCatalog().length === 0
+    ? `<p class="import-map-hint" style="color:var(--danger);">کاتالوگ محصولات خالی است — از تنظیمات مدیر محصول اضافه کنید.</p>`
+    : ''
+
   container.innerHTML = `
     ${renderFieldMappingRows({
       fields: SALES_IMPORT_FIELDS,
@@ -1387,7 +1433,9 @@ function renderSalesImportMapping() {
       autoMapping: salesImportData.autoMapping,
       onChangeFn: 'setSalesImportMapping'
     })}
+    ${catalogEmpty}
     ${productSection}
+    ${statusSection}
     ${destSection}
   `
 }
@@ -1415,6 +1463,17 @@ export function setSalesDestinationValueMap(index, bankName) {
   renderSalesImportMapping()
 }
 
+export function setSalesStatusValueMap(index, statusName) {
+  const name = salesImportData.uniqueStatuses[index]
+  if (!name) return
+  if (!statusName || !SALE_STATUS_OPTIONS.includes(statusName)) {
+    delete salesImportData.statusValueMap[name]
+  } else {
+    salesImportData.statusValueMap[name] = statusName
+  }
+  renderSalesImportMapping()
+}
+
 export async function doSalesImport() {
   if (!requirePermission('sales_import')) return
   const data = getData()
@@ -1437,6 +1496,17 @@ export async function doSalesImport() {
     return
   }
 
+  if (isFieldMapped(mapping, 'status') && salesImportData.uniqueStatuses.length) {
+    const unmappedStatus = salesImportData.uniqueStatuses.filter(n => {
+      const v = salesImportData.statusValueMap[n]
+      return !SALE_STATUS_OPTIONS.includes(v)
+    })
+    if (unmappedStatus.length) {
+      showToast(`${unmappedStatus.length} مقدار وضعیت هنوز به تکمیل/بیعانه مپ نشده`)
+      return
+    }
+  }
+
   const banks = getDestinationBanks()
   if (salesImportData.uniqueDestinations.length && banks.length) {
     const unmappedDest = salesImportData.uniqueDestinations.filter(n => !salesImportData.destinationValueMap[n])
@@ -1444,6 +1514,11 @@ export async function doSalesImport() {
       showToast(`${unmappedDest.length} مقصد واریز هنوز مپ نشده`)
       return
     }
+  }
+
+  if (!getProductCatalog().length) {
+    showToast('کاتالوگ محصولات خالی است — از تنظیمات اضافه کنید')
+    return
   }
 
   let imported = 0, skipped = 0, created = 0, failed = 0
@@ -1514,12 +1589,20 @@ export async function doSalesImport() {
     }
 
     const statusRaw = getValue('status')
-    const statusNorm = normalizeHeaderLabel(statusRaw)
-    const status = SALES_STATUS_MAP[statusRaw]
-      || SALES_STATUS_MAP[statusNorm]
-      || SALES_STATUS_MAP[statusRaw.toLowerCase()]
-      || statusRaw
-      || 'تکمیل'
+    let status = 'تکمیل'
+    if (statusRaw) {
+      const mappedStatus = salesImportData.statusValueMap[statusRaw]
+      if (SALE_STATUS_OPTIONS.includes(mappedStatus)) {
+        status = mappedStatus
+      } else {
+        // Status column mapped but this cell value wasn't value-mapped → skip
+        skipped++
+        continue
+      }
+    } else if (isFieldMapped(mapping, 'status')) {
+      // Empty status cell with mapped column: default تکمیل for site cash sales
+      status = 'تکمیل'
+    }
 
     let price = parseMoney(getValue('price'))
     const deposit = parseMoney(getValue('deposit'))

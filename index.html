@@ -82,6 +82,18 @@
         <div id="settingsBanksList" style="margin-top:10px;"></div>
       </div>
       <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:8px;">کاتالوگ محصولات</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">نام محصولات فروش در فرم مشتری و مپینگ ایمپورت فروش از این لیست خوانده می‌شود.</div>
+        <div class="form-row" style="align-items:flex-end;">
+          <div class="form-group" style="flex:1;margin-bottom:0;">
+            <label for="newProductCatalogItem">نام محصول</label>
+            <input type="text" class="form-input" id="newProductCatalogItem" placeholder="مثلاً آنلاین چینی">
+          </div>
+          <button type="button" class="btn btn-primary" onclick="app.addProductCatalogItem()">افزودن</button>
+        </div>
+        <div id="settingsProductsList" style="margin-top:10px;"></div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
         <div style="font-size:14px;font-weight:600;margin-bottom:8px;">پلتفرم‌ها</div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">پلتفرم‌های منبع مشتری. قالب لینک از {id} و {phone} استفاده می‌کند.</div>
         <div class="form-row" style="align-items:flex-end;">
@@ -824,10 +836,16 @@
   <div class="modal" style="max-width: 720px;">
     <div class="modal-header"><h2>ایمپورت فروش از اکسل</h2><button class="modal-close" onclick="app.closeSalesImportModal()">&times;</button></div>
     <div class="modal-body">
+      <div class="import-preflight" style="font-size:13px;color:var(--text);background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:12px;line-height:1.7;">
+        <b>قبل از آپلود توجه کنید:</b>
+        وضعیت فروش در سیستم فقط دو مقدار دارد: <b>تکمیل</b> و <b>بیعانه</b>.
+        بعد از انتخاب فایل و مپ کردن ستون «وضعیت»، برای هر مقدار موجود در اکسل باید مشخص کنید معادل کدام‌یک از این دو است.
+        همچنین نام محصولات و مقصد واریز را به مقادیر تعریف‌شده در تنظیمات مپ کنید.
+      </div>
       <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
         هم خروجی فروش برنامه و هم خروجی فروش سایت پشتیبانی می‌شود.
-        <br><b>سایت:</b> تاریخ، نام مشتری، شماره تماس، محصول، مبلغ، وضعیت (تکمیل/بیعانه)، کارشناس، ساعت، مقصد — و در بیعانه ستون مبلغ کل.
-        واریزهای سایت تأییدشده وارد می‌شوند؛ بعد از مپ ستون‌ها، نام محصولات و مقصدها را به مقادیر سیستم وصل کنید.
+        <br><b>سایت:</b> تاریخ، نام مشتری، شماره تماس، محصول، مبلغ، وضعیت، کارشناس، ساعت، مقصد — و در بیعانه ستون مبلغ کل.
+        واریزهای سایت تأییدشده وارد می‌شوند.
         <br><b>برنامه:</b> شناسه/موبایل، محصول، مبلغ کل، مبلغ واریز، تاریخ واریز، بانک مقصد، وضعیت واریزی.
       </div>
       <div class="form-group"><label>فایل اکسل را انتخاب کنید</label><input type="file" id="salesImportFileInput" accept=".xlsx,.xls,.csv" style="font-size:13px;"></div>

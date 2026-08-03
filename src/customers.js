@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn } from './data.js'
+import { getData, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getProductCatalog, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { updateTransferInboxBadge } from './transfers.js'
 import { broadcastSaleToast, buildSaleToastPayload } from './sale-toasts.js'
@@ -1834,18 +1834,8 @@ export function closeDetailModal() {
 // Product Management
 // ============================================
 
-/** Canonical product names used in UI selects and sales import value-mapping */
-export const PRODUCT_CATALOG = [
-  'آنلاین چینی', 'حضوری چینی', 'کتاب', 'کره ای حضوری', 'کره ای آنلاین',
-  'حضوری فرمان', 'آنلاین فرمان', 'دوره زبان فنی', 'دوره GDS', 'آنلاین داخلی',
-  'تنظیم موتور', 'دیاگ لانچ', 'دیاگ I700', 'دیاگ blu', 'دیاگ newlite', 'تست باکس شبکه'
-]
-export function getProductCatalog() {
-  return PRODUCT_CATALOG.slice()
-}
-
-const PRODUCTS = PRODUCT_CATALOG
 const PRODUCT_STATUSES = ['تکمیل', 'بیعانه'] // kept for legacy references
+// Product names come from settings: getProductCatalog()
 
 export function getProducts(customerId) {
   const data = getData()
@@ -1963,9 +1953,12 @@ export async function renderProducts(customerId, users = null) {
       ? `<input type="text" class="product-settlement" placeholder="تاریخ تسویه" data-jdp value="${p.settlementDate || ''}" onchange="app.updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">`
       : (p.settlementDate ? `<span style="font-size:12px;color:var(--text-muted);">تسویه: ${escapeHtml(p.settlementDate)}</span>` : '')
 
+    const catalog = getProductCatalog()
+    const nameOptions = catalog.slice()
+    if (p.name && !nameOptions.includes(p.name)) nameOptions.unshift(p.name)
     const nameHtml = canEdit && !closed
       ? `<select class="product-name" onchange="app.updateProduct('${customerId}', ${i}, 'name', this.value)">
-            ${PRODUCTS.map(pr => `<option value="${pr}" ${p.name === pr ? 'selected' : ''}>${pr}</option>`).join('')}
+            ${nameOptions.map(pr => `<option value="${escapeAttr(pr)}" ${p.name === pr ? 'selected' : ''}>${escapeHtml(pr)}</option>`).join('')}
           </select>`
       : `<span style="font-size:14px;font-weight:600;">${escapeHtml(p.name || '—')}</span>`
 
@@ -2003,8 +1996,13 @@ export async function addProductRow(customerId) {
     soldByPhone: normalizePhone(user?.phone || ''),
     depositorName: ''
   })
+  const catalog = getProductCatalog()
+  if (!catalog.length) {
+    showToast('ابتدا از تنظیمات، کاتالوگ محصولات را تعریف کنید')
+    return
+  }
   products.push({
-    name: PRODUCTS[0],
+    name: catalog[0],
     status: 'بیعانه',
     price: '',
     priceLocked: false,

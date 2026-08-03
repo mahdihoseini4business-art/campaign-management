@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones, syncToolbarActionsMenus } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getPlatforms, savePlatforms, getStatuses, saveStatuses } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getPlatforms, savePlatforms, getStatuses, saveStatuses } from './data.js'
 
 // ============================================
 // Password Hashing (PBKDF2)
@@ -319,6 +319,7 @@ export async function openSettingsModal() {
   document.getElementById('newRole').value = 'user'
   await renderUsersList()
   renderDestinationBanksSettings()
+  renderProductCatalogSettings()
   renderPlatformsSettings()
   renderStatusesSettings()
   document.getElementById('settingsModal').classList.add('active')
@@ -564,6 +565,66 @@ export async function removeDestinationBank(index) {
   } catch (e) {
     console.error('removeDestinationBank error:', e)
     showToast('خطا در حذف بانک')
+  }
+}
+
+// ============================================
+// Product catalog Settings
+// ============================================
+
+export function renderProductCatalogSettings() {
+  const list = document.getElementById('settingsProductsList')
+  if (!list) return
+  const products = getProductCatalog()
+  if (products.length === 0) {
+    list.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:6px 0;">هنوز محصولی ثبت نشده</div>'
+    return
+  }
+  list.innerHTML = products.map((name, idx) => `
+    <div class="settings-bank-row">
+      <span>${escapeHtml(name)}</span>
+      <button type="button" class="btn-icon" title="حذف" onclick="app.removeProductCatalogItem(${idx})" style="color:var(--danger);">🗑</button>
+    </div>
+  `).join('')
+}
+
+export async function addProductCatalogItem() {
+  if (!requireMainAdmin()) return
+  const input = document.getElementById('newProductCatalogItem')
+  const name = (input?.value || '').trim()
+  if (!name) { showToast('نام محصول را وارد کنید'); return }
+  const products = getProductCatalog()
+  if (products.some(p => p.toLowerCase() === name.toLowerCase())) {
+    showToast('این محصول قبلاً ثبت شده')
+    return
+  }
+  try {
+    await saveProductCatalog([...products, name])
+    if (input) input.value = ''
+    renderProductCatalogSettings()
+    showToast('محصول اضافه شد')
+  } catch (e) {
+    console.error('addProductCatalogItem error:', e)
+    showToast('خطا در ذخیره محصول')
+  }
+}
+
+export async function removeProductCatalogItem(index) {
+  if (!requireMainAdmin()) return
+  const products = getProductCatalog()
+  if (index < 0 || index >= products.length) return
+  if (products.length <= 1) {
+    showToast('حداقل یک محصول باید در کاتالوگ بماند')
+    return
+  }
+  products.splice(index, 1)
+  try {
+    await saveProductCatalog(products)
+    renderProductCatalogSettings()
+    showToast('محصول حذف شد')
+  } catch (e) {
+    console.error('removeProductCatalogItem error:', e)
+    showToast('خطا در حذف محصول')
   }
 }
 

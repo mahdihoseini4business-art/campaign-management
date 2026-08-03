@@ -1,13 +1,13 @@
 import './styles.css'
 import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum, showToast, escapeAttr, getStatusOrder, toggleToolbarActions, closeAllToolbarActions, initToolbarActionsMenus, getPrimaryPhone } from './utils.js'
 import { getData, loadData, backfillAdvisorPhones } from './data.js'
-import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal as openSettingsModalBase, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, addDestinationBank, removeDestinationBank, filterViewUserOptions, addPlatform, removePlatform, updatePlatformField, editPlatform, addStatus, removeStatus, updateStatusField, editStatus, onStatusDragStart, onStatusDragOver, onStatusDrop } from './auth.js'
+import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal as openSettingsModalBase, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, addDestinationBank, removeDestinationBank, addProductCatalogItem, removeProductCatalogItem, filterViewUserOptions, addPlatform, removePlatform, updatePlatformField, editPlatform, addStatus, removeStatus, updateStatusField, editStatus, onStatusDragStart, onStatusDragOver, onStatusDrop } from './auth.js'
 import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, saveProductField, updateProduct, removeProduct, onCustomerPhoneInput, addCustomerPhoneSlot, removeCustomerPhoneSlot, addProductPayment, savePaymentField, updatePaymentField, removeProductPayment, onDestinationBankSelect, closeMergeCustomerModal, confirmMergeCustomers } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, updateFollowupBadge } from './followups.js'
 import { renderSales, sortSales } from './sales.js'
 import { renderAccounting, setAccountingFilter, approvePayment, openRejectPaymentModal, closeRejectPaymentModal, confirmRejectPayment } from './accounting.js'
 import { renderDashboard, toggleDashSection, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareTypeChange } from './dashboard.js'
-import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesProductValueMap, setSalesDestinationValueMap, initSalesImportListeners } from './import-export.js'
+import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, initSalesImportListeners } from './import-export.js'
 import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection, openBulkTransferModal, closeBulkTransferModal, confirmBulkTransfer, refreshCustomerBulkOptions, updateBulkTransferPreview, filterBulkTransferOptions } from './bulk.js'
 import {
   openTransferInbox,
@@ -220,6 +220,7 @@ const app = {
   setSalesImportMapping,
   setSalesProductValueMap,
   setSalesDestinationValueMap,
+  setSalesStatusValueMap,
   doLogin,
   showToast,
   hasPermission,
@@ -234,6 +235,8 @@ const app = {
   filterViewUserOptions,
   addDestinationBank,
   removeDestinationBank,
+  addProductCatalogItem,
+  removeProductCatalogItem,
   addPlatform,
   removePlatform,
   updatePlatformField,

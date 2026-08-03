@@ -47,6 +47,7 @@ let data = {
   ownershipTransferAcks: [],
   convertedCount: 0,
   destinationBanks: [],
+  productCatalog: [],
   platforms: [],
   statuses: [],
   saleToastEnabled: true
@@ -75,6 +76,13 @@ const DEFAULT_STATUSES = [
   { key: 'converting', label: 'در حال تبدیل', bgColor: '#f8d7da', textColor: '#842029', order: 6 },
   { key: 'purchased', label: 'خرید کرد', bgColor: '#d1e7dd', textColor: '#0f5132', order: 7 },
   { key: 'cancelled', label: 'منصرف شده', bgColor: '#e9ecef', textColor: '#495057', order: 8 },
+]
+
+/** Default product names seeded into settings until admin customizes */
+export const DEFAULT_PRODUCT_CATALOG = [
+  'آنلاین چینی', 'حضوری چینی', 'کتاب', 'کره ای حضوری', 'کره ای آنلاین',
+  'حضوری فرمان', 'آنلاین فرمان', 'دوره زبان فنی', 'دوره GDS', 'آنلاین داخلی',
+  'تنظیم موتور', 'دیاگ لانچ', 'دیاگ I700', 'دیاگ blu', 'دیاگ newlite', 'تست باکس شبکه'
 ]
 
 /** Map a customers DB row → in-memory customer object */
@@ -208,6 +216,7 @@ export async function loadData() {
   ;(settingsRes.data || []).forEach(s => { settings[s.key] = s.value })
   data.convertedCount = settings.convertedCount || 0
   data.destinationBanks = normalizeDestinationBanks(settings.destination_banks)
+  data.productCatalog = normalizeProductCatalog(settings.product_catalog)
   data.platforms = Array.isArray(settings.platforms) && settings.platforms.length > 0 ? settings.platforms : [...DEFAULT_PLATFORMS]
   data.statuses = Array.isArray(settings.statuses) && settings.statuses.length > 0
     ? [...settings.statuses].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -232,6 +241,11 @@ function normalizeDestinationBanks(raw) {
     }
   }
   return []
+}
+
+function normalizeProductCatalog(raw) {
+  const list = normalizeDestinationBanks(raw)
+  return list.length ? list : [...DEFAULT_PRODUCT_CATALOG]
 }
 
 // ============================================
@@ -290,6 +304,22 @@ export async function saveDestinationBanks(banks) {
   data.destinationBanks = cleaned
   await saveSetting('destination_banks', cleaned)
   return cleaned
+}
+
+// ============================================
+// Product catalog (sales product names)
+// ============================================
+
+export function getProductCatalog() {
+  const list = Array.isArray(data.productCatalog) ? data.productCatalog : []
+  return list.length ? [...list] : [...DEFAULT_PRODUCT_CATALOG]
+}
+
+export async function saveProductCatalog(products) {
+  const cleaned = [...new Set((products || []).map(p => String(p || '').trim()).filter(Boolean))]
+  data.productCatalog = cleaned.length ? cleaned : [...DEFAULT_PRODUCT_CATALOG]
+  await saveSetting('product_catalog', data.productCatalog)
+  return getProductCatalog()
 }
 
 // ============================================
