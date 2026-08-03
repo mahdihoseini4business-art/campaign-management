@@ -459,10 +459,10 @@ async function init() {
   // Hide loading overlay
   if (loadingOverlay) loadingOverlay.style.display = 'none'
 
-  applyPermissions()
-  openDefaultAccessibleTab()
-  refreshCustomerBulkOptions()
-  updateTransferInboxBadge()
+  try { applyPermissions() } catch (e) { console.error('applyPermissions error:', e) }
+  try { openDefaultAccessibleTab() } catch (e) { console.error('openDefaultAccessibleTab error:', e) }
+  try { refreshCustomerBulkOptions() } catch (e) { console.error('refreshCustomerBulkOptions error:', e) }
+  try { updateTransferInboxBadge() } catch (e) { console.error('updateTransferInboxBadge error:', e) }
   refreshNotifications().catch(e => console.error('notifications init error:', e))
   initSaleToastFeed().catch(e => console.error('sale toast init error:', e))
   initLiveSync().catch(e => console.error('live sync init error:', e))
@@ -524,16 +524,20 @@ async function init() {
   })
 
   // Init jalali datepicker
-  jalaliDatepicker.startWatch({
-    selector: 'input[data-jdp]',
-    autoShow: true,
-    autoHide: true,
-    hideAfterChange: true,
-    showTodayBtn: true,
-    showEmptyBtn: true,
-    position: 'center',
-    persianDigits: false
-  })
+  if (typeof jalaliDatepicker !== 'undefined' && jalaliDatepicker?.startWatch) {
+    jalaliDatepicker.startWatch({
+      selector: 'input[data-jdp]',
+      autoShow: true,
+      autoHide: true,
+      hideAfterChange: true,
+      showTodayBtn: true,
+      showEmptyBtn: true,
+      position: 'center',
+      persianDigits: false
+    })
+  } else {
+    console.warn('jalaliDatepicker not loaded')
+  }
 
   // Bulk action listeners
   document.getElementById('bulkActionCustomers')?.addEventListener('change', () => executeBulkAction('customers'))
@@ -551,12 +555,14 @@ init().catch(err => {
   console.error('Init error:', err)
   const loadingOverlay = document.getElementById('loadingOverlay')
   if (loadingOverlay) loadingOverlay.style.display = 'none'
+  const detail = (err && (err.message || String(err))) || 'خطای ناشناخته'
   document.body.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;text-align:center;font-family:Vazirmatn,sans-serif;">
       <div>
         <div style="font-size:48px;margin-bottom:16px;">⚠️</div>
         <h2 style="margin-bottom:8px;">خطا در بارگذاری برنامه</h2>
         <p style="color:#78716C;">لطفاً صفحه را رفرش کنید یا با پشتیبانی تماس بگیرید</p>
+        <pre style="margin-top:16px;padding:12px;background:#f5f5f4;border-radius:8px;text-align:right;direction:ltr;font-size:12px;max-width:560px;overflow:auto;white-space:pre-wrap;color:#44403c;">${String(detail).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</pre>
         <button onclick="location.reload()" style="margin-top:16px;padding:8px 24px;background:#0155d2;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit;">تلاش مجدد</button>
       </div>
     </div>

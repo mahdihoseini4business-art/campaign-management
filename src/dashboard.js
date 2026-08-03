@@ -1044,20 +1044,40 @@ function renderDashTargetsProgress(dateFromNum, dateToNum) {
   const el = document.getElementById('dashTargetsProgress')
   if (!el) return
 
-  const groups = getSalesTargets()
-  if (groups.length === 0) {
+  let groups = []
+  try {
+    groups = getSalesTargets()
+  } catch (e) {
+    console.error('getSalesTargets error:', e)
+    el.innerHTML = '<div class="dash-targets-empty">خطا در خواندن تارگت‌ها</div>'
+    return
+  }
+
+  if (!groups.length) {
     el.innerHTML = '<div class="dash-targets-empty">هنوز تارگتی تعریف نشده. از تنظیمات سیستم اضافه کنید.</div>'
     return
   }
 
   el.innerHTML = groups.map(group => {
-    const bars = (group.items || []).map(bar => renderDashTargetBar(bar, dateFromNum, dateToNum, group.title)).join('')
-    return `
-      <div class="dash-target-group">
-        <div class="dash-target-group-title">${escapeHtml(group.title)}</div>
-        <div class="dash-target-group-bars">${bars}</div>
-      </div>
-    `
+    try {
+      const bars = (group.items || []).map(bar => {
+        try {
+          return renderDashTargetBar(bar, dateFromNum, dateToNum, group.title || '')
+        } catch (e) {
+          console.error('renderDashTargetBar error:', e, bar)
+          return ''
+        }
+      }).join('')
+      return `
+        <div class="dash-target-group">
+          <div class="dash-target-group-title">${escapeHtml(group.title || 'گروه تارگت')}</div>
+          <div class="dash-target-group-bars">${bars || '<div class="dash-targets-empty">نواری برای نمایش نیست</div>'}</div>
+        </div>
+      `
+    } catch (e) {
+      console.error('renderDashTargets group error:', e, group)
+      return ''
+    }
   }).join('')
 }
 

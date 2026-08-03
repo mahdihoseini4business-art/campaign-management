@@ -223,7 +223,12 @@ export async function loadData() {
     ? [...settings.statuses].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [...DEFAULT_STATUSES]
   data.saleToastEnabled = settings.sale_toast_enabled !== false && settings.sale_toast_enabled !== 'false'
-  data.salesTargets = normalizeSalesTargets(settings.sales_targets)
+  try {
+    data.salesTargets = normalizeSalesTargets(settings.sales_targets)
+  } catch (e) {
+    console.error('normalizeSalesTargets error:', e)
+    data.salesTargets = []
+  }
 
   injectDynamicStyles()
 
