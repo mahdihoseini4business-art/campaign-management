@@ -2654,7 +2654,11 @@
     padding: 4px;
   }
 
-  .settings-notif-compose {
+  .settings-pane[hidden] {
+    display: none !important;
+  }
+
+  .settings-notif-compose:not([hidden]) {
     display: flex;
     flex-direction: column;
     min-height: 100%;
