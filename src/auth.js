@@ -1423,10 +1423,8 @@ export function applyPermissions() {
 
   const activeTab = document.querySelector('.tab.active')
   if (activeTab && activeTab.style.display === 'none') {
-    const dashTab = document.getElementById('tab-dashboard')
-    const firstVisible = (dashTab && dashTab.style.display !== 'none')
-      ? dashTab
-      : document.querySelector('.tab:not([style*="display: none"])')
+    // RTL: first visible tab in DOM order is the rightmost accessible tab
+    const firstVisible = [...document.querySelectorAll('.tab')].find(t => t.style.display !== 'none')
     if (firstVisible) firstVisible.click()
   }
 }

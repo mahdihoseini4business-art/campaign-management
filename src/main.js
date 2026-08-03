@@ -82,6 +82,14 @@ function switchTab(tab, el) {
   if (tab === 'accounting') renderAccounting()
 }
 
+/** Rightmost accessible tab in RTL = first visible tab in DOM order. */
+function openDefaultAccessibleTab() {
+  const tab = [...document.querySelectorAll('.tab')].find(t => t.style.display !== 'none')
+  if (!tab) return
+  const name = tab.id?.replace(/^tab-/, '') || tab.className.match(/tab-(\w+)/)?.[1]
+  if (name) switchTab(name, tab)
+}
+
 // ============================================
 // Sort Functions
 // ============================================
@@ -444,6 +452,7 @@ async function init() {
   if (loadingOverlay) loadingOverlay.style.display = 'none'
 
   applyPermissions()
+  openDefaultAccessibleTab()
   refreshCustomerBulkOptions()
   updateTransferInboxBadge()
   refreshNotifications().catch(e => console.error('notifications init error:', e))
