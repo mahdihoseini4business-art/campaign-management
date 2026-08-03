@@ -6,7 +6,7 @@ import {
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, createPayment, formatSoldAt24h, normalizePhone,
   formatCustomerLevel, parseCustomerLevel, syncCustomerLevel,
   normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone,
-  jalaliDatePart, jalaliToNum
+  jalaliDatePart, jalaliToNum, escapeHtml, escapeAttr
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
@@ -18,32 +18,138 @@ import { renderSales, getFilteredSales, getSalesDateFilter } from './sales.js'
 // ============================================
 
 
+/** Export-only / computed columns — never auto-map these headers */
+const AUTO_MAP_IGNORE_HEADERS = new Set([
+  'تعداد پیگیری', 'آخرین پیگیری', 'مانده'
+])
+
+function normalizeHeaderLabel(h) {
+  return String(h || '')
+    .trim()
+    .replace(/\u200c/g, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+}
+
+/**
+ * Auto-map Excel headers → import field keys.
+ * Pass 1: exact match on label/aliases (preferred).
+ * Pass 2: safe contains only when label length ≥ 3 and header isn't ignored.
+ */
 function autoMapColumns(headers, fields) {
   const mapping = {}
   const headerNorm = headers.map(h => String(h || '').trim())
+  const headerKey = headerNorm.map(normalizeHeaderLabel)
   const used = new Set()
+  const ignored = new Set(
+    headerNorm
+      .map((h, i) => (AUTO_MAP_IGNORE_HEADERS.has(h) ? i : -1))
+      .filter(i => i >= 0)
+  )
+
+  const tryExact = (labels) => {
+    for (const label of labels) {
+      const want = normalizeHeaderLabel(label)
+      if (!want) continue
+      const idx = headerKey.findIndex((h, i) => !used.has(i) && !ignored.has(i) && h === want)
+      if (idx !== -1) return idx
+    }
+    return -1
+  }
+
+  const tryLoose = (labels) => {
+    // Only: short Excel header that is a prefix of the field label
+    // (e.g. header "سطح" → field "سطح مشتری"). Never the reverse —
+    // otherwise "شماره" would steal "شماره ۲".
+    const sorted = [...labels].filter(Boolean).sort((a, b) => b.length - a.length)
+    for (const label of sorted) {
+      const want = normalizeHeaderLabel(label)
+      if (want.length < 2) continue
+      const idx = headerKey.findIndex((h, i) => {
+        if (used.has(i) || ignored.has(i) || !h) return false
+        if (h.length >= want.length) return false
+        return want.startsWith(h) && h.length >= 2
+      })
+      if (idx !== -1) return idx
+    }
+    return -1
+  }
 
   fields.forEach(f => {
     const labels = [f.label, ...(f.aliases || [])].filter(Boolean)
-    let idx = -1
-    for (const label of labels) {
-      idx = headerNorm.findIndex((h, i) => !used.has(i) && h === label)
-      if (idx !== -1) break
-    }
-    if (idx === -1) {
-      for (const label of labels) {
-        idx = headerNorm.findIndex((h, i) =>
-          !used.has(i) && (h.includes(label) || label.includes(h))
-        )
-        if (idx !== -1) break
-      }
-    }
+    let idx = tryExact(labels)
+    if (idx === -1) idx = tryLoose(labels)
     if (idx !== -1) {
       mapping[f.key] = idx
       used.add(idx)
     }
   })
   return mapping
+}
+
+function renderFieldMappingRows({ fields, headers, mapping, autoMapping = {}, onChangeFn }) {
+  const mappedCount = Object.keys(mapping).length
+  const autoCount = Object.keys(autoMapping).length
+  const unusedHeaders = headers
+    .map((h, i) => ({ h, i }))
+    .filter(({ i }) => !Object.values(mapping).includes(i))
+    .map(({ h }) => h || '(خالی)')
+
+  const hint = autoCount > 0
+    ? `${autoCount} فیلد از روی نام ستون‌های اکسل به‌صورت خودکار مپ شد — در صورت نیاز اصلاح کنید.`
+    : mappedCount > 0
+      ? 'مپینگ را بررسی و در صورت نیاز اصلاح کنید.'
+      : 'مپینگ خودکاری پیدا نشد — ستون اکسل مربوط به هر فیلد را انتخاب کنید.'
+
+  const rows = fields.map(f => {
+    const selected = mapping[f.key]
+    const hasMap = selected !== undefined && selected !== null
+    const isAuto = hasMap && autoMapping[f.key] === selected
+    const opts = headers.map((h, i) => {
+      const label = h || `(ستون ${i + 1})`
+      const sel = selected === i ? 'selected' : ''
+      return `<option value="${i}" ${sel}>${escapeHtml(label)}</option>`
+    }).join('')
+    return `
+      <div class="import-map-row${hasMap ? (isAuto ? ' is-auto' : ' is-mapped') : ' is-unmapped'}">
+        <span class="field-col" title="${escapeAttr(f.label)}">
+          ${escapeHtml(f.label)}${f.required ? ' <span class="req">*</span>' : ''}
+          ${isAuto ? '<span class="auto-badge">خودکار</span>' : ''}
+        </span>
+        <span class="arrow">←</span>
+        <select onchange="app.${onChangeFn}('${f.key}', this.value)" aria-label="ستون اکسل برای ${escapeAttr(f.label)}">
+          <option value="">— انتخاب نشده —</option>
+          ${opts}
+        </select>
+      </div>
+    `
+  }).join('')
+
+  let unusedBlock = ''
+  if (unusedHeaders.length) {
+    unusedBlock = `
+      <details class="import-unused">
+        <summary>${unusedHeaders.length} ستون اکسل استفاده نشده (نادیده گرفته می‌شوند)</summary>
+        <div class="import-unused-list">${unusedHeaders.map(h => `<span>${escapeHtml(h)}</span>`).join('')}</div>
+      </details>
+    `
+  }
+
+  return `<p class="import-map-hint">${escapeHtml(hint)}</p>${rows}${unusedBlock}`
+}
+
+function setFieldColumnMapping(store, fieldKey, colRaw) {
+  if (!fieldKey) return
+  if (colRaw === '' || colRaw === null || colRaw === undefined) {
+    delete store.mapping[fieldKey]
+    return
+  }
+  const colIndex = Number(colRaw)
+  if (Number.isNaN(colIndex)) return
+  Object.keys(store.mapping).forEach(k => {
+    if (store.mapping[k] === colIndex) delete store.mapping[k]
+  })
+  store.mapping[fieldKey] = colIndex
 }
 
 function parseMoney(raw) {
@@ -261,12 +367,12 @@ export function exportTabXLSX(tab) {
 
 const IMPORT_FIELDS = [
   { key: 'id', label: 'شناسه', aliases: ['شناسه مشتری'] },
-  { key: 'platformId', label: 'ایدی پلتفرم' },
+  { key: 'platformId', label: 'ایدی پلتفرم', aliases: ['آیدی پلتفرم', 'id پلتفرم'] },
   { key: 'platform', label: 'پلتفرم' },
-  { key: 'name', label: 'نام' },
-  { key: 'phone', label: 'شماره تماس', aliases: ['شماره', 'شماره موبایل', 'شماره ۱', 'شماره 1'] },
-  { key: 'phone2', label: 'شماره تماس ۲', aliases: ['شماره ۲', 'شماره 2', 'موبایل ۲'] },
-  { key: 'phone3', label: 'شماره تماس ۳', aliases: ['شماره ۳', 'شماره 3', 'موبایل ۳'] },
+  { key: 'name', label: 'نام', aliases: ['نام مشتری'] },
+  { key: 'phone', label: 'شماره', aliases: ['شماره تماس', 'شماره موبایل', 'شماره ۱', 'شماره 1'] },
+  { key: 'phone2', label: 'شماره ۲', aliases: ['شماره تماس ۲', 'شماره 2', 'موبایل ۲'] },
+  { key: 'phone3', label: 'شماره ۳', aliases: ['شماره تماس ۳', 'شماره 3', 'موبایل ۳'] },
   { key: 'status', label: 'وضعیت' },
   { key: 'customerLevel', label: 'سطح مشتری', aliases: ['سطح'] },
   { key: 'referredByPhone', label: 'شماره معرف', aliases: ['معرف'] },
@@ -287,11 +393,11 @@ const STATUS_MAP_IMPORT = {
   'منصرف شده': 'cancelled', 'منصرف': 'cancelled',
 }
 
-let importData = { headers: [], rows: [], mapping: {} }
+let importData = { headers: [], rows: [], mapping: {}, autoMapping: {} }
 
 export function openImportModal() {
   if (!requirePermission('customers_import')) return
-  importData = { headers: [], rows: [], mapping: {} }
+  importData = { headers: [], rows: [], mapping: {}, autoMapping: {} }
   document.getElementById('importStep1').style.display = ''
   document.getElementById('importStep2').style.display = 'none'
   document.getElementById('importBtn').style.display = 'none'
@@ -322,6 +428,7 @@ export function initImportListeners() {
         importData.headers = json[0].map(h => String(h || '').trim())
         importData.rows = json.slice(1).filter(r => r.some(c => c != null && String(c).trim() !== ''))
         importData.mapping = autoMapColumns(importData.headers, IMPORT_FIELDS)
+        importData.autoMapping = { ...importData.mapping }
 
         renderImportMapping()
       } catch (err) {
@@ -339,31 +446,19 @@ function renderImportMapping() {
   document.getElementById('importBtn').style.display = ''
   document.getElementById('importPreview').textContent = `${importData.rows.length} ردیف داده یافت شد`
 
-  container.innerHTML = importData.headers.map((h, i) => {
-    const selected = importData.mapping[Object.keys(importData.mapping).find(k => importData.mapping[k] === i)] || ''
-    return `
-      <div class="import-map-row">
-        <span class="excel-col" title="${h}">${h || '(خالی)'}</span>
-        <span class="arrow">←</span>
-        <select onchange="app.setImportMapping(${i}, this.value)">
-          <option value="">— نادیده گرفتن —</option>
-          ${IMPORT_FIELDS.map(f => `<option value="${f.key}" ${selected === f.key ? 'selected' : ''}>${f.label}</option>`).join('')}
-        </select>
-      </div>
-    `
-  }).join('')
+  container.innerHTML = renderFieldMappingRows({
+    fields: IMPORT_FIELDS,
+    headers: importData.headers,
+    mapping: importData.mapping,
+    autoMapping: importData.autoMapping,
+    onChangeFn: 'setImportMapping'
+  })
 }
 
-export function setImportMapping(colIndex, fieldKey) {
-  Object.keys(importData.mapping).forEach(k => {
-    if (importData.mapping[k] === colIndex) delete importData.mapping[k]
-  })
-  if (fieldKey) {
-    Object.keys(importData.mapping).forEach(k => {
-      if (k === fieldKey) delete importData.mapping[k]
-    })
-    importData.mapping[fieldKey] = colIndex
-  }
+/** fieldKey → excel column index (or clear) */
+export function setImportMapping(fieldKey, colRaw) {
+  setFieldColumnMapping(importData, fieldKey, colRaw)
+  renderImportMapping()
 }
 
 function isFieldMapped(mapping, fieldKey) {
@@ -594,11 +689,11 @@ const SALES_STATUS_MAP = {
   'بیعانه': 'بیعانه', deposit: 'بیعانه', partial: 'بیعانه',
 }
 
-let salesImportData = { headers: [], rows: [], mapping: {} }
+let salesImportData = { headers: [], rows: [], mapping: {}, autoMapping: {} }
 
 export function openSalesImportModal() {
   if (!requirePermission('sales_import')) return
-  salesImportData = { headers: [], rows: [], mapping: {} }
+  salesImportData = { headers: [], rows: [], mapping: {}, autoMapping: {} }
   document.getElementById('salesImportMapping').style.display = 'none'
   document.getElementById('salesImportMapping').innerHTML = ''
   document.getElementById('salesImportBtn').style.display = 'none'
@@ -628,6 +723,7 @@ export function initSalesImportListeners() {
         salesImportData.headers = json[0].map(h => String(h || '').trim())
         salesImportData.rows = json.slice(1).filter(r => r.some(c => c != null && String(c).trim() !== ''))
         salesImportData.mapping = autoMapColumns(salesImportData.headers, SALES_IMPORT_FIELDS)
+        salesImportData.autoMapping = { ...salesImportData.mapping }
 
         renderSalesImportMapping()
       } catch (err) {
@@ -644,31 +740,19 @@ function renderSalesImportMapping() {
   document.getElementById('salesImportBtn').style.display = ''
   document.getElementById('salesImportPreview').textContent = `${salesImportData.rows.length} ردیف داده یافت شد`
 
-  container.innerHTML = salesImportData.headers.map((h, i) => {
-    const selected = salesImportData.mapping[Object.keys(salesImportData.mapping).find(k => salesImportData.mapping[k] === i)] || ''
-    return `
-      <div class="import-map-row">
-        <span class="excel-col" title="${h}">${h || '(خالی)'}</span>
-        <span class="arrow">←</span>
-        <select onchange="app.setSalesImportMapping(${i}, this.value)">
-          <option value="">— نادیده گرفتن —</option>
-          ${SALES_IMPORT_FIELDS.map(f => `<option value="${f.key}" ${selected === f.key ? 'selected' : ''}>${f.label}${f.required ? ' *' : ''}</option>`).join('')}
-        </select>
-      </div>
-    `
-  }).join('')
+  container.innerHTML = renderFieldMappingRows({
+    fields: SALES_IMPORT_FIELDS,
+    headers: salesImportData.headers,
+    mapping: salesImportData.mapping,
+    autoMapping: salesImportData.autoMapping,
+    onChangeFn: 'setSalesImportMapping'
+  })
 }
 
-export function setSalesImportMapping(colIndex, fieldKey) {
-  Object.keys(salesImportData.mapping).forEach(k => {
-    if (salesImportData.mapping[k] === colIndex) delete salesImportData.mapping[k]
-  })
-  if (fieldKey) {
-    Object.keys(salesImportData.mapping).forEach(k => {
-      if (k === fieldKey) delete salesImportData.mapping[k]
-    })
-    salesImportData.mapping[fieldKey] = colIndex
-  }
+/** fieldKey → excel column index (or clear) */
+export function setSalesImportMapping(fieldKey, colRaw) {
+  setFieldColumnMapping(salesImportData, fieldKey, colRaw)
+  renderSalesImportMapping()
 }
 
 export async function doSalesImport() {
