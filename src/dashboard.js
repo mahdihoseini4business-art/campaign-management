@@ -411,13 +411,10 @@ function computeDashSalesMetrics(hasDateFilter, inDateRange) {
 }
 
 function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
-  if (dashCharts.salesTimeline) {
-    dashCharts.salesTimeline.destroy()
-    delete dashCharts.salesTimeline
-  }
-
   const canvas = document.getElementById('chartSalesTimeline')
   if (!canvas || typeof Chart === 'undefined') return
+  destroyDashChart('salesTimeline')
+  destroyDashChart(canvas)
   if (!syncSalesChartTimeframeOptions()) return
 
   const from = document.getElementById('salesChartFrom').value.trim()
@@ -552,6 +549,8 @@ function renderTransferMetrics(dateFromNum, dateToNum) {
   const bodyEl = document.getElementById('dashTransferBody')
 
   if (countEl) countEl.textContent = String(transfers.length)
+  const badgeEl = document.getElementById('dash-transfer-badge')
+  if (badgeEl) badgeEl.textContent = String(transfers.length)
 
   const batches = new Set(transfers.map(t => t.batchId).filter(Boolean))
   if (batchesEl) batchesEl.textContent = String(batches.size)
@@ -611,10 +610,10 @@ function renderTransferMetrics(dateFromNum, dateToNum) {
   for (const t of transfers) {
     const from = normalizePhone(t.fromAdvisorPhone)
     const to = normalizePhone(t.toAdvisorPhone)
-    if (from && selectedAdvisorPhones.has(from)) {
+    if (from && selectedAdvisorPhones?.has(from)) {
       ensureRow(from, t.fromAdvisorName).out++
     }
-    if (to && selectedAdvisorPhones.has(to)) {
+    if (to && selectedAdvisorPhones?.has(to)) {
       ensureRow(to, t.toAdvisorName).in++
     }
   }
@@ -746,53 +745,93 @@ export async function renderDashboard() {
     : 0
   document.getElementById('dash-avg-sale').textContent = formatNumber(avgSale) + ' ریال'
 
-  renderTransferMetrics(dateFromNum, dateToNum)
+  try {
+    renderTransferMetrics(dateFromNum, dateToNum)
+  } catch (e) {
+    console.error('renderTransferMetrics error:', e)
+  }
 
   const overdueBody = document.getElementById('dashOverdueBody')
-  if (overdueList.length === 0) {
-    overdueBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری عقب افتاده‌ای وجود ندارد</td></tr>'
-  } else {
-    overdueBody.innerHTML = overdueList.map(c => {
-      const disp = formatPhonesDisplay(c)
-      const phoneHtml = disp.text
-        ? `${escapeHtml(disp.text)}${disp.extra > 0 ? ` <span style="color:var(--text-muted);font-size:11px;">+${disp.extra}</span>` : ''}`
-        : '—'
-      return `<tr class="clickable-row" style="background:#fff8f0;" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
+  if (overdueBody) {
+    if (overdueList.length === 0) {
+      overdueBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری عقب افتاده‌ای وجود ندارد</td></tr>'
+    } else {
+      overdueBody.innerHTML = overdueList.map(c => {
+        const disp = formatPhonesDisplay(c)
+        const phoneHtml = disp.text
+          ? `${escapeHtml(disp.text)}${disp.extra > 0 ? ` <span style="color:var(--text-muted);font-size:11px;">+${disp.extra}</span>` : ''}`
+          : '—'
+        return `<tr class="clickable-row" style="background:#fff8f0;" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
       <td>${escapeHtml(c.name || c.platformId)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${phoneHtml}</td>
       <td>${escapeHtml(advisorNameForCustomer(c))}</td>
       <td><span class="settlement-badge settlement-overdue-badge">⚠ ${c.nextFollowupDate}</span></td>
       <td style="text-align:center;">${(c.products || []).length}</td>
     </tr>`
-    }).join('')
+      }).join('')
+    }
   }
 
   const soonBody = document.getElementById('dashSoonBody')
-  if (soonList.length === 0) {
-    soonBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری نزدیکی وجود ندارد</td></tr>'
-  } else {
-    soonBody.innerHTML = soonList.map(c => {
-      const disp = formatPhonesDisplay(c)
-      const phoneHtml = disp.text
-        ? `${escapeHtml(disp.text)}${disp.extra > 0 ? ` <span style="color:var(--text-muted);font-size:11px;">+${disp.extra}</span>` : ''}`
-        : '—'
-      return `<tr class="clickable-row" style="background:#f0fff4;" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
+  if (soonBody) {
+    if (soonList.length === 0) {
+      soonBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری نزدیکی وجود ندارد</td></tr>'
+    } else {
+      soonBody.innerHTML = soonList.map(c => {
+        const disp = formatPhonesDisplay(c)
+        const phoneHtml = disp.text
+          ? `${escapeHtml(disp.text)}${disp.extra > 0 ? ` <span style="color:var(--text-muted);font-size:11px;">+${disp.extra}</span>` : ''}`
+          : '—'
+        return `<tr class="clickable-row" style="background:#f0fff4;" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
       <td>${escapeHtml(c.name || c.platformId)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${phoneHtml}</td>
       <td>${escapeHtml(advisorNameForCustomer(c))}</td>
       <td><span class="settlement-badge settlement-soon-badge">${c.nextFollowupDate}</span></td>
       <td style="text-align:center;">${(c.products || []).length}</td>
     </tr>`
-    }).join('')
+      }).join('')
+    }
   }
 
-  renderDashCharts(dateFromNum, dateToNum, currentUser)
+  try {
+    renderDashCharts(dateFromNum, dateToNum, currentUser)
+  } catch (e) {
+    console.error('renderDashCharts error:', e)
+  }
 }
 
-function renderDashCharts(dateFromNum, dateToNum, currentUser) {
-  const data = getData()
-  Object.values(dashCharts).forEach(c => { try { c.destroy() } catch (_) {} })
+function destroyDashChart(keyOrCanvas) {
+  try {
+    if (typeof keyOrCanvas === 'string') {
+      const existing = dashCharts[keyOrCanvas]
+      if (existing) {
+        existing.destroy()
+        delete dashCharts[keyOrCanvas]
+      }
+      return
+    }
+    if (keyOrCanvas && typeof Chart !== 'undefined' && typeof Chart.getChart === 'function') {
+      const bound = Chart.getChart(keyOrCanvas)
+      if (bound) bound.destroy()
+    }
+  } catch (_) { /* ignore */ }
+}
+
+function destroyAllDashCharts() {
+  Object.keys(dashCharts).forEach(key => destroyDashChart(key))
   dashCharts = {}
+  ;['chartCustomers', 'chartSalesStatus', 'chartProducts', 'chartAdvisorCompare', 'chartSalesTimeline']
+    .forEach(id => {
+      const canvas = document.getElementById(id)
+      if (canvas) destroyDashChart(canvas)
+    })
+}
+
+const CHART_FONT = { family: 'Vazirmatn', size: 11 }
+const CHART_RESPONSIVE = { responsive: true, maintainAspectRatio: false }
+
+function renderDashCharts(dateFromNum, dateToNum, currentUser) {
+  destroyAllDashCharts()
 
   function inChartDateRange(dateStr) {
     if (!dateFromNum && (!dateToNum || dateToNum === 99999999)) return true
@@ -805,68 +844,107 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     return matchesSelectedUsers(c)
   }
 
-  const statusLabels = getStatusLabels()
-  const statusColors = {}
-  for (const s of getStatuses()) statusColors[s.key] = s.bgColor
+  try {
+    const data = getData()
+    const statusLabels = getStatusLabels()
+    const statusColors = {}
+    for (const s of getStatuses()) statusColors[s.key] = s.bgColor
 
-  const custStatusCounts = {}
-  data.customers.forEach(c => {
-    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
-    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
-    if (!inUserScope(c)) return
-    const label = statusLabels[c.status] || c.status
-    custStatusCounts[label] = (custStatusCounts[label] || 0) + 1
-  })
-  dashCharts.custStatus = new Chart(document.getElementById('chartCustomers'), {
-    type: 'doughnut',
-    data: {
-      labels: Object.keys(custStatusCounts),
-      datasets: [{
-        data: Object.values(custStatusCounts),
-        backgroundColor: Object.keys(custStatusCounts).map(k => {
-          const key = Object.keys(statusLabels).find(sk => statusLabels[sk] === k)
-          return statusColors[key] || '#dee2e6'
-        }),
-        borderWidth: 2, borderColor: '#fff'
-      }]
-    },
-    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Vazirmatn', size: 11 } } } } }
-  })
+    const custStatusCounts = {}
+    data.customers.forEach(c => {
+      if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
+      if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
+      if (!inUserScope(c)) return
+      const label = statusLabels[c.status] || c.status
+      custStatusCounts[label] = (custStatusCounts[label] || 0) + 1
+    })
+    const custCanvas = document.getElementById('chartCustomers')
+    if (custCanvas && typeof Chart !== 'undefined') {
+      dashCharts.custStatus = new Chart(custCanvas, {
+        type: 'doughnut',
+        data: {
+          labels: Object.keys(custStatusCounts),
+          datasets: [{
+            data: Object.values(custStatusCounts),
+            backgroundColor: Object.keys(custStatusCounts).map(k => {
+              const key = Object.keys(statusLabels).find(sk => statusLabels[sk] === k)
+              return statusColors[key] || '#dee2e6'
+            }),
+            borderWidth: 2, borderColor: '#fff'
+          }]
+        },
+        options: {
+          ...CHART_RESPONSIVE,
+          plugins: { legend: { position: 'bottom', labels: { font: CHART_FONT } } }
+        }
+      })
+    }
+  } catch (e) {
+    console.error('custStatus chart error:', e)
+  }
 
   const salesStatus = { 'تکمیل': 0, 'بیعانه': 0 }
   const productSales = {}
   const productCounts = {}
   const hasDateFilter = dateFromNum > 0 || dateToNum < 99999999
 
-  forEachDashSalePayment(
-    matchesSelectedSaleRegistrant,
-    hasDateFilter,
-    inChartDateRange,
-    () => {},
-    ({ product, paidInScope }) => {
-      const value = paidInScope
-      const statusKey = product.status === 'تکمیل' ? 'تکمیل' : 'بیعانه'
-      salesStatus[statusKey] = (salesStatus[statusKey] || 0) + value
-      const name = product.name || '—'
-      productSales[name] = (productSales[name] || 0) + value
-      productCounts[name] = (productCounts[name] || 0) + 1
+  try {
+    forEachDashSalePayment(
+      matchesSelectedSaleRegistrant,
+      hasDateFilter,
+      inChartDateRange,
+      () => {},
+      ({ product, paidInScope }) => {
+        const value = paidInScope
+        const statusKey = product.status === 'تکمیل' ? 'تکمیل' : 'بیعانه'
+        salesStatus[statusKey] = (salesStatus[statusKey] || 0) + value
+        const name = product.name || '—'
+        productSales[name] = (productSales[name] || 0) + value
+        productCounts[name] = (productCounts[name] || 0) + 1
+      }
+    )
+
+    const salesCanvas = document.getElementById('chartSalesStatus')
+    if (salesCanvas && typeof Chart !== 'undefined') {
+      dashCharts.salesStatus = new Chart(salesCanvas, {
+        type: 'pie',
+        data: {
+          labels: Object.keys(salesStatus),
+          datasets: [{ data: Object.values(salesStatus), backgroundColor: ['#198754', '#ffc107'], borderWidth: 2, borderColor: '#fff' }]
+        },
+        options: {
+          ...CHART_RESPONSIVE,
+          plugins: { legend: { position: 'bottom', labels: { font: CHART_FONT } } }
+        }
+      })
     }
-  )
+  } catch (e) {
+    console.error('salesStatus chart error:', e)
+  }
 
-  dashCharts.salesStatus = new Chart(document.getElementById('chartSalesStatus'), {
-    type: 'pie',
-    data: {
-      labels: Object.keys(salesStatus),
-      datasets: [{ data: Object.values(salesStatus), backgroundColor: ['#198754', '#ffc107'], borderWidth: 2, borderColor: '#fff' }]
-    },
-    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Vazirmatn', size: 11 } } } } }
-  })
+  try {
+    renderProductSalesChart(productSales, productCounts)
+  } catch (e) {
+    console.error('products chart error:', e)
+  }
 
-  renderProductSalesChart(productSales, productCounts)
+  try {
+    renderAdvisorCompareChart(dateFromNum, dateToNum)
+  } catch (e) {
+    console.error('advisorCompare chart error:', e)
+  }
 
-  renderAdvisorCompareChart(dateFromNum, dateToNum)
-  renderSalesTimelineChart(dateFromNum, dateToNum, currentUser)
-  renderDashTargetsProgress(dateFromNum, dateToNum)
+  try {
+    renderSalesTimelineChart(dateFromNum, dateToNum, currentUser)
+  } catch (e) {
+    console.error('salesTimeline chart error:', e)
+  }
+
+  try {
+    renderDashTargetsProgress(dateFromNum, dateToNum)
+  } catch (e) {
+    console.error('targets progress error:', e)
+  }
 }
 
 function targetDeadlineInfo(endDate) {
@@ -982,22 +1060,24 @@ function renderProductSalesChart(productSales = null, productCounts = null) {
 
   const metric = document.getElementById('productChartMetric')?.value === 'count' ? 'count' : 'amount'
   const source = metric === 'count' ? productChartCache.counts : productChartCache.amounts
-  const labels = Object.keys(source)
-  const values = Object.values(source)
+  const labels = Object.keys(source || {})
+  const values = Object.values(source || {})
   const label = metric === 'count' ? 'تعداد فروش' : 'مبلغ فروش'
 
-  if (dashCharts.products) {
-    try { dashCharts.products.destroy() } catch (_) {}
-  }
+  const canvas = document.getElementById('chartProducts')
+  if (!canvas || typeof Chart === 'undefined') return
 
-  dashCharts.products = new Chart(document.getElementById('chartProducts'), {
+  destroyDashChart('products')
+  destroyDashChart(canvas)
+
+  dashCharts.products = new Chart(canvas, {
     type: 'bar',
     data: {
       labels,
       datasets: [{ label, data: values, backgroundColor: '#0d6efd', borderRadius: 6 }]
     },
     options: {
-      responsive: true,
+      ...CHART_RESPONSIVE,
       plugins: { legend: { display: false } },
       scales: {
         x: {
@@ -1063,13 +1143,11 @@ function buildAdvisorCompareRows(dateFromNum, dateToNum) {
 }
 
 function renderAdvisorCompareChart(dateFromNum, dateToNum) {
-  if (dashCharts.advisorCompare) {
-    try { dashCharts.advisorCompare.destroy() } catch (_) {}
-    delete dashCharts.advisorCompare
-  }
-
   const canvas = document.getElementById('chartAdvisorCompare')
   if (!canvas || typeof Chart === 'undefined') return
+
+  destroyDashChart('advisorCompare')
+  destroyDashChart(canvas)
 
   const type = document.getElementById('advisorCompareType')?.value === 'pie' ? 'pie' : 'bar'
   const rows = buildAdvisorCompareRows(dateFromNum, dateToNum)
@@ -1102,10 +1180,9 @@ function renderAdvisorCompareChart(dateFromNum, dateToNum) {
         }]
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
+        ...CHART_RESPONSIVE,
         plugins: {
-          legend: { position: 'bottom', labels: { font: { family: 'Vazirmatn', size: 11 } } },
+          legend: { position: 'bottom', labels: { font: CHART_FONT } },
           tooltip: moneyTooltip
         }
       }
@@ -1125,14 +1202,13 @@ function renderAdvisorCompareChart(dateFromNum, dateToNum) {
       }]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      ...CHART_RESPONSIVE,
       plugins: {
         legend: { display: false },
         tooltip: moneyTooltip
       },
       scales: {
-        x: { ticks: { font: { family: 'Vazirmatn', size: 11 } } },
+        x: { ticks: { font: CHART_FONT } },
         y: { ticks: { font: { family: 'monospace' }, callback: v => formatNumber(v) } }
       }
     }

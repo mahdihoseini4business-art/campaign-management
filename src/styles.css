@@ -2979,6 +2979,15 @@
     max-height: 220px;
   }
 
+  .chart-container-sm {
+    height: 200px;
+    max-height: 200px;
+  }
+
+  .chart-container canvas {
+    max-height: none !important;
+  }
+
   .chart-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -3119,7 +3128,6 @@
 
   canvas {
     max-width: 100%;
-    max-height: 180px;
   }
 
   /* --- Sales targets progress --- */
