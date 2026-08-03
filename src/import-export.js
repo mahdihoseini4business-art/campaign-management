@@ -6,7 +6,8 @@ import {
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, createPayment, formatSoldAt24h, normalizePhone,
   formatCustomerLevel, parseCustomerLevel, syncCustomerLevel,
   normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone,
-  jalaliDatePart, jalaliToNum, escapeHtml, escapeAttr, normalizeTimeTo24h, getNowJalaliDateTime
+  jalaliDatePart, jalaliToNum, escapeHtml, escapeAttr, normalizeTimeTo24h, getNowJalaliDateTime,
+  userDisplayName
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
@@ -1152,12 +1153,17 @@ function emptySalesImportState() {
     uniqueProducts: [],
     uniqueDestinations: [],
     uniqueStatuses: [],
+    uniqueAdvisors: [],
     productValueMap: {},
     destinationValueMap: {},
     statusValueMap: {},
+    advisorValueMap: {},
     productAutoMap: {},
     destinationAutoMap: {},
-    statusAutoMap: {}
+    statusAutoMap: {},
+    advisorAutoMap: {},
+    advisorOptions: [], // [{ value, label }]
+    problemExport: null // { headers, rows, reasons }
   }
 }
 
@@ -1232,9 +1238,14 @@ function refreshSalesValueMaps() {
   salesImportData.uniqueStatuses = collectUniqueMappedValues(
     salesImportData.rows, mapping.status
   )
+  salesImportData.uniqueAdvisors = collectUniqueMappedValues(
+    salesImportData.rows, mapping.advisor
+  )
 
   const catalog = getProductCatalog()
   const banks = getDestinationBanks()
+  const advisorOpts = salesImportData.advisorOptions || []
+
   const productAuto = autoMapValueNames(salesImportData.uniqueProducts, catalog)
   const destAuto = autoMapValueNames(salesImportData.uniqueDestinations, banks)
   const statusAuto = {}
@@ -1242,28 +1253,59 @@ function refreshSalesValueMaps() {
     const hint = hintSaleStatus(name)
     if (hint) statusAuto[name] = hint
   }
-
-  const nextProduct = { ...productAuto }
-  for (const [k, v] of Object.entries(salesImportData.productValueMap || {})) {
-    if (salesImportData.uniqueProducts.includes(k) && v) nextProduct[k] = v
-  }
-  const nextDest = { ...destAuto }
-  for (const [k, v] of Object.entries(salesImportData.destinationValueMap || {})) {
-    if (salesImportData.uniqueDestinations.includes(k) && v) nextDest[k] = v
-  }
-  const nextStatus = { ...statusAuto }
-  for (const [k, v] of Object.entries(salesImportData.statusValueMap || {})) {
-    if (salesImportData.uniqueStatuses.includes(k) && SALE_STATUS_OPTIONS.includes(v)) {
-      nextStatus[k] = v
+  const advisorAuto = {}
+  for (const name of salesImportData.uniqueAdvisors) {
+    const n = normalizeHeaderLabel(name)
+    const phone = normalizePhone(name)
+    const byPhone = phone && /^09\d{9}$/.test(phone)
+      ? advisorOpts.find(o => o.value === phone)
+      : null
+    if (byPhone) {
+      advisorAuto[name] = byPhone.value
+      continue
     }
+    const exact = advisorOpts.find(o => normalizeHeaderLabel(o.label) === n)
+    if (exact) {
+      advisorAuto[name] = exact.value
+      continue
+    }
+    const loose = advisorOpts
+      .filter(o => {
+        const ln = normalizeHeaderLabel(o.label)
+        return ln.length >= 2 && (ln.includes(n) || n.includes(ln))
+      })
+      .sort((a, b) => b.label.length - a.label.length)[0]
+    if (loose) advisorAuto[name] = loose.value
+  }
+
+  const mergeManual = (auto, manual, allowedKeys, validate) => {
+    const next = { ...auto }
+    for (const [k, v] of Object.entries(manual || {})) {
+      if (!allowedKeys.includes(k)) continue
+      if (validate && !validate(v)) continue
+      if (v) next[k] = v
+    }
+    return next
   }
 
   salesImportData.productAutoMap = productAuto
   salesImportData.destinationAutoMap = destAuto
   salesImportData.statusAutoMap = statusAuto
-  salesImportData.productValueMap = nextProduct
-  salesImportData.destinationValueMap = nextDest
-  salesImportData.statusValueMap = nextStatus
+  salesImportData.advisorAutoMap = advisorAuto
+  salesImportData.productValueMap = mergeManual(
+    productAuto, salesImportData.productValueMap, salesImportData.uniqueProducts
+  )
+  salesImportData.destinationValueMap = mergeManual(
+    destAuto, salesImportData.destinationValueMap, salesImportData.uniqueDestinations
+  )
+  salesImportData.statusValueMap = mergeManual(
+    statusAuto, salesImportData.statusValueMap, salesImportData.uniqueStatuses,
+    v => SALE_STATUS_OPTIONS.includes(v)
+  )
+  salesImportData.advisorValueMap = mergeManual(
+    advisorAuto, salesImportData.advisorValueMap, salesImportData.uniqueAdvisors,
+    v => advisorOpts.some(o => o.value === v)
+  )
 }
 
 function renderValueMappingSection({
@@ -1275,8 +1317,10 @@ function renderValueMappingSection({
     const isAuto = selected && autoMap[name] === selected
     const hasMap = !!selected
     const opts = options.map(o => {
-      const sel = selected === o ? 'selected' : ''
-      return `<option value="${escapeAttr(o)}" ${sel}>${escapeHtml(o)}</option>`
+      const value = typeof o === 'string' ? o : o.value
+      const label = typeof o === 'string' ? o : o.label
+      const sel = selected === value ? 'selected' : ''
+      return `<option value="${escapeAttr(value)}" ${sel}>${escapeHtml(label)}</option>`
     }).join('')
     return `
       <div class="import-map-row${hasMap ? (isAuto ? ' is-auto' : ' is-mapped') : ' is-unmapped'}">
@@ -1294,7 +1338,7 @@ function renderValueMappingSection({
   }).join('')
   const unmapped = excelValues.filter(n => !valueMap[n]).length
   const reqNote = required && unmapped
-    ? `<p class="import-map-hint" style="color:var(--danger);">هنوز ${unmapped} مورد مپ نشده — قبل از ایمپورت همه را انتخاب کنید.</p>`
+    ? `<p class="import-map-hint" style="color:var(--warning);">هنوز ${unmapped} مورد مپ نشده — ردیف‌های مربوط در فایل مشکل‌دار قابل دانلود خواهند بود.</p>`
     : ''
   return `
     <div class="import-value-map">
@@ -1332,6 +1376,8 @@ export function openSalesImportModal() {
   document.getElementById('salesImportMapping').style.display = 'none'
   document.getElementById('salesImportMapping').innerHTML = ''
   document.getElementById('salesImportBtn').style.display = 'none'
+  const problemsBtn = document.getElementById('salesImportProblemsBtn')
+  if (problemsBtn) problemsBtn.style.display = 'none'
   document.getElementById('salesImportPreview').textContent = ''
   document.getElementById('salesImportFileInput').value = ''
   document.getElementById('salesImportModal').classList.add('active')
@@ -1347,7 +1393,7 @@ export function initSalesImportListeners() {
     if (!file) return
 
     const reader = new FileReader()
-    reader.onload = function (ev) {
+    reader.onload = async function (ev) {
       try {
         const wb = XLSX.read(ev.target.result, { type: 'array' })
         const ws = wb.Sheets[wb.SheetNames[0]]
@@ -1361,6 +1407,22 @@ export function initSalesImportListeners() {
         salesImportData.mapping = autoMapColumns(salesImportData.headers, SALES_IMPORT_FIELDS)
         salesImportData.autoMapping = { ...salesImportData.mapping }
         salesImportData.isSiteFormat = looksLikeSiteSalesExport(salesImportData.headers)
+
+        try {
+          const users = await getUsersSafe()
+          salesImportData.advisorOptions = (users || [])
+            .map(u => {
+              const phone = normalizePhone(u.phone)
+              const label = userDisplayName(u) || phone
+              if (!phone && !label) return null
+              return { value: phone || label, label: label || phone }
+            })
+            .filter(Boolean)
+            .sort((a, b) => a.label.localeCompare(b.label, 'fa'))
+        } catch (_) {
+          salesImportData.advisorOptions = []
+        }
+
         refreshSalesValueMaps()
         renderSalesImportMapping()
       } catch (err) {
@@ -1376,6 +1438,7 @@ function renderSalesImportMapping() {
   const container = document.getElementById('salesImportMapping')
   container.style.display = ''
   document.getElementById('salesImportBtn').style.display = ''
+  document.getElementById('salesImportProblemsBtn')?.style && (document.getElementById('salesImportProblemsBtn').style.display = 'none')
 
   const siteNote = salesImportData.isSiteFormat
     ? 'فرمت فروش سایت تشخیص داده شد — واریزها تأییدشده وارد می‌شوند؛ مبلغ/مبلغ‌کل و تاریخ+ساعت بر همان اساس تفسیر می‌شوند.'
@@ -1396,7 +1459,7 @@ function renderSalesImportMapping() {
 
   const statusSection = renderValueMappingSection({
     title: 'مپینگ وضعیت فروش',
-    hint: 'فقط دو مقدار سیستم پذیرفته می‌شود: تکمیل یا بیعانه. برای هر عبارت ستون وضعیت در اکسل یکی را انتخاب کنید.',
+    hint: 'فقط دو مقدار پذیرفته می‌شود: تکمیل یا بیعانه. مقادیر مپ‌نشده باعث می‌شوند همان ردیف‌ها در فایل مشکل‌دار بمانند.',
     excelValues: salesImportData.uniqueStatuses,
     valueMap: salesImportData.statusValueMap,
     autoMap: salesImportData.statusAutoMap,
@@ -1418,7 +1481,22 @@ function renderSalesImportMapping() {
       required: true
     })
     : (salesImportData.uniqueDestinations.length
-      ? `<p class="import-map-hint" style="color:var(--danger);">بانک مقصدی در تنظیمات تعریف نشده — اول از تنظیمات اضافه کنید، یا ستون مقصد را خالی بگذارید.</p>`
+      ? `<p class="import-map-hint" style="color:var(--danger);">بانک مقصدی در تنظیمات تعریف نشده — اول از تنظیمات اضافه کنید.</p>`
+      : '')
+
+  const advisorSection = (salesImportData.advisorOptions || []).length
+    ? renderValueMappingSection({
+      title: 'مپینگ نام کارشناس',
+      hint: 'هر نام کارشناس در فایل را به یکی از کاربران سیستم وصل کنید.',
+      excelValues: salesImportData.uniqueAdvisors,
+      valueMap: salesImportData.advisorValueMap,
+      autoMap: salesImportData.advisorAutoMap,
+      options: salesImportData.advisorOptions,
+      onChangeFn: 'setSalesAdvisorValueMap',
+      required: true
+    })
+    : (salesImportData.uniqueAdvisors.length
+      ? `<p class="import-map-hint" style="color:var(--warning);">لیست کاربران برای مپینگ کارشناس در دسترس نیست.</p>`
       : '')
 
   const catalogEmpty = getProductCatalog().length === 0
@@ -1437,6 +1515,7 @@ function renderSalesImportMapping() {
     ${productSection}
     ${statusSection}
     ${destSection}
+    ${advisorSection}
   `
 }
 
@@ -1474,6 +1553,69 @@ export function setSalesStatusValueMap(index, statusName) {
   renderSalesImportMapping()
 }
 
+export function setSalesAdvisorValueMap(index, advisorKey) {
+  const name = salesImportData.uniqueAdvisors[index]
+  if (!name) return
+  const ok = (salesImportData.advisorOptions || []).some(o => o.value === advisorKey)
+  if (!advisorKey || !ok) delete salesImportData.advisorValueMap[name]
+  else salesImportData.advisorValueMap[name] = advisorKey
+  renderSalesImportMapping()
+}
+
+function padImportRow(row, colCount) {
+  const out = []
+  for (let i = 0; i < colCount; i++) {
+    const v = row?.[i]
+    out.push(v == null ? '' : v)
+  }
+  return out
+}
+
+function renderSalesImportResult({ imported, created, skipped, failed, problemCount }) {
+  const container = document.getElementById('salesImportMapping')
+  container.style.display = ''
+  document.getElementById('salesImportBtn').style.display = 'none'
+  const problemsBtn = document.getElementById('salesImportProblemsBtn')
+  if (problemsBtn) {
+    problemsBtn.style.display = problemCount ? '' : 'none'
+  }
+
+  const parts = []
+  if (imported) parts.push(`${imported} واریز/محصول ایمپورت شد`)
+  if (created) parts.push(`${created} مشتری جدید`)
+  if (skipped) parts.push(`${skipped} رد/تکراری`)
+  if (failed) parts.push(`${failed} خطای ذخیره`)
+  document.getElementById('salesImportPreview').textContent = parts.join(' — ') || 'هیچ ردیفی ایمپورت نشد'
+
+  container.innerHTML = `
+    <div class="import-value-map">
+      <h3 class="import-value-title">نتیجه ایمپورت</h3>
+      <p class="import-map-hint">${escapeHtml(parts.join(' — ') || 'هیچ ردیفی ایمپورت نشد')}</p>
+      ${problemCount ? `
+        <p class="import-map-hint" style="color:var(--danger);">
+          ${problemCount} ردیف به‌خاطر مقدار نامعتبر/مپ‌نشده (مثل وضعیت خارج از تکمیل/بیعانه، محصول، مقصد یا کارشناس) ایمپورت نشد.
+          همان ردیف‌ها را می‌توانید به‌صورت فایل Excel جدید دانلود کنید.
+        </p>
+      ` : '<p class="import-map-hint">ردیفی با خطای مپینگ باقی نماند.</p>'}
+    </div>
+  `
+}
+
+export function downloadSalesImportProblems() {
+  const pack = salesImportData.problemExport
+  if (!pack?.rows?.length) {
+    showToast('ردیفی برای دانلود نیست')
+    return
+  }
+  const headers = [...pack.headers, 'علت رد']
+  const rows = pack.rows.map((r, i) => [...padImportRow(r, pack.headers.length), pack.reasons[i] || ''])
+  const ws = sheetFromAoa(headers, rows)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'ردیف‌های مشکل‌دار')
+  XLSX.writeFile(wb, `فروش_مشکل‌دار_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  showToast(`${rows.length} ردیف مشکل‌دار دانلود شد`)
+}
+
 export async function doSalesImport() {
   if (!requirePermission('sales_import')) return
   const data = getData()
@@ -1488,47 +1630,28 @@ export async function doSalesImport() {
     showToast('ستون محصول را مپ کنید')
     return
   }
-
-  // Require full product value-map when products column present
-  const unmappedProducts = salesImportData.uniqueProducts.filter(n => !salesImportData.productValueMap[n])
-  if (unmappedProducts.length) {
-    showToast(`${unmappedProducts.length} نام محصول هنوز مپ نشده`)
-    return
-  }
-
-  if (isFieldMapped(mapping, 'status') && salesImportData.uniqueStatuses.length) {
-    const unmappedStatus = salesImportData.uniqueStatuses.filter(n => {
-      const v = salesImportData.statusValueMap[n]
-      return !SALE_STATUS_OPTIONS.includes(v)
-    })
-    if (unmappedStatus.length) {
-      showToast(`${unmappedStatus.length} مقدار وضعیت هنوز به تکمیل/بیعانه مپ نشده`)
-      return
-    }
-  }
-
-  const banks = getDestinationBanks()
-  if (salesImportData.uniqueDestinations.length && banks.length) {
-    const unmappedDest = salesImportData.uniqueDestinations.filter(n => !salesImportData.destinationValueMap[n])
-    if (unmappedDest.length) {
-      showToast(`${unmappedDest.length} مقصد واریز هنوز مپ نشده`)
-      return
-    }
-  }
-
   if (!getProductCatalog().length) {
     showToast('کاتالوگ محصولات خالی است — از تنظیمات اضافه کنید')
     return
   }
 
   let imported = 0, skipped = 0, created = 0, failed = 0
+  const problemRows = []
+  const problemReasons = []
+  const markProblem = (row, reason) => {
+    problemRows.push(Array.isArray(row) ? row.slice() : [])
+    problemReasons.push(reason)
+  }
+
   const users = await getUsersSafe()
+  const banks = getDestinationBanks()
   const touched = new Set()
   const paymentColMapped = isFieldMapped(mapping, 'paymentAmount')
   const priceColMapped = isFieldMapped(mapping, 'price')
   const isSite = salesImportData.isSiteFormat
   const { dateTime: reviewedAt } = getNowJalaliDateTime()
   const reviewerPhone = normalizePhone(getCurrentUser()?.phone || '')
+  const hasAdvisorOptions = (salesImportData.advisorOptions || []).length > 0
 
   for (const row of salesImportData.rows) {
     const getValue = (fieldKey) => {
@@ -1542,11 +1665,62 @@ export async function doSalesImport() {
     const phone = phonesFromCell[0] || ''
     const customerId = getValue('customerId')
     const productRaw = getValue('productName')
-    if (!productRaw) { skipped++; continue }
-    if (!phone && !customerId) { skipped++; continue }
+    if (!productRaw) {
+      markProblem(row, 'محصول خالی است')
+      continue
+    }
+    if (!phone && !customerId) {
+      markProblem(row, 'شماره موبایل و شناسه مشتری خالی است')
+      continue
+    }
 
-    const productName = salesImportData.productValueMap[productRaw] || productRaw
-    if (!productName) { skipped++; continue }
+    const productName = salesImportData.productValueMap[productRaw]
+    if (!productName) {
+      markProblem(row, `محصول مپ نشده: ${productRaw}`)
+      continue
+    }
+
+    const statusRaw = getValue('status')
+    let status = 'تکمیل'
+    if (statusRaw) {
+      const mappedStatus = salesImportData.statusValueMap[statusRaw]
+      if (SALE_STATUS_OPTIONS.includes(mappedStatus)) {
+        status = mappedStatus
+      } else {
+        markProblem(row, `وضعیت باید به تکمیل یا بیعانه مپ شود: ${statusRaw}`)
+        continue
+      }
+    }
+
+    const destRaw = getValue('destinationBank')
+    let destinationBank = ''
+    if (destRaw) {
+      if (banks.length) {
+        const mappedDest = salesImportData.destinationValueMap[destRaw]
+        if (!mappedDest) {
+          markProblem(row, `مقصد واریز مپ نشده: ${destRaw}`)
+          continue
+        }
+        destinationBank = mappedDest
+      } else {
+        destinationBank = destRaw
+      }
+    }
+
+    const advisorExcel = getValue('advisor')
+    let advisorResolved = null
+    if (advisorExcel) {
+      if (hasAdvisorOptions) {
+        const mappedAdvisor = salesImportData.advisorValueMap[advisorExcel]
+        if (!mappedAdvisor) {
+          markProblem(row, `کارشناس مپ نشده: ${advisorExcel}`)
+          continue
+        }
+        advisorResolved = resolveAdvisor(mappedAdvisor, users)
+      } else {
+        advisorResolved = resolveAdvisor(advisorExcel, users)
+      }
+    }
 
     let customer = null
     if (customerId) customer = data.customers.find(c => c.id === customerId)
@@ -1555,12 +1729,17 @@ export async function doSalesImport() {
     }
 
     if (!customer) {
-      if (!phone) { skipped++; continue }
+      if (!phone) {
+        markProblem(row, 'برای ایجاد مشتری جدید شماره موبایل لازم است')
+        continue
+      }
       const name = getValue('customerName') || ''
       const id = await generateId('CS')
       const currentUser = getCurrentUser()
-      const advisorRaw = getValue('advisor') || (currentUser ? (currentUser.phone || currentUser.displayName) : '')
-      const { advisor, advisorPhone } = resolveAdvisor(advisorRaw, users)
+      if (!advisorResolved) {
+        const fallback = currentUser ? (currentUser.phone || currentUser.displayName) : ''
+        advisorResolved = resolveAdvisor(fallback, users)
+      }
       const platformRaw = getValue('platform').toLowerCase()
       const defaultPlatform = isSite ? 'website' : 'instagram'
       const platform = buildPlatformImportMap()[platformRaw] || platformRaw || defaultPlatform
@@ -1574,8 +1753,8 @@ export async function doSalesImport() {
         phones,
         status: 'purchased',
         notes: isSite ? 'ایجاد شده از ایمپورت فروش سایت' : 'خودکار ایجاد شده از ایمپورت فروش',
-        advisor,
-        advisorPhone,
+        advisor: advisorResolved.advisor,
+        advisorPhone: advisorResolved.advisorPhone,
         nextFollowupDate: '',
         products: [],
         createdAt: new Date().toISOString(),
@@ -1588,31 +1767,11 @@ export async function doSalesImport() {
       touched.add(customer.id)
     }
 
-    const statusRaw = getValue('status')
-    let status = 'تکمیل'
-    if (statusRaw) {
-      const mappedStatus = salesImportData.statusValueMap[statusRaw]
-      if (SALE_STATUS_OPTIONS.includes(mappedStatus)) {
-        status = mappedStatus
-      } else {
-        // Status column mapped but this cell value wasn't value-mapped → skip
-        skipped++
-        continue
-      }
-    } else if (isFieldMapped(mapping, 'status')) {
-      // Empty status cell with mapped column: default تکمیل for site cash sales
-      status = 'تکمیل'
-    }
-
     let price = parseMoney(getValue('price'))
     const deposit = parseMoney(getValue('deposit'))
     const settlementDate = getValue('settlementDate')
     const soldAt = buildSoldAt(getValue('soldAt'), getValue('soldAtTime')) || settlementDate || ''
     const depositorName = getValue('depositorName')
-    const destRaw = getValue('destinationBank')
-    const destinationBank = (destRaw && salesImportData.destinationValueMap[destRaw])
-      || destRaw
-      || ''
 
     let paymentStatus
     if (isFieldMapped(mapping, 'paymentStatus') && getValue('paymentStatus')) {
@@ -1736,12 +1895,26 @@ export async function doSalesImport() {
     }
   }
 
-  closeSalesImportModal()
+  salesImportData.problemExport = problemRows.length
+    ? { headers: salesImportData.headers.slice(), rows: problemRows, reasons: problemReasons }
+    : null
+
   await renderCustomers()
   await renderSales()
-  const parts = [`${imported} واریز/محصول ایمپورت شد`]
-  if (created > 0) parts.push(`${created} مشتری جدید`)
-  if (skipped > 0) parts.push(`${skipped} رد شده`)
-  if (failed > 0) parts.push(`${failed} خطای ذخیره`)
-  showToast(parts.join(' — '))
+
+  const parts = []
+  if (imported) parts.push(`${imported} واریز/محصول ایمپورت شد`)
+  if (created) parts.push(`${created} مشتری جدید`)
+  if (skipped) parts.push(`${skipped} رد/تکراری`)
+  if (failed) parts.push(`${failed} خطای ذخیره`)
+  if (problemRows.length) parts.push(`${problemRows.length} مشکل‌دار`)
+  showToast(parts.length ? parts.join(' — ') : 'هیچ ردیفی ایمپورت نشد')
+
+  renderSalesImportResult({
+    imported,
+    created,
+    skipped,
+    failed,
+    problemCount: problemRows.length
+  })
 }

@@ -838,9 +838,9 @@
     <div class="modal-body">
       <div class="import-preflight" style="font-size:13px;color:var(--text);background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:12px;line-height:1.7;">
         <b>قبل از آپلود توجه کنید:</b>
-        وضعیت فروش در سیستم فقط دو مقدار دارد: <b>تکمیل</b> و <b>بیعانه</b>.
-        بعد از انتخاب فایل و مپ کردن ستون «وضعیت»، برای هر مقدار موجود در اکسل باید مشخص کنید معادل کدام‌یک از این دو است.
-        همچنین نام محصولات و مقصد واریز را به مقادیر تعریف‌شده در تنظیمات مپ کنید.
+        وضعیت فروش فقط دو مقدار دارد: <b>تکمیل</b> و <b>بیعانه</b>.
+        بعد از مپ ستون‌ها، مقادیر محصول، وضعیت، مقصد واریز و کارشناس را به مقادیر سیستم وصل کنید.
+        ردیف‌هایی که مقدار وضعیت/محصول/مقصد/کارشناس‌شان مپ نشده یا نامعتبر باشد ایمپورت نمی‌شوند و در پایان به‌صورت فایل Excel جدا (فقط ردیف‌های مشکل‌دار) قابل دانلود هستند.
       </div>
       <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
         هم خروجی فروش برنامه و هم خروجی فروش سایت پشتیبانی می‌شود.
@@ -853,7 +853,8 @@
       <div id="salesImportPreview" style="margin-top:8px;font-size:12px;color:var(--text-muted);"></div>
     </div>
     <div class="modal-footer">
-      <button class="btn" onclick="app.closeSalesImportModal()">انصراف</button>
+      <button class="btn" onclick="app.closeSalesImportModal()">بستن</button>
+      <button class="btn" id="salesImportProblemsBtn" onclick="app.downloadSalesImportProblems()" style="display:none;">دانلود ردیف‌های مشکل‌دار</button>
       <button class="btn btn-primary" id="salesImportBtn" onclick="app.doSalesImport()" style="display:none;">ایمپورت</button>
     </div>
   </div>
