@@ -5,7 +5,7 @@
 
 import { supabase } from './supabase.js'
 import { getSaleToastEnabled, setSaleToastEnabledLocal, saveSaleToastEnabled } from './data.js'
-import { escapeHtml, formatNumber, requireMainAdmin, userDisplayName, getCurrentUser } from './utils.js'
+import { escapeHtml, formatNumber, requireMainAdmin, userDisplayName, getCurrentUser, normalizePhone } from './utils.js'
 
 const CHANNEL_NAME = 'sale-live-toasts'
 const TOAST_MS = 5000
@@ -42,26 +42,24 @@ function removeSaleToastEl(toast) {
   }, 400)
 }
 
-export function showSaleToast(payload) {
-  if (!getSaleToastEnabled()) return
-  const stack = stackEl()
-  if (!stack || !payload) return
+function isRecipientForMe(payload) {
+  const phone = normalizePhone(getCurrentUser()?.phone)
+  if (!phone) return false
+  const list = Array.isArray(payload?.recipientPhones) ? payload.recipientPhones : []
+  return list.some(p => normalizePhone(p) === phone)
+}
 
-  const seller = (payload.sellerName || '').trim() || 'کارشناس'
-  const product = (payload.productName || '').trim() || 'محصول'
-  const amountRial = parseFloat(payload.amount) || 0
-  // مبالغ در سیستم به ریال است؛ در توست مطابق دیزاین به تومان نشان داده می‌شود
-  const amountToman = amountRial > 0 ? formatNumber(Math.round(amountRial / 10)) : ''
+function mountToastCard({ titleHtml, detailsHtml, onOpen }) {
+  const stack = stackEl()
+  if (!stack) return
 
   const toast = document.createElement('div')
   toast.className = 'sale-toast-card'
   toast.setAttribute('role', 'status')
   toast.innerHTML = `
     <div class="sale-toast-content">
-      <div class="sale-toast-title">⚡ فروش جدید از ${escapeHtml(seller)}</div>
-      <div class="sale-toast-details">
-        ${escapeHtml(product)}${amountToman ? ` — <span class="sale-toast-amount">${escapeHtml(amountToman)} تومان</span>` : ''}
-      </div>
+      <div class="sale-toast-title">${titleHtml}</div>
+      <div class="sale-toast-details">${detailsHtml}</div>
     </div>
     <button type="button" class="sale-toast-close" aria-label="بستن">&times;</button>
   `
@@ -71,6 +69,15 @@ export function showSaleToast(payload) {
     e.stopPropagation()
     removeSaleToastEl(toast)
   })
+
+  if (typeof onOpen === 'function') {
+    toast.style.cursor = 'pointer'
+    toast.addEventListener('click', (e) => {
+      if (e.target.closest('.sale-toast-close')) return
+      removeSaleToastEl(toast)
+      onOpen()
+    })
+  }
 
   stack.appendChild(toast)
   playNotifSound()
@@ -85,11 +92,56 @@ export function showSaleToast(payload) {
   toast.dataset.timeoutId = String(autoCloseTimeout)
 }
 
+export function showSaleToast(payload) {
+  if (!getSaleToastEnabled()) return
+  if (!payload) return
+
+  const seller = (payload.sellerName || '').trim() || 'کارشناس'
+  const product = (payload.productName || '').trim() || 'محصول'
+  const amountRial = parseFloat(payload.amount) || 0
+  // مبالغ در سیستم به ریال است؛ در توست مطابق دیزاین به تومان نشان داده می‌شود
+  const amountToman = amountRial > 0 ? formatNumber(Math.round(amountRial / 10)) : ''
+
+  mountToastCard({
+    titleHtml: `⚡ فروش جدید از ${escapeHtml(seller)}`,
+    detailsHtml: `${escapeHtml(product)}${amountToman ? ` — <span class="sale-toast-amount">${escapeHtml(amountToman)} تومان</span>` : ''}`
+  })
+}
+
+/** Toast for recipients of a manual admin notification */
+export function showManualNotifToast(payload) {
+  if (!payload || !isRecipientForMe(payload)) return
+
+  const title = (payload.title || '').trim() || 'اعلان جدید'
+  const sender = (payload.senderName || '').trim() || 'ادمین'
+
+  mountToastCard({
+    titleHtml: `🔔 اعلان جدید`,
+    detailsHtml: `${escapeHtml(title)} — از ${escapeHtml(sender)}`,
+    onOpen: () => {
+      import('./notifications.js').then(async (m) => {
+        try { await m.refreshNotifications() } catch (_) { /* ignore */ }
+        const id = Number(payload.id)
+        if (id && typeof m.openNotificationDetail === 'function') {
+          m.openNotificationDetail(id)
+        } else if (typeof m.toggleNotificationMenu === 'function') {
+          await m.toggleNotificationMenu()
+        }
+      }).catch(() => {})
+    }
+  })
+
+  import('./notifications.js').then(m => m.refreshNotifications?.()).catch(() => {})
+}
+
 async function ensureChannel() {
   if (channel) return channel
   channel = supabase.channel(CHANNEL_NAME)
   channel.on('broadcast', { event: 'sale' }, ({ payload }) => {
     showSaleToast(payload)
+  })
+  channel.on('broadcast', { event: 'manual-notif' }, ({ payload }) => {
+    showManualNotifToast(payload)
   })
   channel.on('broadcast', { event: 'setting' }, ({ payload }) => {
     if (typeof payload?.enabled === 'boolean') {
@@ -123,6 +175,18 @@ export async function broadcastSaleToast(payload) {
     await ch.send({ type: 'broadcast', event: 'sale', payload })
   } catch (e) {
     console.error('broadcastSaleToast error:', e)
+  }
+}
+
+export async function broadcastManualNotifToast(payload) {
+  if (!payload) return
+  // Show locally only if current user is among recipients
+  showManualNotifToast(payload)
+  try {
+    const ch = await ensureChannel()
+    await ch.send({ type: 'broadcast', event: 'manual-notif', payload })
+  } catch (e) {
+    console.error('broadcastManualNotifToast error:', e)
   }
 }
 

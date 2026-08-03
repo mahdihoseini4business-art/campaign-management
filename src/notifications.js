@@ -500,9 +500,22 @@ export async function sendNotification() {
   const btn = document.getElementById('notifSendBtn')
   if (btn) btn.disabled = true
   try {
-    const { error } = await supabase.from('notifications').insert(row)
+    const { data: inserted, error } = await supabase.from('notifications').insert(row).select('id').single()
     if (error) throw error
     import('./live-sync.js').then(m => m.noteLocalWrite()).catch(() => {})
+    try {
+      const { broadcastManualNotifToast } = await import('./sale-toasts.js')
+      await broadcastManualNotifToast({
+        id: inserted?.id || null,
+        title,
+        message,
+        senderName: row.created_by_name || '',
+        recipientPhones: phones,
+        at: Date.now()
+      })
+    } catch (e) {
+      console.error('manual notif toast broadcast error:', e)
+    }
     showToast(`اعلان برای ${phones.length} نفر ارسال شد`)
     clearComposeFields()
     await refreshNotifications()
