@@ -681,14 +681,15 @@ export async function saveOwnershipTransferToDB(transfer) {
 
 // followups don't have a stable primary key in the app,
 // so we use customer_id + date + type as a soft key
-export async function saveFollowupToDB(followup) {
+export async function saveFollowupToDB(followup, opts = {}) {
   const isDoneNote = followup.status === 'done' ||
     followup.type === 'پیگیری انجام‌شده' ||
     followup.type === 'پیگیری معوقه انجام‌شده'
   const isSystemNote = followup.type === 'سیستمی'
 
   // Done / system notes can repeat same day for same customer — skip soft-duplicate check
-  if (!isDoneNote && !isSystemNote) {
+  // Import restores many same-type notes on one day → allowDuplicate
+  if (!opts.allowDuplicate && !isDoneNote && !isSystemNote) {
     const { data: existing } = await supabase.from('followups')
       .select('id')
       .eq('customer_id', followup.customerId)

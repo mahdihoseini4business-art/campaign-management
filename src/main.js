@@ -7,7 +7,7 @@ import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, e
 import { renderSales, sortSales } from './sales.js'
 import { renderAccounting, setAccountingFilter, approvePayment, openRejectPaymentModal, closeRejectPaymentModal, confirmRejectPayment } from './accounting.js'
 import { renderDashboard, toggleDashSection, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareTypeChange } from './dashboard.js'
-import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, initSalesImportListeners } from './import-export.js'
+import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, initSalesImportListeners } from './import-export.js'
 import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection, openBulkTransferModal, closeBulkTransferModal, confirmBulkTransfer, refreshCustomerBulkOptions, updateBulkTransferPreview, filterBulkTransferOptions } from './bulk.js'
 import {
   openTransferInbox,
@@ -211,6 +211,7 @@ const app = {
   closeImportModal,
   doImport,
   setImportMapping,
+  setFollowupImportMapping,
   openSalesImportModal,
   closeSalesImportModal,
   toggleToolbarActions,

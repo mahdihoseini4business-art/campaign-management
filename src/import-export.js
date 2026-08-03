@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, generateId, getStatuses } from './data.js'
+import { getData, saveCustomerToDB, generateId, getStatuses, saveFollowupToDB } from './data.js'
 import {
   toEnDigits, showToast, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
@@ -10,7 +10,7 @@ import {
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
-import { getFollowupsForExport } from './followups.js'
+import { getFollowupsForExport, renderFollowups } from './followups.js'
 import { renderSales, getFilteredSales, getSalesDateFilter } from './sales.js'
 
 // ============================================
@@ -503,11 +503,149 @@ const STATUS_MAP_IMPORT = {
   'منصرف شده': 'cancelled', 'منصرف': 'cancelled',
 }
 
-let importData = { headers: [], rows: [], mapping: {}, autoMapping: {} }
+const FOLLOWUP_IMPORT_FIELDS = [
+  { key: 'customerId', label: 'شناسه مشتری', aliases: ['شناسه'], required: true },
+  { key: 'customerName', label: 'نام مشتری', aliases: ['نام'] },
+  { key: 'date', label: 'تاریخ' },
+  { key: 'type', label: 'نوع' },
+  { key: 'result', label: 'نتیجه' },
+  { key: 'nextDate', label: 'پیگیری بعدی' },
+  { key: 'notes', label: 'توضیحات', aliases: ['یادداشت'] },
+  { key: 'createdByPhone', label: 'ثبت‌کننده', aliases: ['ایجادکننده'] },
+]
+
+function parseSheetAoA(ws) {
+  const json = XLSX.utils.sheet_to_json(ws, { header: 1 })
+  if (!json.length) return null
+  const headers = (json[0] || []).map(h => String(h || '').trim())
+  const rows = json.slice(1).filter(r => Array.isArray(r) && r.some(c => c != null && String(c).trim() !== ''))
+  if (!headers.some(Boolean) || !rows.length) return null
+  return { headers, rows }
+}
+
+function sheetLooksLikeFollowups(headers) {
+  const set = new Set(headers.map(normalizeHeaderLabel))
+  const hasCustomerId = set.has(normalizeHeaderLabel('شناسه مشتری')) || set.has(normalizeHeaderLabel('شناسه'))
+  const hasNoteOrDate = set.has(normalizeHeaderLabel('توضیحات')) || set.has(normalizeHeaderLabel('تاریخ'))
+  const hasPlatformId = set.has(normalizeHeaderLabel('ایدی پلتفرم'))
+  return hasCustomerId && hasNoteOrDate && !hasPlatformId
+}
+
+function findFollowupsSheetName(wb) {
+  const names = wb.SheetNames || []
+  const exact = names.find(n => String(n).trim() === 'پیگیری‌ها')
+  if (exact) return exact
+  const fuzzy = names.find(n => String(n).includes('پیگیری'))
+  if (fuzzy) return fuzzy
+  for (const name of names) {
+    const parsed = parseSheetAoA(wb.Sheets[name])
+    if (parsed && sheetLooksLikeFollowups(parsed.headers)) return name
+  }
+  return null
+}
+
+function followupFingerprint(f) {
+  return [
+    f.customerId || '',
+    String(f.date || '').trim(),
+    String(f.type || '').trim(),
+    String(f.notes || f.doneNote || '').trim()
+  ].join('\u0001')
+}
+
+function isDoneFollowupType(type) {
+  return type === 'پیگیری انجام‌شده' || type === 'پیگیری معوقه انجام‌شده'
+}
+
+/**
+ * Import structured followup rows (same shape as export sheet «پیگیری‌ها»).
+ * Skips exact duplicates; creates missing notes with allowDuplicate.
+ */
+async function importFollowupRows({ headers, rows, mapping }) {
+  const data = getData()
+  const map = mapping || autoMapColumns(headers, FOLLOWUP_IMPORT_FIELDS)
+  if (map.customerId === undefined || map.customerId === null) {
+    return { created: 0, skipped: 0, failed: 0, missingCustomer: 0 }
+  }
+
+  let created = 0, skipped = 0, failed = 0, missingCustomer = 0
+  const seen = new Set(data.followups.map(followupFingerprint))
+  const currentUser = getCurrentUser()
+
+  for (const row of rows) {
+    const getValue = (fieldKey) => {
+      const colIdx = map[fieldKey]
+      if (colIdx === undefined || colIdx === null) return ''
+      return String(row[colIdx] || '').trim()
+    }
+
+    const customerId = getValue('customerId')
+    const notes = getValue('notes')
+    const date = toEnDigits(getValue('date'))
+    const type = getValue('type') || 'یادداشت'
+    if (!customerId || (!notes && !date)) {
+      skipped++
+      continue
+    }
+
+    const customer = data.customers.find(c => c.id === customerId)
+    if (!customer) {
+      missingCustomer++
+      continue
+    }
+
+    const nextDate = toEnDigits(getValue('nextDate'))
+    const result = getValue('result') || ''
+    const createdByPhone = normalizePhone(getValue('createdByPhone')) || normalizePhone(currentUser?.phone || '')
+    const done = isDoneFollowupType(type)
+    const followup = {
+      customerId,
+      date: date || '',
+      type,
+      result,
+      nextDate: nextDate || '',
+      notes: notes || '',
+      createdByPhone,
+      status: done ? 'done' : 'pending',
+      doneAt: done ? (date || '') : '',
+      doneByPhone: done ? createdByPhone : '',
+      doneNote: done ? (notes || '') : '',
+      wasOverdue: type === 'پیگیری معوقه انجام‌شده'
+    }
+
+    const fp = followupFingerprint(followup)
+    if (seen.has(fp)) {
+      skipped++
+      continue
+    }
+
+    try {
+      const id = await saveFollowupToDB(followup, { allowDuplicate: true })
+      followup.id = id
+      data.followups.push(followup)
+      seen.add(fp)
+      created++
+    } catch (err) {
+      console.error('followup import row failed', err)
+      failed++
+    }
+  }
+
+  return { created, skipped, failed, missingCustomer }
+}
+
+let importData = {
+  headers: [],
+  rows: [],
+  mapping: {},
+  autoMapping: {},
+  followups: null, // { headers, rows, mapping } from sheet پیگیری‌ها
+  mode: 'customers' // customers | followups
+}
 
 export function openImportModal() {
   if (!requirePermission('customers_import')) return
-  importData = { headers: [], rows: [], mapping: {}, autoMapping: {} }
+  importData = { headers: [], rows: [], mapping: {}, autoMapping: {}, followups: null, mode: 'customers' }
   document.getElementById('importStep1').style.display = ''
   document.getElementById('importStep2').style.display = 'none'
   document.getElementById('importBtn').style.display = 'none'
@@ -530,18 +668,52 @@ export function initImportListeners() {
     reader.onload = function (ev) {
       try {
         const wb = XLSX.read(ev.target.result, { type: 'array' })
-        const ws = wb.Sheets[wb.SheetNames[0]]
-        const json = XLSX.utils.sheet_to_json(ws, { header: 1 })
+        const followupsSheetName = findFollowupsSheetName(wb)
+        const firstName = wb.SheetNames[0]
+        const firstParsed = parseSheetAoA(wb.Sheets[firstName])
+        if (!firstParsed) { showToast('فایل خالی است'); return }
 
-        if (json.length < 2) { showToast('فایل خالی است'); return }
+        const firstIsFollowups = sheetLooksLikeFollowups(firstParsed.headers)
+        const followupsParsed = followupsSheetName
+          ? parseSheetAoA(wb.Sheets[followupsSheetName])
+          : null
 
-        importData.headers = json[0].map(h => String(h || '').trim())
-        importData.rows = json.slice(1).filter(r => r.some(c => c != null && String(c).trim() !== ''))
-        importData.mapping = autoMapColumns(importData.headers, IMPORT_FIELDS)
+        // Standalone followups export (single sheet)
+        if (firstIsFollowups && (!followupsSheetName || followupsSheetName === firstName)) {
+          importData.mode = 'followups'
+          importData.headers = []
+          importData.rows = []
+          importData.mapping = {}
+          importData.autoMapping = {}
+          importData.followups = {
+            headers: firstParsed.headers,
+            rows: firstParsed.rows,
+            mapping: autoMapColumns(firstParsed.headers, FOLLOWUP_IMPORT_FIELDS)
+          }
+          renderImportMapping()
+          return
+        }
+
+        // Customers sheet (+ optional پیگیری‌ها sheet from app export)
+        importData.mode = 'customers'
+        importData.headers = firstParsed.headers
+        importData.rows = firstParsed.rows
+        importData.mapping = autoMapColumns(firstParsed.headers, IMPORT_FIELDS)
         importData.autoMapping = { ...importData.mapping }
+
+        if (followupsParsed && followupsSheetName !== firstName) {
+          importData.followups = {
+            headers: followupsParsed.headers,
+            rows: followupsParsed.rows,
+            mapping: autoMapColumns(followupsParsed.headers, FOLLOWUP_IMPORT_FIELDS)
+          }
+        } else {
+          importData.followups = null
+        }
 
         renderImportMapping()
       } catch (err) {
+        console.error(err)
         showToast('خطا در خواندن فایل')
       }
     }
@@ -554,7 +726,36 @@ function renderImportMapping() {
   document.getElementById('importStep1').style.display = 'none'
   document.getElementById('importStep2').style.display = ''
   document.getElementById('importBtn').style.display = ''
-  document.getElementById('importPreview').textContent = `${importData.rows.length} ردیف داده یافت شد`
+
+  const fu = importData.followups
+  const fuCount = fu ? fu.rows.length : 0
+
+  if (importData.mode === 'followups') {
+    document.getElementById('importPreview').textContent =
+      `${fuCount} یادداشت/پیگیری یافت شد — مپینگ خودکار از روی هدر خروجی`
+    container.innerHTML = `
+      <p class="import-map-hint">فایل خروجی پیگیری‌ها تشخیص داده شد. همه ردیف‌ها با مپینگ خودکار ایمپورت می‌شوند.</p>
+      ${renderFieldMappingRows({
+        fields: FOLLOWUP_IMPORT_FIELDS,
+        headers: fu.headers,
+        mapping: fu.mapping,
+        autoMapping: fu.mapping,
+        onChangeFn: 'setFollowupImportMapping'
+      })}
+    `
+    return
+  }
+
+  const parts = [`${importData.rows.length} مشتری`]
+  if (fuCount) parts.push(`${fuCount} یادداشت/پیگیری از شیت پیگیری‌ها`)
+  document.getElementById('importPreview').textContent = parts.join(' + ') + ' یافت شد'
+
+  let followupsNote = ''
+  if (fuCount) {
+    followupsNote = `<p class="import-map-hint" style="margin-top:12px;">شیت «پیگیری‌ها» هم همراه فایل است و بعد از ایمپورت مشتریان، ${fuCount} یادداشت به‌صورت خودکار وارد می‌شود.</p>`
+  } else {
+    followupsNote = `<p class="import-map-hint" style="margin-top:12px;">اگر فایل خروجی Excel برنامه باشد، شیت دوم «پیگیری‌ها» هم ایمپورت می‌شود. در این فایل شیت پیگیری پیدا نشد.</p>`
+  }
 
   container.innerHTML = renderFieldMappingRows({
     fields: IMPORT_FIELDS,
@@ -562,12 +763,18 @@ function renderImportMapping() {
     mapping: importData.mapping,
     autoMapping: importData.autoMapping,
     onChangeFn: 'setImportMapping'
-  })
+  }) + followupsNote
 }
 
 /** fieldKey → excel column index (or clear) */
 export function setImportMapping(fieldKey, colRaw) {
   setFieldColumnMapping(importData, fieldKey, colRaw)
+  renderImportMapping()
+}
+
+export function setFollowupImportMapping(fieldKey, colRaw) {
+  if (!importData.followups) return
+  setFieldColumnMapping(importData.followups, fieldKey, colRaw)
   renderImportMapping()
 }
 
@@ -633,6 +840,26 @@ function applyMappedCustomerFields(customer, { mapping, getValue, users, phones,
 export async function doImport() {
   if (!requirePermission('customers_import')) return
   const data = getData()
+
+  // ---------- Followups-only file (خروجی تب پیگیری‌ها) ----------
+  if (importData.mode === 'followups') {
+    if (!importData.followups?.rows?.length) {
+      showToast('ردیفی برای ایمپورت پیگیری یافت نشد')
+      return
+    }
+    const fu = await importFollowupRows(importData.followups)
+    closeImportModal()
+    await renderCustomers()
+    try { await renderFollowups() } catch (_) {}
+    const parts = []
+    if (fu.created) parts.push(`${fu.created} یادداشت ایجاد`)
+    if (fu.skipped) parts.push(`${fu.skipped} تکراری`)
+    if (fu.missingCustomer) parts.push(`${fu.missingCustomer} بدون مشتری`)
+    if (fu.failed) parts.push(`${fu.failed} خطا`)
+    showToast(parts.length ? parts.join(' — ') : 'هیچ یادداشتی ایمپورت نشد')
+    return
+  }
+
   const mapping = importData.mapping
   if (Object.keys(mapping).length === 0) {
     showToast('حداقل یک ستون را نقشه\u200cبرداری کنید')
@@ -762,14 +989,25 @@ export async function doImport() {
     }
   }
 
+  // Import sheet «پیگیری‌ها» from the same workbook (after customers exist)
+  let fu = { created: 0, skipped: 0, failed: 0, missingCustomer: 0 }
+  if (importData.followups?.rows?.length) {
+    fu = await importFollowupRows(importData.followups)
+  }
+
   closeImportModal()
   await renderCustomers()
+  try { await renderFollowups() } catch (_) {}
 
   const parts = []
-  if (created) parts.push(`${created} ایجاد`)
-  if (updated) parts.push(`${updated} به‌روزرسانی`)
+  if (created) parts.push(`${created} مشتری ایجاد`)
+  if (updated) parts.push(`${updated} مشتری به‌روزرسانی`)
   if (skipped) parts.push(`${skipped} رد شده`)
-  if (failed) parts.push(`${failed} خطا`)
+  if (failed) parts.push(`${failed} خطای مشتری`)
+  if (fu.created) parts.push(`${fu.created} یادداشت`)
+  if (fu.skipped) parts.push(`${fu.skipped} یادداشت تکراری`)
+  if (fu.missingCustomer) parts.push(`${fu.missingCustomer} یادداشت بدون مشتری`)
+  if (fu.failed) parts.push(`${fu.failed} خطای یادداشت`)
   showToast(parts.length ? parts.join(' — ') : 'هیچ ردیفی ایمپورت نشد')
 }
 
