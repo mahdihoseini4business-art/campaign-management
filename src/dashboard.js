@@ -1021,14 +1021,13 @@ function renderDashTargetBar(bar, dateFromNum, dateToNum, groupTitle) {
   const currentLabel = `${formatNumber(current)} ${unit}`
   const goalLabel = `${formatNumber(goal)} ${unit}`
   const productsHint = (bar.productNames || []).length
-    ? escapeHtml(bar.productNames.join('، '))
+    ? bar.productNames.join('، ')
     : 'همه محصولات'
   const metricHint = bar.metric === 'count' ? 'تعداد' : 'مبلغ تأییدشده'
   const ariaLabel = `${groupTitle} — ${metricHint} · ${productsHint}`
 
   return `
     <div class="dash-target-row">
-      <div class="dash-target-meta">${metricHint} · ${productsHint}</div>
       <div class="dash-target-values">
         <span>${currentLabel} / ${goalLabel}</span>
         <span class="dash-target-pct">${formatNumber(pct)}٪</span>

@@ -3167,12 +3167,6 @@
     font-family: inherit;
   }
 
-  .dash-target-meta {
-    font-size: 11px;
-    color: var(--text-muted);
-    font-family: inherit;
-  }
-
   .dash-target-values {
     display: flex;
     justify-content: space-between;
