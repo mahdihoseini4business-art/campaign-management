@@ -6,7 +6,7 @@ import {
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, createPayment, formatSoldAt24h, normalizePhone,
   formatCustomerLevel, parseCustomerLevel, syncCustomerLevel,
   normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone,
-  jalaliDatePart, jalaliToNum, escapeHtml, escapeAttr, normalizeTimeTo24h, getNowJalaliDateTime,
+  jalaliDatePart, jalaliToNum, escapeHtml, escapeAttr, normalizeTimeTo24h,
   userDisplayName
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
@@ -21,7 +21,9 @@ import { renderSales, getFilteredSales, getSalesDateFilter } from './sales.js'
 
 /** Columns that are informational / legacy and never map to import fields */
 const INFO_ONLY_HEADERS = new Set([
-  'تعداد پیگیری', 'آخرین پیگیری', 'مانده', 'همه یادداشت‌ها'
+  'تعداد پیگیری', 'آخرین پیگیری', 'مانده', 'همه یادداشت‌ها',
+  // Accounting approval is never imported — accountants review deposits manually
+  'وضعیت واریزی', 'وضعیت واریز'
 ])
 
 const FOLLOWUP_EXPORT_HEADERS = [
@@ -285,17 +287,6 @@ function parseImportMoney(raw, amountUnit = salesImportData.amountUnit) {
   const n = parseMoney(raw)
   if (!n) return 0
   return amountUnit === 'toman' ? n * 10 : n
-}
-
-const PAYMENT_STATUS_IMPORT = {
-  'در انتظار تأیید': PAYMENT_STATUS.pending,
-  'در انتظار تایید': PAYMENT_STATUS.pending,
-  pending: PAYMENT_STATUS.pending,
-  'تأیید شده': PAYMENT_STATUS.approved,
-  'تایید شده': PAYMENT_STATUS.approved,
-  approved: PAYMENT_STATUS.approved,
-  'رد شده': PAYMENT_STATUS.rejected,
-  rejected: PAYMENT_STATUS.rejected
 }
 
 // ============================================
@@ -1128,7 +1119,6 @@ const SALES_IMPORT_FIELDS = [
   { key: 'soldAtTime', label: 'ساعت' },
   { key: 'depositorName', label: 'نام واریزکننده' },
   { key: 'destinationBank', label: 'مقصد', aliases: ['بانک مقصد'] },
-  { key: 'paymentStatus', label: 'وضعیت واریزی' },
 ]
 
 /** Only two sale statuses are accepted in the system (hardcoded). */
@@ -1452,7 +1442,7 @@ function renderSalesImportMapping() {
   document.getElementById('salesImportProblemsBtn')?.style && (document.getElementById('salesImportProblemsBtn').style.display = 'none')
 
   const siteNote = salesImportData.isSiteFormat
-    ? 'فرمت فروش سایت تشخیص داده شد — واریزها تأییدشده وارد می‌شوند؛ مبلغ/مبلغ‌کل و تاریخ+ساعت بر همان اساس تفسیر می‌شوند.'
+    ? 'فرمت فروش سایت تشخیص داده شد — واریزها «در انتظار تأیید» وارد می‌شوند؛ مبلغ/مبلغ‌کل و تاریخ+ساعت بر همان اساس تفسیر می‌شوند.'
     : 'فرمت خروجی برنامه یا اکسل عمومی.'
   const unitNote = salesImportData.amountUnit === 'toman'
     ? 'واحد مبالغ: تومان (در سیستم ×۱۰ به ریال)'
@@ -1689,8 +1679,6 @@ export async function doSalesImport() {
   const paymentColMapped = isFieldMapped(mapping, 'paymentAmount')
   const priceColMapped = isFieldMapped(mapping, 'price')
   const isSite = salesImportData.isSiteFormat
-  const { dateTime: reviewedAt } = getNowJalaliDateTime()
-  const reviewerPhone = normalizePhone(getCurrentUser()?.phone || '')
   const hasAdvisorOptions = (salesImportData.advisorOptions || []).length > 0
 
   for (const row of salesImportData.rows) {
@@ -1816,17 +1804,8 @@ export async function doSalesImport() {
     const soldAt = buildSoldAt(getValue('soldAt'), getValue('soldAtTime')) || settlementDate || ''
     const depositorName = getValue('depositorName')
 
-    let paymentStatus
-    if (isFieldMapped(mapping, 'paymentStatus') && getValue('paymentStatus')) {
-      const paymentStatusRaw = getValue('paymentStatus')
-      paymentStatus = PAYMENT_STATUS_IMPORT[paymentStatusRaw]
-        || PAYMENT_STATUS_IMPORT[paymentStatusRaw.toLowerCase()]
-        || PAYMENT_STATUS.pending
-    } else if (isSite) {
-      paymentStatus = PAYMENT_STATUS.approved
-    } else {
-      paymentStatus = PAYMENT_STATUS.pending
-    }
+    // Accounting approval is never imported — all deposits stay pending for manual review
+    const paymentStatus = PAYMENT_STATUS.pending
 
     let paymentAmount = parseImportMoney(getValue('paymentAmount'))
 
@@ -1881,12 +1860,7 @@ export async function doSalesImport() {
       depositorName,
       destinationBank,
       paymentStatus,
-      soldByPhone: normalizePhone(getCurrentUser()?.phone || ''),
-      ...(paymentStatus === PAYMENT_STATUS.approved ? {
-        paymentReviewedAt: reviewedAt,
-        paymentReviewedBy: reviewerPhone,
-        paymentRejectReason: ''
-      } : {})
+      soldByPhone: normalizePhone(getCurrentUser()?.phone || '')
     })
 
     if (!product) {
