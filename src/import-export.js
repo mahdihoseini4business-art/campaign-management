@@ -10,7 +10,7 @@ import {
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
-import { getFilteredFollowups } from './followups.js'
+import { getFollowupsForExport } from './followups.js'
 import { renderSales, getFilteredSales, getSalesDateFilter } from './sales.js'
 
 // ============================================
@@ -20,8 +20,60 @@ import { renderSales, getFilteredSales, getSalesDateFilter } from './sales.js'
 
 /** Columns that are informational / legacy and never map to import fields */
 const INFO_ONLY_HEADERS = new Set([
-  'تعداد پیگیری', 'آخرین پیگیری', 'مانده'
+  'تعداد پیگیری', 'آخرین پیگیری', 'مانده', 'همه یادداشت‌ها'
 ])
+
+const FOLLOWUP_EXPORT_HEADERS = [
+  'شناسه مشتری', 'نام مشتری', 'تاریخ', 'نوع', 'نتیجه', 'پیگیری بعدی', 'توضیحات', 'ثبت‌کننده'
+]
+
+function followupsForCustomer(customerId, followups) {
+  return followups
+    .filter(f => f.customerId === customerId)
+    .slice()
+    .sort((a, b) => {
+      const dCmp = String(a.date || '').localeCompare(String(b.date || ''))
+      if (dCmp) return dCmp
+      return String(a.id || '').localeCompare(String(b.id || ''))
+    })
+}
+
+/** All timeline notes for one customer (profile notes stay in توضیحات separately). */
+function formatAllFollowupNotes(customerId, followups) {
+  return followupsForCustomer(customerId, followups).map(f => {
+    const note = String(f.notes || f.doneNote || '').trim()
+    if (!note) return ''
+    const meta = [f.date, f.type, f.result].filter(Boolean).join(' | ')
+    return meta ? `${meta}: ${note}` : note
+  }).filter(Boolean).join('\n')
+}
+
+function buildFollowupExportAoa(followups, customers) {
+  const rows = followups.map(f => {
+    const c = customers.find(x => x.id === f.customerId)
+    return [
+      f.customerId || '',
+      c ? (c.name || c.platformId || '') : '',
+      f.date || '',
+      f.type || '',
+      f.result || '',
+      f.nextDate || '',
+      f.notes || f.doneNote || '',
+      f.createdByPhone || ''
+    ]
+  })
+  return [FOLLOWUP_EXPORT_HEADERS, ...rows]
+}
+
+function sheetFromAoa(headers, rows) {
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+  const colWidths = headers.map((h, i) => {
+    const maxLen = Math.max(h.length, ...rows.map(r => String(r[i] ?? '').length))
+    return { wch: Math.min(Math.max(maxLen + 2, 10), 40) }
+  })
+  ws['!cols'] = colWidths
+  return ws
+}
 
 /** @deprecated alias — same as INFO_ONLY_HEADERS for auto-map skip */
 const AUTO_MAP_IGNORE_HEADERS = INFO_ONLY_HEADERS
@@ -147,9 +199,9 @@ function renderFieldMappingRows({ fields, headers, mapping, autoMapping = {}, on
   if (infoOnly.length) {
     unusedBlock += `
       <details class="import-unused import-unused-info">
-        <summary>${infoOnly.length} ستون اطلاعاتی قدیمی (در خروجی جدید نیست؛ ایمپورت نمی‌شود)</summary>
+        <summary>${infoOnly.length} ستون اطلاعاتی (برای ایمپورت مشتری لازم نیست)</summary>
         <div class="import-unused-list">${infoOnly.map(({ h }) => `<span>${escapeHtml(h)}</span>`).join('')}</div>
-        <p class="import-unused-note">این مقادیر از روی پیگیری‌ها محاسبه می‌شوند و با خروجی تب «پیگیری‌ها» قابل پشتیبان‌گیری هستند.</p>
+        <p class="import-unused-note">ستون‌هایی مثل «همه یادداشت‌ها» فقط برای پشتیبان‌گیری متنی هستند. جزئیات ساخت‌یافته در شیت «پیگیری‌ها»ی فایل Excel یا خروجی تب پیگیری‌هاست.</p>
       </details>
     `
   }
@@ -201,10 +253,11 @@ const PAYMENT_STATUS_IMPORT = {
 const EXPORT_CONFIG = {
   customers: {
     label: 'مشتریان',
-    // Must stay in sync with IMPORT_FIELDS labels for round-trip
+    // Core columns stay in sync with IMPORT_FIELDS; «همه یادداشت‌ها» is export-only
     headers: [
       'شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'شماره ۲', 'شماره ۳',
-      'وضعیت', 'سطح مشتری', 'شماره معرف', 'توضیحات', 'کارشناس', 'پیگیری بعدی'
+      'وضعیت', 'سطح مشتری', 'شماره معرف', 'توضیحات', 'کارشناس', 'پیگیری بعدی',
+      'همه یادداشت‌ها'
     ],
     getRows: () => {
       const data = getData()
@@ -226,26 +279,29 @@ const EXPORT_CONFIG = {
           c.referredByPhone || '',
           c.notes || '',
           c.advisor || '',
-          c.nextFollowupDate || ''
+          c.nextFollowupDate || '',
+          formatAllFollowupNotes(c.id, data.followups)
         ]
       })
     }
   },
   followups: {
     label: 'پیگیری‌ها',
-    headers: ['شناسه مشتری', 'نام مشتری', 'تاریخ', 'نوع', 'نتیجه', 'پیگیری بعدی', 'توضیحات'],
+    headers: FOLLOWUP_EXPORT_HEADERS,
     getRows: () => {
       const data = getData()
-      return getFilteredFollowups().map(f => {
+      const followups = getFollowupsForExport()
+      return followups.map(f => {
         const c = data.customers.find(x => x.id === f.customerId)
         return [
-          f.customerId,
-          c ? (c.name || '') : '',
+          f.customerId || '',
+          c ? (c.name || c.platformId || '') : '',
           f.date || '',
           f.type || '',
           f.result || '',
           f.nextDate || '',
-          f.notes || ''
+          f.notes || f.doneNote || '',
+          f.createdByPhone || ''
         ]
       })
     }
@@ -366,7 +422,7 @@ export function exportTabXLSX(tab) {
   if (!cfg) return
 
   const rows = cfg.getRows()
-  const ws = XLSX.utils.aoa_to_sheet([cfg.headers, ...rows])
+  const ws = sheetFromAoa(cfg.headers, rows)
 
   // Keep phone / id columns as text so Excel doesn't drop leading zeros
   if (tab === 'customers') {
@@ -383,16 +439,36 @@ export function exportTabXLSX(tab) {
     })
   }
 
-  const colWidths = cfg.headers.map((h, i) => {
-    const maxLen = Math.max(h.length, ...rows.map(r => String(r[i] ?? '').length))
-    return { wch: Math.min(Math.max(maxLen + 2, 10), 40) }
-  })
-  ws['!cols'] = colWidths
-
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, cfg.label)
+
+  // Customers Excel: second sheet with every followup/note for exported customers
+  let followupCount = 0
+  if (tab === 'customers') {
+    const data = getData()
+    const exportedIds = new Set(getFilteredCustomers().map(c => c.id))
+    const followups = data.followups
+      .filter(f => exportedIds.has(f.customerId))
+      .slice()
+      .sort((a, b) => {
+        const idCmp = String(a.customerId || '').localeCompare(String(b.customerId || ''))
+        if (idCmp) return idCmp
+        const dCmp = String(a.date || '').localeCompare(String(b.date || ''))
+        if (dCmp) return dCmp
+        return String(a.id || '').localeCompare(String(b.id || ''))
+      })
+    followupCount = followups.length
+    const fAoa = buildFollowupExportAoa(followups, data.customers)
+    const wsFollowups = sheetFromAoa(fAoa[0], fAoa.slice(1))
+    XLSX.utils.book_append_sheet(wb, wsFollowups, 'پیگیری‌ها')
+  }
+
   XLSX.writeFile(wb, `${cfg.label}_${new Date().toISOString().slice(0, 10)}.xlsx`)
-  showToast(`${rows.length} ردیف در Excel ذخیره شد`)
+  if (tab === 'customers' && followupCount > 0) {
+    showToast(`${rows.length} مشتری و ${followupCount} یادداشت/پیگیری در Excel ذخیره شد`)
+  } else {
+    showToast(`${rows.length} ردیف در Excel ذخیره شد`)
+  }
 }
 
 // ============================================

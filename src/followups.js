@@ -188,6 +188,27 @@ export function getFilteredFollowups() {
   })
 }
 
+/** All in-scope followups for export (ignores search box so backup is complete). */
+export function getFollowupsForExport() {
+  const data = getData()
+  const currentUser = getCurrentUser()
+  return data.followups
+    .filter(f => {
+      const customer = data.customers.find(c => c.id === f.customerId)
+      if (customer) return canSeeCustomer(customer, currentUser)
+      // Orphan notes: include for org-wide roles only
+      return canViewOrgWideData(currentUser)
+    })
+    .slice()
+    .sort((a, b) => {
+      const idCmp = String(a.customerId || '').localeCompare(String(b.customerId || ''))
+      if (idCmp) return idCmp
+      const dCmp = String(a.date || '').localeCompare(String(b.date || ''))
+      if (dCmp) return dCmp
+      return String(a.id || '').localeCompare(String(b.id || ''))
+    })
+}
+
 // ============================================
 // Badge + Stats
 // ============================================
