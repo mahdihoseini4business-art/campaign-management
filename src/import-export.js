@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, generateId } from './data.js'
+import { getData, saveCustomerToDB, generateId, getStatuses } from './data.js'
 import {
   toEnDigits, showToast, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
@@ -18,10 +18,13 @@ import { renderSales, getFilteredSales, getSalesDateFilter } from './sales.js'
 // ============================================
 
 
-/** Export-only / computed columns — never auto-map these headers */
-const AUTO_MAP_IGNORE_HEADERS = new Set([
+/** Columns that are informational / legacy and never map to import fields */
+const INFO_ONLY_HEADERS = new Set([
   'تعداد پیگیری', 'آخرین پیگیری', 'مانده'
 ])
+
+/** @deprecated alias — same as INFO_ONLY_HEADERS for auto-map skip */
+const AUTO_MAP_IGNORE_HEADERS = INFO_ONLY_HEADERS
 
 function normalizeHeaderLabel(h) {
   return String(h || '')
@@ -34,7 +37,7 @@ function normalizeHeaderLabel(h) {
 /**
  * Auto-map Excel headers → import field keys.
  * Pass 1: exact match on label/aliases (preferred).
- * Pass 2: safe contains only when label length ≥ 3 and header isn't ignored.
+ * Pass 2: short Excel header that is a prefix of the field label.
  */
 function autoMapColumns(headers, fields) {
   const mapping = {}
@@ -87,13 +90,28 @@ function autoMapColumns(headers, fields) {
   return mapping
 }
 
+function buildStatusImportMap() {
+  const map = { ...STATUS_MAP_IMPORT }
+  for (const s of getStatuses()) {
+    if (!s) continue
+    map[s.key] = s.key
+    if (s.label) {
+      map[s.label] = s.key
+      map[String(s.label).toLowerCase()] = s.key
+    }
+  }
+  return map
+}
+
 function renderFieldMappingRows({ fields, headers, mapping, autoMapping = {}, onChangeFn }) {
   const mappedCount = Object.keys(mapping).length
   const autoCount = Object.keys(autoMapping).length
-  const unusedHeaders = headers
-    .map((h, i) => ({ h, i }))
+  const unused = headers
+    .map((h, i) => ({ h: h || '(خالی)', i }))
     .filter(({ i }) => !Object.values(mapping).includes(i))
-    .map(({ h }) => h || '(خالی)')
+
+  const infoOnly = unused.filter(({ h }) => INFO_ONLY_HEADERS.has(h))
+  const unexpected = unused.filter(({ h }) => !INFO_ONLY_HEADERS.has(h))
 
   const hint = autoCount > 0
     ? `${autoCount} فیلد از روی نام ستون‌های اکسل به‌صورت خودکار مپ شد — در صورت نیاز اصلاح کنید.`
@@ -126,11 +144,20 @@ function renderFieldMappingRows({ fields, headers, mapping, autoMapping = {}, on
   }).join('')
 
   let unusedBlock = ''
-  if (unusedHeaders.length) {
-    unusedBlock = `
+  if (infoOnly.length) {
+    unusedBlock += `
+      <details class="import-unused import-unused-info">
+        <summary>${infoOnly.length} ستون اطلاعاتی قدیمی (در خروجی جدید نیست؛ ایمپورت نمی‌شود)</summary>
+        <div class="import-unused-list">${infoOnly.map(({ h }) => `<span>${escapeHtml(h)}</span>`).join('')}</div>
+        <p class="import-unused-note">این مقادیر از روی پیگیری‌ها محاسبه می‌شوند و با خروجی تب «پیگیری‌ها» قابل پشتیبان‌گیری هستند.</p>
+      </details>
+    `
+  }
+  if (unexpected.length) {
+    unusedBlock += `
       <details class="import-unused">
-        <summary>${unusedHeaders.length} ستون اکسل استفاده نشده (نادیده گرفته می‌شوند)</summary>
-        <div class="import-unused-list">${unusedHeaders.map(h => `<span>${escapeHtml(h)}</span>`).join('')}</div>
+        <summary>${unexpected.length} ستون بدون مپینگ (نادیده گرفته می‌شوند)</summary>
+        <div class="import-unused-list">${unexpected.map(({ h }) => `<span>${escapeHtml(h)}</span>`).join('')}</div>
       </details>
     `
   }
@@ -174,21 +201,14 @@ const PAYMENT_STATUS_IMPORT = {
 const EXPORT_CONFIG = {
   customers: {
     label: 'مشتریان',
+    // Must stay in sync with IMPORT_FIELDS labels for round-trip
     headers: [
-      'شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'شماره ۲', 'شماره ۳', 'وضعیت', 'سطح مشتری', 'کارشناس',
-      'تعداد پیگیری', 'آخرین پیگیری', 'پیگیری بعدی', 'توضیحات'
+      'شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'شماره ۲', 'شماره ۳',
+      'وضعیت', 'سطح مشتری', 'شماره معرف', 'توضیحات', 'کارشناس', 'پیگیری بعدی'
     ],
     getRows: () => {
       const data = getData()
       return getFilteredCustomers().map(c => {
-        const customerFollowups = data.followups.filter(f => f.customerId === c.id)
-        const lastDate = customerFollowups.length
-          ? customerFollowups[customerFollowups.length - 1].date
-          : ''
-        const lastNote = customerFollowups.length
-          ? (customerFollowups[customerFollowups.length - 1].notes || '')
-          : ''
-        const notes = lastNote || c.notes || ''
         const level = c.customerLevelLocked
           ? (c.customerLevel || '')
           : syncCustomerLevel(c, data.customers, data.followups)
@@ -203,11 +223,10 @@ const EXPORT_CONFIG = {
           phones[2] || '',
           getStatusLabels()[c.status] || c.status || '',
           formatCustomerLevel(level) === '—' ? '' : formatCustomerLevel(level),
+          c.referredByPhone || '',
+          c.notes || '',
           c.advisor || '',
-          customerFollowups.length,
-          lastDate,
-          c.nextFollowupDate || '',
-          notes
+          c.nextFollowupDate || ''
         ]
       })
     }
@@ -348,6 +367,21 @@ export function exportTabXLSX(tab) {
 
   const rows = cfg.getRows()
   const ws = XLSX.utils.aoa_to_sheet([cfg.headers, ...rows])
+
+  // Keep phone / id columns as text so Excel doesn't drop leading zeros
+  if (tab === 'customers') {
+    const textCols = new Set([0, 1, 4, 5, 6, 9]) // شناسه، ایدی، شماره‌ها، معرف
+    rows.forEach((row, r) => {
+      textCols.forEach(c => {
+        const addr = XLSX.utils.encode_cell({ r: r + 1, c })
+        const cell = ws[addr]
+        if (!cell || cell.v === '' || cell.v == null) return
+        cell.t = 's'
+        cell.v = String(cell.v)
+        cell.z = '@'
+      })
+    })
+  }
 
   const colWidths = cfg.headers.map((h, i) => {
     const maxLen = Math.max(h.length, ...rows.map(r => String(r[i] ?? '').length))
@@ -531,6 +565,7 @@ export async function doImport() {
 
   let created = 0, updated = 0, skipped = 0, failed = 0
   const users = await getUsersSafe()
+  const statusMap = buildStatusImportMap()
 
   for (const row of importData.rows) {
     const getValue = (fieldKey) => {
@@ -557,7 +592,7 @@ export async function doImport() {
     const platformRaw = getValue('platform').toLowerCase()
     const platform = buildPlatformImportMap()[platformRaw] || platformRaw || 'instagram'
     const statusRaw = getValue('status')
-    const status = STATUS_MAP_IMPORT[statusRaw] || statusRaw || 'new'
+    const status = statusMap[statusRaw] || statusMap[statusRaw.toLowerCase()] || statusRaw || 'new'
 
     // Match existing: id → phone → platformId (only when provided in file)
     let existing = null

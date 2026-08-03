@@ -1464,11 +1464,15 @@
     margin-top: 8px;
   }
 
-  .import-unused-list span {
-    background: #f1f5f9;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 2px 8px;
+  .import-unused-note {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-muted);
+  }
+
+  .import-unused-info summary {
+    color: var(--text-muted);
   }
 
   /* --- Modal --- */
