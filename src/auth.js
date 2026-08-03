@@ -1423,7 +1423,10 @@ export function applyPermissions() {
 
   const activeTab = document.querySelector('.tab.active')
   if (activeTab && activeTab.style.display === 'none') {
-    const firstVisible = document.querySelector('.tab:not([style*="display: none"])')
+    const dashTab = document.getElementById('tab-dashboard')
+    const firstVisible = (dashTab && dashTab.style.display !== 'none')
+      ? dashTab
+      : document.querySelector('.tab:not([style*="display: none"])')
     if (firstVisible) firstVisible.click()
   }
 }

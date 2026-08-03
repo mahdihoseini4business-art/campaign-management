@@ -48,8 +48,8 @@ function isLocalWriteSuppressed() {
 
 function getActiveSheet() {
   const sheet = document.querySelector('.sheet.active')
-  if (!sheet?.id) return 'customers'
-  return sheet.id.replace(/^sheet-/, '') || 'customers'
+  if (!sheet?.id) return 'dashboard'
+  return sheet.id.replace(/^sheet-/, '') || 'dashboard'
 }
 
 function isDetailModalOpen() {

@@ -311,15 +311,15 @@
 
 <div class="content">
   <div class="tabs" role="tablist" aria-label="بخش‌های اصلی">
-    <button class="tab tab-dashboard" role="tab" id="tab-dashboard" aria-controls="sheet-dashboard" aria-selected="false" tabindex="-1" onclick="app.switchTab('dashboard', this)">داشبورد</button>
-    <button class="tab active" role="tab" id="tab-customers" aria-controls="sheet-customers" aria-selected="true" tabindex="0" onclick="app.switchTab('customers', this)">لیست مشتریان</button>
+    <button class="tab tab-dashboard active" role="tab" id="tab-dashboard" aria-controls="sheet-dashboard" aria-selected="true" tabindex="0" onclick="app.switchTab('dashboard', this)">داشبورد</button>
+    <button class="tab" role="tab" id="tab-customers" aria-controls="sheet-customers" aria-selected="false" tabindex="-1" onclick="app.switchTab('customers', this)">لیست مشتریان</button>
     <button class="tab" role="tab" id="tab-followups" aria-controls="sheet-followups" aria-selected="false" tabindex="-1" onclick="app.switchTab('followups', this)">فالوآپ‌ها <span class="followup-tab-badge" id="followupTabBadge" style="display:none;">0</span></button>
     <button class="tab" role="tab" id="tab-sales" aria-controls="sheet-sales" aria-selected="false" tabindex="-1" onclick="app.switchTab('sales', this)">فروش‌ها</button>
     <button class="tab" role="tab" id="tab-accounting" aria-controls="sheet-accounting" aria-selected="false" tabindex="-1" data-perm="accounting" onclick="app.switchTab('accounting', this)">حسابداری</button>
   </div>
 
   <!-- شیت داشبورد -->
-  <div class="sheet" id="sheet-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" hidden>
+  <div class="sheet active" id="sheet-dashboard" role="tabpanel" aria-labelledby="tab-dashboard">
     <div class="dash-filters" style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
       <div style="font-size:16px;font-weight:600;">فیلتر تاریخ:</div>
       <input type="text" class="form-input" id="dashDateFrom" placeholder="از تاریخ" data-jdp style="width:150px;">
@@ -401,7 +401,13 @@
         <canvas id="chartSalesStatus"></canvas>
       </div>
       <div class="chart-card">
-        <div class="chart-title">فروش بر اساس محصول</div>
+        <div class="chart-title-row">
+          <div class="chart-title">فروش بر اساس محصول</div>
+          <select class="form-select" id="productChartMetric" style="width:150px;" onchange="app.onProductChartMetricChange()">
+            <option value="amount">بر اساس مبلغ</option>
+            <option value="count">بر اساس تعداد</option>
+          </select>
+        </div>
         <canvas id="chartProducts"></canvas>
       </div>
       <div class="chart-card chart-card-wide">
@@ -467,7 +473,7 @@
   </div>
 
   <!-- شیت مشتریان -->
-  <div class="sheet active" id="sheet-customers" role="tabpanel" aria-labelledby="tab-customers">
+  <div class="sheet" id="sheet-customers" role="tabpanel" aria-labelledby="tab-customers" hidden>
     <div class="stats">
       <div class="stat-card"><div class="label">کل مخاطبین</div><div class="value" id="stat-total">0</div></div>
       <div class="stat-card"><div class="label">کل مشتریان</div><div class="value" style="color: var(--tag-ld)" id="stat-ld">0</div></div>

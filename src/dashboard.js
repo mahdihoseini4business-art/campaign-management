@@ -16,6 +16,8 @@ let selectedAdvisorPhones = null
 let dashUsersCache = []
 let dashUserDropdownInited = false
 let salesChartDefaultsReady = false
+/** Cached aggregates for product chart metric toggle */
+let productChartCache = { amounts: {}, counts: {} }
 
 const TIMEFRAME_DAYS = { day: 1, week: 7, month: 30 }
 const TIMEFRAME_LABELS = { day: '۱ روز', week: '۱ هفته', month: '۱ ماه' }
@@ -833,6 +835,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
 
   const salesStatus = { 'تکمیل': 0, 'بیعانه': 0 }
   const productSales = {}
+  const productCounts = {}
   const hasDateFilter = dateFromNum > 0 || dateToNum < 99999999
 
   forEachDashSalePayment(
@@ -846,6 +849,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
       salesStatus[statusKey] = (salesStatus[statusKey] || 0) + value
       const name = product.name || '—'
       productSales[name] = (productSales[name] || 0) + value
+      productCounts[name] = (productCounts[name] || 0) + 1
     }
   )
 
@@ -858,22 +862,57 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Vazirmatn', size: 11 } } } } }
   })
 
-  dashCharts.products = new Chart(document.getElementById('chartProducts'), {
-    type: 'bar',
-    data: {
-      labels: Object.keys(productSales),
-      datasets: [{ label: 'مبلغ فروش', data: Object.values(productSales), backgroundColor: '#0d6efd', borderRadius: 6 }]
-    },
-    options: {
-      responsive: true,
-      indexAxis: 'y',
-      plugins: { legend: { display: false } },
-      scales: { x: { ticks: { font: { family: 'monospace' }, callback: v => formatNumber(v) } } }
-    }
-  })
+  renderProductSalesChart(productSales, productCounts)
 
   renderAdvisorCompareChart(dateFromNum, dateToNum)
   renderSalesTimelineChart(dateFromNum, dateToNum, currentUser)
+}
+
+function renderProductSalesChart(productSales = null, productCounts = null) {
+  if (productSales) productChartCache.amounts = productSales
+  if (productCounts) productChartCache.counts = productCounts
+
+  const metric = document.getElementById('productChartMetric')?.value === 'count' ? 'count' : 'amount'
+  const source = metric === 'count' ? productChartCache.counts : productChartCache.amounts
+  const labels = Object.keys(source)
+  const values = Object.values(source)
+  const label = metric === 'count' ? 'تعداد فروش' : 'مبلغ فروش'
+
+  if (dashCharts.products) {
+    try { dashCharts.products.destroy() } catch (_) {}
+  }
+
+  dashCharts.products = new Chart(document.getElementById('chartProducts'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label, data: values, backgroundColor: '#0d6efd', borderRadius: 6 }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          ticks: {
+            font: { family: 'Vazirmatn', size: 10 },
+            maxRotation: 45,
+            minRotation: 0
+          }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: {
+            font: { family: 'monospace' },
+            callback: v => (metric === 'count' && !Number.isInteger(v)) ? undefined : formatNumber(v)
+          }
+        }
+      }
+    }
+  })
+}
+
+export function onProductChartMetricChange() {
+  renderProductSalesChart()
 }
 
 function advisorLabelForPhone(phone, fallbackName = '') {
