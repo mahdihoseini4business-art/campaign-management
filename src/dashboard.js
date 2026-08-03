@@ -19,6 +19,19 @@ let salesChartDefaultsReady = false
 /** Cached aggregates for product chart metric toggle */
 let productChartCache = { amounts: {}, counts: {} }
 
+/** Safari/WebKit often lays out chart parents a frame late; force one resize after paint. */
+function scheduleDashChartsResize() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      Object.values(dashCharts).forEach(chart => {
+        try {
+          if (chart && typeof chart.resize === 'function') chart.resize()
+        } catch (_) { /* ignore */ }
+      })
+    })
+  })
+}
+
 const TIMEFRAME_DAYS = { day: 1, week: 7, month: 30 }
 const TIMEFRAME_LABELS = { day: '۱ روز', week: '۱ هفته', month: '۱ ماه' }
 const ADVISOR_CHART_COLORS = [
@@ -481,6 +494,7 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
       }
     }
   })
+  scheduleDashChartsResize()
 }
 
 // ============================================
@@ -945,6 +959,8 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
   } catch (e) {
     console.error('targets progress error:', e)
   }
+
+  scheduleDashChartsResize()
 }
 
 function targetDeadlineInfo(endDate) {
@@ -1124,6 +1140,7 @@ function renderProductSalesChart(productSales = null, productCounts = null) {
       }
     }
   })
+  scheduleDashChartsResize()
 }
 
 export function onProductChartMetricChange() {
@@ -1214,6 +1231,7 @@ function renderAdvisorCompareChart(dateFromNum, dateToNum) {
         }
       }
     })
+    scheduleDashChartsResize()
     return
   }
 
@@ -1240,6 +1258,7 @@ function renderAdvisorCompareChart(dateFromNum, dateToNum) {
       }
     }
   })
+  scheduleDashChartsResize()
 }
 
 export function onAdvisorCompareTypeChange() {

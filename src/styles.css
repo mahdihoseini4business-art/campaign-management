@@ -2986,18 +2986,26 @@
   }
 
   /* --- Charts Responsive --- */
+  /* Chart.js needs a relatively-positioned, fixed-height parent.
+     Do NOT constrain canvas with max-width/max-height — Safari/WebKit
+     then shrinks charts to 0 or stretches them incorrectly. */
   .chart-container {
     position: relative;
     width: 100%;
-    max-height: 220px;
+    height: 200px;
+    overflow: hidden;
   }
 
   .chart-container-sm {
     height: 200px;
-    max-height: 200px;
   }
 
   .chart-container canvas {
+    display: block;
+    box-sizing: border-box;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
     max-height: none !important;
   }
 
@@ -3013,6 +3021,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 16px;
+    min-width: 0; /* Safari CSS Grid: allow shrink so canvas can size */
     min-height: 200px;
   }
 
@@ -3022,7 +3031,6 @@
   }
 
   .chart-container-tall {
-    max-height: none;
     height: 280px;
   }
 
@@ -3116,12 +3124,7 @@
   }
 
   .chart-container-advisor {
-    max-height: none;
     height: 280px;
-  }
-
-  .chart-container-advisor canvas {
-    max-height: none;
   }
 
   @media (max-width: 900px) {
@@ -3137,10 +3140,6 @@
     .chart-card {
       min-height: 180px;
     }
-  }
-
-  canvas {
-    max-width: 100%;
   }
 
   /* --- Sales targets progress --- */
