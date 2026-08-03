@@ -1,4 +1,4 @@
-import { getData, getStatuses } from './data.js'
+import { getData, getStatuses, getSalesTargets } from './data.js'
 import { getUsersSafe } from './auth.js'
 import {
   hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliNum,
@@ -866,6 +866,114 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
 
   renderAdvisorCompareChart(dateFromNum, dateToNum)
   renderSalesTimelineChart(dateFromNum, dateToNum, currentUser)
+  renderDashTargetsProgress(dateFromNum, dateToNum)
+}
+
+function targetDeadlineInfo(endDate) {
+  if (!endDate) return null
+  const today = getTodayJalaliStr()
+  const daysLeft = jalaliDiffDays(today, endDate)
+  if (daysLeft == null) return null
+  if (daysLeft < 0) {
+    return { text: 'مهلت گذشته', className: 'is-overdue', overdue: true, warning: false }
+  }
+  if (daysLeft === 0) {
+    return { text: 'مهلت امروز', className: 'is-warning', overdue: false, warning: true }
+  }
+  if (daysLeft <= 3) {
+    return { text: `${formatNumber(daysLeft)} روز مانده`, className: 'is-warning', overdue: false, warning: true }
+  }
+  return { text: `${formatNumber(daysLeft)} روز مانده`, className: '', overdue: false, warning: false }
+}
+
+function computeSalesTargetCurrent(target, dateFromNum, dateToNum) {
+  const fromNum = target.startDate ? jalaliToNum(target.startDate) : (dateFromNum || 0)
+  const toNum = target.endDate ? jalaliToNum(target.endDate) : (dateToNum || 99999999)
+  const hasDateFilter = fromNum > 0 || toNum < 99999999
+  function inRange(dateStr) {
+    if (!hasDateFilter) return true
+    if (!dateStr) return false
+    const n = jalaliToNum(dateStr)
+    return n >= fromNum && n <= toNum
+  }
+
+  const productSet = new Set(target.productNames || [])
+  function productOk(name) {
+    return productSet.size === 0 || productSet.has(name || '')
+  }
+
+  let current = 0
+  if (target.metric === 'count') {
+    forEachDashSalePayment(
+      matchesSelectedSaleRegistrant,
+      hasDateFilter,
+      inRange,
+      () => {},
+      ({ product }) => {
+        if (!productOk(product.name)) return
+        current++
+      }
+    )
+  } else {
+    forEachDashSalePayment(
+      matchesSelectedSaleRegistrant,
+      hasDateFilter,
+      inRange,
+      ({ product, amount }) => {
+        if (!productOk(product.name)) return
+        current += amount
+      }
+    )
+  }
+  return current
+}
+
+function renderDashTargetsProgress(dateFromNum, dateToNum) {
+  const el = document.getElementById('dashTargetsProgress')
+  if (!el) return
+
+  const targets = getSalesTargets()
+  if (targets.length === 0) {
+    el.innerHTML = '<div class="dash-targets-empty">هنوز تارگتی تعریف نشده. از تنظیمات سیستم اضافه کنید.</div>'
+    return
+  }
+
+  el.innerHTML = targets.map(target => {
+    const goal = Number(target.value) || 0
+    const current = computeSalesTargetCurrent(target, dateFromNum, dateToNum)
+    const pct = goal > 0 ? Math.min(100, Math.round((current / goal) * 1000) / 10) : 0
+    const complete = goal > 0 && current >= goal
+    const deadline = targetDeadlineInfo(target.endDate)
+    let fillClass = ''
+    if (complete) fillClass = 'is-complete'
+    else if (deadline?.overdue) fillClass = 'is-overdue'
+    else if (deadline?.warning) fillClass = 'is-warning'
+
+    const unit = target.metric === 'count' ? 'فروش' : 'ریال'
+    const currentLabel = `${formatNumber(current)} ${unit}`
+    const goalLabel = `${formatNumber(goal)} ${unit}`
+    const productsHint = (target.productNames || []).length
+      ? escapeHtml(target.productNames.join('، '))
+      : 'همه محصولات'
+    const metricHint = target.metric === 'count' ? 'تعداد' : 'مبلغ تأییدشده'
+
+    return `
+      <div class="dash-target-row">
+        <div class="dash-target-head">
+          <div class="dash-target-title">${escapeHtml(target.title)}</div>
+          <div class="dash-target-meta">${metricHint} · ${productsHint}</div>
+        </div>
+        <div class="dash-target-values">
+          <span>${currentLabel} / ${goalLabel}</span>
+          <span class="dash-target-pct">${formatNumber(pct)}٪</span>
+        </div>
+        <div class="dash-target-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}" aria-label="${escapeAttr(target.title)}">
+          <div class="dash-target-bar-fill ${fillClass}" style="width:${pct}%;"></div>
+        </div>
+        ${deadline ? `<div class="dash-target-deadline ${deadline.className}">${escapeHtml(deadline.text)}${target.endDate ? ` · تا ${escapeHtml(target.endDate)}` : ''}</div>` : ''}
+      </div>
+    `
+  }).join('')
 }
 
 function renderProductSalesChart(productSales = null, productCounts = null) {

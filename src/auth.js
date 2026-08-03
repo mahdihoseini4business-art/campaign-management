@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones, syncToolbarActionsMenus } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getPlatforms, savePlatforms, getStatuses, saveStatuses } from './data.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum } from './utils.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getPlatforms, savePlatforms, getStatuses, saveStatuses, getSalesTargets, saveSalesTargets } from './data.js'
 
 // ============================================
 // Password Hashing (PBKDF2)
@@ -315,6 +315,7 @@ const SETTINGS_SECTIONS = [
   { id: 'users', label: 'کاربران و دسترسی‌ها', group: null, keywords: 'کاربر دسترسی permission user admin' },
   { id: 'banks', label: 'بانک‌های مقصد', group: 'داده‌های پایه', keywords: 'بانک واریز bank destination' },
   { id: 'products', label: 'کاتالوگ محصولات', group: 'داده‌های پایه', keywords: 'محصول product catalog' },
+  { id: 'sales-targets', label: 'تارگت‌های فروش', group: 'داده‌های پایه', keywords: 'تارگت هدف فروش target goal quota' },
   { id: 'platforms', label: 'پلتفرم‌ها', group: 'داده‌های پایه', keywords: 'پلتفرم platform' },
   { id: 'statuses', label: 'وضعیت‌های مشتری', group: 'داده‌های پایه', keywords: 'وضعیت status' },
   { id: 'notif-compose', label: 'ارسال اعلان', group: 'اعلان‌ها', keywords: 'اعلان notification ارسال' },
@@ -331,6 +332,7 @@ let _editingBankIdx = null
 let _editingProductIdx = null
 let _editingPlatformIdx = null
 let _editingStatusIdx = null
+let _editingSalesTargetId = null
 
 function ensureSettingsEscapeHandler() {
   if (_settingsEscapeBound) return
@@ -406,6 +408,7 @@ function applySettingsSection(sectionId) {
 
   if (sectionId === 'banks') renderDestinationBanksSettings()
   else if (sectionId === 'products') renderProductCatalogSettings()
+  else if (sectionId === 'sales-targets') renderSalesTargetsSettings()
   else if (sectionId === 'platforms') renderPlatformsSettings()
   else if (sectionId === 'statuses') renderStatusesSettings()
 }
@@ -1040,6 +1043,213 @@ export async function removeProductCatalogItem(index) {
     } catch (e) {
       console.error('removeProductCatalogItem error:', e)
       showToast('خطا در حذف محصول')
+    }
+  }, 'حذف')
+}
+
+// ============================================
+// Sales targets Settings
+// ============================================
+
+function parseSalesTargetValueInput(raw) {
+  const cleaned = toEnDigits(String(raw || '')).replace(/[^\d.-]/g, '')
+  const n = Number(cleaned)
+  return Number.isFinite(n) ? n : NaN
+}
+
+function getSelectedSalesTargetProducts() {
+  const box = document.getElementById('salesTargetProducts')
+  if (!box) return []
+  return [...box.querySelectorAll('input[type="checkbox"][data-product]:checked')]
+    .map(el => el.getAttribute('data-product') || '')
+    .filter(Boolean)
+}
+
+function renderSalesTargetProductChecks(selectedNames = []) {
+  const box = document.getElementById('salesTargetProducts')
+  if (!box) return
+  const selected = new Set((selectedNames || []).map(String))
+  const catalog = getProductCatalog()
+  box.innerHTML = catalog.map(name => `
+    <label class="settings-target-product-item">
+      <input type="checkbox" data-product="${escapeAttr(name)}"${selected.has(name) ? ' checked' : ''}>
+      <span>${escapeHtml(name)}</span>
+    </label>
+  `).join('')
+}
+
+function clearSalesTargetForm() {
+  _editingSalesTargetId = null
+  const idEl = document.getElementById('editSalesTargetId')
+  if (idEl) idEl.value = ''
+  const titleEl = document.getElementById('salesTargetTitle')
+  if (titleEl) titleEl.value = ''
+  const metricEl = document.getElementById('salesTargetMetric')
+  if (metricEl) metricEl.value = 'amount'
+  const valueEl = document.getElementById('salesTargetValue')
+  if (valueEl) valueEl.value = ''
+  const startEl = document.getElementById('salesTargetStart')
+  if (startEl) startEl.value = ''
+  const endEl = document.getElementById('salesTargetEnd')
+  if (endEl) endEl.value = ''
+  renderSalesTargetProductChecks([])
+  onSalesTargetMetricChange()
+  const saveBtn = document.getElementById('salesTargetSaveBtn')
+  if (saveBtn) saveBtn.textContent = 'افزودن تارگت'
+  const cancelBtn = document.getElementById('salesTargetCancelBtn')
+  if (cancelBtn) cancelBtn.hidden = true
+}
+
+export function onSalesTargetMetricChange() {
+  const metric = document.getElementById('salesTargetMetric')?.value === 'count' ? 'count' : 'amount'
+  const label = document.getElementById('salesTargetValueLabel')
+  const input = document.getElementById('salesTargetValue')
+  if (label) label.textContent = metric === 'count' ? 'مقدار هدف (تعداد)' : 'مقدار هدف (ریال)'
+  if (input) input.placeholder = metric === 'count' ? 'مثلاً ۵۰' : 'مثلاً ۱۰۰۰۰۰۰۰۰'
+}
+
+function salesTargetMetaText(t) {
+  const metricLabel = t.metric === 'count' ? 'تعداد' : 'مبلغ'
+  const valueLabel = t.metric === 'count'
+    ? `${formatNumber(t.value)} فروش`
+    : `${formatNumber(t.value)} ریال`
+  const products = (t.productNames || []).length
+    ? t.productNames.join('، ')
+    : 'همه محصولات'
+  const rangeParts = []
+  if (t.startDate) rangeParts.push(`از ${t.startDate}`)
+  if (t.endDate) rangeParts.push(`تا ${t.endDate}`)
+  const range = rangeParts.length ? rangeParts.join(' ') : 'بدون بازه زمانی'
+  return `${metricLabel}: ${valueLabel} · ${products} · ${range}`
+}
+
+export function renderSalesTargetsSettings() {
+  renderSalesTargetProductChecks(
+    _editingSalesTargetId
+      ? (getSalesTargets().find(t => t.id === _editingSalesTargetId)?.productNames || [])
+      : getSelectedSalesTargetProducts()
+  )
+  onSalesTargetMetricChange()
+
+  const list = document.getElementById('settingsSalesTargetsList')
+  if (!list) return
+  const targets = getSalesTargets()
+  if (targets.length === 0) {
+    list.innerHTML = '<div class="settings-empty-detail">هنوز تارگتی ثبت نشده</div>'
+    return
+  }
+  list.innerHTML = targets.map(t => `
+    <div class="settings-config-row settings-target-row${_editingSalesTargetId === t.id ? ' is-editing' : ''}">
+      <div class="settings-config-label">
+        <div>${escapeHtml(t.title)}</div>
+        <div class="settings-config-meta">${escapeHtml(salesTargetMetaText(t))}</div>
+      </div>
+      <button type="button" class="btn-icon" title="ویرایش" onclick="app.startSalesTargetEdit('${escapeAttr(t.id)}')">✏️</button>
+      <button type="button" class="btn-icon" title="حذف" onclick="app.removeSalesTarget('${escapeAttr(t.id)}')" style="color:var(--danger);">🗑</button>
+    </div>
+  `).join('')
+}
+
+export function startSalesTargetEdit(id) {
+  if (!requireMainAdmin()) return
+  const target = getSalesTargets().find(t => t.id === id)
+  if (!target) return
+  _editingSalesTargetId = id
+  const idEl = document.getElementById('editSalesTargetId')
+  if (idEl) idEl.value = id
+  const titleEl = document.getElementById('salesTargetTitle')
+  if (titleEl) titleEl.value = target.title || ''
+  const metricEl = document.getElementById('salesTargetMetric')
+  if (metricEl) metricEl.value = target.metric === 'count' ? 'count' : 'amount'
+  const valueEl = document.getElementById('salesTargetValue')
+  if (valueEl) valueEl.value = formatNumber(target.value) || String(target.value)
+  const startEl = document.getElementById('salesTargetStart')
+  if (startEl) startEl.value = target.startDate || ''
+  const endEl = document.getElementById('salesTargetEnd')
+  if (endEl) endEl.value = target.endDate || ''
+  renderSalesTargetProductChecks(target.productNames || [])
+  onSalesTargetMetricChange()
+  const saveBtn = document.getElementById('salesTargetSaveBtn')
+  if (saveBtn) saveBtn.textContent = 'ذخیره تغییرات'
+  const cancelBtn = document.getElementById('salesTargetCancelBtn')
+  if (cancelBtn) cancelBtn.hidden = false
+  renderSalesTargetsSettings()
+  titleEl?.focus()
+}
+
+export function cancelSalesTargetEdit() {
+  clearSalesTargetForm()
+  renderSalesTargetsSettings()
+}
+
+export async function saveSalesTargetForm() {
+  if (!requireMainAdmin()) return
+  const title = (document.getElementById('salesTargetTitle')?.value || '').trim()
+  const metric = document.getElementById('salesTargetMetric')?.value === 'count' ? 'count' : 'amount'
+  const value = parseSalesTargetValueInput(document.getElementById('salesTargetValue')?.value)
+  const startDate = toEnDigits((document.getElementById('salesTargetStart')?.value || '').trim())
+  const endDate = toEnDigits((document.getElementById('salesTargetEnd')?.value || '').trim())
+  const productNames = getSelectedSalesTargetProducts()
+
+  if (!title) { showToast('عنوان تارگت را وارد کنید'); return }
+  if (!Number.isFinite(value) || value <= 0) { showToast('مقدار هدف باید عدد مثبت باشد'); return }
+  if (startDate && endDate) {
+    if (jalaliToNum(startDate) > jalaliToNum(endDate)) {
+      showToast('تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد')
+      return
+    }
+  }
+
+  const existing = getSalesTargets()
+  const editingId = _editingSalesTargetId || document.getElementById('editSalesTargetId')?.value || ''
+  let next
+  if (editingId && existing.some(t => t.id === editingId)) {
+    next = existing.map(t => t.id === editingId ? {
+      ...t,
+      title,
+      metric,
+      value,
+      productNames,
+      startDate,
+      endDate
+    } : t)
+  } else {
+    next = [...existing, {
+      id: `tgt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      title,
+      metric,
+      value,
+      productNames,
+      startDate,
+      endDate,
+      createdAt: new Date().toISOString()
+    }]
+  }
+
+  try {
+    await saveSalesTargets(next)
+    clearSalesTargetForm()
+    renderSalesTargetsSettings()
+    showToast(editingId ? 'تارگت ذخیره شد' : 'تارگت اضافه شد')
+  } catch (e) {
+    console.error('saveSalesTargetForm error:', e)
+    showToast('خطا در ذخیره تارگت')
+  }
+}
+
+export async function removeSalesTarget(id) {
+  if (!requireMainAdmin()) return
+  const target = getSalesTargets().find(t => t.id === id)
+  if (!target) return
+  openSettingsConfirm(`حذف تارگت «${target.title}»؟`, async () => {
+    try {
+      await saveSalesTargets(getSalesTargets().filter(t => t.id !== id))
+      if (_editingSalesTargetId === id) clearSalesTargetForm()
+      renderSalesTargetsSettings()
+      showToast('تارگت حذف شد')
+    } catch (e) {
+      console.error('removeSalesTarget error:', e)
+      showToast('خطا در حذف تارگت')
     }
   }, 'حذف')
 }

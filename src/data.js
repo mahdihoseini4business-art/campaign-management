@@ -50,6 +50,7 @@ let data = {
   productCatalog: [],
   platforms: [],
   statuses: [],
+  salesTargets: [],
   saleToastEnabled: true
 }
 
@@ -222,6 +223,7 @@ export async function loadData() {
     ? [...settings.statuses].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [...DEFAULT_STATUSES]
   data.saleToastEnabled = settings.sale_toast_enabled !== false && settings.sale_toast_enabled !== 'false'
+  data.salesTargets = normalizeSalesTargets(settings.sales_targets)
 
   injectDynamicStyles()
 
@@ -320,6 +322,51 @@ export async function saveProductCatalog(products) {
   data.productCatalog = cleaned.length ? cleaned : [...DEFAULT_PRODUCT_CATALOG]
   await saveSetting('product_catalog', data.productCatalog)
   return getProductCatalog()
+}
+
+// ============================================
+// Sales targets
+// ============================================
+
+function normalizeSalesTargets(raw) {
+  let list = raw
+  if (typeof list === 'string' && list.trim()) {
+    try { list = JSON.parse(list) } catch (_) { return [] }
+  }
+  if (!Array.isArray(list)) return []
+  return list.map(item => {
+    if (!item || typeof item !== 'object') return null
+    const metric = item.metric === 'count' ? 'count' : 'amount'
+    const value = Number(item.value)
+    if (!Number.isFinite(value) || value <= 0) return null
+    const productNames = Array.isArray(item.productNames)
+      ? [...new Set(item.productNames.map(p => String(p || '').trim()).filter(Boolean))]
+      : []
+    const title = String(item.title || '').trim() || (metric === 'count' ? 'تارگت تعداد' : 'تارگت مبلغ')
+    const startDate = String(item.startDate || '').trim()
+    const endDate = String(item.endDate || '').trim()
+    const id = String(item.id || '').trim() || `tgt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    return {
+      id,
+      title,
+      metric,
+      value,
+      productNames,
+      startDate,
+      endDate,
+      createdAt: String(item.createdAt || '').trim() || new Date().toISOString()
+    }
+  }).filter(Boolean)
+}
+
+export function getSalesTargets() {
+  return Array.isArray(data.salesTargets) ? data.salesTargets.map(t => ({ ...t, productNames: [...(t.productNames || [])] })) : []
+}
+
+export async function saveSalesTargets(targets) {
+  data.salesTargets = normalizeSalesTargets(targets)
+  await saveSetting('sales_targets', data.salesTargets)
+  return getSalesTargets()
 }
 
 // ============================================
