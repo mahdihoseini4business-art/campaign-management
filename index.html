@@ -30,153 +30,216 @@
 </div>
 <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
-<!-- مودال تنظیمات -->
-<div class="modal-overlay" id="settingsModal">
-  <div class="modal" style="max-width: 640px;">
-    <div class="modal-header">
-      <h2>تنظیمات و مدیریت کاربران</h2>
-      <button class="modal-close" onclick="app.closeSettingsModal()">&times;</button>
+<!-- پنل تنظیمات سیستم -->
+<div class="modal-overlay settings-overlay" id="settingsModal">
+  <div class="settings-shell" role="dialog" aria-modal="true" aria-labelledby="settingsShellTitle">
+    <div class="settings-shell-header">
+      <h2 id="settingsShellTitle">تنظیمات سیستم</h2>
+      <button type="button" class="modal-close" onclick="app.closeSettingsModal()" aria-label="بستن">&times;</button>
     </div>
-    <div class="modal-body">
-      <div style="margin-bottom:16px;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:12px;">افزودن کاربر جدید</div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="newFirstName">نام <span class="required">*</span></label>
-            <input type="text" class="form-input" id="newFirstName" placeholder="نام">
+    <div class="settings-shell-body">
+      <aside class="settings-nav" aria-label="دسته‌های تنظیمات">
+        <input type="search" id="settingsNavSearch" class="form-input settings-nav-search" placeholder="جستجوی بخش…" oninput="app.filterSettingsNav(this.value)" autocomplete="off">
+        <nav id="settingsNavList" class="settings-nav-list"></nav>
+        <label class="settings-nav-mobile-label" for="settingsNavSelect">بخش</label>
+        <select id="settingsNavSelect" class="form-select settings-nav-select" onchange="app.switchSettingsSection(this.value)"></select>
+      </aside>
+
+      <div class="settings-panes">
+        <!-- کاربران -->
+        <section class="settings-pane" data-settings-pane="users" hidden>
+          <div class="settings-pane-header">
+            <h3>کاربران و دسترسی‌ها</h3>
+            <p class="settings-pane-desc">مدیریت حساب‌ها و مجوزهای هر کارشناس</p>
           </div>
-          <div class="form-group">
-            <label for="newLastName">نام خانوادگی <span class="required">*</span></label>
-            <input type="text" class="form-input" id="newLastName" placeholder="نام خانوادگی">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="newPhone">شماره موبایل <span class="required">*</span></label>
-            <input type="tel" class="form-input" id="newPhone" placeholder="۰۹۱۲۳۴۵۶۷۸۹" dir="ltr" style="text-align:left;">
-          </div>
-          <div class="form-group">
-            <label for="newRole">سطح دسترسی</label>
-            <select class="form-select" id="newRole">
-              <option value="user">کاربر عادی</option>
-              <option value="admin">مدیر سیستم</option>
-            </select>
-          </div>
-        </div>
-        <button class="btn btn-primary" onclick="app.addUser()" style="margin-top:4px;">افزودن کاربر</button>
-      </div>
-      <div style="border-top:1px solid var(--border);padding-top:16px;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:12px;">لیست کاربران</div>
-        <div id="settingsUsersList"></div>
-      </div>
-      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:8px;">بانک‌های مقصد واریز</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">این لیست در فرم ثبت فروش به‌صورت دراپ‌داون نمایش داده می‌شود.</div>
-        <div class="form-row" style="align-items:flex-end;">
-          <div class="form-group" style="flex:1;margin-bottom:0;">
-            <label for="newDestinationBank">نام بانک</label>
-            <input type="text" class="form-input" id="newDestinationBank" placeholder="مثلاً ملت / سامان / ملی">
-          </div>
-          <button type="button" class="btn btn-primary" onclick="app.addDestinationBank()">افزودن</button>
-        </div>
-        <div id="settingsBanksList" style="margin-top:10px;"></div>
-      </div>
-      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:8px;">کاتالوگ محصولات</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">نام محصولات فروش در فرم مشتری و مپینگ ایمپورت فروش از این لیست خوانده می‌شود.</div>
-        <div class="form-row" style="align-items:flex-end;">
-          <div class="form-group" style="flex:1;margin-bottom:0;">
-            <label for="newProductCatalogItem">نام محصول</label>
-            <input type="text" class="form-input" id="newProductCatalogItem" placeholder="مثلاً آنلاین چینی">
-          </div>
-          <button type="button" class="btn btn-primary" onclick="app.addProductCatalogItem()">افزودن</button>
-        </div>
-        <div id="settingsProductsList" style="margin-top:10px;"></div>
-      </div>
-      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:8px;">پلتفرم‌ها</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">پلتفرم‌های منبع مشتری. قالب لینک از {id} و {phone} استفاده می‌کند.</div>
-        <div class="form-row" style="align-items:flex-end;">
-          <div class="form-group" style="flex:1;margin-bottom:0;">
-            <label for="newPlatformKey">کلید (انگلیسی)</label>
-            <input type="text" class="form-input" id="newPlatformKey" placeholder="مثلاً twitter" dir="ltr" style="text-align:left;">
-          </div>
-          <div class="form-group" style="flex:1;margin-bottom:0;">
-            <label for="newPlatformLabel">نام نمایشی</label>
-            <input type="text" class="form-input" id="newPlatformLabel" placeholder="مثلاً توییتر">
-          </div>
-          <button type="button" class="btn btn-primary" onclick="app.addPlatform()">افزودن</button>
-        </div>
-        <div id="settingsPlatformsList" style="margin-top:10px;"></div>
-      </div>
-      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:8px;">وضعیت‌های مشتری</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">با کشیدن و رها کردن ترتیب وضعیت‌ها را تغییر دهید.</div>
-        <div class="form-row" style="align-items:flex-end;">
-          <div class="form-group" style="flex:1;margin-bottom:0;">
-            <label for="newStatusKey">کلید (انگلیسی)</label>
-            <input type="text" class="form-input" id="newStatusKey" placeholder="مثلاً waiting" dir="ltr" style="text-align:left;">
-          </div>
-          <div class="form-group" style="flex:1;margin-bottom:0;">
-            <label for="newStatusLabel">نام نمایشی</label>
-            <input type="text" class="form-input" id="newStatusLabel" placeholder="مثلاً در انتظار">
-          </div>
-          <button type="button" class="btn btn-primary" onclick="app.addStatus()">افزودن</button>
-        </div>
-        <div id="settingsStatusesList" style="margin-top:10px;"></div>
-      </div>
-      <div id="settingsNotificationsSection" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:8px;">اعلان‌های دستی</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">عنوان و متن اعلان را بنویسید و اعضایی که باید دریافت کنند را انتخاب کنید.</div>
-        <div class="form-group">
-          <label for="notifTitle">عنوان اعلان <span class="required">*</span></label>
-          <input type="text" class="form-input" id="notifTitle" placeholder="عنوان کوتاه اعلان" maxlength="120">
-        </div>
-        <div class="form-group">
-          <label for="notifMessage">متن اعلان <span class="required">*</span></label>
-          <textarea class="form-input" id="notifMessage" rows="3" placeholder="متن کامل اعلان را اینجا بنویسید..." style="resize:vertical;min-height:72px;"></textarea>
-        </div>
-        <div class="form-group">
-          <label>حذف خودکار (اختیاری)</label>
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">اگر مشخص شود، اعلان در همان تاریخ و ساعت به‌صورت خودکار حذف می‌شود.</div>
-          <div class="form-row" style="align-items:flex-end;">
-            <div class="form-group" style="flex:1;margin-bottom:0;">
-              <label for="notifExpireDate">تاریخ</label>
-              <input type="text" class="form-input" id="notifExpireDate" placeholder="تاریخ حذف" data-jdp>
+          <details class="settings-add-user" id="settingsAddUserDetails">
+            <summary>افزودن کاربر جدید</summary>
+            <div class="settings-add-user-body">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="newFirstName">نام <span class="required">*</span></label>
+                  <input type="text" class="form-input" id="newFirstName" placeholder="نام">
+                </div>
+                <div class="form-group">
+                  <label for="newLastName">نام خانوادگی <span class="required">*</span></label>
+                  <input type="text" class="form-input" id="newLastName" placeholder="نام خانوادگی">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="newPhone">شماره موبایل <span class="required">*</span></label>
+                  <input type="tel" class="form-input" id="newPhone" placeholder="۰۹۱۲۳۴۵۶۷۸۹" dir="ltr" style="text-align:left;">
+                </div>
+                <div class="form-group">
+                  <label for="newRole">سطح دسترسی</label>
+                  <select class="form-select" id="newRole">
+                    <option value="user">کاربر عادی</option>
+                    <option value="admin">مدیر سیستم</option>
+                  </select>
+                </div>
+              </div>
+              <button type="button" class="btn btn-primary" onclick="app.addUser()">افزودن کاربر</button>
             </div>
-            <div class="form-group" style="flex:1;margin-bottom:0;">
-              <label for="notifExpireTime">ساعت</label>
-              <input type="text" class="form-input" id="notifExpireTime" placeholder="مثلاً ۱۴:۳۰" inputmode="numeric" maxlength="5" dir="ltr" style="text-align:left;">
+          </details>
+          <div class="settings-users-layout" id="settingsUsersLayout">
+            <div class="settings-users-master" id="settingsUsersMaster">
+              <div class="settings-users-toolbar">
+                <input type="search" class="form-input" id="settingsUsersSearch" placeholder="جستجوی نام یا شماره…" oninput="app.filterSettingsUsers(this.value)" autocomplete="off">
+                <select class="form-select" id="settingsUsersRoleFilter" onchange="app.filterSettingsUsers()">
+                  <option value="all">همه نقش‌ها</option>
+                  <option value="user">کاربر عادی</option>
+                  <option value="admin">مدیر</option>
+                </select>
+              </div>
+              <div id="settingsUsersList" class="settings-users-list"></div>
+            </div>
+            <div class="settings-users-detail" id="settingsUsersDetail">
+              <button type="button" class="btn btn-sm settings-users-back" id="settingsUsersBack" onclick="app.backToUsersList()" hidden>← بازگشت به لیست</button>
+              <div id="settingsUserDetailBody" class="settings-user-detail-body">
+                <div class="settings-empty-detail">یک کاربر را از لیست انتخاب کنید</div>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="form-group">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
-            <label style="margin:0;">گیرندگان <span class="required">*</span></label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;cursor:pointer;margin:0;">
-              <input type="checkbox" id="notifSelectAll" onchange="app.toggleAllNotifRecipients(this.checked)">
-              انتخاب همه
-            </label>
+        </section>
+
+        <!-- بانک‌ها -->
+        <section class="settings-pane" data-settings-pane="banks" hidden>
+          <div class="settings-pane-header">
+            <h3>بانک‌های مقصد واریز</h3>
+            <p class="settings-pane-desc">این لیست در فرم ثبت فروش به‌صورت دراپ‌داون نمایش داده می‌شود.</p>
           </div>
-          <input type="search" class="form-input" id="notifRecipientSearch" placeholder="جستجوی نام یا شماره..." oninput="app.filterNotifRecipients(this.value)" style="font-size:12px;margin-bottom:8px;">
-          <div class="view-users-options" id="notifRecipientList" style="max-height:220px;"></div>
-        </div>
-        <button type="button" class="btn btn-primary" id="notifSendBtn" onclick="app.sendNotification()" style="margin-top:4px;">ارسال اعلان</button>
-        <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:16px;">
-          <div style="font-size:13px;font-weight:600;margin-bottom:8px;">اعلان زنده فروش</div>
-          <label style="display:flex;align-items:flex-start;gap:10px;font-size:13px;cursor:pointer;line-height:1.6;">
-            <input type="checkbox" id="saleToastEnabled" style="margin-top:3px;" onchange="app.toggleSaleToastSetting(this.checked)">
-            <span>نمایش toast فروش در پایین سمت راست صفحه برای همه کاربران (همراه صدا)، هر بار که کارشناس یک واریز را کامل ثبت کند.</span>
+          <div class="form-row settings-add-row">
+            <div class="form-group" style="flex:1;margin-bottom:0;">
+              <label for="newDestinationBank">نام بانک</label>
+              <input type="text" class="form-input" id="newDestinationBank" placeholder="مثلاً ملت / سامان / ملی">
+            </div>
+            <button type="button" class="btn btn-primary" onclick="app.addDestinationBank()">افزودن</button>
+          </div>
+          <div id="settingsBanksList" class="settings-config-list"></div>
+        </section>
+
+        <!-- محصولات -->
+        <section class="settings-pane" data-settings-pane="products" hidden>
+          <div class="settings-pane-header">
+            <h3>کاتالوگ محصولات</h3>
+            <p class="settings-pane-desc">نام محصولات فروش در فرم مشتری و مپینگ ایمپورت فروش از این لیست خوانده می‌شود.</p>
+          </div>
+          <div class="form-row settings-add-row">
+            <div class="form-group" style="flex:1;margin-bottom:0;">
+              <label for="newProductCatalogItem">نام محصول</label>
+              <input type="text" class="form-input" id="newProductCatalogItem" placeholder="مثلاً آنلاین چینی">
+            </div>
+            <button type="button" class="btn btn-primary" onclick="app.addProductCatalogItem()">افزودن</button>
+          </div>
+          <div id="settingsProductsList" class="settings-config-list"></div>
+        </section>
+
+        <!-- پلتفرم‌ها -->
+        <section class="settings-pane" data-settings-pane="platforms" hidden>
+          <div class="settings-pane-header">
+            <h3>پلتفرم‌ها</h3>
+            <p class="settings-pane-desc">پلتفرم‌های منبع مشتری. قالب لینک از {id} و {phone} استفاده می‌کند.</p>
+          </div>
+          <div class="form-row settings-add-row">
+            <div class="form-group" style="flex:1;margin-bottom:0;">
+              <label for="newPlatformKey">کلید (انگلیسی)</label>
+              <input type="text" class="form-input" id="newPlatformKey" placeholder="مثلاً twitter" dir="ltr" style="text-align:left;">
+            </div>
+            <div class="form-group" style="flex:1;margin-bottom:0;">
+              <label for="newPlatformLabel">نام نمایشی</label>
+              <input type="text" class="form-input" id="newPlatformLabel" placeholder="مثلاً توییتر">
+            </div>
+            <button type="button" class="btn btn-primary" onclick="app.addPlatform()">افزودن</button>
+          </div>
+          <div id="settingsPlatformsList" class="settings-config-list"></div>
+        </section>
+
+        <!-- وضعیت‌ها -->
+        <section class="settings-pane" data-settings-pane="statuses" hidden>
+          <div class="settings-pane-header">
+            <h3>وضعیت‌های مشتری</h3>
+            <p class="settings-pane-desc">با کشیدن و رها کردن ترتیب وضعیت‌ها را تغییر دهید.</p>
+          </div>
+          <div class="form-row settings-add-row">
+            <div class="form-group" style="flex:1;margin-bottom:0;">
+              <label for="newStatusKey">کلید (انگلیسی)</label>
+              <input type="text" class="form-input" id="newStatusKey" placeholder="مثلاً waiting" dir="ltr" style="text-align:left;">
+            </div>
+            <div class="form-group" style="flex:1;margin-bottom:0;">
+              <label for="newStatusLabel">نام نمایشی</label>
+              <input type="text" class="form-input" id="newStatusLabel" placeholder="مثلاً در انتظار">
+            </div>
+            <button type="button" class="btn btn-primary" onclick="app.addStatus()">افزودن</button>
+          </div>
+          <div id="settingsStatusesList" class="settings-config-list"></div>
+        </section>
+
+        <!-- ارسال اعلان -->
+        <section class="settings-pane" data-settings-pane="notif-compose" id="settingsNotificationsSection" hidden>
+          <div class="settings-pane-header">
+            <h3>ارسال اعلان</h3>
+            <p class="settings-pane-desc">عنوان و متن اعلان را بنویسید و اعضایی که باید دریافت کنند را انتخاب کنید.</p>
+          </div>
+          <div class="form-group">
+            <label for="notifTitle">عنوان اعلان <span class="required">*</span></label>
+            <input type="text" class="form-input" id="notifTitle" placeholder="عنوان کوتاه اعلان" maxlength="120">
+          </div>
+          <div class="form-group">
+            <label for="notifMessage">متن اعلان <span class="required">*</span></label>
+            <textarea class="form-input" id="notifMessage" rows="4" placeholder="متن کامل اعلان را اینجا بنویسید..." style="resize:vertical;min-height:88px;"></textarea>
+          </div>
+          <div class="form-group">
+            <label>حذف خودکار (اختیاری)</label>
+            <p class="settings-pane-desc" style="margin-bottom:8px;">اگر مشخص شود، اعلان در همان تاریخ و ساعت به‌صورت خودکار حذف می‌شود.</p>
+            <div class="form-row" style="align-items:flex-end;">
+              <div class="form-group" style="flex:1;margin-bottom:0;">
+                <label for="notifExpireDate">تاریخ</label>
+                <input type="text" class="form-input" id="notifExpireDate" placeholder="تاریخ حذف" data-jdp>
+              </div>
+              <div class="form-group" style="flex:1;margin-bottom:0;">
+                <label for="notifExpireTime">ساعت</label>
+                <input type="text" class="form-input" id="notifExpireTime" placeholder="مثلاً ۱۴:۳۰" inputmode="numeric" maxlength="5" dir="ltr" style="text-align:left;">
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <div class="settings-recipients-header">
+              <label style="margin:0;">گیرندگان <span class="required">*</span></label>
+              <label class="settings-select-all">
+                <input type="checkbox" id="notifSelectAll" onchange="app.toggleAllNotifRecipients(this.checked)">
+                انتخاب همه
+              </label>
+            </div>
+            <input type="search" class="form-input" id="notifRecipientSearch" placeholder="جستجوی نام یا شماره..." oninput="app.filterNotifRecipients(this.value)" style="font-size:12px;margin-bottom:8px;">
+            <div class="view-users-options" id="notifRecipientList" style="max-height:260px;"></div>
+          </div>
+          <button type="button" class="btn btn-primary" id="notifSendBtn" onclick="app.sendNotification()">ارسال اعلان</button>
+        </section>
+
+        <!-- ترجیحات اعلان -->
+        <section class="settings-pane" data-settings-pane="notif-prefs" hidden>
+          <div class="settings-pane-header">
+            <h3>ترجیحات اعلان</h3>
+            <p class="settings-pane-desc">تنظیمات سراسری نمایش اعلان برای همه کاربران</p>
+          </div>
+          <label class="settings-pref-row">
+            <input type="checkbox" id="saleToastEnabled" onchange="app.toggleSaleToastSetting(this.checked)">
+            <span>
+              <strong>اعلان زنده فروش</strong>
+              <span class="settings-pane-desc">نمایش toast فروش در پایین سمت راست صفحه برای همه کاربران (همراه صدا)، هر بار که کارشناس یک واریز را کامل ثبت کند.</span>
+            </span>
           </label>
-        </div>
-        <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:16px;">
-          <div style="font-size:13px;font-weight:600;margin-bottom:8px;">اعلان‌های ارسال‌شده شما</div>
+        </section>
+
+        <!-- تاریخچه اعلان -->
+        <section class="settings-pane" data-settings-pane="notif-history" hidden>
+          <div class="settings-pane-header">
+            <h3>تاریخچه اعلان‌ها</h3>
+            <p class="settings-pane-desc">اعلان‌های ارسال‌شده توسط شما</p>
+          </div>
           <div id="notifSentList" class="notif-sent-list"></div>
-        </div>
+        </section>
       </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="app.closeSettingsModal()">بستن</button>
     </div>
   </div>
 </div>

@@ -381,15 +381,10 @@ function clearComposeFields() {
 }
 
 export async function renderNotificationAdminSection() {
-  const section = document.getElementById('settingsNotificationsSection')
   const listEl = document.getElementById('notifRecipientList')
-  if (!section || !listEl) return
+  if (!listEl) return
 
-  if (!isMainAdmin()) {
-    section.style.display = 'none'
-    return
-  }
-  section.style.display = ''
+  if (!isMainAdmin()) return
 
   clearComposeFields()
 
@@ -403,9 +398,8 @@ export async function renderNotificationAdminSection() {
       <span>${escapeHtml(name)}</span>
       <span class="view-users-phone">${escapeHtml(phone)}</span>
     </label>`
-  }).join('') || '<div style="font-size:12px;color:var(--text-muted);">کاربری برای انتخاب نیست</div>'
+  }).join('') || '<div class="settings-empty-detail">کاربری برای انتخاب نیست</div>'
 
-  // Ensure sent list is up to date (and datepicker sees new inputs if needed)
   await refreshNotifications()
   if (window.jalaliDatepicker) {
     try { window.jalaliDatepicker.startWatch({ selector: 'input[data-jdp]', time: false }) } catch (_) { /* ignore */ }

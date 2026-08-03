@@ -308,29 +308,189 @@ export async function refreshSessionFromServer(localUser) {
 }
 
 // ============================================
-// Settings Modal
+// Settings Shell
 // ============================================
+
+const SETTINGS_SECTIONS = [
+  { id: 'users', label: 'کاربران و دسترسی‌ها', group: null, keywords: 'کاربر دسترسی permission user admin' },
+  { id: 'banks', label: 'بانک‌های مقصد', group: 'داده‌های پایه', keywords: 'بانک واریز bank destination' },
+  { id: 'products', label: 'کاتالوگ محصولات', group: 'داده‌های پایه', keywords: 'محصول product catalog' },
+  { id: 'platforms', label: 'پلتفرم‌ها', group: 'داده‌های پایه', keywords: 'پلتفرم platform' },
+  { id: 'statuses', label: 'وضعیت‌های مشتری', group: 'داده‌های پایه', keywords: 'وضعیت status' },
+  { id: 'notif-compose', label: 'ارسال اعلان', group: 'اعلان‌ها', keywords: 'اعلان notification ارسال' },
+  { id: 'notif-prefs', label: 'ترجیحات اعلان', group: 'اعلان‌ها', keywords: 'toast فروش زنده ترجیح' },
+  { id: 'notif-history', label: 'تاریخچه اعلان‌ها', group: 'اعلان‌ها', keywords: 'تاریخچه ارسال‌شده' }
+]
+
+let _settingsSection = 'users'
+let _settingsUsersCache = []
+let _selectedSettingsUser = null
+let _permissionsDirty = false
+let _settingsEscapeBound = false
+let _editingBankIdx = null
+let _editingProductIdx = null
+let _editingPlatformIdx = null
+let _editingStatusIdx = null
+
+function ensureSettingsEscapeHandler() {
+  if (_settingsEscapeBound) return
+  _settingsEscapeBound = true
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return
+    const modal = document.getElementById('settingsModal')
+    if (!modal?.classList.contains('active')) return
+    if (document.getElementById('deleteModal')?.classList.contains('active')) return
+    e.preventDefault()
+    closeSettingsModal()
+  })
+}
+
+export function renderSettingsNav(filterQuery = '') {
+  const list = document.getElementById('settingsNavList')
+  const select = document.getElementById('settingsNavSelect')
+  if (!list || !select) return
+
+  const q = toEnDigits(String(filterQuery || '')).trim().toLowerCase()
+  const visible = SETTINGS_SECTIONS.filter(s => {
+    if (!q) return true
+    const hay = `${s.label} ${s.group || ''} ${s.keywords}`.toLowerCase()
+    return hay.includes(q)
+  })
+
+  let html = ''
+  let lastGroup = undefined
+  visible.forEach(s => {
+    if (s.group !== lastGroup) {
+      lastGroup = s.group
+      if (s.group) html += `<div class="settings-nav-group">${escapeHtml(s.group)}</div>`
+    }
+    html += `<button type="button" class="settings-nav-item${_settingsSection === s.id ? ' is-active' : ''}" data-settings-nav="${escapeAttr(s.id)}" onclick="app.switchSettingsSection('${escapeAttr(s.id)}')">${escapeHtml(s.label)}</button>`
+  })
+  list.innerHTML = html || '<div class="settings-nav-empty">بخشی یافت نشد</div>'
+
+  select.innerHTML = SETTINGS_SECTIONS.map(s =>
+    `<option value="${escapeAttr(s.id)}"${_settingsSection === s.id ? ' selected' : ''}>${s.group ? `${escapeHtml(s.group)} — ` : ''}${escapeHtml(s.label)}</option>`
+  ).join('')
+}
+
+export function filterSettingsNav(query) {
+  renderSettingsNav(query)
+}
+
+export function switchSettingsSection(sectionId) {
+  if (!SETTINGS_SECTIONS.some(s => s.id === sectionId)) return
+  if (_settingsSection === 'users' && sectionId !== 'users' && _permissionsDirty) {
+    openSettingsConfirm(
+      'تغییرات دسترسی ذخیره‌نشده دارید. ادامه می‌دهید؟',
+      () => {
+        _permissionsDirty = false
+        applySettingsSection(sectionId)
+      },
+      'ادامه'
+    )
+    return
+  }
+  applySettingsSection(sectionId)
+}
+
+function applySettingsSection(sectionId) {
+  _settingsSection = sectionId
+  document.querySelectorAll('[data-settings-pane]').forEach(pane => {
+    pane.hidden = pane.getAttribute('data-settings-pane') !== sectionId
+  })
+  document.querySelectorAll('[data-settings-nav]').forEach(btn => {
+    btn.classList.toggle('is-active', btn.getAttribute('data-settings-nav') === sectionId)
+  })
+  const select = document.getElementById('settingsNavSelect')
+  if (select && select.value !== sectionId) select.value = sectionId
+
+  if (sectionId === 'banks') renderDestinationBanksSettings()
+  else if (sectionId === 'products') renderProductCatalogSettings()
+  else if (sectionId === 'platforms') renderPlatformsSettings()
+  else if (sectionId === 'statuses') renderStatusesSettings()
+}
+
+function openSettingsConfirm(message, onConfirm, confirmLabel = 'تأیید') {
+  const msg = document.getElementById('deleteMessage')
+  const btn = document.getElementById('deleteConfirmBtn')
+  const header = document.querySelector('#deleteModal .modal-header h2')
+  if (!msg || !btn) {
+    if (confirm(message)) onConfirm()
+    return
+  }
+  const prevLabel = btn.textContent
+  const prevHeader = header?.textContent
+  msg.textContent = message
+  btn.textContent = confirmLabel
+  if (header) header.textContent = 'تأیید'
+  btn.onclick = () => {
+    document.getElementById('deleteModal')?.classList.remove('active')
+    btn.textContent = prevLabel
+    if (header && prevHeader) header.textContent = prevHeader
+    onConfirm()
+  }
+  const cancelRestore = () => {
+    btn.textContent = prevLabel
+    if (header && prevHeader) header.textContent = prevHeader
+  }
+  const cancelBtn = document.querySelector('#deleteModal .modal-footer .btn:not(.btn-danger)')
+  const closeBtn = document.querySelector('#deleteModal .modal-close')
+  if (cancelBtn) cancelBtn.addEventListener('click', cancelRestore, { once: true })
+  if (closeBtn) closeBtn.addEventListener('click', cancelRestore, { once: true })
+  document.getElementById('deleteModal')?.classList.add('active')
+}
 
 export async function openSettingsModal() {
   if (!requireMainAdmin()) return
-  document.getElementById('newFirstName').value = ''
-  document.getElementById('newLastName').value = ''
-  document.getElementById('newPhone').value = ''
-  document.getElementById('newRole').value = 'user'
+  ensureSettingsEscapeHandler()
+  _permissionsDirty = false
+  _selectedSettingsUser = null
+  _editingBankIdx = null
+  _editingProductIdx = null
+  _editingPlatformIdx = null
+  _editingStatusIdx = null
+
+  const fn = document.getElementById('newFirstName')
+  const ln = document.getElementById('newLastName')
+  const ph = document.getElementById('newPhone')
+  const role = document.getElementById('newRole')
+  if (fn) fn.value = ''
+  if (ln) ln.value = ''
+  if (ph) ph.value = ''
+  if (role) role.value = 'user'
+
+  const search = document.getElementById('settingsNavSearch')
+  if (search) search.value = ''
+  const usersSearch = document.getElementById('settingsUsersSearch')
+  if (usersSearch) usersSearch.value = ''
+  const roleFilter = document.getElementById('settingsUsersRoleFilter')
+  if (roleFilter) roleFilter.value = 'all'
+
+  renderSettingsNav()
+  applySettingsSection('users')
   await renderUsersList()
-  renderDestinationBanksSettings()
-  renderProductCatalogSettings()
-  renderPlatformsSettings()
-  renderStatusesSettings()
-  document.getElementById('settingsModal').classList.add('active')
+
+  document.getElementById('settingsModal')?.classList.add('active')
   document.getElementById('profileDropdown')?.classList.remove('active')
   const profileDd = document.getElementById('profileDropdown')
   if (profileDd) profileDd.hidden = true
   document.getElementById('profileMenuBtn')?.setAttribute('aria-expanded', 'false')
+  updateUsersLayoutMode(false)
 }
 
 export function closeSettingsModal() {
-  document.getElementById('settingsModal').classList.remove('active')
+  if (_permissionsDirty) {
+    openSettingsConfirm(
+      'تغییرات دسترسی ذخیره‌نشده دارید. بدون ذخیره ببندید؟',
+      () => {
+        _permissionsDirty = false
+        document.getElementById('settingsModal')?.classList.remove('active')
+      },
+      'بستن'
+    )
+    return
+  }
+  document.getElementById('settingsModal')?.classList.remove('active')
 }
 
 export async function addUser() {
@@ -340,14 +500,12 @@ export async function addUser() {
   const phone = normalizePhone(document.getElementById('newPhone').value.trim())
   const role = document.getElementById('newRole').value
 
-  // اعتبارسنجی
   if (!firstName) { showToast('نام را وارد کنید'); return }
   if (!lastName) { showToast('نام خانوادگی را وارد کنید'); return }
   if (!phone || !/^09\d{9}$/.test(phone)) {
     showToast('شماره موبایل صحیح نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹)'); return
   }
 
-  // بررسی تکراری بودن شماره — phone is the stable identity
   let users
   try {
     users = await getUsers()
@@ -360,7 +518,6 @@ export async function addUser() {
     return
   }
 
-  // ذخیره کاربر — username derived from phone so recreate keeps same key
   const displayName = `${firstName} ${lastName}`
   try {
     await saveUser({
@@ -372,6 +529,12 @@ export async function addUser() {
       role,
       permissions: role === 'admin' ? null : getDefaultPermissions()
     })
+    document.getElementById('newFirstName').value = ''
+    document.getElementById('newLastName').value = ''
+    document.getElementById('newPhone').value = ''
+    document.getElementById('newRole').value = 'user'
+    const details = document.getElementById('settingsAddUserDetails')
+    if (details) details.open = false
     await renderUsersList()
     showToast('کاربر اضافه شد')
   } catch (e) {
@@ -390,6 +553,10 @@ export async function deleteUser(username) {
   document.getElementById('deleteConfirmBtn').onclick = async function () {
     try {
       await deleteUserFromDB(username)
+      if (_selectedSettingsUser === username) {
+        _selectedSettingsUser = null
+        _permissionsDirty = false
+      }
       await renderUsersList()
       document.getElementById('deleteModal').classList.remove('active')
       showToast('کاربر حذف شد')
@@ -401,97 +568,248 @@ export async function deleteUser(username) {
   document.getElementById('deleteModal').classList.add('active')
 }
 
-export async function renderUsersList() {
-  let users = []
-  try {
-    users = await getUsers()
-  } catch (e) {
-    console.error('renderUsersList error:', e)
-    document.getElementById('settingsUsersList').innerHTML =
-      '<div style="color:var(--danger);font-size:13px;">خطا در بارگذاری کاربران</div>'
+function getFilteredSettingsUsers() {
+  const q = toEnDigits(document.getElementById('settingsUsersSearch')?.value || '').trim().toLowerCase()
+  const role = document.getElementById('settingsUsersRoleFilter')?.value || 'all'
+  return _settingsUsersCache.filter(u => {
+    if (role !== 'all' && u.role !== role) return false
+    if (!q) return true
+    const hay = `${userDisplayName(u) || ''} ${u.username || ''} ${u.phone || ''}`.toLowerCase()
+    return hay.includes(q)
+  })
+}
+
+export function filterSettingsUsers() {
+  renderUsersListMaster()
+}
+
+function updateUsersLayoutMode(showDetail) {
+  const layout = document.getElementById('settingsUsersLayout')
+  if (!layout) return
+  layout.classList.toggle('show-detail', !!showDetail)
+  const back = document.getElementById('settingsUsersBack')
+  if (back) back.hidden = !showDetail
+}
+
+export function backToUsersList() {
+  if (_permissionsDirty) {
+    openSettingsConfirm(
+      'تغییرات دسترسی ذخیره‌نشده دارید. ادامه می‌دهید؟',
+      () => {
+        _permissionsDirty = false
+        updateUsersLayoutMode(false)
+      },
+      'ادامه'
+    )
     return
   }
+  updateUsersLayoutMode(false)
+}
+
+export async function renderUsersList() {
   const container = document.getElementById('settingsUsersList')
+  if (!container) return
+  try {
+    _settingsUsersCache = await getUsers()
+  } catch (e) {
+    console.error('renderUsersList error:', e)
+    container.innerHTML = '<div class="settings-list-error">خطا در بارگذاری کاربران</div>'
+    return
+  }
+
+  const addDetails = document.getElementById('settingsAddUserDetails')
+  if (addDetails && _settingsUsersCache.length > 0) addDetails.open = false
+
+  renderUsersListMaster()
+
+  if (_selectedSettingsUser && _settingsUsersCache.some(u => u.username === _selectedSettingsUser)) {
+    renderSelectedUserDetail(false)
+  } else {
+    _selectedSettingsUser = null
+    const detail = document.getElementById('settingsUserDetailBody')
+    if (detail) detail.innerHTML = '<div class="settings-empty-detail">یک کاربر را از لیست انتخاب کنید</div>'
+    updateUsersLayoutMode(false)
+  }
+}
+
+function renderUsersListMaster() {
+  const container = document.getElementById('settingsUsersList')
+  if (!container) return
   const currentUser = getCurrentUser()
+  const users = getFilteredSettingsUsers()
+
+  if (users.length === 0) {
+    container.innerHTML = '<div class="settings-empty-detail">کاربری یافت نشد</div>'
+    return
+  }
 
   container.innerHTML = users.map(u => {
     const isCurrentUser = u.username === currentUser?.username
     const isAdminUser = u.username === 'admin' || u.role === 'admin'
     const perms = u.permissions || getDefaultPermissions()
     const viewPhones = new Set(normalizeViewUserPhones(perms.viewUserPhones))
-
-    // نمایش نام کاربر
     const userDisplay = userDisplayName(u) || u.username
     const userPhone = u.phone || '—'
     const userRole = u.role === 'admin' ? 'مدیر' : 'کاربر'
-
-    const permsHtml = (u.role === 'admin')
-      ? '<div style="font-size:12px;color:var(--accent);margin-top:6px;">دسترسی کامل (مدیر)</div>'
-      : PERMISSION_GROUPS.map(g => `
-        <div style="margin-top:10px;">
-          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px;">${g.label}</div>
-          <div style="display:flex;flex-wrap:wrap;gap:4px 12px;">
-            ${g.keys.map(k => `
-              <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:${perms[k] ? '#d1e7dd' : '#f8f9fa'};">
-                <input type="checkbox" data-perm-user="${u.username}" data-perm-key="${k}" ${perms[k] ? 'checked' : ''} onchange="app.togglePermCheckbox(this)" style="width:14px;height:14px;">
-                ${ALL_PERMISSIONS[k]}
-              </label>
-            `).join('')}
-          </div>
-        </div>
-      `).join('')
-
-    const otherUsers = users.filter(x =>
-      x.phone &&
-      normalizePhone(x.phone) !== normalizePhone(u.phone) &&
-      x.role !== 'admin' &&
-      x.username !== 'admin'
-    )
-    const viewUsersHtml = (u.role === 'admin')
-      ? ''
-      : `
-        <div class="view-users-picker" data-view-user="${escapeAttr(u.username)}" style="margin-top:14px;">
-          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">زیرمجموعه / مشاهده و انتقال</div>
-          <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">علاوه بر داده خودش، اطلاعات کاربران انتخاب‌شده را می‌بیند. با مجوز «انتقال مالکیت مشتری» می‌تواند مالکیت مشتریان آن‌ها را منتقل کند.</div>
-          <input type="search" class="form-input view-users-search" placeholder="جستجوی نام یا شماره..." oninput="app.filterViewUserOptions('${escapeAttr(u.username)}', this.value)" style="font-size:12px;margin-bottom:8px;">
-          <div class="view-users-options">
-            ${otherUsers.length === 0
-              ? '<div style="font-size:12px;color:var(--text-muted);">کاربر دیگری برای انتخاب نیست</div>'
-              : otherUsers.map(x => {
-                  const phone = normalizePhone(x.phone)
-                  const label = `${userDisplayName(x) || x.username} · ${phone}`
-                  const checked = viewPhones.has(phone) ? 'checked' : ''
-                  return `<label class="view-users-option" data-search="${escapeAttr(label.toLowerCase())}">
-                    <input type="checkbox" data-view-for="${escapeAttr(u.username)}" value="${escapeAttr(phone)}" ${checked}>
-                    <span>${escapeHtml(userDisplayName(x) || x.username)}</span>
-                    <span class="view-users-phone">${escapeHtml(phone)}</span>
-                  </label>`
-                }).join('')}
-          </div>
-        </div>`
+    const selected = _selectedSettingsUser === u.username
 
     return `
-      <div class="settings-user-row">
-        <div class="settings-user-header" role="button" tabindex="0" aria-expanded="false" onclick="app.toggleSettingsUserRow(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();app.toggleSettingsUserRow(this)}">
+      <div class="settings-user-item${selected ? ' is-selected' : ''}" data-username="${escapeAttr(u.username)}">
+        <button type="button" class="settings-user-item-main" onclick="app.selectSettingsUser('${escapeAttr(u.username)}')">
           <div class="user-info">
-            <div class="user-name">${escapeHtml(userDisplay)} ${isCurrentUser ? '<span style="font-size:11px;color:var(--accent);">(شما)</span>' : ''}</div>
-            <div class="user-role">📱 ${escapeHtml(userPhone)} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${userRole}</span>${viewPhones.size ? ` · <span style="color:var(--accent);">مشاهده ${viewPhones.size} کاربر</span>` : ''}</div>
+            <div class="user-name">${escapeHtml(userDisplay)}${isCurrentUser ? ' <span class="settings-you">(شما)</span>' : ''}</div>
+            <div class="user-role">${escapeHtml(userPhone)} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${userRole}</span>${viewPhones.size ? ` · <span class="settings-view-count">مشاهده ${viewPhones.size}</span>` : ''}</div>
           </div>
-          ${!isAdminUser ? `<button type="button" class="btn-icon" title="حذف" onclick="event.stopPropagation();app.deleteUser('${escapeAttr(u.username)}')" style="color:var(--danger);">🗑</button>` : ''}
-          <span class="settings-user-chevron" aria-hidden="true">▾</span>
+        </button>
+        ${!isAdminUser ? `<button type="button" class="btn-icon settings-user-delete" title="حذف" onclick="app.deleteUser('${escapeAttr(u.username)}')" style="color:var(--danger);">🗑</button>` : ''}
+      </div>
+    `
+  }).join('')
+}
+
+export function selectSettingsUser(username) {
+  if (_permissionsDirty && _selectedSettingsUser && _selectedSettingsUser !== username) {
+    openSettingsConfirm(
+      'تغییرات دسترسی ذخیره‌نشده دارید. ادامه می‌دهید؟',
+      () => {
+        _permissionsDirty = false
+        _selectedSettingsUser = username
+        renderUsersListMaster()
+        renderSelectedUserDetail(true)
+      },
+      'ادامه'
+    )
+    return
+  }
+  _selectedSettingsUser = username
+  _permissionsDirty = false
+  renderUsersListMaster()
+  renderSelectedUserDetail(true)
+}
+
+function renderSelectedUserDetail(enterMobileDetail) {
+  const detail = document.getElementById('settingsUserDetailBody')
+  if (!detail) return
+  const u = _settingsUsersCache.find(x => x.username === _selectedSettingsUser)
+  if (!u) {
+    detail.innerHTML = '<div class="settings-empty-detail">یک کاربر را از لیست انتخاب کنید</div>'
+    updateUsersLayoutMode(false)
+    return
+  }
+
+  if (enterMobileDetail) updateUsersLayoutMode(true)
+
+  const currentUser = getCurrentUser()
+  const isCurrentUser = u.username === currentUser?.username
+  const perms = u.permissions || getDefaultPermissions()
+  const viewPhones = new Set(normalizeViewUserPhones(perms.viewUserPhones))
+  const userDisplay = userDisplayName(u) || u.username
+  const userPhone = u.phone || '—'
+  const userRole = u.role === 'admin' ? 'مدیر' : 'کاربر'
+
+  if (u.role === 'admin') {
+    detail.innerHTML = `
+      <div class="settings-detail-head">
+        <div class="user-name">${escapeHtml(userDisplay)}${isCurrentUser ? ' <span class="settings-you">(شما)</span>' : ''}</div>
+        <div class="user-role">${escapeHtml(userPhone)} · <span class="role-badge role-admin">${userRole}</span></div>
+      </div>
+      <div class="settings-admin-full">دسترسی کامل (مدیر)</div>
+    `
+    return
+  }
+
+  const permsHtml = PERMISSION_GROUPS.map(g => {
+    const allChecked = g.keys.every(k => !!perms[k])
+    return `
+      <div class="settings-perm-group" data-perm-group="${escapeAttr(u.username)}:${escapeAttr(g.label)}">
+        <div class="settings-perm-group-head">
+          <span>${escapeHtml(g.label)}</span>
+          <label class="settings-perm-all">
+            <input type="checkbox" ${allChecked ? 'checked' : ''} onchange="app.togglePermGroup('${escapeAttr(u.username)}', '${escapeAttr(g.label)}', this.checked)">
+            همه
+          </label>
         </div>
-        <div class="settings-user-body" hidden>
-          ${u.role !== 'admin' ? `
-          <div class="settings-user-perms">
-            ${permsHtml}
-            ${viewUsersHtml}
-            <button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="app.saveUserPermissions('${escapeAttr(u.username)}')">ذخیره دسترسی‌ها</button>
-          </div>
-          ` : `<div class="settings-user-perms">${permsHtml}</div>`}
+        <div class="settings-perm-chips">
+          ${g.keys.map(k => `
+            <label class="settings-perm-chip${perms[k] ? ' is-on' : ''}">
+              <input type="checkbox" data-perm-user="${escapeAttr(u.username)}" data-perm-key="${k}" ${perms[k] ? 'checked' : ''} onchange="app.togglePermCheckbox(this)">
+              ${ALL_PERMISSIONS[k]}
+            </label>
+          `).join('')}
         </div>
       </div>
     `
   }).join('')
+
+  const otherUsers = _settingsUsersCache.filter(x =>
+    x.phone &&
+    normalizePhone(x.phone) !== normalizePhone(u.phone) &&
+    x.role !== 'admin' &&
+    x.username !== 'admin'
+  )
+
+  const viewUsersHtml = `
+    <div class="view-users-picker" data-view-user="${escapeAttr(u.username)}">
+      <div class="settings-perm-group-head" style="margin-bottom:6px;">
+        <span>زیرمجموعه / مشاهده و انتقال</span>
+      </div>
+      <p class="settings-pane-desc" style="margin-bottom:8px;">علاوه بر داده خودش، اطلاعات کاربران انتخاب‌شده را می‌بیند. با مجوز «انتقال مالکیت مشتری» می‌تواند مالکیت مشتریان آن‌ها را منتقل کند.</p>
+      <input type="search" class="form-input view-users-search" placeholder="جستجوی نام یا شماره..." oninput="app.filterViewUserOptions('${escapeAttr(u.username)}', this.value)">
+      <div class="view-users-options">
+        ${otherUsers.length === 0
+          ? '<div class="settings-empty-detail">کاربر دیگری برای انتخاب نیست</div>'
+          : otherUsers.map(x => {
+              const phone = normalizePhone(x.phone)
+              const label = `${userDisplayName(x) || x.username} · ${phone}`
+              const checked = viewPhones.has(phone) ? 'checked' : ''
+              return `<label class="view-users-option" data-search="${escapeAttr(label.toLowerCase())}">
+                <input type="checkbox" data-view-for="${escapeAttr(u.username)}" value="${escapeAttr(phone)}" ${checked} onchange="app.markPermissionsDirty()">
+                <span>${escapeHtml(userDisplayName(x) || x.username)}</span>
+                <span class="view-users-phone">${escapeHtml(phone)}</span>
+              </label>`
+            }).join('')}
+      </div>
+    </div>`
+
+  detail.innerHTML = `
+    <div class="settings-detail-head">
+      <div class="user-name">${escapeHtml(userDisplay)}${isCurrentUser ? ' <span class="settings-you">(شما)</span>' : ''}</div>
+      <div class="user-role">${escapeHtml(userPhone)} · <span class="role-badge role-user">${userRole}</span></div>
+    </div>
+    <div class="settings-user-perms">
+      ${permsHtml}
+      ${viewUsersHtml}
+    </div>
+    <div class="settings-perms-footer" id="settingsPermsFooter">
+      <span class="settings-dirty-hint" id="settingsDirtyHint" hidden>تغییرات ذخیره‌نشده</span>
+      <button type="button" class="btn btn-primary" id="settingsSavePermsBtn" disabled onclick="app.saveUserPermissions('${escapeAttr(u.username)}')">ذخیره دسترسی‌ها</button>
+    </div>
+  `
+  syncPermissionsDirtyUi()
+}
+
+export function markPermissionsDirty() {
+  _permissionsDirty = true
+  syncPermissionsDirtyUi()
+}
+
+function syncPermissionsDirtyUi() {
+  const hint = document.getElementById('settingsDirtyHint')
+  const btn = document.getElementById('settingsSavePermsBtn')
+  if (hint) hint.hidden = !_permissionsDirty
+  if (btn) btn.disabled = !_permissionsDirty
+}
+
+export function togglePermGroup(username, groupLabel, checked) {
+  const group = PERMISSION_GROUPS.find(g => g.label === groupLabel)
+  if (!group) return
+  group.keys.forEach(k => {
+    const cb = document.querySelector(`input[data-perm-user="${username}"][data-perm-key="${k}"]`)
+    if (!cb) return
+    cb.checked = !!checked
+    togglePermCheckbox(cb)
+  })
+  markPermissionsDirty()
 }
 
 export function filterViewUserOptions(username, query) {
@@ -504,32 +822,72 @@ export function filterViewUserOptions(username, query) {
   })
 }
 
-export function toggleSettingsUserRow(headerEl) {
-  if (!headerEl) return
-  const row = headerEl.closest('.settings-user-row')
-  if (!row) return
-  const body = row.querySelector('.settings-user-body')
-  if (!body) return
-  const willOpen = body.hidden
-  body.hidden = !willOpen
-  row.classList.toggle('is-open', willOpen)
-  headerEl.setAttribute('aria-expanded', willOpen ? 'true' : 'false')
+export function toggleSettingsUserRow() {
+  /* legacy no-op: accordion replaced by master-detail */
 }
 
 export function renderDestinationBanksSettings() {
   const list = document.getElementById('settingsBanksList')
   if (!list) return
   const banks = getDestinationBanks()
+  _editingBankIdx = (_editingBankIdx != null && _editingBankIdx < banks.length) ? _editingBankIdx : null
   if (banks.length === 0) {
-    list.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:6px 0;">هنوز بانکی ثبت نشده</div>'
+    list.innerHTML = '<div class="settings-empty-detail">هنوز بانکی ثبت نشده</div>'
     return
   }
-  list.innerHTML = banks.map((bank, idx) => `
-    <div class="settings-bank-row">
-      <span>${escapeHtml(bank)}</span>
-      <button type="button" class="btn-icon" title="حذف" onclick="app.removeDestinationBank(${idx})" style="color:var(--danger);">🗑</button>
-    </div>
-  `).join('')
+  list.innerHTML = banks.map((bank, idx) => {
+    if (_editingBankIdx === idx) {
+      return `
+        <div class="settings-config-row is-editing">
+          <input type="text" class="form-input" id="editBankInput" value="${escapeAttr(bank)}" style="flex:1;">
+          <button type="button" class="btn btn-sm btn-primary" onclick="app.saveDestinationBankEdit(${idx})">ذخیره</button>
+          <button type="button" class="btn btn-sm" onclick="app.cancelDestinationBankEdit()">لغو</button>
+        </div>`
+    }
+    return `
+      <div class="settings-config-row">
+        <span class="settings-config-label">${escapeHtml(bank)}</span>
+        <button type="button" class="btn-icon" title="ویرایش" onclick="app.startDestinationBankEdit(${idx})">✏️</button>
+        <button type="button" class="btn-icon" title="حذف" onclick="app.removeDestinationBank(${idx})" style="color:var(--danger);">🗑</button>
+      </div>`
+  }).join('')
+  if (_editingBankIdx != null) {
+    document.getElementById('editBankInput')?.focus()
+  }
+}
+
+export function startDestinationBankEdit(index) {
+  if (!requireMainAdmin()) return
+  _editingBankIdx = index
+  renderDestinationBanksSettings()
+}
+
+export function cancelDestinationBankEdit() {
+  _editingBankIdx = null
+  renderDestinationBanksSettings()
+}
+
+export async function saveDestinationBankEdit(index) {
+  if (!requireMainAdmin()) return
+  const input = document.getElementById('editBankInput')
+  const name = (input?.value || '').trim()
+  if (!name) { showToast('نام بانک را وارد کنید'); return }
+  const banks = [...getDestinationBanks()]
+  if (index < 0 || index >= banks.length) return
+  if (banks.some((b, i) => i !== index && b.toLowerCase() === name.toLowerCase())) {
+    showToast('این بانک قبلاً ثبت شده')
+    return
+  }
+  banks[index] = name
+  try {
+    await saveDestinationBanks(banks)
+    _editingBankIdx = null
+    renderDestinationBanksSettings()
+    showToast('ذخیره شد')
+  } catch (e) {
+    console.error('saveDestinationBankEdit error:', e)
+    showToast('خطا در ذخیره بانک')
+  }
 }
 
 export async function addDestinationBank() {
@@ -557,15 +915,19 @@ export async function removeDestinationBank(index) {
   if (!requireMainAdmin()) return
   const banks = getDestinationBanks()
   if (index < 0 || index >= banks.length) return
-  banks.splice(index, 1)
-  try {
-    await saveDestinationBanks(banks)
-    renderDestinationBanksSettings()
-    showToast('بانک حذف شد')
-  } catch (e) {
-    console.error('removeDestinationBank error:', e)
-    showToast('خطا در حذف بانک')
-  }
+  openSettingsConfirm(`حذف بانک «${banks[index]}»؟`, async () => {
+    const next = [...getDestinationBanks()]
+    next.splice(index, 1)
+    try {
+      await saveDestinationBanks(next)
+      _editingBankIdx = null
+      renderDestinationBanksSettings()
+      showToast('بانک حذف شد')
+    } catch (e) {
+      console.error('removeDestinationBank error:', e)
+      showToast('خطا در حذف بانک')
+    }
+  }, 'حذف')
 }
 
 // ============================================
@@ -576,16 +938,62 @@ export function renderProductCatalogSettings() {
   const list = document.getElementById('settingsProductsList')
   if (!list) return
   const products = getProductCatalog()
+  _editingProductIdx = (_editingProductIdx != null && _editingProductIdx < products.length) ? _editingProductIdx : null
   if (products.length === 0) {
-    list.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:6px 0;">هنوز محصولی ثبت نشده</div>'
+    list.innerHTML = '<div class="settings-empty-detail">هنوز محصولی ثبت نشده</div>'
     return
   }
-  list.innerHTML = products.map((name, idx) => `
-    <div class="settings-bank-row">
-      <span>${escapeHtml(name)}</span>
-      <button type="button" class="btn-icon" title="حذف" onclick="app.removeProductCatalogItem(${idx})" style="color:var(--danger);">🗑</button>
-    </div>
-  `).join('')
+  list.innerHTML = products.map((name, idx) => {
+    if (_editingProductIdx === idx) {
+      return `
+        <div class="settings-config-row is-editing">
+          <input type="text" class="form-input" id="editProductInput" value="${escapeAttr(name)}" style="flex:1;">
+          <button type="button" class="btn btn-sm btn-primary" onclick="app.saveProductCatalogEdit(${idx})">ذخیره</button>
+          <button type="button" class="btn btn-sm" onclick="app.cancelProductCatalogEdit()">لغو</button>
+        </div>`
+    }
+    return `
+      <div class="settings-config-row">
+        <span class="settings-config-label">${escapeHtml(name)}</span>
+        <button type="button" class="btn-icon" title="ویرایش" onclick="app.startProductCatalogEdit(${idx})">✏️</button>
+        <button type="button" class="btn-icon" title="حذف" onclick="app.removeProductCatalogItem(${idx})" style="color:var(--danger);">🗑</button>
+      </div>`
+  }).join('')
+  if (_editingProductIdx != null) document.getElementById('editProductInput')?.focus()
+}
+
+export function startProductCatalogEdit(index) {
+  if (!requireMainAdmin()) return
+  _editingProductIdx = index
+  renderProductCatalogSettings()
+}
+
+export function cancelProductCatalogEdit() {
+  _editingProductIdx = null
+  renderProductCatalogSettings()
+}
+
+export async function saveProductCatalogEdit(index) {
+  if (!requireMainAdmin()) return
+  const input = document.getElementById('editProductInput')
+  const name = (input?.value || '').trim()
+  if (!name) { showToast('نام محصول را وارد کنید'); return }
+  const products = [...getProductCatalog()]
+  if (index < 0 || index >= products.length) return
+  if (products.some((p, i) => i !== index && p.toLowerCase() === name.toLowerCase())) {
+    showToast('این محصول قبلاً ثبت شده')
+    return
+  }
+  products[index] = name
+  try {
+    await saveProductCatalog(products)
+    _editingProductIdx = null
+    renderProductCatalogSettings()
+    showToast('ذخیره شد')
+  } catch (e) {
+    console.error('saveProductCatalogEdit error:', e)
+    showToast('خطا در ذخیره محصول')
+  }
 }
 
 export async function addProductCatalogItem() {
@@ -617,15 +1025,23 @@ export async function removeProductCatalogItem(index) {
     showToast('حداقل یک محصول باید در کاتالوگ بماند')
     return
   }
-  products.splice(index, 1)
-  try {
-    await saveProductCatalog(products)
-    renderProductCatalogSettings()
-    showToast('محصول حذف شد')
-  } catch (e) {
-    console.error('removeProductCatalogItem error:', e)
-    showToast('خطا در حذف محصول')
-  }
+  openSettingsConfirm(`حذف محصول «${products[index]}»؟`, async () => {
+    const next = [...getProductCatalog()]
+    if (next.length <= 1) {
+      showToast('حداقل یک محصول باید در کاتالوگ بماند')
+      return
+    }
+    next.splice(index, 1)
+    try {
+      await saveProductCatalog(next)
+      _editingProductIdx = null
+      renderProductCatalogSettings()
+      showToast('محصول حذف شد')
+    } catch (e) {
+      console.error('removeProductCatalogItem error:', e)
+      showToast('خطا در حذف محصول')
+    }
+  }, 'حذف')
 }
 
 // ============================================
@@ -636,15 +1052,41 @@ export function renderPlatformsSettings() {
   const list = document.getElementById('settingsPlatformsList')
   if (!list) return
   const platforms = getPlatforms()
-  list.innerHTML = platforms.map((p, idx) => `
-    <div class="settings-config-row" data-idx="${idx}">
-      <span class="platform-dot platform-${escapeAttr(p.key)}" style="background:${escapeAttr(p.color)};"></span>
-      <span style="flex:1;font-size:13px;">${escapeHtml(p.label)}</span>
-      <input type="color" value="${escapeAttr(p.color)}" title="رنگ" style="width:28px;height:28px;border:none;cursor:pointer;padding:0;" onchange="app.updatePlatformField(${idx},'color',this.value)">
-      <button type="button" class="btn-icon" title="ویرایش" onclick="app.editPlatform(${idx})" style="font-size:12px;">✏️</button>
-      <button type="button" class="btn-icon" title="حذف" onclick="app.removePlatform(${idx})" style="color:var(--danger);">🗑</button>
-    </div>
-  `).join('')
+  _editingPlatformIdx = (_editingPlatformIdx != null && _editingPlatformIdx < platforms.length) ? _editingPlatformIdx : null
+  list.innerHTML = platforms.map((p, idx) => {
+    if (_editingPlatformIdx === idx) {
+      return `
+        <div class="settings-config-row settings-config-edit-block is-editing">
+          <div class="settings-inline-edit">
+            <div class="form-group" style="margin-bottom:10px;">
+              <label>نام نمایشی</label>
+              <input type="text" class="form-input" id="editPlatformLabel" value="${escapeAttr(p.label)}">
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+              <label>قالب لینک</label>
+              <input type="text" class="form-input" id="editPlatformLink" value="${escapeAttr(p.linkTemplate || '')}" placeholder="از {id} و {phone} استفاده کنید" dir="ltr" style="text-align:left;">
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+              <label>رنگ</label>
+              <input type="color" id="editPlatformColor" value="${escapeAttr(p.color)}" style="width:40px;height:32px;border:none;cursor:pointer;padding:0;">
+            </div>
+            <div class="settings-inline-actions">
+              <button type="button" class="btn btn-sm btn-primary" onclick="app.savePlatformEdit(${idx})">ذخیره</button>
+              <button type="button" class="btn btn-sm" onclick="app.cancelPlatformEdit()">لغو</button>
+            </div>
+          </div>
+        </div>`
+    }
+    return `
+      <div class="settings-config-row" data-idx="${idx}">
+        <span class="platform-dot platform-${escapeAttr(p.key)}" style="background:${escapeAttr(p.color)};"></span>
+        <span class="settings-config-label">${escapeHtml(p.label)}</span>
+        <span class="settings-config-meta">${escapeHtml(p.key)}</span>
+        <input type="color" value="${escapeAttr(p.color)}" title="رنگ" style="width:28px;height:28px;border:none;cursor:pointer;padding:0;" onchange="app.updatePlatformField(${idx},'color',this.value)">
+        <button type="button" class="btn-icon" title="ویرایش" onclick="app.editPlatform(${idx})">✏️</button>
+        <button type="button" class="btn-icon" title="حذف" onclick="app.removePlatform(${idx})" style="color:var(--danger);">🗑</button>
+      </div>`
+  }).join('')
 }
 
 export async function addPlatform() {
@@ -672,15 +1114,18 @@ export async function removePlatform(index) {
   if (!requireMainAdmin()) return
   const platforms = [...getPlatforms()]
   if (index < 0 || index >= platforms.length) return
-  if (!confirm(`حذف پلتفرم "${platforms[index].label}"؟`)) return
-  platforms.splice(index, 1)
-  try {
-    await savePlatforms(platforms)
-    renderPlatformsSettings()
-    showToast('پلتفرم حذف شد')
-  } catch (e) {
-    showToast('خطا در حذف پلتفرم')
-  }
+  openSettingsConfirm(`حذف پلتفرم «${platforms[index].label}»؟`, async () => {
+    const next = [...getPlatforms()]
+    next.splice(index, 1)
+    try {
+      await savePlatforms(next)
+      _editingPlatformIdx = null
+      renderPlatformsSettings()
+      showToast('پلتفرم حذف شد')
+    } catch (e) {
+      showToast('خطا در حذف پلتفرم')
+    }
+  }, 'حذف')
 }
 
 export async function updatePlatformField(index, field, value) {
@@ -691,6 +1136,7 @@ export async function updatePlatformField(index, field, value) {
   try {
     await savePlatforms(platforms)
     renderPlatformsSettings()
+    showToast('ذخیره شد')
   } catch (e) {
     showToast('خطا در ذخیره تغییرات')
   }
@@ -698,19 +1144,32 @@ export async function updatePlatformField(index, field, value) {
 
 export function editPlatform(index) {
   if (!requireMainAdmin()) return
-  const platforms = getPlatforms()
+  _editingPlatformIdx = index
+  renderPlatformsSettings()
+}
+
+export function cancelPlatformEdit() {
+  _editingPlatformIdx = null
+  renderPlatformsSettings()
+}
+
+export async function savePlatformEdit(index) {
+  if (!requireMainAdmin()) return
+  const platforms = [...getPlatforms()]
   const p = platforms[index]
   if (!p) return
-  const newLabel = prompt('نام پلتفرم:', p.label)
-  if (newLabel === null) return
-  const newLink = prompt('قالب لینک (از {id} و {phone} استفاده کنید):', p.linkTemplate || '')
-  if (newLink === null) return
-  const updated = [...platforms]
-  updated[index] = { ...p, label: newLabel.trim() || p.label, linkTemplate: newLink.trim() }
-  savePlatforms(updated).then(() => {
+  const label = (document.getElementById('editPlatformLabel')?.value || '').trim() || p.label
+  const linkTemplate = (document.getElementById('editPlatformLink')?.value || '').trim()
+  const color = document.getElementById('editPlatformColor')?.value || p.color
+  platforms[index] = { ...p, label, linkTemplate, color }
+  try {
+    await savePlatforms(platforms)
+    _editingPlatformIdx = null
     renderPlatformsSettings()
     showToast('پلتفرم ویرایش شد')
-  }).catch(() => showToast('خطا در ذخیره'))
+  } catch (e) {
+    showToast('خطا در ذخیره')
+  }
 }
 
 // ============================================
@@ -721,17 +1180,28 @@ export function renderStatusesSettings() {
   const list = document.getElementById('settingsStatusesList')
   if (!list) return
   const statuses = getStatuses()
-  list.innerHTML = statuses.map((s, idx) => `
-    <div class="settings-config-row" data-idx="${idx}" draggable="true" ondragstart="app.onStatusDragStart(event,${idx})" ondragover="app.onStatusDragOver(event)" ondrop="app.onStatusDrop(event,${idx})">
-      <span class="drag-handle" title="جابجایی">☰</span>
-      <span class="status-badge status-${escapeAttr(s.key)}" style="background:${escapeAttr(s.bgColor)};color:${escapeAttr(s.textColor)};">${escapeHtml(s.label)}</span>
-      <span style="flex:1;"></span>
-      <input type="color" value="${escapeAttr(s.bgColor)}" title="رنگ پس‌زمینه" style="width:28px;height:28px;border:none;cursor:pointer;padding:0;" onchange="app.updateStatusField(${idx},'bgColor',this.value)">
-      <input type="color" value="${escapeAttr(s.textColor)}" title="رنگ متن" style="width:24px;height:24px;border:none;cursor:pointer;padding:0;" onchange="app.updateStatusField(${idx},'textColor',this.value)">
-      <button type="button" class="btn-icon" title="ویرایش" onclick="app.editStatus(${idx})" style="font-size:12px;">✏️</button>
-      <button type="button" class="btn-icon" title="حذف" onclick="app.removeStatus(${idx})" style="color:var(--danger);">🗑</button>
-    </div>
-  `).join('')
+  _editingStatusIdx = (_editingStatusIdx != null && _editingStatusIdx < statuses.length) ? _editingStatusIdx : null
+  list.innerHTML = statuses.map((s, idx) => {
+    if (_editingStatusIdx === idx) {
+      return `
+        <div class="settings-config-row is-editing">
+          <input type="text" class="form-input" id="editStatusLabel" value="${escapeAttr(s.label)}" style="flex:1;">
+          <button type="button" class="btn btn-sm btn-primary" onclick="app.saveStatusEdit(${idx})">ذخیره</button>
+          <button type="button" class="btn btn-sm" onclick="app.cancelStatusEdit()">لغو</button>
+        </div>`
+    }
+    return `
+      <div class="settings-config-row" data-idx="${idx}" draggable="true" ondragstart="app.onStatusDragStart(event,${idx})" ondragover="app.onStatusDragOver(event)" ondrop="app.onStatusDrop(event,${idx})">
+        <span class="drag-handle" title="جابجایی">☰</span>
+        <span class="status-badge status-${escapeAttr(s.key)}" style="background:${escapeAttr(s.bgColor)};color:${escapeAttr(s.textColor)};">${escapeHtml(s.label)}</span>
+        <span class="settings-config-meta">${escapeHtml(s.key)}</span>
+        <span style="flex:1;"></span>
+        <input type="color" value="${escapeAttr(s.bgColor)}" title="رنگ پس‌زمینه" style="width:28px;height:28px;border:none;cursor:pointer;padding:0;" onchange="app.updateStatusField(${idx},'bgColor',this.value)">
+        <input type="color" value="${escapeAttr(s.textColor)}" title="رنگ متن" style="width:24px;height:24px;border:none;cursor:pointer;padding:0;" onchange="app.updateStatusField(${idx},'textColor',this.value)">
+        <button type="button" class="btn-icon" title="ویرایش" onclick="app.editStatus(${idx})">✏️</button>
+        <button type="button" class="btn-icon" title="حذف" onclick="app.removeStatus(${idx})" style="color:var(--danger);">🗑</button>
+      </div>`
+  }).join('')
 }
 
 let draggedStatusIdx = null
@@ -775,13 +1245,16 @@ export async function removeStatus(index) {
   if (!requireMainAdmin()) return
   const statuses = [...getStatuses()]
   if (index < 0 || index >= statuses.length) return
-  if (!confirm(`حذف وضعیت "${statuses[index].label}"؟`)) return
-  statuses.splice(index, 1)
-  try {
-    await saveStatuses(statuses)
-    renderStatusesSettings()
-    showToast('وضعیت حذف شد')
-  } catch (e) { showToast('خطا در حذف وضعیت') }
+  openSettingsConfirm(`حذف وضعیت «${statuses[index].label}»؟`, async () => {
+    const next = [...getStatuses()]
+    next.splice(index, 1)
+    try {
+      await saveStatuses(next)
+      _editingStatusIdx = null
+      renderStatusesSettings()
+      showToast('وضعیت حذف شد')
+    } catch (e) { showToast('خطا در حذف وضعیت') }
+  }, 'حذف')
 }
 
 export async function updateStatusField(index, field, value) {
@@ -792,22 +1265,37 @@ export async function updateStatusField(index, field, value) {
   try {
     await saveStatuses(statuses)
     renderStatusesSettings()
+    showToast('ذخیره شد')
   } catch (e) { showToast('خطا در ذخیره تغییرات') }
 }
 
 export function editStatus(index) {
   if (!requireMainAdmin()) return
-  const statuses = getStatuses()
+  _editingStatusIdx = index
+  renderStatusesSettings()
+}
+
+export function cancelStatusEdit() {
+  _editingStatusIdx = null
+  renderStatusesSettings()
+}
+
+export async function saveStatusEdit(index) {
+  if (!requireMainAdmin()) return
+  const statuses = [...getStatuses()]
   const s = statuses[index]
   if (!s) return
-  const newLabel = prompt('نام وضعیت:', s.label)
-  if (newLabel === null || !newLabel.trim()) return
-  const updated = [...statuses]
-  updated[index] = { ...s, label: newLabel.trim() }
-  saveStatuses(updated).then(() => {
+  const newLabel = (document.getElementById('editStatusLabel')?.value || '').trim()
+  if (!newLabel) { showToast('نام وضعیت را وارد کنید'); return }
+  statuses[index] = { ...s, label: newLabel }
+  try {
+    await saveStatuses(statuses)
+    _editingStatusIdx = null
     renderStatusesSettings()
     showToast('وضعیت ویرایش شد')
-  }).catch(() => showToast('خطا در ذخیره'))
+  } catch (e) {
+    showToast('خطا در ذخیره')
+  }
 }
 
 export async function saveUserPermissions(username) {
@@ -829,13 +1317,12 @@ export async function saveUserPermissions(username) {
     .filter(Boolean)
   permissions.viewUserPhones = viewPhones
 
-  // Keep UI in sync when accounting auto-grants related perms
   checkboxes.forEach(cb => {
     const key = cb.dataset.permKey
     if (permissions[key] && !cb.checked) {
       cb.checked = true
       const label = cb.closest('label')
-      if (label) label.style.background = '#d1e7dd'
+      if (label) label.classList.add('is-on')
     }
   })
 
@@ -853,6 +1340,11 @@ export async function saveUserPermissions(username) {
       setCurrentUser({ ...current, permissions, viewUserPhones: viewPhones })
       applyPermissions()
     }
+    const cached = _settingsUsersCache.find(u => u.username === username)
+    if (cached) cached.permissions = permissions
+    _permissionsDirty = false
+    syncPermissionsDirtyUi()
+    renderUsersListMaster()
     showToast('دسترسی‌ها ذخیره شد')
   }
 }
@@ -860,10 +1352,9 @@ export async function saveUserPermissions(username) {
 export function togglePermCheckbox(el) {
   const label = el.closest('label')
   if (label) {
-    label.style.background = el.checked ? '#d1e7dd' : '#f8f9fa'
+    label.classList.toggle('is-on', el.checked)
   }
 
-  // Level-1: enabling accounting auto-grants dashboard / sales / customers view
   if (el.dataset.permKey === 'accounting' && el.checked) {
     const username = el.dataset.permUser
     ACCOUNTING_PERMISSION_BUNDLE.forEach(key => {
@@ -871,7 +1362,22 @@ export function togglePermCheckbox(el) {
       if (!cb) return
       cb.checked = true
       const lbl = cb.closest('label')
-      if (lbl) lbl.style.background = '#d1e7dd'
+      if (lbl) lbl.classList.add('is-on')
+    })
+  }
+
+  markPermissionsDirty()
+
+  const username = el.dataset.permUser
+  if (username) {
+    PERMISSION_GROUPS.forEach(g => {
+      if (!g.keys.includes(el.dataset.permKey)) return
+      const allOn = g.keys.every(k => {
+        const cb = document.querySelector(`input[data-perm-user="${username}"][data-perm-key="${k}"]`)
+        return cb?.checked
+      })
+      const groupCb = document.querySelector(`.settings-perm-group[data-perm-group="${username}:${g.label}"] .settings-perm-all input`)
+      if (groupCb) groupCb.checked = allOn
     })
   }
 }
