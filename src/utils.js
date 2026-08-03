@@ -537,10 +537,11 @@ export function getNowJalaliDateTime() {
 
 /**
  * Normalize any time string to 24h "HH:MM" (no AM/PM).
- * Accepts: "14:30", "2:30 PM", "02:30:00", "2:30 ب.ظ"
+ * Accepts: "14:30", "2:30 PM", "02:30:00", "2:30 ب.ظ",
+ * and compact Excel numbers 1–4 digits (left-pad to HHMM): 1430→14:30, 930→09:30, 9→00:09
  */
 export function normalizeTimeTo24h(timeStr) {
-  if (!timeStr) return ''
+  if (timeStr == null || timeStr === '') return ''
   let t = toEnDigits(String(timeStr).trim())
   if (!t) return ''
 
@@ -550,10 +551,21 @@ export function normalizeTimeTo24h(timeStr) {
   if (/\bA\.?M\.?\b/i.test(t) || /ق\.?\s*ظ/i.test(t)) isAm = true
   t = t.replace(/\b(A\.?M\.?|P\.?M\.?)\b/ig, '').replace(/[قب]\.?\s*ظ\.?/ig, '').trim()
 
+  let h
+  let min
   const m = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?/)
-  if (!m) return ''
-  let h = parseInt(m[1], 10)
-  const min = parseInt(m[2], 10)
+  if (m) {
+    h = parseInt(m[1], 10)
+    min = parseInt(m[2], 10)
+  } else if (/^\d{1,4}$/.test(t)) {
+    // Site sales Excel: bare number → left-pad to 4 digits as HHMM
+    const compact = t.padStart(4, '0')
+    h = parseInt(compact.slice(0, 2), 10)
+    min = parseInt(compact.slice(2, 4), 10)
+  } else {
+    return ''
+  }
+
   if (Number.isNaN(h) || Number.isNaN(min) || min < 0 || min > 59) return ''
 
   if (isPm || isAm) {
@@ -1077,12 +1089,16 @@ export function requirePermission(key) {
   return false
 }
 
-/** Normalize Iranian mobile to digits starting with 09… */
+/**
+ * Normalize Iranian mobile to 09XXXXXXXXX.
+ * Any format: keep digits only, take the rightmost 10, then prepend 0 if needed.
+ * e.g. 0912… / 912… / +98912… / 98912… → 0912…
+ */
 export function normalizePhone(phone) {
-  let p = toEnDigits(String(phone || '').replace(/[\s\-()]/g, ''))
-  if (p.startsWith('+98')) p = '0' + p.slice(3)
-  else if (p.startsWith('98') && p.length >= 12) p = '0' + p.slice(2)
-  else if (p.length === 10 && p.startsWith('9')) p = '0' + p
+  let p = toEnDigits(String(phone || '')).replace(/\D/g, '')
+  if (!p) return ''
+  if (p.length > 10) p = p.slice(-10)
+  if (p.length === 10 && p.startsWith('9')) p = '0' + p
   return p
 }
 

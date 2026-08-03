@@ -1657,7 +1657,10 @@ export async function doSalesImport() {
     const getValue = (fieldKey) => {
       const colIdx = mapping[fieldKey]
       if (colIdx === undefined || colIdx === null) return ''
-      return String(row[colIdx] || '').trim()
+      const v = row[colIdx]
+      // Keep numeric 0 (e.g. ساعت = 0 → 00:00); || would drop it
+      if (v == null || v === '') return ''
+      return String(v).trim()
     }
 
     const phoneRaw = toEnDigits(getValue('phone'))
