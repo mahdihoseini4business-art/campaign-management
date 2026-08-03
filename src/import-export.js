@@ -366,6 +366,65 @@ export function setImportMapping(colIndex, fieldKey) {
   }
 }
 
+function isFieldMapped(mapping, fieldKey) {
+  return mapping[fieldKey] !== undefined && mapping[fieldKey] !== null
+}
+
+function applyMappedCustomerFields(customer, { mapping, getValue, users, phones, primaryPhone, platformId, platform, status, isCreate }) {
+  const currentUser = getCurrentUser()
+
+  if (isFieldMapped(mapping, 'platformId') || isCreate) {
+    customer.platformId = platformId
+  }
+  if (isFieldMapped(mapping, 'platform') || isCreate) {
+    customer.platform = platform || customer.platform || 'instagram'
+  }
+  if (isFieldMapped(mapping, 'name') || isCreate) {
+    customer.name = getValue('name')
+  }
+  if (isFieldMapped(mapping, 'phone') || isFieldMapped(mapping, 'phone2') || isFieldMapped(mapping, 'phone3') || isCreate) {
+    // Don't wipe existing phones when Excel cells failed to parse
+    if (phones.length || isCreate) {
+      customer.phones = phones
+      customer.phone = primaryPhone
+    }
+  }
+  if (isFieldMapped(mapping, 'status') || isCreate) {
+    customer.status = status || customer.status || 'new'
+  }
+  if (isFieldMapped(mapping, 'notes') || isCreate) {
+    customer.notes = getValue('notes')
+  }
+  if (isFieldMapped(mapping, 'nextFollowupDate') || isCreate) {
+    customer.nextFollowupDate = getValue('nextFollowupDate') || ''
+  }
+  if (isFieldMapped(mapping, 'advisor') || isCreate) {
+    const advisorRaw = getValue('advisor') || (isCreate && currentUser
+      ? (currentUser.phone || currentUser.displayName)
+      : (customer.advisor || ''))
+    if (advisorRaw || isCreate) {
+      const resolved = resolveAdvisor(advisorRaw, users)
+      customer.advisor = resolved.advisor
+      customer.advisorPhone = resolved.advisorPhone
+    }
+  }
+  if (isFieldMapped(mapping, 'referredByPhone')) {
+    customer.referredByPhone = normalizePhone(getValue('referredByPhone')) || ''
+  } else if (isCreate) {
+    customer.referredByPhone = ''
+  }
+  if (isFieldMapped(mapping, 'customerLevel')) {
+    const level = parseCustomerLevel(getValue('customerLevel'))
+    if (level) {
+      customer.customerLevel = level
+      customer.customerLevelLocked = true
+    }
+  } else if (isCreate) {
+    customer.customerLevel = ''
+    customer.customerLevelLocked = false
+  }
+}
+
 export async function doImport() {
   if (!requirePermission('customers_import')) return
   const data = getData()
@@ -375,8 +434,7 @@ export async function doImport() {
     return
   }
 
-  let imported = 0, skipped = 0
-  const newCustomers = []
+  let created = 0, updated = 0, skipped = 0, failed = 0
   const users = await getUsersSafe()
 
   for (const row of importData.rows) {
@@ -392,12 +450,13 @@ export async function doImport() {
     const phones = normalizeCustomerPhones([phone, phone2, phone3])
     const primaryPhone = phones[0] || ''
     const importId = getValue('id')
-    let platformId = getValue('platformId')
-    if (!platformId && primaryPhone) {
-      const cleanPhone = primaryPhone.replace(/^0/, '+98')
-      platformId = `telegram.me/${cleanPhone}`
-    } else if (!platformId) {
-      platformId = `auto_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    const platformIdRaw = getValue('platformId')
+    const name = getValue('name')
+
+    // Skip completely empty rows
+    if (!importId && !platformIdRaw && !name && !phones.length) {
+      skipped++
+      continue
     }
 
     const platformRaw = getValue('platform').toLowerCase()
@@ -405,50 +464,82 @@ export async function doImport() {
     const statusRaw = getValue('status')
     const status = STATUS_MAP_IMPORT[statusRaw] || statusRaw || 'new'
 
-    const existById = importId && data.customers.find(c => c.id === importId)
-    const existByPlatform = data.customers.find(c =>
-      (c.platformId || '').toLowerCase() === platformId.toLowerCase()
-    )
-    const existByPhone = phones.some(p => findCustomerByPhone(p, data.customers))
-
-    if (existById || existByPlatform || existByPhone) { skipped++; continue }
-
-    const type = phones.length ? 'CS' : 'LD'
-    const currentUser = getCurrentUser()
-    const advisorRaw = getValue('advisor') || (currentUser ? (currentUser.phone || currentUser.displayName) : '')
-    const { advisor, advisorPhone } = resolveAdvisor(advisorRaw, users)
-    const levelRaw = getValue('customerLevel')
-    const level = parseCustomerLevel(levelRaw)
-    const referredByPhone = normalizePhone(getValue('referredByPhone'))
-
-    const newCustomer = {
-      id: await generateId(type),
-      platformId,
-      platform,
-      name: getValue('name'),
-      phone: primaryPhone,
-      phones,
-      status,
-      notes: getValue('notes'),
-      nextFollowupDate: getValue('nextFollowupDate') || '',
-      advisor,
-      advisorPhone,
-      products: [],
-      createdAt: new Date().toISOString(),
-      referredByPhone: referredByPhone || '',
-      customerLevel: level || '',
-      customerLevelLocked: !!level
+    // Match existing: id → phone → platformId (only when provided in file)
+    let existing = null
+    if (importId) existing = data.customers.find(c => c.id === importId) || null
+    if (!existing && phones.length) {
+      for (const p of phones) {
+        existing = findCustomerByPhone(p, data.customers)
+        if (existing) break
+      }
     }
-    if (!level) {
-      syncCustomerLevel(newCustomer, data.customers, data.followups)
+    if (!existing && platformIdRaw) {
+      existing = data.customers.find(c =>
+        (c.platformId || '').toLowerCase() === platformIdRaw.toLowerCase()
+      ) || null
     }
-    data.customers.push(newCustomer)
-    newCustomers.push(newCustomer)
-    imported++
-  }
 
-  for (const c of newCustomers) {
-    await saveCustomerToDB(c)
+    let platformId = platformIdRaw
+    if (!platformId) {
+      if (existing?.platformId) {
+        platformId = existing.platformId
+      } else if (primaryPhone) {
+        platformId = `telegram.me/${primaryPhone.replace(/^0/, '+98')}`
+      } else {
+        platformId = `auto_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+      }
+    }
+
+    try {
+      if (existing) {
+        applyMappedCustomerFields(existing, {
+          mapping, getValue, users, phones, primaryPhone, platformId, platform, status, isCreate: false
+        })
+        if (!existing.customerLevelLocked) {
+          syncCustomerLevel(existing, data.customers, data.followups)
+        }
+        await saveCustomerToDB(existing)
+        updated++
+      } else {
+        const type = phones.length ? 'CS' : 'LD'
+        const id = importId || await generateId(type)
+        // Guard against colliding with an id that appeared mid-import
+        if (data.customers.some(c => c.id === id)) {
+          skipped++
+          continue
+        }
+        const newCustomer = {
+          id,
+          products: [],
+          createdAt: new Date().toISOString(),
+          advisor: '',
+          advisorPhone: '',
+          platformId: '',
+          platform: 'instagram',
+          name: '',
+          phone: '',
+          phones: [],
+          status: 'new',
+          notes: '',
+          nextFollowupDate: '',
+          referredByPhone: '',
+          customerLevel: '',
+          customerLevelLocked: false
+        }
+        applyMappedCustomerFields(newCustomer, {
+          mapping, getValue, users, phones, primaryPhone, platformId, platform, status, isCreate: true
+        })
+        if (!newCustomer.customerLevelLocked) {
+          syncCustomerLevel(newCustomer, data.customers, data.followups)
+        }
+        data.customers.push(newCustomer)
+        await saveCustomerToDB(newCustomer)
+        created++
+      }
+    } catch (err) {
+      console.error('customer import row failed', err)
+      failed++
+    }
   }
 
   // Recompute unlocked levels (CIP may unlock after referrals imported)
@@ -457,13 +548,23 @@ export async function doImport() {
     const before = c.customerLevel || ''
     syncCustomerLevel(c, data.customers, data.followups)
     if ((c.customerLevel || '') !== before) {
-      await saveCustomerToDB(c)
+      try {
+        await saveCustomerToDB(c)
+      } catch (err) {
+        console.error('customer level sync failed', c.id, err)
+      }
     }
   }
 
   closeImportModal()
   await renderCustomers()
-  showToast(`${imported} مشتری ایمپورت شد${skipped > 0 ? ` — ${skipped} ردیف رد شد` : ''}`)
+
+  const parts = []
+  if (created) parts.push(`${created} ایجاد`)
+  if (updated) parts.push(`${updated} به‌روزرسانی`)
+  if (skipped) parts.push(`${skipped} رد شده`)
+  if (failed) parts.push(`${failed} خطا`)
+  showToast(parts.length ? parts.join(' — ') : 'هیچ ردیفی ایمپورت نشد')
 }
 
 // ============================================
