@@ -75,6 +75,49 @@ function sheetFromAoa(headers, rows) {
   return ws
 }
 
+function hasActiveExportScopeFilter(tab) {
+  if (tab === 'customers') {
+    return !!(
+      document.getElementById('searchCustomers')?.value?.trim()
+      || document.getElementById('filterAdvisor')?.value
+      || document.getElementById('filterPlatform')?.value
+      || document.getElementById('filterStatus')?.value
+      || document.getElementById('filterCustomerLevel')?.value
+      || document.getElementById('filterTransferIn')?.value
+    )
+  }
+  if (tab === 'followups') {
+    return !!(document.getElementById('searchFollowups')?.value?.trim())
+  }
+  if (tab === 'sales') {
+    const dateFilter = getSalesDateFilter()
+    return !!(
+      document.getElementById('searchSales')?.value?.trim()
+      || document.getElementById('filterSalesAdvisor')?.value
+      || document.getElementById('filterSalesPlatform')?.value
+      || document.getElementById('filterSalesLevel')?.value
+      || document.getElementById('filterSalesPaymentStatus')?.value
+      || dateFilter?.hasDateFilter
+    )
+  }
+  return false
+}
+
+/** Force Excel to keep id/phone cells as text (leading zeros, no scientific notation). */
+function forceSheetTextColumns(ws, rowCount, colIndexes) {
+  const textCols = new Set(colIndexes)
+  for (let r = 0; r < rowCount; r++) {
+    textCols.forEach(c => {
+      const addr = XLSX.utils.encode_cell({ r: r + 1, c })
+      const cell = ws[addr]
+      if (!cell || cell.v === '' || cell.v == null) return
+      cell.t = 's'
+      cell.v = String(cell.v)
+      cell.z = '@'
+    })
+  }
+}
+
 /** @deprecated alias — same as INFO_ONLY_HEADERS for auto-map skip */
 const AUTO_MAP_IGNORE_HEADERS = INFO_ONLY_HEADERS
 
@@ -343,7 +386,8 @@ const EXPORT_CONFIG = {
             return n >= dateFilter.fromNum && n <= dateFilter.toNum
           })
         }
-        const phoneStr = getCustomerPhones(c).join(' / ') || ''
+        // Primary phone only — multi-phone lives on customer export; join breaks import match
+        const phoneStr = getCustomerPhones(c)[0] || ''
         const platformLabel = getPlatformLabels()[c.platform] || c.platform || ''
         if (pays.length === 0) {
           rows.push([
@@ -412,7 +456,8 @@ export function exportTabCSV(tab) {
   link.href = URL.createObjectURL(blob)
   link.download = `${cfg.label}_${new Date().toISOString().slice(0, 10)}.csv`
   link.click()
-  showToast(`${rows.length} ردیف در CSV ذخیره شد`)
+  const filterHint = hasActiveExportScopeFilter(tab) ? ' — فقط ردیف‌های فیلترشده' : ''
+  showToast(`${rows.length} ردیف در CSV ذخیره شد${filterHint}`)
 }
 
 export function exportTabXLSX(tab) {
@@ -426,17 +471,11 @@ export function exportTabXLSX(tab) {
 
   // Keep phone / id columns as text so Excel doesn't drop leading zeros
   if (tab === 'customers') {
-    const textCols = new Set([0, 1, 4, 5, 6, 9]) // شناسه، ایدی، شماره‌ها، معرف
-    rows.forEach((row, r) => {
-      textCols.forEach(c => {
-        const addr = XLSX.utils.encode_cell({ r: r + 1, c })
-        const cell = ws[addr]
-        if (!cell || cell.v === '' || cell.v == null) return
-        cell.t = 's'
-        cell.v = String(cell.v)
-        cell.z = '@'
-      })
-    })
+    forceSheetTextColumns(ws, rows.length, [0, 1, 4, 5, 6, 9]) // شناسه، ایدی، شماره‌ها، معرف
+  } else if (tab === 'followups') {
+    forceSheetTextColumns(ws, rows.length, [0, 7]) // شناسه مشتری، ثبت‌کننده
+  } else if (tab === 'sales') {
+    forceSheetTextColumns(ws, rows.length, [0, 2]) // شناسه مشتری، شماره موبایل
   }
 
   const wb = XLSX.utils.book_new()
@@ -459,15 +498,18 @@ export function exportTabXLSX(tab) {
       })
     followupCount = followups.length
     const fAoa = buildFollowupExportAoa(followups, data.customers)
-    const wsFollowups = sheetFromAoa(fAoa[0], fAoa.slice(1))
+    const fuRows = fAoa.slice(1)
+    const wsFollowups = sheetFromAoa(fAoa[0], fuRows)
+    forceSheetTextColumns(wsFollowups, fuRows.length, [0, 7])
     XLSX.utils.book_append_sheet(wb, wsFollowups, 'پیگیری‌ها')
   }
 
   XLSX.writeFile(wb, `${cfg.label}_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  const filterHint = hasActiveExportScopeFilter(tab) ? ' — فقط ردیف‌های فیلترشده' : ''
   if (tab === 'customers' && followupCount > 0) {
-    showToast(`${rows.length} مشتری و ${followupCount} یادداشت/پیگیری در Excel ذخیره شد`)
+    showToast(`${rows.length} مشتری و ${followupCount} یادداشت/پیگیری در Excel ذخیره شد${filterHint}`)
   } else {
-    showToast(`${rows.length} ردیف در Excel ذخیره شد`)
+    showToast(`${rows.length} ردیف در Excel ذخیره شد${filterHint}`)
   }
 }
 
@@ -528,7 +570,20 @@ function sheetLooksLikeFollowups(headers) {
   const hasCustomerId = set.has(normalizeHeaderLabel('شناسه مشتری')) || set.has(normalizeHeaderLabel('شناسه'))
   const hasNoteOrDate = set.has(normalizeHeaderLabel('توضیحات')) || set.has(normalizeHeaderLabel('تاریخ'))
   const hasPlatformId = set.has(normalizeHeaderLabel('ایدی پلتفرم'))
-  return hasCustomerId && hasNoteOrDate && !hasPlatformId
+    || set.has(normalizeHeaderLabel('آیدی پلتفرم'))
+  const hasPhoneCols = set.has(normalizeHeaderLabel('شماره')) || set.has(normalizeHeaderLabel('شماره ۲'))
+  // Followups sheet has customer id + date/notes, but not customer profile columns
+  return hasCustomerId && hasNoteOrDate && !hasPlatformId && !hasPhoneCols
+}
+
+function sheetLooksLikeCustomers(headers) {
+  const set = new Set(headers.map(normalizeHeaderLabel))
+  const hasPlatformId = set.has(normalizeHeaderLabel('ایدی پلتفرم'))
+    || set.has(normalizeHeaderLabel('آیدی پلتفرم'))
+  const hasPhone = set.has(normalizeHeaderLabel('شماره')) || set.has(normalizeHeaderLabel('شماره موبایل'))
+  const hasName = set.has(normalizeHeaderLabel('نام')) || set.has(normalizeHeaderLabel('نام مشتری'))
+  if (sheetLooksLikeFollowups(headers)) return false
+  return hasPlatformId || (hasPhone && hasName)
 }
 
 function findFollowupsSheetName(wb) {
@@ -542,6 +597,17 @@ function findFollowupsSheetName(wb) {
     if (parsed && sheetLooksLikeFollowups(parsed.headers)) return name
   }
   return null
+}
+
+function findCustomersSheetName(wb) {
+  const names = wb.SheetNames || []
+  const exact = names.find(n => String(n).trim() === 'مشتریان')
+  if (exact) return exact
+  for (const name of names) {
+    const parsed = parseSheetAoA(wb.Sheets[name])
+    if (parsed && sheetLooksLikeCustomers(parsed.headers)) return name
+  }
+  return names[0] || null
 }
 
 function followupFingerprint(f) {
@@ -669,39 +735,44 @@ export function initImportListeners() {
       try {
         const wb = XLSX.read(ev.target.result, { type: 'array' })
         const followupsSheetName = findFollowupsSheetName(wb)
-        const firstName = wb.SheetNames[0]
-        const firstParsed = parseSheetAoA(wb.Sheets[firstName])
-        if (!firstParsed) { showToast('فایل خالی است'); return }
-
-        const firstIsFollowups = sheetLooksLikeFollowups(firstParsed.headers)
+        const customersSheetName = findCustomersSheetName(wb)
         const followupsParsed = followupsSheetName
           ? parseSheetAoA(wb.Sheets[followupsSheetName])
           : null
+        const customersParsed = customersSheetName
+          ? parseSheetAoA(wb.Sheets[customersSheetName])
+          : null
 
-        // Standalone followups export (single sheet)
-        if (firstIsFollowups && (!followupsSheetName || followupsSheetName === firstName)) {
+        const onlyFollowups = followupsParsed
+          && (!customersParsed || customersSheetName === followupsSheetName
+            || !sheetLooksLikeCustomers(customersParsed.headers))
+
+        // Standalone followups export (tab پیگیری‌ها / single sheet)
+        if (onlyFollowups && sheetLooksLikeFollowups(followupsParsed.headers)) {
           importData.mode = 'followups'
           importData.headers = []
           importData.rows = []
           importData.mapping = {}
           importData.autoMapping = {}
           importData.followups = {
-            headers: firstParsed.headers,
-            rows: firstParsed.rows,
-            mapping: autoMapColumns(firstParsed.headers, FOLLOWUP_IMPORT_FIELDS)
+            headers: followupsParsed.headers,
+            rows: followupsParsed.rows,
+            mapping: autoMapColumns(followupsParsed.headers, FOLLOWUP_IMPORT_FIELDS)
           }
           renderImportMapping()
           return
         }
 
+        if (!customersParsed) { showToast('فایل خالی است'); return }
+
         // Customers sheet (+ optional پیگیری‌ها sheet from app export)
         importData.mode = 'customers'
-        importData.headers = firstParsed.headers
-        importData.rows = firstParsed.rows
-        importData.mapping = autoMapColumns(firstParsed.headers, IMPORT_FIELDS)
+        importData.headers = customersParsed.headers
+        importData.rows = customersParsed.rows
+        importData.mapping = autoMapColumns(customersParsed.headers, IMPORT_FIELDS)
         importData.autoMapping = { ...importData.mapping }
 
-        if (followupsParsed && followupsSheetName !== firstName) {
+        if (followupsParsed && followupsSheetName !== customersSheetName) {
           importData.followups = {
             headers: followupsParsed.headers,
             rows: followupsParsed.rows,
@@ -784,15 +855,23 @@ function isFieldMapped(mapping, fieldKey) {
 
 function applyMappedCustomerFields(customer, { mapping, getValue, users, phones, primaryPhone, platformId, platform, status, isCreate }) {
   const currentUser = getCurrentUser()
+  // On update, empty Excel cells mean "leave unchanged" (avoid wiping with defaults like new/instagram)
+  const hasVal = (key) => String(getValue(key) || '').trim() !== ''
 
   if (isFieldMapped(mapping, 'platformId') || isCreate) {
-    customer.platformId = platformId
+    if (isCreate || hasVal('platformId') || platformId) {
+      customer.platformId = platformId
+    }
   }
   if (isFieldMapped(mapping, 'platform') || isCreate) {
-    customer.platform = platform || customer.platform || 'instagram'
+    if (isCreate || hasVal('platform')) {
+      customer.platform = platform || customer.platform || 'instagram'
+    }
   }
   if (isFieldMapped(mapping, 'name') || isCreate) {
-    customer.name = getValue('name')
+    if (isCreate || hasVal('name')) {
+      customer.name = getValue('name')
+    }
   }
   if (isFieldMapped(mapping, 'phone') || isFieldMapped(mapping, 'phone2') || isFieldMapped(mapping, 'phone3') || isCreate) {
     // Don't wipe existing phones when Excel cells failed to parse
@@ -802,18 +881,24 @@ function applyMappedCustomerFields(customer, { mapping, getValue, users, phones,
     }
   }
   if (isFieldMapped(mapping, 'status') || isCreate) {
-    customer.status = status || customer.status || 'new'
+    if (isCreate || hasVal('status')) {
+      customer.status = status || customer.status || 'new'
+    }
   }
   if (isFieldMapped(mapping, 'notes') || isCreate) {
-    customer.notes = getValue('notes')
+    if (isCreate || hasVal('notes')) {
+      customer.notes = getValue('notes')
+    }
   }
   if (isFieldMapped(mapping, 'nextFollowupDate') || isCreate) {
-    customer.nextFollowupDate = getValue('nextFollowupDate') || ''
+    if (isCreate || hasVal('nextFollowupDate')) {
+      customer.nextFollowupDate = getValue('nextFollowupDate') || ''
+    }
   }
   if (isFieldMapped(mapping, 'advisor') || isCreate) {
     const advisorRaw = getValue('advisor') || (isCreate && currentUser
       ? (currentUser.phone || currentUser.displayName)
-      : (customer.advisor || ''))
+      : '')
     if (advisorRaw || isCreate) {
       const resolved = resolveAdvisor(advisorRaw, users)
       customer.advisor = resolved.advisor
@@ -821,7 +906,9 @@ function applyMappedCustomerFields(customer, { mapping, getValue, users, phones,
     }
   }
   if (isFieldMapped(mapping, 'referredByPhone')) {
-    customer.referredByPhone = normalizePhone(getValue('referredByPhone')) || ''
+    if (isCreate || hasVal('referredByPhone')) {
+      customer.referredByPhone = normalizePhone(getValue('referredByPhone')) || ''
+    }
   } else if (isCreate) {
     customer.referredByPhone = ''
   }
@@ -1115,9 +1202,10 @@ export async function doSalesImport() {
     return
   }
 
-  let imported = 0, skipped = 0, created = 0
+  let imported = 0, skipped = 0, created = 0, failed = 0
   const users = await getUsersSafe()
   const touched = new Set()
+  const paymentColMapped = isFieldMapped(mapping, 'paymentAmount')
 
   for (const row of salesImportData.rows) {
     const getValue = (fieldKey) => {
@@ -1126,7 +1214,10 @@ export async function doSalesImport() {
       return String(row[colIdx] || '').trim()
     }
 
-    const phone = toEnDigits(getValue('phone'))
+    // Accept joined multi-phone cells ("09… / 09…") from older exports
+    const phoneRaw = toEnDigits(getValue('phone'))
+    const phonesFromCell = normalizeCustomerPhones(phoneRaw)
+    const phone = phonesFromCell[0] || ''
     const customerId = getValue('customerId')
     const productName = getValue('productName')
     if (!productName) { skipped++; continue }
@@ -1147,7 +1238,7 @@ export async function doSalesImport() {
       const { advisor, advisorPhone } = resolveAdvisor(advisorRaw, users)
       const platformRaw = getValue('platform').toLowerCase()
       const platform = buildPlatformImportMap()[platformRaw] || platformRaw || 'instagram'
-      const phones = normalizeCustomerPhones([phone])
+      const phones = phonesFromCell.length ? phonesFromCell : normalizeCustomerPhones([phone])
       customer = {
         id,
         platformId: '',
@@ -1168,6 +1259,7 @@ export async function doSalesImport() {
       }
       data.customers.push(customer)
       created++
+      touched.add(customer.id)
     }
 
     const statusRaw = getValue('status')
@@ -1183,16 +1275,40 @@ export async function doSalesImport() {
       || PAYMENT_STATUS_IMPORT[paymentStatusRaw.toLowerCase()]
       || PAYMENT_STATUS.pending
     let paymentAmount = parseMoney(getValue('paymentAmount'))
-    if (!paymentAmount) {
+    // Legacy files without «مبلغ واریز»: fall back to deposit/price.
+    // When that column is mapped but empty (export row with no payments), do NOT invent a payment.
+    if (!paymentAmount && !paymentColMapped) {
       paymentAmount = status === 'بیعانه' ? (deposit || price) : (price || deposit)
     }
-    if (!paymentAmount) { skipped++; continue }
 
     if (!Array.isArray(customer.products)) customer.products = []
 
     let product = customer.products.find(p =>
       p.name === productName && (price <= 0 || (parseFloat(p.price) || 0) === price)
     )
+
+    if (!paymentAmount) {
+      if (!product) {
+        product = {
+          name: productName,
+          status,
+          price: String(price || 0),
+          deposit: String(deposit || 0),
+          settlementDate,
+          priceLocked: price > 0,
+          payments: []
+        }
+        customer.products.push(product)
+        imported++
+      } else {
+        if (price > 0) product.price = String(price)
+        if (settlementDate) product.settlementDate = settlementDate
+        if (status) product.status = status
+        skipped++
+      }
+      touched.add(customer.id)
+      continue
+    }
 
     const payment = createPayment({
       amount: String(paymentAmount),
@@ -1240,15 +1356,21 @@ export async function doSalesImport() {
   for (const id of touched) {
     const c = data.customers.find(x => x.id === id)
     if (!c) continue
-    syncCustomerLevel(c, data.customers, data.followups)
-    await saveCustomerToDB(c)
+    try {
+      syncCustomerLevel(c, data.customers, data.followups)
+      await saveCustomerToDB(c)
+    } catch (err) {
+      console.error('sales import save failed', id, err)
+      failed++
+    }
   }
 
   closeSalesImportModal()
   await renderCustomers()
   await renderSales()
-  let msg = `${imported} واریز/محصول ایمپورت شد`
-  if (created > 0) msg += ` — ${created} مشتری جدید ایجاد شد`
-  if (skipped > 0) msg += ` — ${skipped} ردیف رد شد`
-  showToast(msg)
+  const parts = [`${imported} واریز/محصول ایمپورت شد`]
+  if (created > 0) parts.push(`${created} مشتری جدید`)
+  if (skipped > 0) parts.push(`${skipped} رد شده`)
+  if (failed > 0) parts.push(`${failed} خطای ذخیره`)
+  showToast(parts.join(' — '))
 }
