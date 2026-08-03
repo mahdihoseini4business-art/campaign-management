@@ -280,6 +280,13 @@ function parseMoney(raw) {
   return parseFloat(String(raw || '').replace(/[^\d.]/g, '')) || 0
 }
 
+/** Parse Excel money → system Rial (تومان در فایل ×۱۰ می‌شود). */
+function parseImportMoney(raw, amountUnit = salesImportData.amountUnit) {
+  const n = parseMoney(raw)
+  if (!n) return 0
+  return amountUnit === 'toman' ? n * 10 : n
+}
+
 const PAYMENT_STATUS_IMPORT = {
   'در انتظار تأیید': PAYMENT_STATUS.pending,
   'در انتظار تایید': PAYMENT_STATUS.pending,
@@ -1150,6 +1157,8 @@ function emptySalesImportState() {
     mapping: {},
     autoMapping: {},
     isSiteFormat: false,
+    /** File amounts unit: 'rial' (as-is) | 'toman' (×10 → system rial) */
+    amountUnit: 'rial',
     uniqueProducts: [],
     uniqueDestinations: [],
     uniqueStatuses: [],
@@ -1407,6 +1416,8 @@ export function initSalesImportListeners() {
         salesImportData.mapping = autoMapColumns(salesImportData.headers, SALES_IMPORT_FIELDS)
         salesImportData.autoMapping = { ...salesImportData.mapping }
         salesImportData.isSiteFormat = looksLikeSiteSalesExport(salesImportData.headers)
+        // Site sales Excel is usually تومان; program export is already ریال
+        salesImportData.amountUnit = salesImportData.isSiteFormat ? 'toman' : 'rial'
 
         try {
           const users = await getUsersSafe()
@@ -1443,8 +1454,11 @@ function renderSalesImportMapping() {
   const siteNote = salesImportData.isSiteFormat
     ? 'فرمت فروش سایت تشخیص داده شد — واریزها تأییدشده وارد می‌شوند؛ مبلغ/مبلغ‌کل و تاریخ+ساعت بر همان اساس تفسیر می‌شوند.'
     : 'فرمت خروجی برنامه یا اکسل عمومی.'
+  const unitNote = salesImportData.amountUnit === 'toman'
+    ? 'واحد مبالغ: تومان (در سیستم ×۱۰ به ریال)'
+    : 'واحد مبالغ: ریال'
   document.getElementById('salesImportPreview').textContent =
-    `${salesImportData.rows.length} ردیف — ${siteNote}`
+    `${salesImportData.rows.length} ردیف — ${siteNote} — ${unitNote}`
 
   const productSection = renderValueMappingSection({
     title: 'مپینگ نام محصول',
@@ -1503,6 +1517,26 @@ function renderSalesImportMapping() {
     ? `<p class="import-map-hint" style="color:var(--danger);">کاتالوگ محصولات خالی است — از تنظیمات مدیر محصول اضافه کنید.</p>`
     : ''
 
+  const unit = salesImportData.amountUnit === 'toman' ? 'toman' : 'rial'
+  const amountUnitSection = `
+    <div class="import-value-map">
+      <h3 class="import-value-title">واحد مبالغ فایل اکسل</h3>
+      <p class="import-map-hint">سیستم همه مبالغ را به <b>ریال</b> ذخیره می‌کند. اگر اعداد فایل تومان است، تومان را انتخاب کنید تا هنگام ایمپورت ×۱۰ شود.</p>
+      <div class="import-amount-unit" role="radiogroup" aria-label="واحد مبالغ">
+        <label class="import-amount-option${unit === 'rial' ? ' is-selected' : ''}">
+          <input type="radio" name="salesAmountUnit" value="rial" ${unit === 'rial' ? 'checked' : ''}
+            onchange="app.setSalesAmountUnit('rial')">
+          <span>ریال</span>
+        </label>
+        <label class="import-amount-option${unit === 'toman' ? ' is-selected' : ''}">
+          <input type="radio" name="salesAmountUnit" value="toman" ${unit === 'toman' ? 'checked' : ''}
+            onchange="app.setSalesAmountUnit('toman')">
+          <span>تومان</span>
+        </label>
+      </div>
+    </div>
+  `
+
   container.innerHTML = `
     ${renderFieldMappingRows({
       fields: SALES_IMPORT_FIELDS,
@@ -1511,6 +1545,7 @@ function renderSalesImportMapping() {
       autoMapping: salesImportData.autoMapping,
       onChangeFn: 'setSalesImportMapping'
     })}
+    ${amountUnitSection}
     ${catalogEmpty}
     ${productSection}
     ${statusSection}
@@ -1523,6 +1558,11 @@ function renderSalesImportMapping() {
 export function setSalesImportMapping(fieldKey, colRaw) {
   setFieldColumnMapping(salesImportData, fieldKey, colRaw)
   refreshSalesValueMaps()
+  renderSalesImportMapping()
+}
+
+export function setSalesAmountUnit(unit) {
+  salesImportData.amountUnit = unit === 'toman' ? 'toman' : 'rial'
   renderSalesImportMapping()
 }
 
@@ -1770,8 +1810,8 @@ export async function doSalesImport() {
       touched.add(customer.id)
     }
 
-    let price = parseMoney(getValue('price'))
-    const deposit = parseMoney(getValue('deposit'))
+    let price = parseImportMoney(getValue('price'))
+    const deposit = parseImportMoney(getValue('deposit'))
     const settlementDate = getValue('settlementDate')
     const soldAt = buildSoldAt(getValue('soldAt'), getValue('soldAtTime')) || settlementDate || ''
     const depositorName = getValue('depositorName')
@@ -1788,7 +1828,7 @@ export async function doSalesImport() {
       paymentStatus = PAYMENT_STATUS.pending
     }
 
-    let paymentAmount = parseMoney(getValue('paymentAmount'))
+    let paymentAmount = parseImportMoney(getValue('paymentAmount'))
 
     // Site / semantic rules:
     // تکمیل: «مبلغ» = total = full payment

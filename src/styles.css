@@ -1459,6 +1459,35 @@
     color: var(--text);
   }
 
+  .import-amount-unit {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .import-amount-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    background: var(--bg);
+    user-select: none;
+  }
+
+  .import-amount-option.is-selected {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    font-weight: 600;
+  }
+
+  .import-amount-option input {
+    margin: 0;
+  }
+
   .import-unused {
     margin-top: 10px;
     font-size: 12px;
