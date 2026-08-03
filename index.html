@@ -175,45 +175,54 @@
         </section>
 
         <!-- ارسال اعلان -->
-        <section class="settings-pane" data-settings-pane="notif-compose" id="settingsNotificationsSection" hidden>
+        <section class="settings-pane settings-notif-compose" data-settings-pane="notif-compose" id="settingsNotificationsSection" hidden>
           <div class="settings-pane-header">
             <h3>ارسال اعلان</h3>
             <p class="settings-pane-desc">عنوان و متن اعلان را بنویسید و اعضایی که باید دریافت کنند را انتخاب کنید.</p>
           </div>
-          <div class="form-group">
-            <label for="notifTitle">عنوان اعلان <span class="required">*</span></label>
-            <input type="text" class="form-input" id="notifTitle" placeholder="عنوان کوتاه اعلان" maxlength="120">
-          </div>
-          <div class="form-group">
-            <label for="notifMessage">متن اعلان <span class="required">*</span></label>
-            <textarea class="form-input" id="notifMessage" rows="4" placeholder="متن کامل اعلان را اینجا بنویسید..." style="resize:vertical;min-height:88px;"></textarea>
-          </div>
-          <div class="form-group">
-            <label>حذف خودکار (اختیاری)</label>
-            <p class="settings-pane-desc" style="margin-bottom:8px;">اگر مشخص شود، اعلان در همان تاریخ و ساعت به‌صورت خودکار حذف می‌شود.</p>
-            <div class="form-row" style="align-items:flex-end;">
-              <div class="form-group" style="flex:1;margin-bottom:0;">
-                <label for="notifExpireDate">تاریخ</label>
-                <input type="text" class="form-input" id="notifExpireDate" placeholder="تاریخ حذف" data-jdp>
+          <div class="settings-notif-compose-body">
+            <div class="settings-notif-fields">
+              <div class="form-group">
+                <label for="notifTitle">عنوان اعلان <span class="required">*</span></label>
+                <input type="text" class="form-input" id="notifTitle" placeholder="عنوان کوتاه اعلان" maxlength="120">
               </div>
-              <div class="form-group" style="flex:1;margin-bottom:0;">
-                <label for="notifExpireTime">ساعت</label>
-                <input type="text" class="form-input" id="notifExpireTime" placeholder="مثلاً ۱۴:۳۰" inputmode="numeric" maxlength="5" dir="ltr" style="text-align:left;">
+              <div class="form-group">
+                <label for="notifMessage">متن اعلان <span class="required">*</span></label>
+                <textarea class="form-input" id="notifMessage" rows="4" placeholder="متن کامل اعلان را اینجا بنویسید..." style="resize:vertical;min-height:88px;"></textarea>
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label>حذف خودکار (اختیاری)</label>
+                <p class="settings-pane-desc" style="margin-bottom:8px;">اگر مشخص شود، اعلان در همان تاریخ و ساعت به‌صورت خودکار حذف می‌شود.</p>
+                <div class="form-row" style="align-items:flex-end;">
+                  <div class="form-group" style="flex:1;margin-bottom:0;">
+                    <label for="notifExpireDate">تاریخ</label>
+                    <input type="text" class="form-input" id="notifExpireDate" placeholder="تاریخ حذف" data-jdp>
+                  </div>
+                  <div class="form-group" style="flex:1;margin-bottom:0;">
+                    <label for="notifExpireTime">ساعت</label>
+                    <input type="text" class="form-input" id="notifExpireTime" placeholder="مثلاً ۱۴:۳۰" inputmode="numeric" maxlength="5" dir="ltr" style="text-align:left;">
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-          <div class="form-group">
-            <div class="settings-recipients-header">
-              <label style="margin:0;">گیرندگان <span class="required">*</span></label>
-              <label class="settings-select-all">
-                <input type="checkbox" id="notifSelectAll" onchange="app.toggleAllNotifRecipients(this.checked)">
-                انتخاب همه
-              </label>
+            <div class="settings-notif-recipients">
+              <div class="settings-recipients-header">
+                <div>
+                  <label style="margin:0;">گیرندگان <span class="required">*</span></label>
+                  <div class="settings-recipients-count" id="notifRecipientCount">۰ نفر انتخاب شده</div>
+                </div>
+                <label class="settings-select-all">
+                  <input type="checkbox" id="notifSelectAll" onchange="app.toggleAllNotifRecipients(this.checked)">
+                  انتخاب همه
+                </label>
+              </div>
+              <input type="search" class="form-input settings-recipients-search" id="notifRecipientSearch" placeholder="جستجوی نام یا شماره..." oninput="app.filterNotifRecipients(this.value)" autocomplete="off">
+              <div class="settings-recipients-box" id="notifRecipientList"></div>
             </div>
-            <input type="search" class="form-input" id="notifRecipientSearch" placeholder="جستجوی نام یا شماره..." oninput="app.filterNotifRecipients(this.value)" style="font-size:12px;margin-bottom:8px;">
-            <div class="view-users-options" id="notifRecipientList" style="max-height:260px;"></div>
           </div>
-          <button type="button" class="btn btn-primary" id="notifSendBtn" onclick="app.sendNotification()">ارسال اعلان</button>
+          <div class="settings-notif-actions">
+            <button type="button" class="btn btn-primary" id="notifSendBtn" onclick="app.sendNotification()">ارسال اعلان</button>
+          </div>
         </section>
 
         <!-- ترجیحات اعلان -->

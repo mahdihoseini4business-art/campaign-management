@@ -2625,10 +2625,77 @@
 
   .settings-recipients-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 8px;
     margin-bottom: 8px;
+  }
+
+  .settings-recipients-count {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    font-weight: 400;
+  }
+
+  .settings-recipients-search {
+    font-size: 12px !important;
+    margin-bottom: 8px;
+  }
+
+  .settings-recipients-box {
+    flex: 1;
+    min-height: 0;
+    max-height: 280px;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    padding: 4px;
+  }
+
+  .settings-notif-compose {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+  }
+
+  .settings-notif-compose-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(240px, 0.9fr);
+    gap: 18px;
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .settings-notif-fields {
+    min-width: 0;
+  }
+
+  .settings-notif-recipients {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: #FAFAF9;
+    padding: 12px;
+  }
+
+  .settings-notif-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .settings-notif-actions .btn {
+    min-width: 140px;
   }
 
   .settings-select-all {
@@ -2639,6 +2706,18 @@
     font-weight: 400;
     cursor: pointer;
     margin: 0;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 900px) {
+    .settings-notif-compose-body {
+      grid-template-columns: 1fr;
+    }
+
+    .settings-recipients-box {
+      max-height: 200px;
+      flex: none;
+    }
   }
 
   .settings-pref-row {

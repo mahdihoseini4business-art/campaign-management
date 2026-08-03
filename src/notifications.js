@@ -378,6 +378,25 @@ function clearComposeFields() {
   if (expireTimeEl) expireTimeEl.value = ''
   if (selectAll) selectAll.checked = false
   document.querySelectorAll('#notifRecipientList .notif-recipient-cb').forEach(cb => { cb.checked = false })
+  updateNotifRecipientCount()
+}
+
+export function updateNotifRecipientCount() {
+  const el = document.getElementById('notifRecipientCount')
+  if (!el) return
+  const checked = document.querySelectorAll('#notifRecipientList .notif-recipient-cb:checked').length
+  const total = document.querySelectorAll('#notifRecipientList .notif-recipient-cb').length
+  el.textContent = checked === 0
+    ? (total ? `۰ از ${total} نفر انتخاب شده` : 'گیرنده‌ای نیست')
+    : `${checked} از ${total} نفر انتخاب شده`
+
+  const selectAll = document.getElementById('notifSelectAll')
+  if (selectAll && total) {
+    const visible = [...document.querySelectorAll('#notifRecipientList .view-users-option')]
+      .filter(row => row.style.display !== 'none')
+    const visibleCbs = visible.map(row => row.querySelector('.notif-recipient-cb')).filter(Boolean)
+    selectAll.checked = visibleCbs.length > 0 && visibleCbs.every(cb => cb.checked)
+  }
 }
 
 export async function renderNotificationAdminSection() {
@@ -394,11 +413,13 @@ export async function renderNotificationAdminSection() {
     const name = userDisplayName(u) || u.username || phone
     const label = `${name} · ${phone}`
     return `<label class="view-users-option" data-search="${escapeAttr(label.toLowerCase())}">
-      <input type="checkbox" value="${escapeAttr(phone)}" class="notif-recipient-cb">
+      <input type="checkbox" value="${escapeAttr(phone)}" class="notif-recipient-cb" onchange="app.updateNotifRecipientCount()">
       <span>${escapeHtml(name)}</span>
       <span class="view-users-phone">${escapeHtml(phone)}</span>
     </label>`
   }).join('') || '<div class="settings-empty-detail">کاربری برای انتخاب نیست</div>'
+
+  updateNotifRecipientCount()
 
   await refreshNotifications()
   if (window.jalaliDatepicker) {
@@ -412,6 +433,7 @@ export function filterNotifRecipients(query) {
     const hay = (el.dataset.search || '').toLowerCase()
     el.style.display = !q || hay.includes(q) ? '' : 'none'
   })
+  updateNotifRecipientCount()
 }
 
 export function toggleAllNotifRecipients(checked) {
@@ -420,6 +442,7 @@ export function toggleAllNotifRecipients(checked) {
     if (row && row.style.display === 'none') return
     cb.checked = !!checked
   })
+  updateNotifRecipientCount()
 }
 
 function parseExpireAtFromForm() {
