@@ -22,6 +22,14 @@ import {
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
+/** Newest Jalali date first; stable tie-break on id. */
+function sortFollowupsNewestFirst(list) {
+  return [...list].sort((a, b) => {
+    const diff = jalaliToNum(b.date) - jalaliToNum(a.date)
+    if (diff !== 0) return diff
+    return String(b.id || '').localeCompare(String(a.id || ''), undefined, { numeric: true })
+  })
+}
 
 function populatePlatformDropdown(select) {
   if (!select) return
@@ -219,13 +227,11 @@ export async function renderCustomers() {
     else if (followupCount >= 3) countClass = 'followup-mid'
     else if (followupCount >= 1) countClass = 'followup-low'
 
-    const customerFollowups = data.followups.filter(f => f.customerId === c.id)
-    const lastDate = customerFollowups.length > 0
-      ? customerFollowups[customerFollowups.length - 1].date
-      : '—'
-    const lastNote = customerFollowups.length > 0
-      ? customerFollowups[customerFollowups.length - 1].notes
-      : ''
+    const customerFollowups = sortFollowupsNewestFirst(
+      data.followups.filter(f => f.customerId === c.id)
+    )
+    const lastDate = customerFollowups.length > 0 ? customerFollowups[0].date : '—'
+    const lastNote = customerFollowups.length > 0 ? customerFollowups[0].notes : ''
 
     let nextFollowupHtml = '<span style="color:var(--text-muted)">—</span>'
     let nextFollowupClass = ''
@@ -1363,7 +1369,9 @@ export async function openCustomerDetail(id) {
   const canAddSale = !isNew && canAddSaleOnCustomer(c)
   const canAddFollowup = !isNew && canAddNoteOnCustomer(c)
 
-  const customerFollowups = isNew ? [] : data.followups.filter(f => f.customerId === id)
+  const customerFollowups = isNew
+    ? []
+    : sortFollowupsNewestFirst(data.followups.filter(f => f.customerId === id))
   const idClass = !isNew && c.id.startsWith('CS') ? 'id-cs' : 'id-ld'
   const platformLabel = getPlatformLabels()[c.platform] || c.platform
   const statusClass = getStatusClass(c.status)
@@ -1588,6 +1596,8 @@ export async function openCustomerDetail(id) {
     if (customerFollowups.length === 0) {
       html += `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری ثبت نشده</div>`
     } else {
+      const canEditNote = hasPermission('followups_add')
+      const canDeleteNote = hasPermission('followups_delete')
       html += `<div class="timeline">`
       customerFollowups.forEach(f => {
         const nextHtml = f.nextDate ? `<div class="timeline-next">پیگیری بعدی: ${f.nextDate}</div>` : ''
@@ -1598,6 +1608,17 @@ export async function openCustomerDetail(id) {
         const isOverdoneNote = f.type === 'پیگیری معوقه انجام‌شده'
         const overdueTag = isOverdoneNote ? '<span class="overdue-tag">معوقه</span>' : ''
         const itemClass = isOverdoneNote ? ' timeline-item-overdue' : ''
+        const followupKey = f.id != null ? String(f.id) : ''
+        let actionsHtml = ''
+        if (followupKey && (canEditNote || canDeleteNote)) {
+          const editBtn = canEditNote
+            ? `<button type="button" class="btn-icon" title="ویرایش" onclick="event.stopPropagation();app.editFollowup('${escapeAttr(followupKey)}')">✏</button>`
+            : ''
+          const deleteBtn = canDeleteNote
+            ? `<button type="button" class="btn-icon" title="حذف" onclick="event.stopPropagation();app.deleteFollowup('${escapeAttr(followupKey)}')">🗑</button>`
+            : ''
+          actionsHtml = `<div class="timeline-actions">${editBtn}${deleteBtn}</div>`
+        }
         html += `
           <div class="timeline-item${itemClass}">
             <div class="timeline-header">
@@ -1605,6 +1626,7 @@ export async function openCustomerDetail(id) {
               <span class="timeline-type">${escapeHtml(f.type)}</span>
               ${overdueTag}
               ${authorHtml}
+              ${actionsHtml}
             </div>
             <div class="timeline-result">${escapeHtml(f.result)}</div>
             ${f.notes ? `<div class="timeline-notes">${escapeHtml(f.notes)}</div>` : ''}
@@ -1749,12 +1771,17 @@ export async function addQuickNote(customerId) {
   const dateStr = `${jalali.year}/${String(jalali.month).padStart(2, '0')}/${String(jalali.day).padStart(2, '0')}`
 
   const newFollowup = { customerId, date: dateStr, type, result, nextDate: '', notes, createdByPhone: normalizePhone(getCurrentUser()?.phone || '') }
-  const id = await saveFollowupToDB(newFollowup)
-  newFollowup.id = id
-  data.followups.push(newFollowup)
-  await renderCustomers()
-  openCustomerDetail(customerId)
-  showToast('توضیحات ثبت شد')
+  try {
+    const id = await saveFollowupToDB(newFollowup)
+    newFollowup.id = id
+    data.followups.push(newFollowup)
+    await renderCustomers()
+    openCustomerDetail(customerId)
+    showToast('توضیحات ثبت شد')
+  } catch (e) {
+    console.error('addQuickNote error:', e)
+    showToast(e.message || 'خطا در ذخیره توضیحات')
+  }
 }
 
 export async function updateCustomerAdvisor(customerId, advisorPhoneValue) {

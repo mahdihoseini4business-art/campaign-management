@@ -925,6 +925,19 @@
     margin-bottom: 4px;
   }
 
+  .timeline-actions {
+    display: flex;
+    gap: 4px;
+    margin-inline-start: auto;
+  }
+
+  .timeline-actions .btn-icon {
+    width: 28px;
+    height: 28px;
+    font-size: 13px;
+    padding: 0;
+  }
+
   .timeline-date {
     font-size: 12px;
     font-family: 'Vazirmatn', sans-serif;

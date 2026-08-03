@@ -625,7 +625,7 @@ function isDoneFollowupType(type) {
 
 /**
  * Import structured followup rows (same shape as export sheet «پیگیری‌ها»).
- * Skips exact duplicates; creates missing notes with allowDuplicate.
+ * Skips exact duplicates (fingerprint); creates missing notes.
  */
 async function importFollowupRows({ headers, rows, mapping }) {
   const data = getData()
@@ -686,7 +686,7 @@ async function importFollowupRows({ headers, rows, mapping }) {
     }
 
     try {
-      const id = await saveFollowupToDB(followup, { allowDuplicate: true })
+      const id = await saveFollowupToDB(followup)
       followup.id = id
       data.followups.push(followup)
       seen.add(fp)

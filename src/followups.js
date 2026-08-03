@@ -529,6 +529,7 @@ export async function saveFollowup() {
 
   renderFollowups()
   closeFollowupModal()
+  await refreshOpenCustomerDetail(customerId)
   showToast(editFollowupId ? 'پیگیری ویرایش شد' : 'پیگیری جدید ثبت شد')
 }
 
@@ -557,6 +558,7 @@ export async function deleteFollowup(followupId) {
       if (idx !== -1) data.followups.splice(idx, 1)
       renderFollowups()
       closeDeleteModal()
+      await refreshOpenCustomerDetail(f.customerId)
       showToast('پیگیری حذف شد')
     } catch (e) {
       console.error('deleteFollowup error:', e)
@@ -568,4 +570,13 @@ export async function deleteFollowup(followupId) {
 
 function closeDeleteModal() {
   document.getElementById('deleteModal').classList.remove('active')
+}
+
+/** If پنل مشتری is open for this customer, re-render it after followup changes. */
+async function refreshOpenCustomerDetail(customerId) {
+  if (!customerId) return
+  const modal = document.getElementById('detailModal')
+  if (!modal?.classList.contains('active')) return
+  const { openCustomerDetail } = await import('./customers.js')
+  await openCustomerDetail(customerId)
 }
