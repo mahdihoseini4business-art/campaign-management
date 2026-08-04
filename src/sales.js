@@ -110,6 +110,7 @@ export function getFilteredSales() {
   const platformFilter = document.getElementById('filterSalesPlatform')?.value || ''
   const advisorFilter = document.getElementById('filterSalesAdvisor')?.value || ''
   const levelFilter = document.getElementById('filterSalesLevel')?.value || ''
+  const statusFilter = document.getElementById('filterSalesStatus')?.value || ''
   const payStatusFilter = document.getElementById('filterSalesPaymentStatus')?.value || ''
   const dateFilter = getSalesDateFilter()
   let allSales = getAllSales()
@@ -146,6 +147,7 @@ export function getFilteredSales() {
     ))
     if (!canViewScopedCustomer(customer, currentUser) && !registeredByMe) return false
     if (platformFilter && s.platform !== platformFilter) return false
+    if (statusFilter && s.status !== statusFilter) return false
     if (payStatusFilter && s.paymentStatus !== payStatusFilter) return false
     if (levelFilter && customer) {
       const resolved = resolveCustomerLevel(customer, data.customers, data.followups)
@@ -288,10 +290,17 @@ function populateSalesFilterDropdowns() {
       Object.values(CUSTOMER_LEVELS).map(l => `<option value="${escapeAttr(l.key)}">${l.emoji} ${escapeHtml(l.label)}</option>`).join('')
     lSel.value = val
   }
+  const statusSel = document.getElementById('filterSalesStatus')
+  if (statusSel) {
+    const val = statusSel.value
+    statusSel.innerHTML = '<option value="">همه وضعیت‌ها</option>' +
+      ['تکمیل', 'بیعانه'].map(s => `<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('')
+    statusSel.value = val
+  }
   const sSel = document.getElementById('filterSalesPaymentStatus')
   if (sSel) {
     const val = sSel.value
-    sSel.innerHTML = '<option value="">همه وضعیت‌ها</option>' +
+    sSel.innerHTML = '<option value="">همه وضعیت‌های واریزی</option>' +
       Object.entries(PAYMENT_STATUS_LABELS).map(([k, v]) => `<option value="${escapeAttr(k)}">${escapeHtml(v)}</option>`).join('')
     sSel.value = val
   }

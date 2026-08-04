@@ -733,8 +733,13 @@
       <select class="form-select" id="filterSalesLevel" style="width:130px;" onchange="app.renderSales()">
         <option value="">همه سطوح</option>
       </select>
-      <select class="form-select" id="filterSalesPaymentStatus" style="width:140px;" onchange="app.renderSales()">
+      <select class="form-select" id="filterSalesStatus" style="width:120px;" onchange="app.renderSales()">
         <option value="">همه وضعیت‌ها</option>
+        <option value="تکمیل">تکمیل</option>
+        <option value="بیعانه">بیعانه</option>
+      </select>
+      <select class="form-select" id="filterSalesPaymentStatus" style="width:160px;" onchange="app.renderSales()">
+        <option value="">همه وضعیت‌های واریزی</option>
       </select>
       <div class="toolbar-actions" id="salesActionsMenu">
         <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>

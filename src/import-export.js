@@ -100,6 +100,7 @@ function hasActiveExportScopeFilter(tab) {
       || document.getElementById('filterSalesAdvisor')?.value
       || document.getElementById('filterSalesPlatform')?.value
       || document.getElementById('filterSalesLevel')?.value
+      || document.getElementById('filterSalesStatus')?.value
       || document.getElementById('filterSalesPaymentStatus')?.value
       || dateFilter?.hasDateFilter
     )
