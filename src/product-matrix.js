@@ -20,6 +20,17 @@ import { paginateList, renderPaginationBar } from './pagination.js'
 const MARK_YES = '✅'
 const NONE_KEY = '__none__'
 
+/** Coerce catalog entries or raw names to clean string names. */
+function resolveCatalogNames(list) {
+  return (list || [])
+    .map(item => {
+      if (typeof item === 'string') return item.trim()
+      if (item && typeof item === 'object') return String(item.name || '').trim()
+      return ''
+    })
+    .filter(n => n && n.toLowerCase() !== '[object object]')
+}
+
 /** @type {Record<string, 'both' | 'has' | 'missing'>} */
 const productFilterState = {}
 
@@ -48,7 +59,7 @@ export function getFilteredProductMatrixCustomers() {
   const data = getData()
   const currentUser = getCurrentUser()
   const search = toEnDigits(document.getElementById('searchProductMatrix')?.value || '').toLowerCase()
-  const catalog = getProductCatalogNames()
+  const catalog = resolveCatalogNames(getProductCatalogNames())
 
   return (data.customers || []).filter(c => {
     const isCS = c.id.startsWith('CS')
@@ -112,7 +123,7 @@ export function renderProductMatrix() {
   const tbody = document.getElementById('productMatrixBody')
   if (!thead || !tbody) return
 
-  const catalog = getProductCatalogNames()
+  const catalog = resolveCatalogNames(getProductCatalogNames())
   const search = toEnDigits(document.getElementById('searchProductMatrix')?.value || '').toLowerCase()
   const filterSig = `${search}|${JSON.stringify(productFilterState)}`
   const customers = getFilteredProductMatrixCustomers()
@@ -169,7 +180,7 @@ export function renderProductMatrix() {
 
 /** Headers + rows for matrix export (بله / خالی). */
 export function getProductMatrixExportAoa() {
-  const catalog = getProductCatalogNames()
+  const catalog = resolveCatalogNames(getProductCatalogNames())
   const headers = ['نام', 'شماره', 'کارشناس', ...catalog, 'بدون محصول']
   const rows = getFilteredProductMatrixCustomers().map(c => {
     const owned = getCustomerOwnedProductNames(c)

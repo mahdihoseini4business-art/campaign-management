@@ -102,12 +102,17 @@ function defaultCatalogEntries() {
 export function normalizeCatalogEntry(raw) {
   if (typeof raw === 'string') {
     const name = raw.trim()
-    if (!name) return null
+    if (!name || name.toLowerCase() === '[object object]') return null
     return { name, profitMode: PROFIT_MODE.gross }
   }
   if (!raw || typeof raw !== 'object') return null
-  const name = String(raw.name || '').trim()
-  if (!name) return null
+  // Guard against nested/corrupt { name: { name: '...' } } from bad saves
+  let nameRaw = raw.name
+  if (nameRaw && typeof nameRaw === 'object') {
+    nameRaw = nameRaw.name
+  }
+  const name = String(nameRaw || '').trim()
+  if (!name || name.toLowerCase() === '[object object]') return null
   let profitMode = String(raw.profitMode || PROFIT_MODE.gross).toLowerCase()
   if (profitMode !== PROFIT_MODE.net && profitMode !== PROFIT_MODE.mixed) {
     profitMode = PROFIT_MODE.gross
@@ -414,13 +419,29 @@ export async function saveDestinationBanks(banks) {
 
 export function getProductCatalog() {
   const list = Array.isArray(data.productCatalog) ? data.productCatalog : []
-  if (!list.length) return defaultCatalogEntries()
-  return list.map(e => ({ ...e }))
+  const normalized = []
+  const seen = new Set()
+  for (const item of list) {
+    const entry = normalizeCatalogEntry(item)
+    if (!entry) continue
+    const key = entry.name.toLowerCase()
+    if (seen.has(key)) continue
+    if (entry.name.toLowerCase() === '[object object]') continue
+    seen.add(key)
+    normalized.push(entry)
+  }
+  if (!normalized.length) return defaultCatalogEntries()
+  // Heal in-memory cache if legacy strings / corrupt rows are still present
+  data.productCatalog = normalized
+  return normalized.map(e => ({ ...e }))
 }
 
 /** Catalog product names only (for dropdowns, matrix, bundles). */
 export function getProductCatalogNames() {
-  return getProductCatalog().map(e => e.name)
+  return getProductCatalog()
+    .map(e => (typeof e === 'string' ? e : e?.name))
+    .map(n => String(n ?? '').trim())
+    .filter(n => n && n.toLowerCase() !== '[object object]')
 }
 
 export function getCatalogEntryByName(name) {
