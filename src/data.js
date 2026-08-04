@@ -388,6 +388,27 @@ function normalizeSalesTargetBar(item) {
   }
 }
 
+function normalizeSalesTargetAllocations(raw, barIds) {
+  if (!Array.isArray(raw)) return []
+  const idSet = new Set(barIds || [])
+  return raw.map(alloc => {
+    if (!alloc || typeof alloc !== 'object') return null
+    const userGroupId = String(alloc.userGroupId || '').trim()
+    if (!userGroupId) return null
+    const shares = (Array.isArray(alloc.shares) ? alloc.shares : [])
+      .map(share => {
+        if (!share || typeof share !== 'object') return null
+        const barId = String(share.barId || '').trim()
+        const value = Number(share.value)
+        if (!barId || !idSet.has(barId) || !Number.isFinite(value) || value <= 0) return null
+        return { barId, value }
+      })
+      .filter(Boolean)
+    if (!shares.length) return null
+    return { userGroupId, shares }
+  }).filter(Boolean)
+}
+
 function normalizeSalesTargets(raw) {
   let list = raw
   if (typeof list === 'string' && list.trim()) {
@@ -397,15 +418,17 @@ function normalizeSalesTargets(raw) {
   return list.map(item => {
     if (!item || typeof item !== 'object') return null
 
-    // New grouped format: { id, title, items: [...] }
+    // New grouped format: { id, title, items: [...], allocations?: [...] }
     if (Array.isArray(item.items)) {
       const items = item.items.map(normalizeSalesTargetBar).filter(Boolean)
       if (!items.length) return null
       const title = String(item.title || '').trim() || 'گروه تارگت'
+      const barIds = items.map(bar => bar.id)
       return {
         id: String(item.id || '').trim() || `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         title,
         items,
+        allocations: normalizeSalesTargetAllocations(item.allocations, barIds),
         createdAt: String(item.createdAt || '').trim() || new Date().toISOString()
       }
     }
@@ -418,6 +441,7 @@ function normalizeSalesTargets(raw) {
       id: String(item.id || '').trim() || `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       title,
       items: [bar],
+      allocations: [],
       createdAt: String(item.createdAt || '').trim() || bar.createdAt
     }
   }).filter(Boolean)
@@ -426,7 +450,11 @@ function normalizeSalesTargets(raw) {
 function cloneSalesTargetGroup(group) {
   return {
     ...group,
-    items: (group.items || []).map(bar => ({ ...bar, productNames: [...(bar.productNames || [])] }))
+    items: (group.items || []).map(bar => ({ ...bar, productNames: [...(bar.productNames || [])] })),
+    allocations: (group.allocations || []).map(alloc => ({
+      userGroupId: alloc.userGroupId,
+      shares: (alloc.shares || []).map(share => ({ ...share }))
+    }))
   }
 }
 

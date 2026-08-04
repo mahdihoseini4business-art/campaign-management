@@ -172,7 +172,7 @@
         <section class="settings-pane" data-settings-pane="sales-targets" hidden>
           <div class="settings-pane-header">
             <h3>تارگت‌های فروش</h3>
-            <p class="settings-pane-desc">گروه‌های تارگت با عنوان مشترک و چند نوار پیشرفت (مبلغی یا تعدادی). بازه زمانی و فیلتر محصول برای هر نوار اختیاری است.</p>
+            <p class="settings-pane-desc">تارگت کلی سازمان با نوارهای پیشرفت، و سهمیه‌بندی مطلق بین گروه‌های کاربری. بازه زمانی و فیلتر محصول برای هر نوار اختیاری است.</p>
           </div>
           <div class="settings-target-form" id="settingsTargetForm">
             <input type="hidden" id="editSalesTargetId" value="">
@@ -213,6 +213,12 @@
                 </div>
                 <button type="button" class="btn btn-sm" onclick="app.addSalesTargetBarToDraft()">افزودن نوار به گروه</button>
               </div>
+            </div>
+            <div class="settings-target-alloc-block">
+              <div class="settings-target-bars-heading">سهمیه‌بندی بین گروه‌ها</div>
+              <p class="settings-pane-desc" style="margin:0 0 10px;">برای هر گروه کاربری سهم مطلق از هر نوار تعیین کنید. جمع سهم‌ها نباید از مقدار هدف نوار بیشتر شود.</p>
+              <div id="salesTargetAllocations" class="settings-target-allocations"></div>
+              <div id="salesTargetAllocSums" class="settings-target-alloc-sums"></div>
             </div>
             <div class="settings-target-form-actions">
               <button type="button" class="btn btn-primary" id="salesTargetSaveBtn" onclick="app.saveSalesTargetForm()">ذخیره گروه</button>

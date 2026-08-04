@@ -1,6 +1,6 @@
 import { getData, getStatuses, getSalesTargets } from './data.js'
 import { getUsersSafe } from './auth.js'
-import { loadGroupsData, organizeUsersByGroup } from './groups.js'
+import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
 import {
   hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliNum,
   jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr, ownsCustomer,
@@ -8,7 +8,7 @@ import {
   getVisibleAdvisorPhones, getStatusLabels, formatPhonesDisplay,
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
   getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
-  getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones
+  getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin
 } from './utils.js'
 
 let dashCharts = {}
@@ -1064,7 +1064,7 @@ function targetDeadlineInfo(endDate) {
   return { text: `${formatNumber(daysLeft)} روز مانده`, className: '', overdue: false, warning: false }
 }
 
-function computeSalesTargetCurrent(target, dateFromNum, dateToNum) {
+function computeSalesTargetCurrent(target, dateFromNum, dateToNum, phoneSet = null) {
   const fromNum = target.startDate ? jalaliToNum(target.startDate) : (dateFromNum || 0)
   const toNum = target.endDate ? jalaliToNum(target.endDate) : (dateToNum || 99999999)
   const hasDateFilter = fromNum > 0 || toNum < 99999999
@@ -1080,10 +1080,18 @@ function computeSalesTargetCurrent(target, dateFromNum, dateToNum) {
     return productSet.size === 0 || productSet.has(name || '')
   }
 
+  // Target progress ignores dashboard advisor checkboxes; scope via phoneSet when set.
+  const matchPayment = phoneSet
+    ? ({ customer, product, payment }) => {
+        const phone = normalizePhone(getSaleRegistrantPhone(product, payment, customer) || '')
+        return !!(phone && phoneSet.has(phone))
+      }
+    : () => true
+
   let current = 0
   if (target.metric === 'count') {
     forEachDashSalePayment(
-      matchesSelectedSaleRegistrant,
+      matchPayment,
       hasDateFilter,
       inRange,
       () => {},
@@ -1094,7 +1102,7 @@ function computeSalesTargetCurrent(target, dateFromNum, dateToNum) {
     )
   } else {
     forEachDashSalePayment(
-      matchesSelectedSaleRegistrant,
+      matchPayment,
       hasDateFilter,
       inRange,
       ({ product, amount }) => {
@@ -1106,9 +1114,18 @@ function computeSalesTargetCurrent(target, dateFromNum, dateToNum) {
   return current
 }
 
-function renderDashTargetBar(bar, dateFromNum, dateToNum, groupTitle) {
-  const goal = Number(bar.value) || 0
-  const current = computeSalesTargetCurrent(bar, dateFromNum, dateToNum)
+function memberPhoneSetForUserGroup(userGroupId) {
+  const phones = new Set()
+  for (const m of getMembersOfGroup(userGroupId) || []) {
+    const phone = normalizePhone(m.user_phone || '')
+    if (phone) phones.add(phone)
+  }
+  return phones
+}
+
+function renderDashTargetBar(bar, dateFromNum, dateToNum, groupTitle, options = {}) {
+  const goal = options.goalOverride != null ? Number(options.goalOverride) : (Number(bar.value) || 0)
+  const current = computeSalesTargetCurrent(bar, dateFromNum, dateToNum, options.phoneSet || null)
   const pct = goal > 0 ? Math.min(100, Math.round((current / goal) * 1000) / 10) : 0
   const complete = goal > 0 && current >= goal
   const deadline = targetDeadlineInfo(bar.endDate)
@@ -1140,42 +1157,116 @@ function renderDashTargetBar(bar, dateFromNum, dateToNum, groupTitle) {
   `
 }
 
+function buildDashTargetBlocks(targets, viewer) {
+  const blocks = []
+  const admin = isMainAdmin(viewer)
+  const managerGroupId = viewer?.isGroupManager && viewer?.groupId ? viewer.groupId : null
+
+  for (const target of targets || []) {
+    const title = target.title || 'گروه تارگت'
+    const items = target.items || []
+    if (!items.length) continue
+
+    if (admin) {
+      blocks.push({
+        key: `${target.id}-org`,
+        title: `${title} · کلی`,
+        className: 'is-org',
+        bars: items.map(bar => ({ bar, goalOverride: null, phoneSet: null }))
+      })
+    }
+
+    for (const alloc of target.allocations || []) {
+      if (!admin && (!managerGroupId || alloc.userGroupId !== managerGroupId)) continue
+      const ug = getGroupById(alloc.userGroupId)
+      const groupName = ug?.name || 'گروه'
+      const phoneSet = memberPhoneSetForUserGroup(alloc.userGroupId)
+      const shareMap = new Map((alloc.shares || []).map(s => [s.barId, Number(s.value)]))
+      const bars = items
+        .map(bar => {
+          const shareVal = shareMap.get(bar.id)
+          if (!(shareVal > 0)) return null
+          return { bar, goalOverride: shareVal, phoneSet }
+        })
+        .filter(Boolean)
+      if (!bars.length) continue
+      blocks.push({
+        key: `${target.id}-${alloc.userGroupId}`,
+        title: `${title} · ${groupName}`,
+        className: 'is-group-alloc',
+        bars
+      })
+    }
+  }
+
+  return blocks
+}
+
 function renderDashTargetsProgress(dateFromNum, dateToNum) {
   const el = document.getElementById('dashTargetsProgress')
   if (!el) return
 
-  let groups = []
+  const viewer = getCurrentUser()
+  const canSee =
+    isMainAdmin(viewer) ||
+    !!(viewer?.isGroupManager && viewer?.groupId)
+
+  if (!canSee) {
+    el.innerHTML = '<div class="dash-targets-empty">تارگتی برای نقش شما تعریف نشده است.</div>'
+    return
+  }
+
+  let targets = []
   try {
-    groups = getSalesTargets()
+    targets = getSalesTargets()
   } catch (e) {
     console.error('getSalesTargets error:', e)
     el.innerHTML = '<div class="dash-targets-empty">خطا در خواندن تارگت‌ها</div>'
     return
   }
 
-  if (!groups.length) {
+  if (!targets.length) {
     el.innerHTML = '<div class="dash-targets-empty">هنوز تارگتی تعریف نشده. از تنظیمات سیستم اضافه کنید.</div>'
     return
   }
 
-  el.innerHTML = groups.map(group => {
+  let blocks = []
+  try {
+    blocks = buildDashTargetBlocks(targets, viewer)
+  } catch (e) {
+    console.error('buildDashTargetBlocks error:', e)
+    el.innerHTML = '<div class="dash-targets-empty">خطا در آماده‌سازی تارگت‌ها</div>'
+    return
+  }
+
+  if (!blocks.length) {
+    el.innerHTML = isMainAdmin(viewer)
+      ? '<div class="dash-targets-empty">هنوز تارگتی تعریف نشده. از تنظیمات سیستم اضافه کنید.</div>'
+      : '<div class="dash-targets-empty">سهمیه‌ای برای گروه شما تعریف نشده است.</div>'
+    return
+  }
+
+  el.innerHTML = blocks.map(block => {
     try {
-      const bars = (group.items || []).map(bar => {
+      const barsHtml = (block.bars || []).map(({ bar, goalOverride, phoneSet }) => {
         try {
-          return renderDashTargetBar(bar, dateFromNum, dateToNum, group.title || '')
+          return renderDashTargetBar(bar, dateFromNum, dateToNum, block.title || '', {
+            goalOverride,
+            phoneSet
+          })
         } catch (e) {
           console.error('renderDashTargetBar error:', e, bar)
           return ''
         }
       }).join('')
       return `
-        <div class="dash-target-group">
-          <div class="dash-target-group-title">${escapeHtml(group.title || 'گروه تارگت')}</div>
-          <div class="dash-target-group-bars">${bars || '<div class="dash-targets-empty">نواری برای نمایش نیست</div>'}</div>
+        <div class="dash-target-group ${escapeAttr(block.className || '')}">
+          <div class="dash-target-group-title">${escapeHtml(block.title || 'گروه تارگت')}</div>
+          <div class="dash-target-group-bars">${barsHtml || '<div class="dash-targets-empty">نواری برای نمایش نیست</div>'}</div>
         </div>
       `
     } catch (e) {
-      console.error('renderDashTargets group error:', e, group)
+      console.error('renderDashTargets block error:', e, block)
       return ''
     }
   }).join('')

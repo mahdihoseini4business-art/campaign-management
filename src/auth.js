@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
 import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getPlatforms, savePlatforms, getStatuses, saveStatuses, getSalesTargets, saveSalesTargets } from './data.js'
 import {
   loadGroupsData,
@@ -398,6 +398,8 @@ let _editingStatusIdx = null
 let _editingSalesTargetId = null
 /** @type {Array<{id?: string, metric: string, value: number, productNames: string[], startDate: string, endDate: string, createdAt?: string}>} */
 let _draftTargetBars = []
+/** @type {Record<string, Record<string, number>>} userGroupId -> barId -> share value */
+let _draftAllocations = {}
 
 function ensureSettingsEscapeHandler() {
   if (_settingsEscapeBound) return
@@ -1488,11 +1490,14 @@ function clearSalesTargetBarFields() {
 function clearSalesTargetForm() {
   _editingSalesTargetId = null
   _draftTargetBars = []
+  _draftAllocations = {}
   const idEl = document.getElementById('editSalesTargetId')
   if (idEl) idEl.value = ''
   const titleEl = document.getElementById('salesTargetTitle')
   if (titleEl) titleEl.value = ''
   clearSalesTargetBarFields()
+  const allocBox = document.getElementById('salesTargetAllocations')
+  if (allocBox) allocBox.innerHTML = ''
   const saveBtn = document.getElementById('salesTargetSaveBtn')
   if (saveBtn) saveBtn.textContent = 'ذخیره گروه'
   const cancelBtn = document.getElementById('salesTargetCancelBtn')
@@ -1533,11 +1538,170 @@ function salesTargetBarMetaText(bar) {
   return `${metricLabel}: ${valueLabel} · ${products} · ${range}`
 }
 
+function salesTargetBarShortLabel(bar, index) {
+  const unit = bar.metric === 'count' ? 'فروش' : 'ریال'
+  return `نوار ${formatNumber(index + 1)} · ${formatNumber(bar.value)} ${unit}`
+}
+
+function syncAllocationsFromDom() {
+  const box = document.getElementById('salesTargetAllocations')
+  if (!box) return
+  box.querySelectorAll('input[data-alloc-group][data-alloc-bar]').forEach(input => {
+    const gid = input.getAttribute('data-alloc-group') || ''
+    const bid = input.getAttribute('data-alloc-bar') || ''
+    if (!gid || !bid) return
+    const value = parseSalesTargetValueInput(input.value)
+    if (!_draftAllocations[gid]) _draftAllocations[gid] = {}
+    if (Number.isFinite(value) && value > 0) _draftAllocations[gid][bid] = value
+    else delete _draftAllocations[gid][bid]
+  })
+}
+
+function pruneDraftAllocations(barIds) {
+  const idSet = new Set(barIds || [])
+  for (const gid of Object.keys(_draftAllocations)) {
+    const shares = _draftAllocations[gid] || {}
+    for (const bid of Object.keys(shares)) {
+      if (!idSet.has(bid)) delete shares[bid]
+    }
+    if (!Object.keys(shares).length) delete _draftAllocations[gid]
+  }
+}
+
+function loadDraftAllocationsFromGroup(group) {
+  _draftAllocations = {}
+  const box = document.getElementById('salesTargetAllocations')
+  if (box) box.innerHTML = ''
+  for (const alloc of group?.allocations || []) {
+    const gid = alloc.userGroupId
+    if (!gid) continue
+    _draftAllocations[gid] = {}
+    for (const share of alloc.shares || []) {
+      if (share?.barId && Number(share.value) > 0) {
+        _draftAllocations[gid][share.barId] = Number(share.value)
+      }
+    }
+  }
+}
+
+function collectDraftAllocations(items) {
+  syncAllocationsFromDom()
+  const barIds = new Set((items || []).map(bar => bar.id))
+  pruneDraftAllocations([...barIds])
+  const allocations = []
+  for (const [userGroupId, sharesMap] of Object.entries(_draftAllocations)) {
+    const shares = Object.entries(sharesMap || {})
+      .filter(([barId, value]) => barIds.has(barId) && Number(value) > 0)
+      .map(([barId, value]) => ({ barId, value: Number(value) }))
+    if (shares.length) allocations.push({ userGroupId, shares })
+  }
+  return allocations
+}
+
+function validateAllocationsAgainstBars(items, allocations) {
+  for (const bar of items || []) {
+    let sum = 0
+    for (const alloc of allocations || []) {
+      const share = (alloc.shares || []).find(s => s.barId === bar.id)
+      if (share) sum += Number(share.value) || 0
+    }
+    if (sum > Number(bar.value)) {
+      return `جمع سهم‌های «${salesTargetBarShortLabel(bar, (items || []).indexOf(bar))}» از مقدار هدف بیشتر است`
+    }
+  }
+  return null
+}
+
+function updateSalesTargetAllocSums() {
+  const sumsEl = document.getElementById('salesTargetAllocSums')
+  if (!sumsEl) return
+  if (!_draftTargetBars.length) {
+    sumsEl.innerHTML = ''
+    return
+  }
+  syncAllocationsFromDom()
+  sumsEl.innerHTML = _draftTargetBars.map((bar, idx) => {
+    let sum = 0
+    for (const sharesMap of Object.values(_draftAllocations)) {
+      sum += Number(sharesMap?.[bar.id]) || 0
+    }
+    const over = sum > Number(bar.value)
+    const unit = bar.metric === 'count' ? 'فروش' : 'ریال'
+    return `
+      <div class="settings-target-alloc-sum${over ? ' is-over' : ''}">
+        ${escapeHtml(salesTargetBarShortLabel(bar, idx))}:
+        جمع سهم ${formatNumber(sum)} / هدف ${formatNumber(bar.value)} ${unit}
+        ${over ? ' — بیش از هدف' : ''}
+      </div>
+    `
+  }).join('')
+}
+
+function renderSalesTargetAllocations() {
+  const box = document.getElementById('salesTargetAllocations')
+  if (!box) return
+  syncAllocationsFromDom()
+  pruneDraftAllocations(_draftTargetBars.map(b => b.id))
+
+  const userGroups = getGroupsCache()
+  if (!_draftTargetBars.length) {
+    box.innerHTML = '<div class="settings-target-draft-empty">اول نوار اضافه کنید تا سهمیه‌بندی فعال شود</div>'
+    updateSalesTargetAllocSums()
+    return
+  }
+  if (!userGroups.length) {
+    box.innerHTML = '<div class="settings-target-draft-empty">هنوز گروه کاربری تعریف نشده</div>'
+    updateSalesTargetAllocSums()
+    return
+  }
+
+  box.innerHTML = `
+    <div class="settings-target-alloc-table-wrap">
+      <table class="settings-target-alloc-table">
+        <thead>
+          <tr>
+            <th>گروه کاربری</th>
+            ${_draftTargetBars.map((bar, idx) => `<th>${escapeHtml(salesTargetBarShortLabel(bar, idx))}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${userGroups.map(g => `
+            <tr>
+              <td>${escapeHtml(g.name || 'گروه')}</td>
+              ${_draftTargetBars.map(bar => {
+                const val = _draftAllocations[g.id]?.[bar.id]
+                const display = val != null && val > 0 ? formatNumber(val) : ''
+                return `<td>
+                  <input type="text" class="form-input settings-target-alloc-input"
+                    data-alloc-group="${escapeAttr(g.id)}"
+                    data-alloc-bar="${escapeAttr(bar.id)}"
+                    value="${escapeAttr(display)}"
+                    placeholder="۰"
+                    dir="ltr"
+                    oninput="app.onSalesTargetAllocationChange(this)">
+                </td>`
+              }).join('')}
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `
+  updateSalesTargetAllocSums()
+}
+
+export function onSalesTargetAllocationChange(inputEl) {
+  if (inputEl) formatInput(inputEl)
+  syncAllocationsFromDom()
+  updateSalesTargetAllocSums()
+}
+
 function renderSalesTargetDraftBars() {
   const box = document.getElementById('salesTargetDraftBars')
   if (!box) return
   if (!_draftTargetBars.length) {
     box.innerHTML = '<div class="settings-target-draft-empty">هنوز نواری به این گروه اضافه نشده</div>'
+    renderSalesTargetAllocations()
     return
   }
   box.innerHTML = _draftTargetBars.map((bar, idx) => `
@@ -1546,6 +1710,7 @@ function renderSalesTargetDraftBars() {
       <button type="button" class="btn-icon" title="حذف نوار" onclick="app.removeSalesTargetBarFromDraft(${idx})" style="color:var(--danger);">🗑</button>
     </div>
   `).join('')
+  renderSalesTargetAllocations()
 }
 
 function readSalesTargetBarFromForm() {
@@ -1590,7 +1755,13 @@ export function removeSalesTargetBarFromDraft(index) {
   if (!requireMainAdmin()) return
   const idx = Number(index)
   if (!Number.isInteger(idx) || idx < 0 || idx >= _draftTargetBars.length) return
+  const removed = _draftTargetBars[idx]
   _draftTargetBars.splice(idx, 1)
+  if (removed?.id) {
+    for (const gid of Object.keys(_draftAllocations)) {
+      if (_draftAllocations[gid]) delete _draftAllocations[gid][removed.id]
+    }
+  }
   renderSalesTargetDraftBars()
 }
 
@@ -1606,11 +1777,17 @@ export function renderSalesTargetsSettings() {
     list.innerHTML = '<div class="settings-empty-detail">هنوز گروهی ثبت نشده</div>'
     return
   }
-  list.innerHTML = groups.map(group => `
+  const userGroupName = (id) => getGroupsCache().find(g => g.id === id)?.name || 'گروه'
+  list.innerHTML = groups.map(group => {
+    const allocCount = (group.allocations || []).length
+    const allocMeta = allocCount
+      ? `سهمیه: ${formatNumber(allocCount)} گروه — ${(group.allocations || []).map(a => userGroupName(a.userGroupId)).join('، ')}`
+      : 'بدون سهمیه‌بندی گروهی'
+    return `
     <div class="settings-config-row settings-target-row${_editingSalesTargetId === group.id ? ' is-editing' : ''}">
       <div class="settings-config-label">
         <div>${escapeHtml(group.title)}</div>
-        <div class="settings-config-meta">${(group.items || []).length} نوار</div>
+        <div class="settings-config-meta">${(group.items || []).length} نوار · ${escapeHtml(allocMeta)}</div>
         <div class="settings-target-group-bars">
           ${(group.items || []).map(bar => `<div class="settings-config-meta">${escapeHtml(salesTargetBarMetaText(bar))}</div>`).join('')}
         </div>
@@ -1618,7 +1795,8 @@ export function renderSalesTargetsSettings() {
       <button type="button" class="btn-icon" title="ویرایش گروه" onclick="app.startSalesTargetEdit('${escapeAttr(group.id)}')">✏️</button>
       <button type="button" class="btn-icon" title="حذف گروه" onclick="app.removeSalesTarget('${escapeAttr(group.id)}')" style="color:var(--danger);">🗑</button>
     </div>
-  `).join('')
+  `
+  }).join('')
 }
 
 export function startSalesTargetEdit(id) {
@@ -1630,6 +1808,7 @@ export function startSalesTargetEdit(id) {
     ...bar,
     productNames: [...(bar.productNames || [])]
   }))
+  loadDraftAllocationsFromGroup(group)
   const idEl = document.getElementById('editSalesTargetId')
   if (idEl) idEl.value = id
   const titleEl = document.getElementById('salesTargetTitle')
@@ -1669,6 +1848,13 @@ export async function saveSalesTargetForm() {
     return
   }
 
+  const allocations = collectDraftAllocations(items)
+  const allocError = validateAllocationsAgainstBars(items, allocations)
+  if (allocError) {
+    showToast(allocError)
+    return
+  }
+
   const existing = getSalesTargets()
   const editingId = _editingSalesTargetId || document.getElementById('editSalesTargetId')?.value || ''
   let next
@@ -1676,13 +1862,15 @@ export async function saveSalesTargetForm() {
     next = existing.map(t => t.id === editingId ? {
       ...t,
       title,
-      items
+      items,
+      allocations
     } : t)
   } else {
     next = [...existing, {
       id: `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       title,
       items,
+      allocations,
       createdAt: new Date().toISOString()
     }]
   }
