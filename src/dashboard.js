@@ -213,7 +213,7 @@ async function ensureUserFilterUI() {
   if (filterBtn) {
     const countEl = '<span class="dash-user-filter-count" id="dashUserFilterCount"></span>'
     if (isMgr && groupName) {
-      filterBtn.innerHTML = `گروه ${escapeHtml(groupName)} ${countEl}`
+      filterBtn.innerHTML = `${escapeHtml(groupName)} ${countEl}`
     } else {
       filterBtn.innerHTML = `کارشناسان ${countEl}`
     }

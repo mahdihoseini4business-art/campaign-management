@@ -2722,6 +2722,63 @@
     padding: 4px;
   }
 
+  .notif-group-block {
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--surface);
+  }
+
+  .notif-group-block:last-child {
+    margin-bottom: 0;
+  }
+
+  .notif-group-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    margin: 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  .notif-group-head-static {
+    cursor: default;
+  }
+
+  .notif-group-head input {
+    margin: 0;
+  }
+
+  .notif-group-title {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .notif-group-count {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+
+  .notif-group-members {
+    padding: 4px 0;
+  }
+
+  .notif-group-members .view-users-option {
+    padding-inline-start: 28px;
+  }
+
+  .notif-group-members .role-badge {
+    font-size: 10px;
+    margin-inline-start: 4px;
+  }
+
   .settings-pane[hidden] {
     display: none !important;
   }

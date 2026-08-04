@@ -3,8 +3,10 @@
  * Manager's permissions.viewUserPhones is derived from other group members.
  */
 import { supabase } from './supabase.js'
-import { normalizePhone, normalizeViewUserPhones, userDisplayName } from './utils.js'
+import { normalizePhone, normalizeViewUserPhones, userDisplayName, escapeHtml, escapeAttr } from './utils.js'
 import { saveSetting } from './data.js'
+
+export const GROUP_FILTER_PREFIX = '__group__:'
 
 const MIGRATION_SETTING_KEY = 'groups_migrated_from_view_phones_v1'
 
@@ -68,6 +70,184 @@ export function getManagedMemberPhonesFromCache(phone) {
   return getMembersOfGroup(info.group.id)
     .map(m => m.user_phone)
     .filter(p => p && p !== self)
+}
+
+export function groupFilterValue(groupId) {
+  return `${GROUP_FILTER_PREFIX}${groupId}`
+}
+
+export function isGroupFilterValue(value) {
+  return typeof value === 'string' && value.startsWith(GROUP_FILTER_PREFIX)
+}
+
+export function parseGroupFilterId(value) {
+  if (!isGroupFilterValue(value)) return null
+  return value.slice(GROUP_FILTER_PREFIX.length) || null
+}
+
+/**
+ * Resolve advisor filter value to a Set of phones, or null when no filter (show all).
+ * Supports: '', '__team__', '__group__:{id}', or a single phone.
+ */
+export function phonesMatchingAdvisorFilter(filterValue, currentUser = null) {
+  if (!filterValue) return null
+  if (filterValue === '__team__') {
+    return new Set(normalizeViewUserPhones(
+      currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones
+    ))
+  }
+  const groupId = parseGroupFilterId(filterValue)
+  if (groupId) {
+    return new Set(getMembersOfGroup(groupId).map(m => m.user_phone).filter(Boolean))
+  }
+  const phone = normalizePhone(filterValue)
+  return phone ? new Set([phone]) : null
+}
+
+/**
+ * Partition users (with phone) into named groups + ungrouped.
+ * Requires loadGroupsData() first.
+ */
+export function organizeUsersByGroup(users = []) {
+  const byPhone = new Map()
+  users.forEach(u => {
+    const p = normalizePhone(u.phone)
+    if (p) byPhone.set(p, u)
+  })
+
+  const assigned = new Set()
+  const groups = getGroupsCache().map(g => {
+    const members = getMembersOfGroup(g.id)
+      .map(m => {
+        const u = byPhone.get(m.user_phone)
+        if (u) assigned.add(m.user_phone)
+        return u ? { user: u, phone: m.user_phone, isManager: !!m.is_manager } : null
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a.isManager !== b.isManager) return a.isManager ? -1 : 1
+        return userDisplayName(a.user).localeCompare(userDisplayName(b.user), 'fa')
+      })
+    return { id: g.id, name: g.name, members }
+  }).filter(g => g.members.length > 0)
+    .sort((a, b) => a.name.localeCompare(b.name, 'fa'))
+
+  const ungrouped = users
+    .filter(u => {
+      const p = normalizePhone(u.phone)
+      return p && !assigned.has(p)
+    })
+    .map(u => ({ user: u, phone: normalizePhone(u.phone), isManager: false }))
+    .sort((a, b) => userDisplayName(a.user).localeCompare(userDisplayName(b.user), 'fa'))
+
+  return { groups, ungrouped }
+}
+
+/**
+ * HTML options for advisor <select>: optgroups per team, optional "all members" row.
+ */
+export function buildGroupedAdvisorSelectHtml({
+  users = [],
+  selectedValue = '',
+  teamLabel = null,
+  allowedPhones = null,
+  includeGroupAllOption = true,
+  emptyLabel = 'همه کارشناسان'
+} = {}) {
+  const filtered = users.filter(u => {
+    const p = normalizePhone(u.phone)
+    if (!p) return false
+    if (allowedPhones && !allowedPhones.has(p)) return false
+    return true
+  })
+
+  const sel = (value) => (value === selectedValue ? ' selected' : '')
+  let html = `<option value=""${sel('')}>${escapeHtml(emptyLabel)}</option>`
+  if (teamLabel) {
+    html += `<option value="__team__"${sel('__team__')}>${escapeHtml(teamLabel)}</option>`
+  }
+
+  const { groups, ungrouped } = organizeUsersByGroup(filtered)
+
+  for (const g of groups) {
+    html += `<optgroup label="${escapeAttr(g.name)}">`
+    if (includeGroupAllOption && g.members.length) {
+      const allVal = groupFilterValue(g.id)
+      html += `<option value="${escapeAttr(allVal)}"${sel(allVal)}>همه اعضای ${escapeHtml(g.name)} (${g.members.length})</option>`
+    }
+    for (const m of g.members) {
+      const label = userDisplayName(m.user) || m.phone
+      const suffix = m.isManager ? ' · مدیر' : ''
+      html += `<option value="${escapeAttr(m.phone)}"${sel(m.phone)}>${escapeHtml(label)}${suffix}</option>`
+    }
+    html += '</optgroup>'
+  }
+
+  if (ungrouped.length) {
+    html += '<optgroup label="بدون گروه">'
+    for (const m of ungrouped) {
+      const label = userDisplayName(m.user) || m.phone
+      html += `<option value="${escapeAttr(m.phone)}"${sel(m.phone)}>${escapeHtml(label)}</option>`
+    }
+    html += '</optgroup>'
+  }
+
+  return html
+}
+
+/**
+ * Nested recipient list HTML for notification compose (group headers + members).
+ */
+export function buildGroupedRecipientListHtml(users = []) {
+  const eligible = users.filter(u => normalizePhone(u.phone))
+  if (!eligible.length) {
+    return '<div class="settings-empty-detail">کاربری برای انتخاب نیست</div>'
+  }
+
+  const { groups, ungrouped } = organizeUsersByGroup(eligible)
+  const blocks = []
+
+  const memberRow = (m) => {
+    const name = userDisplayName(m.user) || m.user.username || m.phone
+    const label = `${name} · ${m.phone}${m.isManager ? ' مدیر' : ''}`
+    return `<label class="view-users-option notif-member-row" data-search="${escapeAttr(label.toLowerCase())}" data-group-id="${escapeAttr(m.groupId || '')}">
+      <input type="checkbox" value="${escapeAttr(m.phone)}" class="notif-recipient-cb" onchange="app.onNotifRecipientChange(this)">
+      <span>${escapeHtml(name)}${m.isManager ? ' <span class="role-badge role-admin">مدیر</span>' : ''}</span>
+      <span class="view-users-phone">${escapeHtml(m.phone)}</span>
+    </label>`
+  }
+
+  for (const g of groups) {
+    const searchBits = [g.name, ...g.members.map(m => `${userDisplayName(m.user)} ${m.phone}`)].join(' ').toLowerCase()
+    const membersWithGroup = g.members.map(m => ({ ...m, groupId: g.id }))
+    blocks.push(`
+      <div class="notif-group-block" data-group-block="${escapeAttr(g.id)}" data-search="${escapeAttr(searchBits)}">
+        <label class="notif-group-head">
+          <input type="checkbox" class="notif-group-cb" data-group-id="${escapeAttr(g.id)}" onchange="app.toggleNotifGroup('${escapeAttr(g.id)}', this.checked)">
+          <span class="notif-group-title">${escapeHtml(g.name)}</span>
+          <span class="notif-group-count">${g.members.length} نفر</span>
+        </label>
+        <div class="notif-group-members">
+          ${membersWithGroup.map(memberRow).join('')}
+        </div>
+      </div>`)
+  }
+
+  if (ungrouped.length) {
+    const searchBits = ['بدون گروه', ...ungrouped.map(m => `${userDisplayName(m.user)} ${m.phone}`)].join(' ').toLowerCase()
+    blocks.push(`
+      <div class="notif-group-block" data-group-block="__none__" data-search="${escapeAttr(searchBits)}">
+        <div class="notif-group-head notif-group-head-static">
+          <span class="notif-group-title">بدون گروه</span>
+          <span class="notif-group-count">${ungrouped.length} نفر</span>
+        </div>
+        <div class="notif-group-members">
+          ${ungrouped.map(m => memberRow({ ...m, groupId: '' })).join('')}
+        </div>
+      </div>`)
+  }
+
+  return blocks.join('')
 }
 
 /**

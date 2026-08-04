@@ -1,5 +1,6 @@
 import { getData, getPlatforms } from './data.js'
 import { getUsersSafe } from './auth.js'
+import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser,
   jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, jalaliDatePart,
@@ -11,7 +12,7 @@ import {
   getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
   productHasRejectedPayment, getProductPayments, getPaymentEntryStatus,
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
-  normalizePhone, userDisplayName, formatTeamFilterLabel, normalizeViewUserPhones
+  normalizePhone, userDisplayName, formatTeamFilterLabel
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -151,24 +152,18 @@ export function getFilteredSales() {
       if (resolved !== levelFilter) return false
     }
 
-    const teamPhones = normalizeViewUserPhones(
-      currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones
-    )
-    const teamFilter = advisorFilter === '__team__'
-    const advisorPhoneFilter = (!teamFilter && advisorFilter) ? normalizePhone(advisorFilter) : ''
+    const advisorScopePhones = phonesMatchingAdvisorFilter(advisorFilter, currentUser)
     const matchesAdvisorPhone = (phone) => {
+      if (!advisorScopePhones) return true
       const p = normalizePhone(phone)
-      if (!p) return false
-      if (teamFilter) return teamPhones.includes(p)
-      if (advisorPhoneFilter) return p === advisorPhoneFilter
-      return true
+      return !!(p && advisorScopePhones.has(p))
     }
 
     if (dateFilter.hasDateFilter) {
       if (!product) return false
       ensureProductPayments(product)
       let paysInRange = getApprovedPaymentsInRange(product, dateFilter)
-      if (teamFilter || advisorPhoneFilter) {
+      if (advisorScopePhones) {
         paysInRange = paysInRange.filter(pay =>
           matchesAdvisorPhone(getSaleRegistrantPhone(product, pay, customer))
         )
@@ -188,15 +183,18 @@ export function getFilteredSales() {
       s.dateFiltered = true
       s.soldByPhone = getSaleRegistrantPhone(product, lastInRange, customer)
       s.advisorPhone = s.soldByPhone
-    } else if (teamFilter || advisorPhoneFilter) {
+    } else if (advisorScopePhones) {
       const sellerMatch = matchesAdvisorPhone(s.soldByPhone) ||
         (product && getProductPayments(product).some(pay =>
           matchesAdvisorPhone(getSaleRegistrantPhone(product, pay, customer))
         ))
       if (!sellerMatch) return false
-      if (product && advisorPhoneFilter && s.soldByPhone !== advisorPhoneFilter) {
-        s.soldByPhone = advisorPhoneFilter
-        s.advisorPhone = advisorPhoneFilter
+      if (product && advisorScopePhones.size === 1) {
+        const only = [...advisorScopePhones][0]
+        if (s.soldByPhone !== only) {
+          s.soldByPhone = only
+          s.advisorPhone = only
+        }
       }
     }
 
@@ -307,45 +305,28 @@ async function updateSalesAdvisorFilter() {
   const currentUser = getCurrentUser()
   const currentVal = sel.value
   const users = await getUsersSafe()
-  const withPhone = users.filter(u => u.phone)
-  const byPhone = new Map(withPhone.map(u => [normalizePhone(u.phone), u]))
-  const options = []
-  const teamLabel = formatTeamFilterLabel(currentUser)
+  try { await loadGroupsData() } catch (_) { /* optional */ }
 
-  if (canViewOrgWideData(currentUser)) {
-    for (const u of withPhone) {
-      options.push({ phone: normalizePhone(u.phone), label: userDisplayName(u) })
-    }
-  } else {
+  let allowedPhones = null
+  if (!canViewOrgWideData(currentUser)) {
     const visible = getVisibleAdvisorPhones(currentUser)
     if (visible.size <= 1) {
       sel.style.display = 'none'
       sel.value = ''
       return
     }
-    const selfPhone = normalizePhone(currentUser?.phone || '')
-    for (const phone of visible) {
-      const u = byPhone.get(phone)
-      const base = u ? userDisplayName(u) : phone
-      options.push({ phone, label: phone === selfPhone ? `${base} (خودم)` : base })
-    }
+    allowedPhones = visible
   }
-
-  if (!options.length) {
-    sel.style.display = 'none'
-    sel.value = ''
-    return
-  }
-
-  const teamOption = teamLabel && !canViewOrgWideData(currentUser)
-    ? `<option value="__team__">${escapeHtml(teamLabel)}</option>`
-    : ''
 
   sel.style.display = ''
-  sel.innerHTML = `<option value="">همه کارشناسان</option>${teamOption}` +
-    options.map(o => `<option value="${escapeAttr(o.phone)}">${escapeHtml(o.label)}</option>`).join('')
-  if ([...sel.options].some(o => o.value === currentVal)) sel.value = currentVal
-  else sel.value = ''
+  sel.innerHTML = buildGroupedAdvisorSelectHtml({
+    users,
+    selectedValue: currentVal,
+    teamLabel: canViewOrgWideData(currentUser) ? null : formatTeamFilterLabel(currentUser),
+    allowedPhones
+  })
+  if (![...sel.options].some(o => o.value === currentVal)) sel.value = ''
+  else sel.value = currentVal
 }
 
 export async function renderSales() {

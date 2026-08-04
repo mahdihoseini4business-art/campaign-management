@@ -4,6 +4,7 @@
 
 import { supabase } from './supabase.js'
 import { getUsersSafe } from './auth.js'
+import { loadGroupsData, buildGroupedRecipientListHtml } from './groups.js'
 import {
   escapeHtml,
   escapeAttr,
@@ -392,11 +393,33 @@ export function updateNotifRecipientCount() {
 
   const selectAll = document.getElementById('notifSelectAll')
   if (selectAll && total) {
-    const visible = [...document.querySelectorAll('#notifRecipientList .view-users-option')]
-      .filter(row => row.style.display !== 'none')
+    const visible = [...document.querySelectorAll('#notifRecipientList .notif-member-row')]
+      .filter(row => row.style.display !== 'none' && row.closest('.notif-group-block')?.style.display !== 'none')
     const visibleCbs = visible.map(row => row.querySelector('.notif-recipient-cb')).filter(Boolean)
     selectAll.checked = visibleCbs.length > 0 && visibleCbs.every(cb => cb.checked)
   }
+
+  syncNotifGroupCheckboxes()
+}
+
+function syncNotifGroupCheckboxes() {
+  document.querySelectorAll('#notifRecipientList .notif-group-block[data-group-block]').forEach(block => {
+    const groupCb = block.querySelector('.notif-group-cb')
+    if (!groupCb) return
+    const memberCbs = [...block.querySelectorAll('.notif-recipient-cb')]
+      .filter(cb => {
+        const row = cb.closest('.notif-member-row')
+        return row && row.style.display !== 'none'
+      })
+    if (!memberCbs.length) {
+      groupCb.checked = false
+      groupCb.indeterminate = false
+      return
+    }
+    const checkedCount = memberCbs.filter(cb => cb.checked).length
+    groupCb.checked = checkedCount === memberCbs.length
+    groupCb.indeterminate = checkedCount > 0 && checkedCount < memberCbs.length
+  })
 }
 
 export async function renderNotificationAdminSection() {
@@ -408,16 +431,8 @@ export async function renderNotificationAdminSection() {
   clearComposeFields()
 
   const users = (await getUsersSafe()).filter(u => u.phone)
-  listEl.innerHTML = users.map(u => {
-    const phone = normalizePhone(u.phone)
-    const name = userDisplayName(u) || u.username || phone
-    const label = `${name} · ${phone}`
-    return `<label class="view-users-option" data-search="${escapeAttr(label.toLowerCase())}">
-      <input type="checkbox" value="${escapeAttr(phone)}" class="notif-recipient-cb" onchange="app.updateNotifRecipientCount()">
-      <span>${escapeHtml(name)}</span>
-      <span class="view-users-phone">${escapeHtml(phone)}</span>
-    </label>`
-  }).join('') || '<div class="settings-empty-detail">کاربری برای انتخاب نیست</div>'
+  try { await loadGroupsData() } catch (_) { /* optional */ }
+  listEl.innerHTML = buildGroupedRecipientListHtml(users)
 
   updateNotifRecipientCount()
 
@@ -429,19 +444,48 @@ export async function renderNotificationAdminSection() {
 
 export function filterNotifRecipients(query) {
   const q = String(query || '').trim().toLowerCase()
-  document.querySelectorAll('#notifRecipientList .view-users-option').forEach(el => {
-    const hay = (el.dataset.search || '').toLowerCase()
-    el.style.display = !q || hay.includes(q) ? '' : 'none'
+  document.querySelectorAll('#notifRecipientList .notif-group-block').forEach(block => {
+    const blockHay = (block.dataset.search || '').toLowerCase()
+    let anyMemberVisible = false
+    block.querySelectorAll('.notif-member-row').forEach(el => {
+      const hay = (el.dataset.search || '').toLowerCase()
+      const show = !q || hay.includes(q) || blockHay.includes(q)
+      el.style.display = show ? '' : 'none'
+      if (show) anyMemberVisible = true
+    })
+    // If query matches group name, show whole block; else only if a member matches
+    const groupMatch = !q || blockHay.includes(q)
+    block.style.display = (!q || groupMatch || anyMemberVisible) ? '' : 'none'
+    if (groupMatch && q) {
+      block.querySelectorAll('.notif-member-row').forEach(el => { el.style.display = '' })
+    }
   })
   updateNotifRecipientCount()
 }
 
 export function toggleAllNotifRecipients(checked) {
   document.querySelectorAll('#notifRecipientList .notif-recipient-cb').forEach(cb => {
-    const row = cb.closest('.view-users-option')
+    const row = cb.closest('.notif-member-row')
+    const block = cb.closest('.notif-group-block')
+    if (row && row.style.display === 'none') return
+    if (block && block.style.display === 'none') return
+    cb.checked = !!checked
+  })
+  updateNotifRecipientCount()
+}
+
+export function toggleNotifGroup(groupId, checked) {
+  const block = document.querySelector(`#notifRecipientList .notif-group-block[data-group-block="${groupId}"]`)
+  if (!block) return
+  block.querySelectorAll('.notif-recipient-cb').forEach(cb => {
+    const row = cb.closest('.notif-member-row')
     if (row && row.style.display === 'none') return
     cb.checked = !!checked
   })
+  updateNotifRecipientCount()
+}
+
+export function onNotifRecipientChange() {
   updateNotifRecipientCount()
 }
 

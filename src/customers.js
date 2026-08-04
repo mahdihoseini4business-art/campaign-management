@@ -1,5 +1,6 @@
 import { getData, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getProductCatalog, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn } from './data.js'
 import { getUsersSafe } from './auth.js'
+import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
 import { broadcastSaleToast, buildSaleToastPayload } from './sale-toasts.js'
 import {
@@ -13,7 +14,7 @@ import {
   MAX_CUSTOMER_PHONES,
   getStatusLabels, getStatusClass,
   getNowJalaliDateTime, PAYMENT_STATUS_LABELS, createPayment,
-  formatTeamFilterLabel, normalizeViewUserPhones,
+  formatTeamFilterLabel,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getOperationalBalance,
   getProductPayments, getPaymentEntryStatus, getWorstPaymentStatus,
   isPaymentFilled, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS,
@@ -78,7 +79,7 @@ export function getFilteredCustomers() {
   const levelFilter = document.getElementById('filterCustomerLevel')?.value || ''
   const transferFilter = document.getElementById('filterTransferIn')?.value || ''
   const currentUser = getCurrentUser()
-  const teamPhones = normalizeViewUserPhones(currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones)
+  const advisorScopePhones = phonesMatchingAdvisorFilter(advisorFilter, currentUser)
   const myPhone = normalizePhone(currentUser?.phone)
 
   return data.customers.filter(c => {
@@ -118,11 +119,9 @@ export function getFilteredCustomers() {
       if (!transferFilter || !matchesTransferFilter) return false
     }
 
-    if (advisorFilter === '__team__') {
+    if (advisorScopePhones) {
       const owner = normalizePhone(c.advisorPhone)
-      if (!owner || !teamPhones.includes(owner)) return false
-    } else if (advisorFilter && normalizePhone(c.advisorPhone) !== normalizePhone(advisorFilter)) {
-      return false
+      if (!owner || !advisorScopePhones.has(owner)) return false
     }
     if (platformFilter && c.platform !== platformFilter) return false
     if (statusFilter && c.status !== statusFilter) return false
@@ -294,15 +293,17 @@ async function updateAdvisorDropdown() {
   const currentVal = advisorSelect.value
   const users = await getUsersSafe()
   const currentUser = getCurrentUser()
-  const teamLabel = formatTeamFilterLabel(currentUser)
-  const teamOption = teamLabel
-    ? `<option value="__team__">${escapeHtml(teamLabel)}</option>`
-    : ''
-  advisorSelect.innerHTML = `<option value="">همه کارشناسان</option>${teamOption}` + users
-    .filter(u => u.phone)
-    .map(u => `<option value="${escapeAttr(normalizePhone(u.phone))}">${escapeHtml(userDisplayName(u))}</option>`)
-    .join('')
-  advisorSelect.value = currentVal
+  try { await loadGroupsData() } catch (_) { /* optional until migration */ }
+  advisorSelect.innerHTML = buildGroupedAdvisorSelectHtml({
+    users,
+    selectedValue: currentVal,
+    teamLabel: formatTeamFilterLabel(currentUser)
+  })
+  if (![...advisorSelect.options].some(o => o.value === currentVal)) {
+    advisorSelect.value = ''
+  } else {
+    advisorSelect.value = currentVal
+  }
 }
 
 export function updateStats() {
