@@ -498,6 +498,7 @@ async function init() {
   try { openDefaultAccessibleTab() } catch (e) { console.error('openDefaultAccessibleTab error:', e) }
   try { refreshCustomerBulkOptions() } catch (e) { console.error('refreshCustomerBulkOptions error:', e) }
   try { updateTransferInboxBadge() } catch (e) { console.error('updateTransferInboxBadge error:', e) }
+  try { renderSalesTargetBand() } catch (e) { console.error('renderSalesTargetBand error:', e) }
   refreshNotifications().catch(e => console.error('notifications init error:', e))
   initSaleToastFeed().catch(e => console.error('sale toast init error:', e))
   initLiveSync().catch(e => console.error('live sync init error:', e))

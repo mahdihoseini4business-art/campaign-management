@@ -1543,9 +1543,16 @@ function stopSalesTargetCountdown() {
   }
 }
 
+function salesTargetCountdownRoots() {
+  return [
+    document.getElementById('salesTargetHud'),
+    document.getElementById('salesTargetBand')
+  ].filter(el => el && !el.hidden)
+}
+
 function tickSalesTargetCountdowns() {
-  const wrap = document.getElementById('salesTargetBand')
-  if (!wrap || wrap.hidden) {
+  const roots = salesTargetCountdownRoots()
+  if (!roots.length) {
     stopSalesTargetCountdown()
     return
   }
@@ -1555,7 +1562,7 @@ function tickSalesTargetCountdowns() {
   } catch (_) {
     urgency = null
   }
-  const nodes = wrap.querySelectorAll('.sales-target-countdown[data-deadline-ms]')
+  const nodes = roots.flatMap(root => [...root.querySelectorAll('.sales-target-countdown[data-deadline-ms]')])
   if (!nodes.length) {
     stopSalesTargetCountdown()
     return
@@ -1589,9 +1596,9 @@ function tickSalesTargetCountdowns() {
 
 function startSalesTargetCountdown() {
   stopSalesTargetCountdown()
-  const wrap = document.getElementById('salesTargetBand')
-  if (!wrap || wrap.hidden) return
-  if (!wrap.querySelector('.sales-target-countdown[data-deadline-ms]')) return
+  const roots = salesTargetCountdownRoots()
+  if (!roots.length) return
+  if (!roots.some(root => root.querySelector('.sales-target-countdown[data-deadline-ms]'))) return
   tickSalesTargetCountdowns()
   _salesTargetCountdownTimer = setInterval(tickSalesTargetCountdowns, 1000)
 }
@@ -1606,13 +1613,8 @@ function pickSalesTargetDeadlineMs(progresses) {
   return candidates[0].ms
 }
 
-function renderSalesTargetCampaignHtml(block) {
-  const progresses = (block.bars || []).map(({ bar, goalOverride, phoneSet }) => ({
-    bar,
-    ...computeSalesTargetBarProgress(bar, goalOverride, phoneSet)
-  }))
-  if (!progresses.length) return ''
-
+function summarizeSalesTargetProgresses(progresses) {
+  if (!progresses.length) return null
   const incomplete = progresses.filter(p => !p.complete)
   const focus = incomplete.length
     ? incomplete.reduce((a, b) => (a.pct <= b.pct ? a : b))
@@ -1620,19 +1622,80 @@ function renderSalesTargetCampaignHtml(block) {
   const avgPct = progresses.reduce((s, p) => s + p.pct, 0) / progresses.length
   const allDone = progresses.every(p => p.complete)
   const stage = salesTargetStage(focus.pct, allDone)
+  const ringPct = Math.round(allDone ? 100 : avgPct)
+  const deadlineMs = allDone ? null : pickSalesTargetDeadlineMs(progresses)
+  return { focus, allDone, stage, ringPct, deadlineMs, progresses }
+}
+
+function blockProgresses(block) {
+  return (block.bars || []).map(({ bar, goalOverride, phoneSet }) => ({
+    bar,
+    ...computeSalesTargetBarProgress(bar, goalOverride, phoneSet)
+  }))
+}
+
+function renderSalesTargetRingHtml(ringPct) {
+  return `
+    <div class="sales-target-ring" style="--pct:${ringPct}" aria-hidden="true">
+      <div class="sales-target-ring-inner">
+        <span class="sales-target-ring-value">${formatNumber(ringPct)}٪</span>
+        <span class="sales-target-ring-label">پیشرفت</span>
+      </div>
+    </div>
+  `
+}
+
+function renderSalesTargetHudHtml({ stage, ringPct, deadlineMs }) {
+  const timerHtml = deadlineMs ? renderSalesTargetCountdownHtml(deadlineMs) : ''
+  return `
+    <div class="sales-target-hud-card ${stage}" role="status" aria-label="پیشرفت تارگت فروش">
+      ${renderSalesTargetRingHtml(ringPct)}
+      ${timerHtml}
+    </div>
+  `
+}
+
+function hideSalesTargetHud() {
+  const hud = document.getElementById('salesTargetHud')
+  if (!hud) return
+  hud.hidden = true
+  hud.innerHTML = ''
+}
+
+function renderSalesTargetHudFromBlocks(blocks) {
+  const hud = document.getElementById('salesTargetHud')
+  if (!hud) return false
+
+  const allProgresses = blocks.flatMap(block => blockProgresses(block)).filter(p => p)
+  const summary = summarizeSalesTargetProgresses(allProgresses)
+  if (!summary) {
+    hideSalesTargetHud()
+    return false
+  }
+
+  hud.innerHTML = renderSalesTargetHudHtml(summary)
+  hud.hidden = false
+  return !!summary.deadlineMs
+}
+
+function renderSalesTargetCampaignHtml(block) {
+  const progresses = blockProgresses(block)
+  if (!progresses.length) return ''
+
+  const summary = summarizeSalesTargetProgresses(progresses)
+  if (!summary) return ''
+
   const copy = salesTargetMotivationalCopy(
-    focus.pct,
-    focus.remainingLabel,
-    allDone,
-    focus.deadline
+    summary.focus.pct,
+    summary.focus.remainingLabel,
+    summary.allDone,
+    summary.focus.deadline
   )
 
-  const deadlineMs = allDone ? null : pickSalesTargetDeadlineMs(progresses)
-  const deadlineChip = allDone
+  const doneChip = summary.allDone
     ? `<span class="sales-target-deadline-chip is-done">تکمیل شد</span>`
-    : (deadlineMs ? renderSalesTargetCountdownHtml(deadlineMs) : '')
+    : ''
 
-  const ringPct = Math.round(allDone ? 100 : avgPct)
   const barsHtml = progresses.map(p => `
     <div class="sales-target-bar-row">
       <div class="sales-target-bar-meta">
@@ -1646,21 +1709,15 @@ function renderSalesTargetCampaignHtml(block) {
   `).join('')
 
   return `
-    <article class="sales-target-band ${stage}">
+    <article class="sales-target-band ${summary.stage}">
       <div class="sales-target-band-inner">
-        <div class="sales-target-ring" style="--pct:${ringPct}" aria-hidden="true">
-          <div class="sales-target-ring-inner">
-            <span class="sales-target-ring-value">${formatNumber(ringPct)}٪</span>
-            <span class="sales-target-ring-label">پیشرفت</span>
-          </div>
-        </div>
         <div class="sales-target-band-body">
           <div class="sales-target-band-head">
             <div>
               <div class="sales-target-eyebrow">تارگت ${escapeHtml(block.groupName || 'گروه')}</div>
               <h3 class="sales-target-title">${escapeHtml(block.title || 'تارگت فروش')}</h3>
             </div>
-            ${deadlineChip}
+            ${doneChip}
           </div>
           <p class="sales-target-message">${copy.message}</p>
           ${copy.gap ? `<div class="sales-target-gap">${escapeHtml(copy.gap)}</div>` : ''}
@@ -1671,19 +1728,24 @@ function renderSalesTargetCampaignHtml(block) {
   `
 }
 
-/** Motivational group-target band for the Sales tab (members & group managers). */
+/** Motivational group-target band + fixed HUD for members & group managers. */
 export function renderSalesTargetBand() {
   const wrap = document.getElementById('salesTargetBand')
-  if (!wrap) return
-
   stopSalesTargetCountdown()
 
   const viewer = getCurrentUser()
   const groupId = viewer?.groupId || null
 
+  const clearAll = () => {
+    if (wrap) {
+      wrap.hidden = true
+      wrap.innerHTML = ''
+    }
+    hideSalesTargetHud()
+  }
+
   if (!groupId || isMainAdmin(viewer)) {
-    wrap.hidden = true
-    wrap.innerHTML = ''
+    clearAll()
     return
   }
 
@@ -1692,8 +1754,7 @@ export function renderSalesTargetBand() {
     targets = getSalesTargets()
   } catch (e) {
     console.error('renderSalesTargetBand getSalesTargets:', e)
-    wrap.hidden = true
-    wrap.innerHTML = ''
+    clearAll()
     return
   }
 
@@ -1702,14 +1763,25 @@ export function renderSalesTargetBand() {
     blocks = buildMemberTargetBlocks(targets, groupId)
   } catch (e) {
     console.error('renderSalesTargetBand build blocks:', e)
-    wrap.hidden = true
-    wrap.innerHTML = ''
+    clearAll()
     return
   }
 
   if (!blocks.length) {
-    wrap.hidden = true
-    wrap.innerHTML = ''
+    clearAll()
+    return
+  }
+
+  let hasDeadline = false
+  try {
+    hasDeadline = renderSalesTargetHudFromBlocks(blocks)
+  } catch (e) {
+    console.error('renderSalesTargetHud error:', e)
+    hideSalesTargetHud()
+  }
+
+  if (!wrap) {
+    if (hasDeadline) startSalesTargetCountdown()
     return
   }
 
@@ -1725,8 +1797,8 @@ export function renderSalesTargetBand() {
           requestAnimationFrame(() => { el.style.width = w })
         })
       })
-      startSalesTargetCountdown()
     }
+    if (hasDeadline) startSalesTargetCountdown()
   } catch (e) {
     console.error('renderSalesTargetBand render:', e)
     wrap.hidden = true
