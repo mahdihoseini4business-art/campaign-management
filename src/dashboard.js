@@ -1,5 +1,6 @@
 import { getData, getStatuses, getSalesTargets } from './data.js'
 import { getUsersSafe } from './auth.js'
+import { loadGroupsData, organizeUsersByGroup } from './groups.js'
 import {
   hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliNum,
   jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr, ownsCustomer,
@@ -152,9 +153,7 @@ function updateUserFilterCount() {
   if (total === 0) {
     el.textContent = ''
     if (allCb) allCb.checked = false
-    return
-  }
-  if (selected === total) {
+  } else if (selected === total) {
     el.textContent = '(همه)'
     if (allCb) allCb.checked = true
   } else if (selected === 0) {
@@ -164,6 +163,71 @@ function updateUserFilterCount() {
     el.textContent = `(${selected}/${total})`
     if (allCb) allCb.checked = false
   }
+  syncDashGroupCheckboxes()
+}
+
+function syncDashGroupCheckboxes() {
+  document.querySelectorAll('#dashUserCheckboxes .dash-group-block').forEach(block => {
+    const groupCb = block.querySelector('.dash-group-cb')
+    if (!groupCb) return
+    const memberCbs = [...block.querySelectorAll('.dash-user-cb')]
+    if (!memberCbs.length) {
+      groupCb.checked = false
+      groupCb.indeterminate = false
+      return
+    }
+    const checkedCount = memberCbs.filter(cb => cb.checked).length
+    groupCb.checked = checkedCount === memberCbs.length
+    groupCb.indeterminate = checkedCount > 0 && checkedCount < memberCbs.length
+  })
+}
+
+function buildDashGroupedUsersHtml(users) {
+  const { groups, ungrouped } = organizeUsersByGroup(users)
+  if (!groups.length && !ungrouped.length) {
+    return '<div class="dash-user-empty">کارشناسی یافت نشد</div>'
+  }
+
+  const memberRow = (m) => {
+    const phone = m.phone
+    const checked = selectedAdvisorPhones?.has(phone) ? 'checked' : ''
+    const name = userDisplayName(m.user) || phone
+    return `<label class="dash-user-option dash-user-member">
+      <input type="checkbox" class="dash-user-cb" value="${escapeAttr(phone)}" ${checked} onchange="app.toggleDashUser('${escapeAttr(phone)}', this.checked)">
+      <span>${escapeHtml(name)}${m.isManager ? ' <span class="role-badge role-admin">مدیر</span>' : ''}</span>
+    </label>`
+  }
+
+  const blocks = []
+  for (const g of groups) {
+    blocks.push(`
+      <div class="dash-group-block" data-dash-group="${escapeAttr(g.id)}">
+        <label class="dash-user-option dash-group-head">
+          <input type="checkbox" class="dash-group-cb" data-group-id="${escapeAttr(g.id)}" onchange="app.toggleDashGroup('${escapeAttr(g.id)}', this.checked)">
+          <span class="dash-group-title">${escapeHtml(g.name)}</span>
+          <span class="dash-group-count">${g.members.length}</span>
+        </label>
+        <div class="dash-group-members">
+          ${g.members.map(memberRow).join('')}
+        </div>
+      </div>`)
+  }
+
+  if (ungrouped.length) {
+    blocks.push(`
+      <div class="dash-group-block" data-dash-group="__none__">
+        <label class="dash-user-option dash-group-head">
+          <input type="checkbox" class="dash-group-cb" data-group-id="__none__" onchange="app.toggleDashGroup('__none__', this.checked)">
+          <span class="dash-group-title">بدون گروه</span>
+          <span class="dash-group-count">${ungrouped.length}</span>
+        </label>
+        <div class="dash-group-members">
+          ${ungrouped.map(memberRow).join('')}
+        </div>
+      </div>`)
+  }
+
+  return blocks.join('')
 }
 
 async function ensureUserFilterUI() {
@@ -171,7 +235,8 @@ async function ensureUserFilterUI() {
   const orgWide = canViewOrgWideData()
   const users = (await getUsersSafe()).filter(u => u.phone)
   const visiblePhones = getVisibleAdvisorPhones(currentUser)
-  // Admins / accountants see all advisors; others see self + granted view users
+  try { await loadGroupsData() } catch (_) { /* optional until migration */ }
+
   dashUsersCache = orgWide
     ? users
     : users.filter(u => visiblePhones.has(normalizePhone(u.phone)))
@@ -188,40 +253,28 @@ async function ensureUserFilterUI() {
 
   const container = document.getElementById('dashUserCheckboxes')
   if (container) {
-    const phonesKey = dashUsersCache.map(u => normalizePhone(u.phone)).join('|')
-    if (container.dataset.phonesKey !== phonesKey) {
-      container.dataset.phonesKey = phonesKey
-      container.innerHTML = dashUsersCache.map(u => {
-        const phone = normalizePhone(u.phone)
-        const checked = selectedAdvisorPhones.has(phone) ? 'checked' : ''
-        return `<label class="dash-user-option">
-          <input type="checkbox" value="${escapeAttr(phone)}" ${checked} onchange="app.toggleDashUser('${escapeAttr(phone)}', this.checked)">
-          <span>${escapeHtml(userDisplayName(u))}</span>
-        </label>`
-      }).join('') || '<div class="dash-user-empty">کارشناسی یافت نشد</div>'
+    const { groups, ungrouped } = organizeUsersByGroup(dashUsersCache)
+    const structureKey = [
+      ...groups.map(g => `${g.id}:${g.members.map(m => m.phone).join(',')}`),
+      `none:${ungrouped.map(m => m.phone).join(',')}`
+    ].join('|')
+    if (container.dataset.structureKey !== structureKey) {
+      container.dataset.structureKey = structureKey
+      container.innerHTML = buildDashGroupedUsersHtml(dashUsersCache)
     } else {
-      container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      container.querySelectorAll('.dash-user-cb').forEach(cb => {
         cb.checked = selectedAdvisorPhones.has(normalizePhone(cb.value))
       })
     }
   }
 
   const filterBtn = document.getElementById('dashUserFilterBtn')
-  const groupName = (currentUser?.groupName || '').trim()
-  const isMgr = !!currentUser?.isGroupManager &&
-    normalizeViewUserPhones(currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones).length > 0
   if (filterBtn) {
-    const countEl = '<span class="dash-user-filter-count" id="dashUserFilterCount"></span>'
-    if (isMgr && groupName) {
-      filterBtn.innerHTML = `${escapeHtml(groupName)} ${countEl}`
-    } else {
-      filterBtn.innerHTML = `کارشناسان ${countEl}`
-    }
+    filterBtn.innerHTML = `کارشناسان <span class="dash-user-filter-count" id="dashUserFilterCount"></span>`
   }
   const selectAllLabel = document.querySelector('#dashUserDropdown .dash-user-option-all span')
-  if (selectAllLabel) {
-    selectAllLabel.textContent = (isMgr && groupName) ? `همه اعضای ${groupName}` : 'همه کارشناسان'
-  }
+  if (selectAllLabel) selectAllLabel.textContent = 'همه کارشناسان'
+
   updateUserFilterCount()
 
   if (!dashUserDropdownInited) {
@@ -242,12 +295,27 @@ export function toggleDashUser(phone, checked) {
   renderDashboard()
 }
 
+export function toggleDashGroup(groupId, checked) {
+  if (!selectedAdvisorPhones) selectedAdvisorPhones = new Set()
+  const block = document.querySelector(`#dashUserCheckboxes .dash-group-block[data-dash-group="${groupId}"]`)
+  if (!block) return
+  block.querySelectorAll('.dash-user-cb').forEach(cb => {
+    const p = normalizePhone(cb.value)
+    cb.checked = !!checked
+    if (checked) selectedAdvisorPhones.add(p)
+    else selectedAdvisorPhones.delete(p)
+  })
+  updateUserFilterCount()
+  renderDashboard()
+}
+
 export function toggleDashUsersAll(checked) {
   selectedAdvisorPhones = checked
     ? new Set(dashUsersCache.map(u => normalizePhone(u.phone)))
     : new Set()
-  document.querySelectorAll('#dashUserCheckboxes input[type="checkbox"]').forEach(cb => {
-    cb.checked = checked
+  document.querySelectorAll('#dashUserCheckboxes .dash-user-cb, #dashUserCheckboxes .dash-group-cb').forEach(cb => {
+    cb.checked = !!checked
+    cb.indeterminate = false
   })
   updateUserFilterCount()
   renderDashboard()
