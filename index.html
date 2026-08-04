@@ -157,16 +157,57 @@
         <section class="settings-pane" data-settings-pane="products" hidden>
           <div class="settings-pane-header">
             <h3>کاتالوگ محصولات</h3>
-            <p class="settings-pane-desc">نام محصولات فروش در فرم مشتری و مپینگ ایمپورت فروش از این لیست خوانده می‌شود.</p>
+            <p class="settings-pane-desc">نام محصولات فروش در فرم مشتری و مپینگ ایمپورت فروش از این لیست خوانده می‌شود. باندل‌ها ترکیب دو یا چند محصول هستند و به‌عنوان یک آیتم قابل‌فروش ظاهر می‌شوند.</p>
           </div>
-          <div class="form-row settings-add-row">
-            <div class="form-group" style="flex:1;margin-bottom:0;">
-              <label for="newProductCatalogItem">نام محصول</label>
-              <input type="text" class="form-input" id="newProductCatalogItem" placeholder="مثلاً آنلاین چینی">
+
+          <div class="settings-subsection">
+            <h4 class="settings-subsection-title">محصولات</h4>
+            <div class="form-row settings-add-row">
+              <div class="form-group" style="flex:1;margin-bottom:0;">
+                <label for="newProductCatalogItem">نام محصول</label>
+                <input type="text" class="form-input" id="newProductCatalogItem" placeholder="مثلاً آنلاین چینی">
+              </div>
+              <button type="button" class="btn btn-primary" onclick="app.addProductCatalogItem()">افزودن</button>
             </div>
-            <button type="button" class="btn btn-primary" onclick="app.addProductCatalogItem()">افزودن</button>
+            <div id="settingsProductsList" class="settings-config-list"></div>
           </div>
-          <div id="settingsProductsList" class="settings-config-list"></div>
+
+          <div class="settings-subsection">
+            <h4 class="settings-subsection-title">باندل‌ها</h4>
+            <p class="settings-pane-desc">دو یا چند محصول کاتالوگ را انتخاب کنید تا یک آیتم فروش مشترک بسازید.</p>
+            <div class="settings-bundle-form" id="settingsBundleForm">
+              <input type="hidden" id="editBundleId" value="">
+              <div class="form-group">
+                <label for="newBundleName">نام باندل</label>
+                <input type="text" class="form-input" id="newBundleName" placeholder="مثلاً پکیج چینی کامل">
+              </div>
+              <div class="form-group">
+                <label>محصولات داخل باندل</label>
+                <div id="settingsBundleProductChecks" class="settings-target-products"></div>
+              </div>
+              <div class="form-row settings-add-row" style="justify-content:flex-start;gap:8px;">
+                <button type="button" class="btn btn-primary" id="settingsBundleSaveBtn" onclick="app.saveProductBundleForm()">افزودن باندل</button>
+                <button type="button" class="btn" id="settingsBundleCancelBtn" hidden onclick="app.cancelProductBundleEdit()">لغو ویرایش</button>
+              </div>
+            </div>
+            <div id="settingsBundlesList" class="settings-config-list" style="margin-top:12px;"></div>
+          </div>
+
+          <div class="settings-subsection">
+            <h4 class="settings-subsection-title">انتقال فروش به باندل</h4>
+            <p class="settings-pane-desc">فروش‌هایی که روی نام قدیمی کاتالوگ (باندل اسمی) ثبت شده‌اند را به باندل تعریف‌شده منتقل کنید. مبدا و مقصد فقط از لیست انتخاب می‌شوند.</p>
+            <div class="form-row settings-add-row" style="flex-wrap:wrap;align-items:flex-end;">
+              <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0;">
+                <label for="migrateFromCatalogSelect">نام قدیمی (کاتالوگ)</label>
+                <select class="form-select" id="migrateFromCatalogSelect"></select>
+              </div>
+              <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0;">
+                <label for="migrateToBundleSelect">باندل مقصد</label>
+                <select class="form-select" id="migrateToBundleSelect"></select>
+              </div>
+              <button type="button" class="btn btn-primary" onclick="app.runCatalogToBundleMigration()">انتقال فروش‌ها</button>
+            </div>
+          </div>
         </section>
 
         <!-- تارگت‌های فروش -->

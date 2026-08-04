@@ -48,6 +48,7 @@ let data = {
   convertedCount: 0,
   destinationBanks: [],
   productCatalog: [],
+  productBundles: [],
   platforms: [],
   statuses: [],
   salesTargets: [],
@@ -254,6 +255,7 @@ export async function loadData() {
   data.convertedCount = settings.convertedCount || 0
   data.destinationBanks = normalizeDestinationBanks(settings.destination_banks)
   data.productCatalog = normalizeProductCatalog(settings.product_catalog)
+  data.productBundles = normalizeProductBundles(settings.product_bundles)
   data.platforms = Array.isArray(settings.platforms) && settings.platforms.length > 0 ? settings.platforms : [...DEFAULT_PLATFORMS]
   data.statuses = Array.isArray(settings.statuses) && settings.statuses.length > 0
     ? [...settings.statuses].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -363,6 +365,213 @@ export async function saveProductCatalog(products) {
   data.productCatalog = cleaned.length ? cleaned : [...DEFAULT_PRODUCT_CATALOG]
   await saveSetting('product_catalog', data.productCatalog)
   return getProductCatalog()
+}
+
+// ============================================
+// Product bundles (named sellable sets of catalog products)
+// ============================================
+
+function makeBundleId() {
+  return `bndl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+function normalizeProductBundles(raw) {
+  let list = raw
+  if (typeof list === 'string' && list.trim()) {
+    try { list = JSON.parse(list) } catch (_) { return [] }
+  }
+  if (!Array.isArray(list)) return []
+  return list.map(item => {
+    if (!item || typeof item !== 'object') return null
+    const name = String(item.name || '').trim()
+    if (!name) return null
+    const productNames = [...new Set(
+      (Array.isArray(item.productNames) ? item.productNames : [])
+        .map(p => String(p || '').trim())
+        .filter(Boolean)
+    )]
+    if (productNames.length < 2) return null
+    return {
+      id: String(item.id || '').trim() || makeBundleId(),
+      name,
+      productNames
+    }
+  }).filter(Boolean)
+}
+
+export function getProductBundles() {
+  return Array.isArray(data.productBundles)
+    ? data.productBundles.map(b => ({ ...b, productNames: [...(b.productNames || [])] }))
+    : []
+}
+
+export async function saveProductBundles(bundles) {
+  data.productBundles = normalizeProductBundles(bundles)
+  await saveSetting('product_bundles', data.productBundles)
+  return getProductBundles()
+}
+
+/** Union of catalog product names + bundle names (sellable dropdown options). */
+export function getSellableNames() {
+  const products = getProductCatalog()
+  const bundleNames = getProductBundles().map(b => b.name)
+  const seen = new Set()
+  const out = []
+  for (const name of [...products, ...bundleNames]) {
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(name)
+  }
+  return out
+}
+
+export function getBundleByName(name) {
+  const key = String(name || '').trim().toLowerCase()
+  if (!key) return null
+  return getProductBundles().find(b => b.name.toLowerCase() === key) || null
+}
+
+export function isBundleName(name) {
+  return !!getBundleByName(name)
+}
+
+/** Bundles that include the given catalog product name as a component. */
+export function getBundlesUsingProduct(productName) {
+  const key = String(productName || '').trim().toLowerCase()
+  if (!key) return []
+  return getProductBundles().filter(b =>
+    (b.productNames || []).some(p => p.toLowerCase() === key)
+  )
+}
+
+/**
+ * Validate a bundle draft against catalog + other bundles.
+ * @returns {{ ok: true, bundle } | { ok: false, error: string }}
+ */
+export function validateProductBundle(draft, { excludeId = null } = {}) {
+  const name = String(draft?.name || '').trim()
+  if (!name) return { ok: false, error: 'نام باندل را وارد کنید' }
+
+  const productNames = [...new Set(
+    (Array.isArray(draft?.productNames) ? draft.productNames : [])
+      .map(p => String(p || '').trim())
+      .filter(Boolean)
+  )]
+  if (productNames.length < 2) {
+    return { ok: false, error: 'حداقل دو محصول از کاتالوگ انتخاب کنید' }
+  }
+
+  const catalog = getProductCatalog()
+  const catalogLower = new Set(catalog.map(p => p.toLowerCase()))
+  for (const p of productNames) {
+    if (!catalogLower.has(p.toLowerCase())) {
+      return { ok: false, error: `محصول «${p}» در کاتالوگ نیست` }
+    }
+  }
+
+  const nameLower = name.toLowerCase()
+  if (catalog.some(p => p.toLowerCase() === nameLower)) {
+    return { ok: false, error: 'نام باندل نباید با نام یک محصول کاتالوگ یکی باشد' }
+  }
+
+  const others = getProductBundles().filter(b => b.id !== excludeId)
+  if (others.some(b => b.name.toLowerCase() === nameLower)) {
+    return { ok: false, error: 'باندلی با این نام قبلاً ثبت شده' }
+  }
+
+  return {
+    ok: true,
+    bundle: {
+      id: String(draft?.id || '').trim() || makeBundleId(),
+      name,
+      productNames
+    }
+  }
+}
+
+/** Rename a catalog product inside all bundle compositions. */
+export async function renameProductInBundles(oldName, newName) {
+  const from = String(oldName || '').trim()
+  const to = String(newName || '').trim()
+  if (!from || !to || from === to) return getProductBundles()
+  const fromLower = from.toLowerCase()
+  let changed = false
+  const next = getProductBundles().map(b => {
+    const productNames = (b.productNames || []).map(p => {
+      if (p.toLowerCase() !== fromLower) return p
+      changed = true
+      return to
+    })
+    const deduped = [...new Set(productNames)]
+    return { ...b, productNames: deduped }
+  })
+  if (!changed) return getProductBundles()
+  return saveProductBundles(next)
+}
+
+/**
+ * Count customer sale lines whose product.name matches (case-insensitive).
+ */
+export function countSalesByProductName(productName) {
+  const key = String(productName || '').trim().toLowerCase()
+  if (!key) return 0
+  let n = 0
+  for (const c of data.customers || []) {
+    for (const p of c.products || []) {
+      if (String(p?.name || '').trim().toLowerCase() === key) n++
+    }
+  }
+  return n
+}
+
+/**
+ * Migrate sale lines + sales-target filters from an old catalog name to a bundle name.
+ * @returns {{ updatedCustomers: number, updatedSales: number, updatedTargets: boolean, bundleName: string }}
+ */
+export async function migrateCatalogNameToBundle(oldCatalogName, bundleId) {
+  const oldName = String(oldCatalogName || '').trim()
+  if (!oldName) throw new Error('نام قدیمی را انتخاب کنید')
+
+  const bundle = getProductBundles().find(b => b.id === bundleId)
+  if (!bundle) throw new Error('باندل مقصد را انتخاب کنید')
+
+  const oldLower = oldName.toLowerCase()
+  const newName = bundle.name
+  let updatedCustomers = 0
+  let updatedSales = 0
+
+  for (const customer of data.customers || []) {
+    const products = customer.products || []
+    let dirty = false
+    for (const p of products) {
+      if (String(p?.name || '').trim().toLowerCase() === oldLower) {
+        p.name = newName
+        dirty = true
+        updatedSales++
+      }
+    }
+    if (dirty) {
+      await saveCustomerToDB(customer)
+      updatedCustomers++
+    }
+  }
+
+  let updatedTargets = false
+  const targets = getSalesTargets()
+  const nextTargets = targets.map(group => {
+    const items = (group.items || []).map(bar => {
+      const names = bar.productNames || []
+      if (!names.some(n => n.toLowerCase() === oldLower)) return bar
+      updatedTargets = true
+      const replaced = names.map(n => (n.toLowerCase() === oldLower ? newName : n))
+      return { ...bar, productNames: [...new Set(replaced)] }
+    })
+    return { ...group, items }
+  })
+  if (updatedTargets) await saveSalesTargets(nextTargets)
+
+  return { updatedCustomers, updatedSales, updatedTargets, bundleName: newName }
 }
 
 // ============================================

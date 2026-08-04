@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getPlatforms, savePlatforms, getStatuses, saveStatuses, getSalesTargets, saveSalesTargets } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getSalesTargets, saveSalesTargets } from './data.js'
 import {
   loadGroupsData,
   getGroupsCache,
@@ -376,7 +376,7 @@ const SETTINGS_SECTIONS = [
   { id: 'users', label: 'کاربران و دسترسی‌ها', group: null, keywords: 'کاربر دسترسی permission user admin' },
   { id: 'groups', label: 'گروه‌ها و اعضا', group: null, keywords: 'گروه تیم مدیر عضو group team manager' },
   { id: 'banks', label: 'بانک‌های مقصد', group: 'داده‌های پایه', keywords: 'بانک واریز bank destination' },
-  { id: 'products', label: 'کاتالوگ محصولات', group: 'داده‌های پایه', keywords: 'محصول product catalog' },
+  { id: 'products', label: 'کاتالوگ محصولات', group: 'داده‌های پایه', keywords: 'محصول باندل product catalog bundle' },
   { id: 'sales-targets', label: 'تارگت‌های فروش', group: 'داده‌های پایه', keywords: 'تارگت هدف فروش target goal quota' },
   { id: 'platforms', label: 'پلتفرم‌ها', group: 'داده‌های پایه', keywords: 'پلتفرم platform' },
   { id: 'statuses', label: 'وضعیت‌های مشتری', group: 'داده‌های پایه', keywords: 'وضعیت status' },
@@ -393,6 +393,7 @@ let _permissionsDirty = false
 let _settingsEscapeBound = false
 let _editingBankIdx = null
 let _editingProductIdx = null
+let _editingBundleId = null
 let _editingPlatformIdx = null
 let _editingStatusIdx = null
 let _editingSalesTargetId = null
@@ -475,7 +476,7 @@ function applySettingsSection(sectionId) {
 
   if (sectionId === 'groups') renderGroupsSettings()
   else if (sectionId === 'banks') renderDestinationBanksSettings()
-  else if (sectionId === 'products') renderProductCatalogSettings()
+  else if (sectionId === 'products') renderProductsSettingsPane()
   else if (sectionId === 'sales-targets') renderSalesTargetsSettings()
   else if (sectionId === 'platforms') renderPlatformsSettings()
   else if (sectionId === 'statuses') renderStatusesSettings()
@@ -519,6 +520,7 @@ export async function openSettingsModal() {
   _selectedSettingsGroup = null
   _editingBankIdx = null
   _editingProductIdx = null
+  _editingBundleId = null
   _editingPlatformIdx = null
   _editingStatusIdx = null
 
@@ -1333,6 +1335,12 @@ export async function removeDestinationBank(index) {
 // Product catalog Settings
 // ============================================
 
+export function renderProductsSettingsPane() {
+  renderProductCatalogSettings()
+  renderProductBundleSettings()
+  renderBundleMigrationForm()
+}
+
 export function renderProductCatalogSettings() {
   const list = document.getElementById('settingsProductsList')
   if (!list) return
@@ -1383,11 +1391,30 @@ export async function saveProductCatalogEdit(index) {
     showToast('این محصول قبلاً ثبت شده')
     return
   }
+  if (getProductBundles().some(b => b.name.toLowerCase() === name.toLowerCase())) {
+    showToast('این نام قبلاً برای یک باندل استفاده شده')
+    return
+  }
+  const oldName = products[index]
+  if (oldName !== name) {
+    const oldLower = oldName.toLowerCase()
+    const newLower = name.toLowerCase()
+    for (const b of getBundlesUsingProduct(oldName)) {
+      const nextSet = new Set(
+        (b.productNames || []).map(p => (p.toLowerCase() === oldLower ? newLower : p.toLowerCase()))
+      )
+      if (nextSet.size < 2) {
+        showToast(`تغییر نام باعث می‌شود باندل «${b.name}» کمتر از دو محصول داشته باشد`)
+        return
+      }
+    }
+  }
   products[index] = name
   try {
     await saveProductCatalog(products)
+    if (oldName !== name) await renameProductInBundles(oldName, name)
     _editingProductIdx = null
-    renderProductCatalogSettings()
+    renderProductsSettingsPane()
     showToast('ذخیره شد')
   } catch (e) {
     console.error('saveProductCatalogEdit error:', e)
@@ -1405,10 +1432,14 @@ export async function addProductCatalogItem() {
     showToast('این محصول قبلاً ثبت شده')
     return
   }
+  if (getProductBundles().some(b => b.name.toLowerCase() === name.toLowerCase())) {
+    showToast('این نام قبلاً برای یک باندل استفاده شده')
+    return
+  }
   try {
     await saveProductCatalog([...products, name])
     if (input) input.value = ''
-    renderProductCatalogSettings()
+    renderProductsSettingsPane()
     showToast('محصول اضافه شد')
   } catch (e) {
     console.error('addProductCatalogItem error:', e)
@@ -1424,23 +1455,263 @@ export async function removeProductCatalogItem(index) {
     showToast('حداقل یک محصول باید در کاتالوگ بماند')
     return
   }
-  openSettingsConfirm(`حذف محصول «${products[index]}»؟`, async () => {
+  const name = products[index]
+  const usedIn = getBundlesUsingProduct(name)
+  if (usedIn.length) {
+    showToast(`این محصول در باندل «${usedIn.map(b => b.name).join('، ')}» استفاده شده — ابتدا باندل را ویرایش کنید`)
+    return
+  }
+  openSettingsConfirm(`حذف محصول «${name}»؟`, async () => {
     const next = [...getProductCatalog()]
     if (next.length <= 1) {
       showToast('حداقل یک محصول باید در کاتالوگ بماند')
+      return
+    }
+    const stillUsed = getBundlesUsingProduct(next[index])
+    if (stillUsed.length) {
+      showToast('این محصول در باندل استفاده شده')
       return
     }
     next.splice(index, 1)
     try {
       await saveProductCatalog(next)
       _editingProductIdx = null
-      renderProductCatalogSettings()
+      renderProductsSettingsPane()
       showToast('محصول حذف شد')
     } catch (e) {
       console.error('removeProductCatalogItem error:', e)
       showToast('خطا در حذف محصول')
     }
   }, 'حذف')
+}
+
+// ============================================
+// Product bundles Settings
+// ============================================
+
+function getSelectedBundleProducts() {
+  const box = document.getElementById('settingsBundleProductChecks')
+  if (!box) return []
+  return [...box.querySelectorAll('input[type="checkbox"][data-bundle-product]:checked')]
+    .map(el => el.getAttribute('data-bundle-product') || '')
+    .filter(Boolean)
+}
+
+function renderBundleProductChecks(selectedNames = []) {
+  const box = document.getElementById('settingsBundleProductChecks')
+  if (!box) return
+  const selected = new Set((selectedNames || []).map(String))
+  const catalog = getProductCatalog()
+  if (!catalog.length) {
+    box.innerHTML = '<div class="settings-empty-detail">ابتدا محصول به کاتالوگ اضافه کنید</div>'
+    return
+  }
+  box.innerHTML = catalog.map(name => `
+    <label class="settings-target-product-item">
+      <input type="checkbox" data-bundle-product="${escapeAttr(name)}"${selected.has(name) ? ' checked' : ''}>
+      <span>${escapeHtml(name)}</span>
+    </label>
+  `).join('')
+}
+
+function clearBundleForm() {
+  _editingBundleId = null
+  const idEl = document.getElementById('editBundleId')
+  if (idEl) idEl.value = ''
+  const nameEl = document.getElementById('newBundleName')
+  if (nameEl) nameEl.value = ''
+  renderBundleProductChecks([])
+  const saveBtn = document.getElementById('settingsBundleSaveBtn')
+  if (saveBtn) saveBtn.textContent = 'افزودن باندل'
+  const cancelBtn = document.getElementById('settingsBundleCancelBtn')
+  if (cancelBtn) cancelBtn.hidden = true
+}
+
+export function renderProductBundleSettings() {
+  const list = document.getElementById('settingsBundlesList')
+  if (!list) return
+
+  const editing = _editingBundleId
+    ? getProductBundles().find(b => b.id === _editingBundleId)
+    : null
+
+  if (editing) {
+    const idEl = document.getElementById('editBundleId')
+    if (idEl) idEl.value = editing.id
+    const nameEl = document.getElementById('newBundleName')
+    if (nameEl) nameEl.value = editing.name
+    renderBundleProductChecks(editing.productNames)
+    const saveBtn = document.getElementById('settingsBundleSaveBtn')
+    if (saveBtn) saveBtn.textContent = 'ذخیره باندل'
+    const cancelBtn = document.getElementById('settingsBundleCancelBtn')
+    if (cancelBtn) cancelBtn.hidden = false
+  } else {
+    const selected = getSelectedBundleProducts()
+    const box = document.getElementById('settingsBundleProductChecks')
+    const needsInit = !box || !box.querySelector('input[data-bundle-product]')
+    renderBundleProductChecks(needsInit ? [] : selected)
+    const saveBtn = document.getElementById('settingsBundleSaveBtn')
+    if (saveBtn) saveBtn.textContent = 'افزودن باندل'
+    const cancelBtn = document.getElementById('settingsBundleCancelBtn')
+    if (cancelBtn) cancelBtn.hidden = true
+    const idEl = document.getElementById('editBundleId')
+    if (idEl) idEl.value = ''
+  }
+
+  const bundles = getProductBundles()
+  if (!bundles.length) {
+    list.innerHTML = '<div class="settings-empty-detail">هنوز باندلی تعریف نشده</div>'
+    return
+  }
+  list.innerHTML = bundles.map(b => `
+    <div class="settings-config-row">
+      <span class="settings-config-label">
+        <strong>${escapeHtml(b.name)}</strong>
+        <span class="settings-config-meta" style="direction:rtl;font-family:inherit;display:block;margin-top:2px;">
+          شامل: ${escapeHtml((b.productNames || []).join('، '))}
+        </span>
+      </span>
+      <button type="button" class="btn-icon" title="ویرایش" onclick="app.startProductBundleEdit('${escapeAttr(b.id)}')">✏️</button>
+      <button type="button" class="btn-icon" title="حذف" onclick="app.removeProductBundle('${escapeAttr(b.id)}')" style="color:var(--danger);">🗑</button>
+    </div>
+  `).join('')
+}
+
+export function startProductBundleEdit(bundleId) {
+  if (!requireMainAdmin()) return
+  _editingBundleId = bundleId
+  renderProductBundleSettings()
+  document.getElementById('newBundleName')?.focus()
+}
+
+export function cancelProductBundleEdit() {
+  clearBundleForm()
+  renderProductBundleSettings()
+}
+
+export async function saveProductBundleForm() {
+  if (!requireMainAdmin()) return
+  const idEl = document.getElementById('editBundleId')
+  const excludeId = (idEl?.value || _editingBundleId || '').trim() || null
+  const name = (document.getElementById('newBundleName')?.value || '').trim()
+  const productNames = getSelectedBundleProducts()
+  const result = validateProductBundle({ id: excludeId || undefined, name, productNames }, { excludeId })
+  if (!result.ok) {
+    showToast(result.error)
+    return
+  }
+  const bundles = getProductBundles()
+  const idx = excludeId ? bundles.findIndex(b => b.id === excludeId) : -1
+  if (idx >= 0) bundles[idx] = result.bundle
+  else bundles.push(result.bundle)
+  try {
+    await saveProductBundles(bundles)
+    clearBundleForm()
+    renderProductsSettingsPane()
+    showToast(idx >= 0 ? 'باندل ذخیره شد' : 'باندل اضافه شد')
+  } catch (e) {
+    console.error('saveProductBundleForm error:', e)
+    showToast('خطا در ذخیره باندل')
+  }
+}
+
+export async function removeProductBundle(bundleId) {
+  if (!requireMainAdmin()) return
+  const bundle = getProductBundles().find(b => b.id === bundleId)
+  if (!bundle) return
+  openSettingsConfirm(`حذف باندل «${bundle.name}»؟ فروش‌های قبلی با این نام تغییر نمی‌کنند.`, async () => {
+    try {
+      await saveProductBundles(getProductBundles().filter(b => b.id !== bundleId))
+      if (_editingBundleId === bundleId) clearBundleForm()
+      renderProductsSettingsPane()
+      showToast('باندل حذف شد')
+    } catch (e) {
+      console.error('removeProductBundle error:', e)
+      showToast('خطا در حذف باندل')
+    }
+  }, 'حذف')
+}
+
+// ============================================
+// Migrate catalog name → bundle
+// ============================================
+
+export function renderBundleMigrationForm() {
+  const fromSel = document.getElementById('migrateFromCatalogSelect')
+  const toSel = document.getElementById('migrateToBundleSelect')
+  if (!fromSel || !toSel) return
+
+  const catalog = getProductCatalog()
+  const prevFrom = fromSel.value
+  fromSel.innerHTML = '<option value="">— انتخاب کنید —</option>' + catalog.map(name => {
+    const count = countSalesByProductName(name)
+    const label = count > 0 ? `${name} (${count} فروش)` : name
+    return `<option value="${escapeAttr(name)}">${escapeHtml(label)}</option>`
+  }).join('')
+  if (prevFrom && catalog.includes(prevFrom)) fromSel.value = prevFrom
+
+  const bundles = getProductBundles()
+  const prevTo = toSel.value
+  toSel.innerHTML = '<option value="">— انتخاب کنید —</option>' + bundles.map(b =>
+    `<option value="${escapeAttr(b.id)}">${escapeHtml(b.name)}</option>`
+  ).join('')
+  if (prevTo && bundles.some(b => b.id === prevTo)) toSel.value = prevTo
+}
+
+export async function runCatalogToBundleMigration() {
+  if (!requireMainAdmin()) return
+  const fromName = (document.getElementById('migrateFromCatalogSelect')?.value || '').trim()
+  const bundleId = (document.getElementById('migrateToBundleSelect')?.value || '').trim()
+  if (!fromName) { showToast('نام قدیمی را از لیست انتخاب کنید'); return }
+  if (!bundleId) { showToast('باندل مقصد را انتخاب کنید'); return }
+
+  const bundle = getProductBundles().find(b => b.id === bundleId)
+  if (!bundle) { showToast('باندل مقصد پیدا نشد'); return }
+
+  const count = countSalesByProductName(fromName)
+  if (count === 0) {
+    showToast('هیچ فروشی با این نام ثبت نشده')
+    return
+  }
+
+  openSettingsConfirm(
+    `${count} فروش از «${fromName}» به باندل «${bundle.name}» منتقل شود؟`,
+    async () => {
+      try {
+        showToast('در حال انتقال...')
+        const result = await migrateCatalogNameToBundle(fromName, bundleId)
+        showToast(`${result.updatedSales} فروش در ${result.updatedCustomers} مشتری منتقل شد`)
+        renderProductsSettingsPane()
+
+        const usedInBundles = getBundlesUsingProduct(fromName)
+        if (!usedInBundles.length) {
+          openSettingsConfirm(
+            `نام «${fromName}» از کاتالوگ محصولات حذف شود؟`,
+            async () => {
+              const products = getProductCatalog().filter(p => p.toLowerCase() !== fromName.toLowerCase())
+              if (products.length < 1) {
+                showToast('حداقل یک محصول باید در کاتالوگ بماند')
+                return
+              }
+              try {
+                await saveProductCatalog(products)
+                showToast('نام قدیمی از کاتالوگ حذف شد')
+                renderProductsSettingsPane()
+              } catch (e) {
+                console.error('remove migrated catalog name error:', e)
+                showToast('خطا در حذف نام از کاتالوگ')
+              }
+            },
+            'حذف از کاتالوگ'
+          )
+        }
+      } catch (e) {
+        console.error('runCatalogToBundleMigration error:', e)
+        showToast(e.message || 'خطا در انتقال فروش‌ها')
+      }
+    },
+    'انتقال'
+  )
 }
 
 // ============================================
@@ -1465,7 +1736,7 @@ function renderSalesTargetProductChecks(selectedNames = []) {
   const box = document.getElementById('salesTargetProducts')
   if (!box) return
   const selected = new Set((selectedNames || []).map(String))
-  const catalog = getProductCatalog()
+  const catalog = getSellableNames()
   box.innerHTML = catalog.map(name => `
     <label class="settings-target-product-item">
       <input type="checkbox" data-product="${escapeAttr(name)}"${selected.has(name) ? ' checked' : ''}>

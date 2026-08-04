@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getProductCatalog, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn } from './data.js'
+import { getData, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
@@ -1863,7 +1863,7 @@ export function closeDetailModal() {
 // ============================================
 
 const PRODUCT_STATUSES = ['تکمیل', 'بیعانه'] // kept for legacy references
-// Product names come from settings: getProductCatalog()
+// Product / bundle names come from settings: getSellableNames()
 
 export function getProducts(customerId) {
   const data = getData()
@@ -1981,14 +1981,18 @@ export async function renderProducts(customerId, users = null) {
       ? `<input type="text" class="product-settlement" placeholder="تاریخ تسویه" data-jdp value="${p.settlementDate || ''}" onchange="app.updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">`
       : (p.settlementDate ? `<span style="font-size:12px;color:var(--text-muted);">تسویه: ${escapeHtml(p.settlementDate)}</span>` : '')
 
-    const catalog = getProductCatalog()
+    const catalog = getSellableNames()
     const nameOptions = catalog.slice()
     if (p.name && !nameOptions.includes(p.name)) nameOptions.unshift(p.name)
+    const bundle = getBundleByName(p.name)
+    const bundleHint = bundle
+      ? `<span class="product-bundle-hint">شامل: ${escapeHtml((bundle.productNames || []).join('، '))}</span>`
+      : ''
     const nameHtml = canEdit && !closed
       ? `<select class="product-name" onchange="app.updateProduct('${customerId}', ${i}, 'name', this.value)">
             ${nameOptions.map(pr => `<option value="${escapeAttr(pr)}" ${p.name === pr ? 'selected' : ''}>${escapeHtml(pr)}</option>`).join('')}
-          </select>`
-      : `<span style="font-size:14px;font-weight:600;">${escapeHtml(p.name || '—')}</span>`
+          </select>${bundleHint}`
+      : `<span style="font-size:14px;font-weight:600;">${escapeHtml(p.name || '—')}</span>${bundleHint}`
 
     return `
       <div class="${blockClass}">
@@ -2024,7 +2028,7 @@ export async function addProductRow(customerId) {
     soldByPhone: normalizePhone(user?.phone || ''),
     depositorName: ''
   })
-  const catalog = getProductCatalog()
+  const catalog = getSellableNames()
   if (!catalog.length) {
     showToast('ابتدا از تنظیمات، کاتالوگ محصولات را تعریف کنید')
     return

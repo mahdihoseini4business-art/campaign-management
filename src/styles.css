@@ -1112,6 +1112,15 @@
 
   .product-row .product-name,
   .product-block .product-name { min-width: 140px; }
+
+  .product-bundle-hint {
+    display: block;
+    width: 100%;
+    flex-basis: 100%;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
   .product-row .product-status { min-width: 100px; }
   .product-row .product-price,
   .product-block .product-price { min-width: 120px; direction: ltr; text-align: left; }
@@ -2735,6 +2744,34 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+
+  .settings-subsection {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .settings-subsection:first-of-type {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .settings-subsection-title {
+    margin: 0 0 10px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .settings-bundle-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .settings-bundle-form .settings-target-products {
+    max-height: 180px;
   }
 
   .settings-config-row, .settings-bank-row {

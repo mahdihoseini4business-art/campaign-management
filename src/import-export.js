@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, generateId, getStatuses, saveFollowupToDB, getDestinationBanks, getProductCatalog } from './data.js'
+import { getData, saveCustomerToDB, generateId, getStatuses, saveFollowupToDB, getDestinationBanks, getSellableNames } from './data.js'
 import {
   toEnDigits, showToast, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
@@ -1242,7 +1242,7 @@ function refreshSalesValueMaps() {
     salesImportData.rows, mapping.advisor
   )
 
-  const catalog = getProductCatalog()
+  const catalog = getSellableNames()
   const banks = getDestinationBanks()
   const advisorOpts = salesImportData.advisorOptions || []
 
@@ -1453,11 +1453,11 @@ function renderSalesImportMapping() {
 
   const productSection = renderValueMappingSection({
     title: 'مپینگ نام محصول',
-    hint: 'هر نام محصول در فایل اکسل را به یکی از محصولات کاتالوگ تنظیمات وصل کنید.',
+    hint: 'هر نام محصول در فایل اکسل را به یکی از محصولات یا باندل‌های کاتالوگ تنظیمات وصل کنید.',
     excelValues: salesImportData.uniqueProducts,
     valueMap: salesImportData.productValueMap,
     autoMap: salesImportData.productAutoMap,
-    options: getProductCatalog(),
+    options: getSellableNames(),
     onChangeFn: 'setSalesProductValueMap',
     required: true
   })
@@ -1504,7 +1504,7 @@ function renderSalesImportMapping() {
       ? `<p class="import-map-hint" style="color:var(--warning);">لیست کاربران برای مپینگ کارشناس در دسترس نیست.</p>`
       : '')
 
-  const catalogEmpty = getProductCatalog().length === 0
+  const catalogEmpty = getSellableNames().length === 0
     ? `<p class="import-map-hint" style="color:var(--danger);">کاتالوگ محصولات خالی است — از تنظیمات مدیر محصول اضافه کنید.</p>`
     : ''
 
@@ -1661,7 +1661,7 @@ export async function doSalesImport() {
     showToast('ستون محصول را مپ کنید')
     return
   }
-  if (!getProductCatalog().length) {
+  if (!getSellableNames().length) {
     showToast('کاتالوگ محصولات خالی است — از تنظیمات اضافه کنید')
     return
   }
