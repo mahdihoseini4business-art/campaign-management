@@ -7,7 +7,7 @@ import {
   getVisibleAdvisorPhones, getStatusLabels, formatPhonesDisplay,
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
   getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
-  getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones
+  getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, formatTeamFilterLabel
 } from './utils.js'
 
 let dashCharts = {}
@@ -206,6 +206,22 @@ async function ensureUserFilterUI() {
     }
   }
 
+  const filterBtn = document.getElementById('dashUserFilterBtn')
+  const groupName = (currentUser?.groupName || '').trim()
+  const isMgr = !!currentUser?.isGroupManager &&
+    normalizeViewUserPhones(currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones).length > 0
+  if (filterBtn) {
+    const countEl = '<span class="dash-user-filter-count" id="dashUserFilterCount"></span>'
+    if (isMgr && groupName) {
+      filterBtn.innerHTML = `گروه ${escapeHtml(groupName)} ${countEl}`
+    } else {
+      filterBtn.innerHTML = `کارشناسان ${countEl}`
+    }
+  }
+  const selectAllLabel = document.querySelector('#dashUserDropdown .dash-user-option-all span')
+  if (selectAllLabel) {
+    selectAllLabel.textContent = (isMgr && groupName) ? `همه اعضای ${groupName}` : 'همه کارشناسان'
+  }
   updateUserFilterCount()
 
   if (!dashUserDropdownInited) {

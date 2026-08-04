@@ -13,12 +13,12 @@ import {
   MAX_CUSTOMER_PHONES,
   getStatusLabels, getStatusClass,
   getNowJalaliDateTime, PAYMENT_STATUS_LABELS, createPayment,
+  formatTeamFilterLabel, normalizeViewUserPhones,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getOperationalBalance,
   getProductPayments, getPaymentEntryStatus, getWorstPaymentStatus,
   isPaymentFilled, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS,
   computeCustomerLrfm, isProductCountableInSales, soldAtTimePart, formatSoldAt24h, normalizeTimeTo24h,
-  CUSTOMER_LEVELS, formatCustomerLevel, parseCustomerLevel, resolveCustomerLevel, syncCustomerLevel,
-  normalizeViewUserPhones
+  CUSTOMER_LEVELS, formatCustomerLevel, parseCustomerLevel, resolveCustomerLevel, syncCustomerLevel
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -294,9 +294,9 @@ async function updateAdvisorDropdown() {
   const currentVal = advisorSelect.value
   const users = await getUsersSafe()
   const currentUser = getCurrentUser()
-  const teamPhones = normalizeViewUserPhones(currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones)
-  const teamOption = teamPhones.length
-    ? `<option value="__team__">اعضای گروه من (${teamPhones.length})</option>`
+  const teamLabel = formatTeamFilterLabel(currentUser)
+  const teamOption = teamLabel
+    ? `<option value="__team__">${escapeHtml(teamLabel)}</option>`
     : ''
   advisorSelect.innerHTML = `<option value="">همه کارشناسان</option>${teamOption}` + users
     .filter(u => u.phone)

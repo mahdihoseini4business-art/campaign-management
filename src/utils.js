@@ -1262,7 +1262,10 @@ export async function setCurrentUser(user) {
     phone: user.phone || null,
     role: user.role,
     permissions,
-    viewUserPhones: normalizeViewUserPhones(user.viewUserPhones ?? permissions?.viewUserPhones)
+    viewUserPhones: normalizeViewUserPhones(user.viewUserPhones ?? permissions?.viewUserPhones),
+    groupId: user.groupId || null,
+    groupName: user.groupName || null,
+    isGroupManager: !!user.isGroupManager
   }
   const expiresAt = Date.now() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
   const payload = { data, expiresAt }
@@ -1272,6 +1275,17 @@ export async function setCurrentUser(user) {
   cachedUser = { ...data, expiresAt }
   localStorage.setItem(SESSION_KEY, JSON.stringify(envelope))
   return cachedUser
+}
+
+/** Label for manager team filter option, e.g. "اعضای فروش (3)". */
+export function formatTeamFilterLabel(user = getCurrentUser()) {
+  if (!user) return null
+  const phones = normalizeViewUserPhones(user.viewUserPhones ?? user.permissions?.viewUserPhones)
+  if (!phones.length) return null
+  const name = (user.groupName || '').trim()
+  return name
+    ? `اعضای ${name} (${phones.length})`
+    : `اعضای گروه من (${phones.length})`
 }
 
 export function clearCurrentUser() {

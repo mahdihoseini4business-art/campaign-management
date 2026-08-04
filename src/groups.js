@@ -73,24 +73,49 @@ export function getManagedMemberPhonesFromCache(phone) {
 /**
  * Derive managed phones from DB for a single user (no full cache required).
  * Used on login/session refresh.
+ * @returns {Promise<string[]|null>} null = groups unavailable
  */
 export async function fetchManagedMemberPhones(phone) {
+  const info = await fetchGroupMembershipInfo(phone)
+  if (info === null) return null
+  return info.viewUserPhones
+}
+
+/**
+ * Load group membership + derived view phones for session.
+ * @returns {Promise<{groupId: string|null, groupName: string|null, isGroupManager: boolean, viewUserPhones: string[]}|null>}
+ *   null when groups table is unavailable
+ */
+export async function fetchGroupMembershipInfo(phone) {
   const p = normalizePhone(phone)
-  if (!p) return []
+  if (!p) {
+    return { groupId: null, groupName: null, isGroupManager: false, viewUserPhones: [] }
+  }
 
   const { data: myRow, error: myErr } = await supabase
     .from('group_members')
-    .select('group_id, is_manager')
+    .select('group_id, is_manager, groups(id, name)')
     .eq('user_phone', p)
     .limit(1)
 
   if (myErr) {
-    console.error('fetchManagedMemberPhones membership error:', myErr)
-    return null // signal: groups table may be unavailable; keep existing grants
+    console.error('fetchGroupMembershipInfo membership error:', myErr)
+    return null
   }
-  if (!myRow?.length || !myRow[0].is_manager) return []
+  if (!myRow?.length) {
+    return { groupId: null, groupName: null, isGroupManager: false, viewUserPhones: [] }
+  }
 
-  const groupId = myRow[0].group_id
+  const row = myRow[0]
+  const groupMeta = Array.isArray(row.groups) ? row.groups[0] : row.groups
+  const groupId = row.group_id || groupMeta?.id || null
+  const groupName = groupMeta?.name || null
+  const isGroupManager = !!row.is_manager
+
+  if (!isGroupManager || !groupId) {
+    return { groupId, groupName, isGroupManager: false, viewUserPhones: [] }
+  }
+
   const { data: peers, error: peersErr } = await supabase
     .from('group_members')
     .select('user_phone')
@@ -98,10 +123,16 @@ export async function fetchManagedMemberPhones(phone) {
     .eq('is_manager', false)
 
   if (peersErr) {
-    console.error('fetchManagedMemberPhones peers error:', peersErr)
+    console.error('fetchGroupMembershipInfo peers error:', peersErr)
     return null
   }
-  return [...new Set((peers || []).map(r => normalizePhone(r.user_phone)).filter(Boolean))]
+
+  return {
+    groupId,
+    groupName,
+    isGroupManager: true,
+    viewUserPhones: [...new Set((peers || []).map(r => normalizePhone(r.user_phone)).filter(Boolean))]
+  }
 }
 
 /**
@@ -430,20 +461,39 @@ export async function migrateLegacyViewUserPhones(users = []) {
 }
 
 /**
- * Align session viewUserPhones with group membership.
- * Returns derived phones array, or null if groups unavailable (caller keeps DB value).
+ * Align session viewUserPhones + group metadata with membership.
+ * @returns {Promise<{viewUserPhones: string[], groupId: string|null, groupName: string|null, isGroupManager: boolean}>}
  */
-export async function resolveViewUserPhonesForSession(user) {
-  if (!user || user.role === 'admin') return []
-  const derived = await fetchManagedMemberPhones(user.phone)
-  if (derived === null) {
-    return normalizeViewUserPhones(user.permissions?.viewUserPhones ?? user.viewUserPhones)
+export async function resolveGroupSessionInfo(user) {
+  const empty = { viewUserPhones: [], groupId: null, groupName: null, isGroupManager: false }
+  if (!user || user.role === 'admin') return empty
+
+  const info = await fetchGroupMembershipInfo(user.phone)
+  if (info === null) {
+    return {
+      viewUserPhones: normalizeViewUserPhones(user.permissions?.viewUserPhones ?? user.viewUserPhones),
+      groupId: user.groupId || null,
+      groupName: user.groupName || null,
+      isGroupManager: normalizeViewUserPhones(user.permissions?.viewUserPhones ?? user.viewUserPhones).length > 0
+    }
   }
 
-  // Keep DB in sync when derived differs
   const prev = normalizeViewUserPhones(user.permissions?.viewUserPhones)
+  const derived = info.viewUserPhones
   if (prev.length !== derived.length || prev.some((p, i) => p !== derived[i])) {
     await patchUserViewPhones(user.phone, derived)
   }
-  return derived
+
+  return {
+    viewUserPhones: derived,
+    groupId: info.groupId,
+    groupName: info.groupName,
+    isGroupManager: info.isGroupManager
+  }
+}
+
+/** @deprecated prefer resolveGroupSessionInfo */
+export async function resolveViewUserPhonesForSession(user) {
+  const info = await resolveGroupSessionInfo(user)
+  return info.viewUserPhones
 }

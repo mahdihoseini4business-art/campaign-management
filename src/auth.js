@@ -16,6 +16,7 @@ import {
   setGroupManager,
   assignUserToGroup,
   migrateLegacyViewUserPhones,
+  resolveGroupSessionInfo,
   resolveViewUserPhonesForSession,
   clearUserViewPhones
 } from './groups.js'
@@ -270,14 +271,14 @@ export async function doLogin() {
   }
 
   resetLoginAttempts()
-  const viewUserPhones = await resolveViewUserPhonesForSession({
+  const groupInfo = await resolveGroupSessionInfo({
     phone: user.phone,
     role: user.role,
     permissions: user.permissions || null
   })
   const permissions = user.role === 'admin'
     ? null
-    : { ...(user.permissions || {}), viewUserPhones }
+    : { ...(user.permissions || {}), viewUserPhones: groupInfo.viewUserPhones }
   await setCurrentUser({
     username: user.username,
     displayName: user.display_name,
@@ -286,7 +287,10 @@ export async function doLogin() {
     phone: user.phone,
     role: user.role,
     permissions,
-    viewUserPhones
+    viewUserPhones: groupInfo.viewUserPhones,
+    groupId: groupInfo.groupId,
+    groupName: groupInfo.groupName,
+    isGroupManager: groupInfo.isGroupManager
   })
   window.location.href = '/index.html'
 }
@@ -337,14 +341,14 @@ export async function refreshSessionFromServer(localUser) {
     }
 
     const user = rows[0]
-    const viewUserPhones = await resolveViewUserPhonesForSession({
+    const groupInfo = await resolveGroupSessionInfo({
       phone: user.phone,
       role: user.role,
       permissions: user.permissions || null
     })
     const permissions = user.role === 'admin'
       ? null
-      : { ...(user.permissions || {}), viewUserPhones }
+      : { ...(user.permissions || {}), viewUserPhones: groupInfo.viewUserPhones }
     return await setCurrentUser({
       username: user.username,
       displayName: user.display_name || `${user.first_name || ''} ${user.last_name || ''}`.trim(),
@@ -353,7 +357,10 @@ export async function refreshSessionFromServer(localUser) {
       phone: user.phone,
       role: user.role,
       permissions,
-      viewUserPhones
+      viewUserPhones: groupInfo.viewUserPhones,
+      groupId: groupInfo.groupId,
+      groupName: groupInfo.groupName,
+      isGroupManager: groupInfo.isGroupManager
     })
   } catch (e) {
     console.error('refreshSessionFromServer error:', e)

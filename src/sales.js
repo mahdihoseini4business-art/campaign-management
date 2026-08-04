@@ -11,7 +11,7 @@ import {
   getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
   productHasRejectedPayment, getProductPayments, getPaymentEntryStatus,
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
-  normalizePhone, userDisplayName
+  normalizePhone, userDisplayName, formatTeamFilterLabel, normalizeViewUserPhones
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -151,15 +151,26 @@ export function getFilteredSales() {
       if (resolved !== levelFilter) return false
     }
 
-    const advisorPhoneFilter = advisorFilter ? normalizePhone(advisorFilter) : ''
+    const teamPhones = normalizeViewUserPhones(
+      currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones
+    )
+    const teamFilter = advisorFilter === '__team__'
+    const advisorPhoneFilter = (!teamFilter && advisorFilter) ? normalizePhone(advisorFilter) : ''
+    const matchesAdvisorPhone = (phone) => {
+      const p = normalizePhone(phone)
+      if (!p) return false
+      if (teamFilter) return teamPhones.includes(p)
+      if (advisorPhoneFilter) return p === advisorPhoneFilter
+      return true
+    }
 
     if (dateFilter.hasDateFilter) {
       if (!product) return false
       ensureProductPayments(product)
       let paysInRange = getApprovedPaymentsInRange(product, dateFilter)
-      if (advisorPhoneFilter) {
+      if (teamFilter || advisorPhoneFilter) {
         paysInRange = paysInRange.filter(pay =>
-          getSaleRegistrantPhone(product, pay, customer) === advisorPhoneFilter
+          matchesAdvisorPhone(getSaleRegistrantPhone(product, pay, customer))
         )
       }
       if (!paysInRange.length) return false
@@ -177,13 +188,13 @@ export function getFilteredSales() {
       s.dateFiltered = true
       s.soldByPhone = getSaleRegistrantPhone(product, lastInRange, customer)
       s.advisorPhone = s.soldByPhone
-    } else if (advisorPhoneFilter) {
-      const sellerMatch = s.soldByPhone === advisorPhoneFilter ||
+    } else if (teamFilter || advisorPhoneFilter) {
+      const sellerMatch = matchesAdvisorPhone(s.soldByPhone) ||
         (product && getProductPayments(product).some(pay =>
-          getSaleRegistrantPhone(product, pay, customer) === advisorPhoneFilter
+          matchesAdvisorPhone(getSaleRegistrantPhone(product, pay, customer))
         ))
       if (!sellerMatch) return false
-      if (product && s.soldByPhone !== advisorPhoneFilter) {
+      if (product && advisorPhoneFilter && s.soldByPhone !== advisorPhoneFilter) {
         s.soldByPhone = advisorPhoneFilter
         s.advisorPhone = advisorPhoneFilter
       }
@@ -299,6 +310,7 @@ async function updateSalesAdvisorFilter() {
   const withPhone = users.filter(u => u.phone)
   const byPhone = new Map(withPhone.map(u => [normalizePhone(u.phone), u]))
   const options = []
+  const teamLabel = formatTeamFilterLabel(currentUser)
 
   if (canViewOrgWideData(currentUser)) {
     for (const u of withPhone) {
@@ -325,10 +337,15 @@ async function updateSalesAdvisorFilter() {
     return
   }
 
-  sel.innerHTML = '<option value="">همه کارشناسان</option>' +
-    options.map(o => `<option value="${escapeAttr(o.phone)}">${escapeHtml(o.label)}</option>`).join('')
-  sel.value = options.some(o => o.phone === currentVal) ? currentVal : ''
+  const teamOption = teamLabel && !canViewOrgWideData(currentUser)
+    ? `<option value="__team__">${escapeHtml(teamLabel)}</option>`
+    : ''
+
   sel.style.display = ''
+  sel.innerHTML = `<option value="">همه کارشناسان</option>${teamOption}` +
+    options.map(o => `<option value="${escapeAttr(o.phone)}">${escapeHtml(o.label)}</option>`).join('')
+  if ([...sel.options].some(o => o.value === currentVal)) sel.value = currentVal
+  else sel.value = ''
 }
 
 export async function renderSales() {
