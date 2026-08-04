@@ -173,13 +173,49 @@ export function removeFollowupFromCache(id) {
 // Load all data from Supabase
 // ============================================
 
+/** PostgREST/Supabase silently caps each response at 1000 rows by default. */
+const SUPABASE_PAGE_SIZE = 1000
+
+/**
+ * Fetch every row from a table by paging past the 1000-row default limit.
+ * @param {string} table
+ * @param {object} [opts]
+ * @param {string} [opts.select]
+ * @param {string} [opts.orderCol]
+ * @param {boolean} [opts.ascending]
+ * @param {(q: any) => any} [opts.apply] mutate the query (filters, etc.)
+ * @returns {Promise<{ data: any[], error: any }>}
+ */
+async function fetchAllRows(table, opts = {}) {
+  const {
+    select = '*',
+    orderCol = 'id',
+    ascending = true,
+    apply
+  } = opts
+  const all = []
+  let from = 0
+  for (;;) {
+    let q = supabase.from(table).select(select)
+    if (typeof apply === 'function') q = apply(q) || q
+    if (orderCol) q = q.order(orderCol, { ascending })
+    q = q.range(from, from + SUPABASE_PAGE_SIZE - 1)
+    const { data, error } = await q
+    if (error) return { data: all, error }
+    const chunk = data || []
+    all.push(...chunk)
+    if (chunk.length < SUPABASE_PAGE_SIZE) return { data: all, error: null }
+    from += SUPABASE_PAGE_SIZE
+  }
+}
+
 export async function loadData() {
   const [customersRes, followupsRes, settingsRes, transfersRes, acksRes] = await Promise.all([
-    supabase.from('customers').select('*'),
-    supabase.from('followups').select('*'),
+    fetchAllRows('customers', { orderCol: 'id' }),
+    fetchAllRows('followups', { orderCol: 'id' }),
     supabase.from('app_settings').select('*'),
-    supabase.from('ownership_transfers').select('*').order('created_at', { ascending: true }),
-    supabase.from('ownership_transfer_acks').select('*')
+    fetchAllRows('ownership_transfers', { orderCol: 'id', ascending: true }),
+    fetchAllRows('ownership_transfer_acks', { orderCol: 'id' })
   ])
 
   const errors = []
@@ -916,10 +952,16 @@ export async function saveSaleToastEnabled(enabled) {
 async function getNextIdNumber(prefix) {
   const counterKey = `id_counter_${prefix}`
 
-  const [{ data: settingsRows }, { data: rows }] = await Promise.all([
+  const [{ data: settingsRows }, { data: rows, error: idsError }] = await Promise.all([
     supabase.from('app_settings').select('value').eq('key', counterKey).limit(1),
-    supabase.from('customers').select('id').like('id', prefix + '%')
+    fetchAllRows('customers', {
+      select: 'id',
+      orderCol: 'id',
+      apply: q => q.like('id', prefix + '%')
+    })
   ])
+
+  if (idsError) throw new Error('خطا در خواندن شناسه‌ها: ' + idsError.message)
 
   const stored = settingsRows?.[0]?.value != null ? parseInt(settingsRows[0].value, 10) : 0
   const existingIds = (rows || [])
