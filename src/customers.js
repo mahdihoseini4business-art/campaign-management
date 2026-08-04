@@ -296,7 +296,7 @@ async function updateAdvisorDropdown() {
   const currentUser = getCurrentUser()
   const teamPhones = normalizeViewUserPhones(currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones)
   const teamOption = teamPhones.length
-    ? `<option value="__team__">زیرمجموعه من (${teamPhones.length})</option>`
+    ? `<option value="__team__">اعضای گروه من (${teamPhones.length})</option>`
     : ''
   advisorSelect.innerHTML = `<option value="">همه کارشناسان</option>${teamOption}` + users
     .filter(u => u.phone)

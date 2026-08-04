@@ -1041,7 +1041,7 @@ export function normalizeViewUserPhones(raw) {
   return [...new Set(list.map(p => normalizePhone(p)).filter(Boolean))]
 }
 
-/** Phones whose customer data this user may view: self + granted users. */
+/** Phones whose customer data this user may view: self + granted users (group manager grants). */
 export function getVisibleAdvisorPhones(user = getCurrentUser()) {
   const phones = new Set()
   if (!user) return phones

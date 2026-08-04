@@ -103,7 +103,7 @@ function matchesSelectedSaleRegistrant({ customer, product, payment }) {
 
 /**
  * Overdue/soon follow-up tables:
- * - Managers (viewUserPhones set) → only subordinates' customers
+ * - Group managers (viewUserPhones / team grants) → only members' customers
  * - Everyone else → selected advisors as usual
  */
 function matchesFollowupMonitorScope(customer) {

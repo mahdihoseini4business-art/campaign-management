@@ -2,6 +2,23 @@ import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum } from './utils.js'
 import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getPlatforms, savePlatforms, getStatuses, saveStatuses, getSalesTargets, saveSalesTargets } from './data.js'
+import {
+  loadGroupsData,
+  getGroupsCache,
+  getMembershipByPhone,
+  getMembersOfGroup,
+  getManagedMemberPhonesFromCache,
+  createGroup,
+  renameGroup,
+  deleteGroup,
+  addGroupMember,
+  removeGroupMember,
+  setGroupManager,
+  assignUserToGroup,
+  migrateLegacyViewUserPhones,
+  resolveViewUserPhonesForSession,
+  clearUserViewPhones
+} from './groups.js'
 
 // ============================================
 // Password Hashing (PBKDF2)
@@ -95,6 +112,27 @@ export async function saveUser(user) {
 }
 
 export async function deleteUserFromDB(username) {
+  const users = await getUsersSafe()
+  const target = users.find(u => u.username === username)
+  if (target?.phone) {
+    const phone = normalizePhone(target.phone)
+    try {
+      await loadGroupsData()
+    } catch (_) { /* groups table may be missing */ }
+    const membership = getMembershipByPhone(phone)
+    if (membership) {
+      try {
+        await removeGroupMember(membership.group.id, phone)
+      } catch (e) {
+        console.error('deleteUserFromDB removeGroupMember:', e)
+      }
+    } else {
+      try {
+        await clearUserViewPhones(phone)
+      } catch (_) { /* ignore */ }
+    }
+  }
+
   const { error } = await supabase.from('users').delete().eq('username', username)
   if (error) {
     console.error('deleteUser error:', error)
@@ -232,6 +270,14 @@ export async function doLogin() {
   }
 
   resetLoginAttempts()
+  const viewUserPhones = await resolveViewUserPhonesForSession({
+    phone: user.phone,
+    role: user.role,
+    permissions: user.permissions || null
+  })
+  const permissions = user.role === 'admin'
+    ? null
+    : { ...(user.permissions || {}), viewUserPhones }
   await setCurrentUser({
     username: user.username,
     displayName: user.display_name,
@@ -239,8 +285,8 @@ export async function doLogin() {
     lastName: user.last_name,
     phone: user.phone,
     role: user.role,
-    permissions: user.permissions || null,
-    viewUserPhones: user.permissions?.viewUserPhones
+    permissions,
+    viewUserPhones
   })
   window.location.href = '/index.html'
 }
@@ -291,6 +337,14 @@ export async function refreshSessionFromServer(localUser) {
     }
 
     const user = rows[0]
+    const viewUserPhones = await resolveViewUserPhonesForSession({
+      phone: user.phone,
+      role: user.role,
+      permissions: user.permissions || null
+    })
+    const permissions = user.role === 'admin'
+      ? null
+      : { ...(user.permissions || {}), viewUserPhones }
     return await setCurrentUser({
       username: user.username,
       displayName: user.display_name || `${user.first_name || ''} ${user.last_name || ''}`.trim(),
@@ -298,8 +352,8 @@ export async function refreshSessionFromServer(localUser) {
       lastName: user.last_name,
       phone: user.phone,
       role: user.role,
-      permissions: user.permissions || null,
-      viewUserPhones: user.permissions?.viewUserPhones
+      permissions,
+      viewUserPhones
     })
   } catch (e) {
     console.error('refreshSessionFromServer error:', e)
@@ -313,6 +367,7 @@ export async function refreshSessionFromServer(localUser) {
 
 const SETTINGS_SECTIONS = [
   { id: 'users', label: 'کاربران و دسترسی‌ها', group: null, keywords: 'کاربر دسترسی permission user admin' },
+  { id: 'groups', label: 'گروه‌ها و اعضا', group: null, keywords: 'گروه تیم مدیر عضو group team manager' },
   { id: 'banks', label: 'بانک‌های مقصد', group: 'داده‌های پایه', keywords: 'بانک واریز bank destination' },
   { id: 'products', label: 'کاتالوگ محصولات', group: 'داده‌های پایه', keywords: 'محصول product catalog' },
   { id: 'sales-targets', label: 'تارگت‌های فروش', group: 'داده‌های پایه', keywords: 'تارگت هدف فروش target goal quota' },
@@ -326,6 +381,7 @@ const SETTINGS_SECTIONS = [
 let _settingsSection = 'users'
 let _settingsUsersCache = []
 let _selectedSettingsUser = null
+let _selectedSettingsGroup = null
 let _permissionsDirty = false
 let _settingsEscapeBound = false
 let _editingBankIdx = null
@@ -408,7 +464,8 @@ function applySettingsSection(sectionId) {
   const select = document.getElementById('settingsNavSelect')
   if (select && select.value !== sectionId) select.value = sectionId
 
-  if (sectionId === 'banks') renderDestinationBanksSettings()
+  if (sectionId === 'groups') renderGroupsSettings()
+  else if (sectionId === 'banks') renderDestinationBanksSettings()
   else if (sectionId === 'products') renderProductCatalogSettings()
   else if (sectionId === 'sales-targets') renderSalesTargetsSettings()
   else if (sectionId === 'platforms') renderPlatformsSettings()
@@ -450,6 +507,7 @@ export async function openSettingsModal() {
   ensureSettingsEscapeHandler()
   _permissionsDirty = false
   _selectedSettingsUser = null
+  _selectedSettingsGroup = null
   _editingBankIdx = null
   _editingProductIdx = null
   _editingPlatformIdx = null
@@ -473,6 +531,29 @@ export async function openSettingsModal() {
 
   renderSettingsNav()
   applySettingsSection('users')
+
+  try {
+    _settingsUsersCache = await getUsers()
+  } catch (e) {
+    console.error('openSettingsModal users error:', e)
+    _settingsUsersCache = []
+  }
+
+  try {
+    await loadGroupsData()
+    const migration = await migrateLegacyViewUserPhones(_settingsUsersCache)
+    if (!migration.skipped && migration.created > 0) {
+      showToast(`${migration.created} گروه از زیرمجموعه‌های قبلی ساخته شد`)
+    }
+    if (migration.conflicts?.length) {
+      console.warn('تداخل مهاجرت گروه:', migration.conflicts)
+    }
+    await loadGroupsData()
+    _settingsUsersCache = await getUsers()
+  } catch (e) {
+    console.error('openSettingsModal groups error:', e)
+  }
+
   await renderUsersList()
 
   document.getElementById('settingsModal')?.classList.add('active')
@@ -622,6 +703,10 @@ export async function renderUsersList() {
     return
   }
 
+  try {
+    await loadGroupsData()
+  } catch (_) { /* groups optional until migration applied */ }
+
   const addDetails = document.getElementById('settingsAddUserDetails')
   if (addDetails && _settingsUsersCache.length > 0) addDetails.open = false
 
@@ -651,19 +736,21 @@ function renderUsersListMaster() {
   container.innerHTML = users.map(u => {
     const isCurrentUser = u.username === currentUser?.username
     const isAdminUser = u.username === 'admin' || u.role === 'admin'
-    const perms = u.permissions || getDefaultPermissions()
-    const viewPhones = new Set(normalizeViewUserPhones(perms.viewUserPhones))
     const userDisplay = userDisplayName(u) || u.username
     const userPhone = u.phone || '—'
     const userRole = u.role === 'admin' ? 'مدیر' : 'کاربر'
     const selected = _selectedSettingsUser === u.username
+    const membership = u.role === 'admin' ? null : getMembershipByPhone(u.phone)
+    const groupBadge = membership
+      ? ` · <span class="settings-view-count">${escapeHtml(membership.group.name)}${membership.isManager ? ' · مدیر' : ''}</span>`
+      : ''
 
     return `
       <div class="settings-user-item${selected ? ' is-selected' : ''}" data-username="${escapeAttr(u.username)}">
         <button type="button" class="settings-user-item-main" onclick="app.selectSettingsUser('${escapeAttr(u.username)}')">
           <div class="user-info">
             <div class="user-name">${escapeHtml(userDisplay)}${isCurrentUser ? ' <span class="settings-you">(شما)</span>' : ''}</div>
-            <div class="user-role">${escapeHtml(userPhone)} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${userRole}</span>${viewPhones.size ? ` · <span class="settings-view-count">مشاهده ${viewPhones.size}</span>` : ''}</div>
+            <div class="user-role">${escapeHtml(userPhone)} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${userRole}</span>${groupBadge}</div>
           </div>
         </button>
         ${!isAdminUser ? `<button type="button" class="btn-icon settings-user-delete" title="حذف" onclick="app.deleteUser('${escapeAttr(u.username)}')" style="color:var(--danger);">🗑</button>` : ''}
@@ -707,7 +794,6 @@ function renderSelectedUserDetail(enterMobileDetail) {
   const currentUser = getCurrentUser()
   const isCurrentUser = u.username === currentUser?.username
   const perms = u.permissions || getDefaultPermissions()
-  const viewPhones = new Set(normalizeViewUserPhones(perms.viewUserPhones))
   const userDisplay = userDisplayName(u) || u.username
   const userPhone = u.phone || '—'
   const userRole = u.role === 'admin' ? 'مدیر' : 'کاربر'
@@ -718,7 +804,7 @@ function renderSelectedUserDetail(enterMobileDetail) {
         <div class="user-name">${escapeHtml(userDisplay)}${isCurrentUser ? ' <span class="settings-you">(شما)</span>' : ''}</div>
         <div class="user-role">${escapeHtml(userPhone)} · <span class="role-badge role-admin">${userRole}</span></div>
       </div>
-      <div class="settings-admin-full">دسترسی کامل (مدیر)</div>
+      <div class="settings-admin-full">دسترسی کامل (مدیر سیستم) — خارج از گروه‌های کاربری</div>
     `
     return
   }
@@ -746,33 +832,37 @@ function renderSelectedUserDetail(enterMobileDetail) {
     `
   }).join('')
 
-  const otherUsers = _settingsUsersCache.filter(x =>
-    x.phone &&
-    normalizePhone(x.phone) !== normalizePhone(u.phone) &&
-    x.role !== 'admin' &&
-    x.username !== 'admin'
-  )
+  const membership = getMembershipByPhone(u.phone)
+  const groups = getGroupsCache()
+  const managedCount = membership?.isManager
+    ? getManagedMemberPhonesFromCache(u.phone).length
+    : 0
+  const groupOptions = [
+    `<option value="">بدون گروه</option>`,
+    ...groups.map(g =>
+      `<option value="${escapeAttr(g.id)}"${membership?.group.id === g.id ? ' selected' : ''}>${escapeHtml(g.name)}</option>`
+    )
+  ].join('')
 
-  const viewUsersHtml = `
-    <div class="view-users-picker" data-view-user="${escapeAttr(u.username)}">
+  const groupHtml = `
+    <div class="settings-user-group-block">
       <div class="settings-perm-group-head" style="margin-bottom:6px;">
-        <span>زیرمجموعه / مشاهده و انتقال</span>
+        <span>گروه کاربری</span>
       </div>
-      <p class="settings-pane-desc" style="margin-bottom:8px;">علاوه بر داده خودش، اطلاعات کاربران انتخاب‌شده را می‌بیند. با مجوز «انتقال مالکیت مشتری» می‌تواند مالکیت مشتریان آن‌ها را منتقل کند.</p>
-      <input type="search" class="form-input view-users-search" placeholder="جستجوی نام یا شماره..." oninput="app.filterViewUserOptions('${escapeAttr(u.username)}', this.value)">
-      <div class="view-users-options">
-        ${otherUsers.length === 0
-          ? '<div class="settings-empty-detail">کاربر دیگری برای انتخاب نیست</div>'
-          : otherUsers.map(x => {
-              const phone = normalizePhone(x.phone)
-              const label = `${userDisplayName(x) || x.username} · ${phone}`
-              const checked = viewPhones.has(phone) ? 'checked' : ''
-              return `<label class="view-users-option" data-search="${escapeAttr(label.toLowerCase())}">
-                <input type="checkbox" data-view-for="${escapeAttr(u.username)}" value="${escapeAttr(phone)}" ${checked} onchange="app.markPermissionsDirty()">
-                <span>${escapeHtml(userDisplayName(x) || x.username)}</span>
-                <span class="view-users-phone">${escapeHtml(phone)}</span>
-              </label>`
-            }).join('')}
+      <p class="settings-pane-desc" style="margin-bottom:8px;">هر کاربر حداکثر در یک گروه عضو است. مدیر گروه به‌صورت خودکار داده‌های سایر اعضای گروه را می‌بیند (و با مجوز انتقال می‌تواند مالکیت را جابه‌جا کند). مدیریت اعضا و مدیر در بخش «گروه‌ها و اعضا».</p>
+      <div class="form-row" style="gap:8px;align-items:flex-end;flex-wrap:wrap;">
+        <div class="form-group" style="flex:1;min-width:160px;margin:0;">
+          <label>گروه</label>
+          <select class="form-select" id="settingsUserGroupSelect" onchange="app.changeUserGroupAssignment('${escapeAttr(u.username)}', this.value)">
+            ${groupOptions}
+          </select>
+        </div>
+      </div>
+      <div class="settings-group-role-line" style="margin-top:8px;">
+        ${membership
+          ? `<span class="role-badge ${membership.isManager ? 'role-admin' : 'role-user'}">${membership.isManager ? 'مدیر گروه' : 'عضو گروه'}</span>
+             <span class="settings-pane-desc">${escapeHtml(membership.group.name)}${membership.isManager && managedCount ? ` · مشاهده ${managedCount} عضو` : ''}</span>`
+          : '<span class="settings-pane-desc">هنوز در گروهی عضو نیست</span>'}
       </div>
     </div>`
 
@@ -783,7 +873,7 @@ function renderSelectedUserDetail(enterMobileDetail) {
     </div>
     <div class="settings-user-perms">
       ${permsHtml}
-      ${viewUsersHtml}
+      ${groupHtml}
     </div>
     <div class="settings-perms-footer" id="settingsPermsFooter">
       <span class="settings-dirty-hint" id="settingsDirtyHint" hidden>تغییرات ذخیره‌نشده</span>
@@ -825,6 +915,301 @@ export function filterViewUserOptions(username, query) {
     const hay = el.getAttribute('data-search') || ''
     el.style.display = !q || hay.includes(q) ? '' : 'none'
   })
+}
+
+export async function changeUserGroupAssignment(username, groupId) {
+  if (!requireMainAdmin()) return
+  const u = _settingsUsersCache.find(x => x.username === username)
+  if (!u?.phone) {
+    showToast('کاربر شماره موبایل ندارد')
+    return
+  }
+  try {
+    await assignUserToGroup(u.phone, groupId || null)
+    await loadGroupsData()
+    _settingsUsersCache = await getUsers()
+    renderUsersListMaster()
+    renderSelectedUserDetail(false)
+    showToast(groupId ? 'عضویت گروه به‌روز شد' : 'کاربر از گروه خارج شد')
+  } catch (e) {
+    console.error('changeUserGroupAssignment error:', e)
+    showToast(e.message || 'خطا در تغییر گروه')
+    renderSelectedUserDetail(false)
+  }
+}
+
+// ============================================
+// Groups settings UI
+// ============================================
+
+function updateGroupsLayoutMode(showDetail) {
+  const layout = document.getElementById('settingsGroupsLayout')
+  if (!layout) return
+  layout.classList.toggle('show-detail', !!showDetail)
+  const back = document.getElementById('settingsGroupsBack')
+  if (back) back.hidden = !showDetail
+}
+
+export function backToGroupsList() {
+  updateGroupsLayoutMode(false)
+}
+
+export async function renderGroupsSettings() {
+  try {
+    if (!_settingsUsersCache.length) {
+      _settingsUsersCache = await getUsers()
+    }
+    await loadGroupsData()
+  } catch (e) {
+    console.error('renderGroupsSettings error:', e)
+    const list = document.getElementById('settingsGroupsList')
+    if (list) {
+      list.innerHTML = '<div class="settings-list-error">خطا در بارگذاری گروه‌ها — ابتدا migration جداول را اعمال کنید</div>'
+    }
+    return
+  }
+  renderGroupsListMaster()
+  if (_selectedSettingsGroup && getGroupsCache().some(g => g.id === _selectedSettingsGroup)) {
+    renderSelectedGroupDetail(false)
+  } else {
+    _selectedSettingsGroup = null
+    const detail = document.getElementById('settingsGroupDetailBody')
+    if (detail) detail.innerHTML = '<div class="settings-empty-detail">یک گروه را از لیست انتخاب کنید</div>'
+    updateGroupsLayoutMode(false)
+  }
+}
+
+function renderGroupsListMaster() {
+  const container = document.getElementById('settingsGroupsList')
+  if (!container) return
+  const groups = getGroupsCache()
+  if (groups.length === 0) {
+    container.innerHTML = '<div class="settings-empty-detail">هنوز گروهی تعریف نشده</div>'
+    return
+  }
+
+  container.innerHTML = groups.map(g => {
+    const members = getMembersOfGroup(g.id)
+    const manager = members.find(m => m.is_manager)
+    const managerUser = manager
+      ? _settingsUsersCache.find(u => normalizePhone(u.phone) === manager.user_phone)
+      : null
+    const managerLabel = managerUser
+      ? userDisplayName(managerUser) || manager.user_phone
+      : (manager?.user_phone || 'بدون مدیر')
+    const selected = _selectedSettingsGroup === g.id
+    return `
+      <div class="settings-user-item${selected ? ' is-selected' : ''}" data-group-id="${escapeAttr(g.id)}">
+        <button type="button" class="settings-user-item-main" onclick="app.selectSettingsGroup('${escapeAttr(g.id)}')">
+          <div class="user-info">
+            <div class="user-name">${escapeHtml(g.name)}</div>
+            <div class="user-role">${members.length} عضو · ${escapeHtml(managerLabel)}</div>
+          </div>
+        </button>
+        <button type="button" class="btn-icon settings-user-delete" title="حذف گروه" onclick="app.deleteSettingsGroup('${escapeAttr(g.id)}')" style="color:var(--danger);">🗑</button>
+      </div>
+    `
+  }).join('')
+}
+
+export function selectSettingsGroup(groupId) {
+  _selectedSettingsGroup = groupId
+  renderGroupsListMaster()
+  renderSelectedGroupDetail(true)
+}
+
+function renderSelectedGroupDetail(enterMobileDetail) {
+  const detail = document.getElementById('settingsGroupDetailBody')
+  if (!detail) return
+  const group = getGroupsCache().find(g => g.id === _selectedSettingsGroup)
+  if (!group) {
+    detail.innerHTML = '<div class="settings-empty-detail">یک گروه را از لیست انتخاب کنید</div>'
+    updateGroupsLayoutMode(false)
+    return
+  }
+  if (enterMobileDetail) updateGroupsLayoutMode(true)
+
+  const members = getMembersOfGroup(group.id)
+  const availableUsers = _settingsUsersCache.filter(u =>
+    u.role !== 'admin' &&
+    u.username !== 'admin' &&
+    u.phone &&
+    !getMembershipByPhone(u.phone)
+  )
+
+  const membersHtml = members.length === 0
+    ? '<div class="settings-empty-detail">عضوی در این گروه نیست</div>'
+    : members.map(m => {
+        const user = _settingsUsersCache.find(u => normalizePhone(u.phone) === m.user_phone)
+        const name = user ? (userDisplayName(user) || user.username) : m.user_phone
+        return `
+          <div class="settings-group-member-row">
+            <div class="settings-group-member-info">
+              <span class="user-name">${escapeHtml(name)}</span>
+              <span class="view-users-phone">${escapeHtml(m.user_phone)}</span>
+              ${m.is_manager ? '<span class="role-badge role-admin">مدیر گروه</span>' : '<span class="role-badge role-user">عضو</span>'}
+            </div>
+            <div class="settings-group-member-actions">
+              ${!m.is_manager ? `<button type="button" class="btn btn-sm" onclick="app.makeGroupManager('${escapeAttr(group.id)}', '${escapeAttr(m.user_phone)}')">انتخاب به‌عنوان مدیر</button>` : ''}
+              <button type="button" class="btn btn-sm" style="color:var(--danger);" onclick="app.removeSettingsGroupMember('${escapeAttr(group.id)}', '${escapeAttr(m.user_phone)}')">حذف</button>
+            </div>
+          </div>`
+      }).join('')
+
+  const addOptions = availableUsers.length === 0
+    ? '<option value="">کاربر آزاد برای افزودن نیست</option>'
+    : `<option value="">انتخاب کاربر…</option>${availableUsers.map(u => {
+        const phone = normalizePhone(u.phone)
+        return `<option value="${escapeAttr(phone)}">${escapeHtml(userDisplayName(u) || u.username)} · ${escapeHtml(phone)}</option>`
+      }).join('')}`
+
+  detail.innerHTML = `
+    <div class="settings-detail-head">
+      <div class="user-name">${escapeHtml(group.name)}</div>
+      <div class="user-role">${members.length} عضو · ${members.some(m => m.is_manager) ? 'دارای مدیر' : 'بدون مدیر'}</div>
+    </div>
+    <div class="form-row settings-add-row" style="margin-bottom:12px;">
+      <div class="form-group" style="flex:1;margin:0;">
+        <label>نام گروه</label>
+        <input type="text" class="form-input" id="settingsGroupRenameInput" value="${escapeAttr(group.name)}">
+      </div>
+      <button type="button" class="btn btn-sm btn-primary" onclick="app.renameSettingsGroup('${escapeAttr(group.id)}')">ذخیره نام</button>
+    </div>
+    <div class="settings-perm-group-head" style="margin-bottom:8px;"><span>اعضا</span></div>
+    <div class="settings-group-members">${membersHtml}</div>
+    <div class="form-row settings-add-row" style="margin-top:14px;">
+      <div class="form-group" style="flex:1;margin:0;">
+        <label>افزودن عضو</label>
+        <select class="form-select" id="settingsGroupAddMemberSelect">${addOptions}</select>
+      </div>
+      <button type="button" class="btn btn-sm btn-primary" onclick="app.addSettingsGroupMember('${escapeAttr(group.id)}')">افزودن</button>
+    </div>
+    <p class="settings-pane-desc" style="margin-top:10px;">مدیر گروه به‌صورت خودکار مشتریان سایر اعضا را می‌بیند. هر گروه باید یک مدیر از بین اعضا داشته باشد.</p>
+  `
+}
+
+export async function createSettingsGroup() {
+  if (!requireMainAdmin()) return
+  const input = document.getElementById('newGroupName')
+  const name = (input?.value || '').trim()
+  if (!name) {
+    showToast('نام گروه را وارد کنید')
+    return
+  }
+  try {
+    const group = await createGroup(name)
+    if (input) input.value = ''
+    const details = document.getElementById('settingsAddGroupDetails')
+    if (details) details.open = false
+    _selectedSettingsGroup = group.id
+    await renderGroupsSettings()
+    renderSelectedGroupDetail(true)
+    showToast('گروه ایجاد شد')
+  } catch (e) {
+    console.error('createSettingsGroup error:', e)
+    showToast(e.message?.includes('unique') || e.code === '23505' ? 'نام گروه تکراری است' : (e.message || 'خطا در ایجاد گروه'))
+  }
+}
+
+export async function renameSettingsGroup(groupId) {
+  if (!requireMainAdmin()) return
+  const name = (document.getElementById('settingsGroupRenameInput')?.value || '').trim()
+  if (!name) {
+    showToast('نام گروه را وارد کنید')
+    return
+  }
+  try {
+    await renameGroup(groupId, name)
+    await renderGroupsSettings()
+    showToast('نام گروه ذخیره شد')
+  } catch (e) {
+    console.error('renameSettingsGroup error:', e)
+    showToast(e.message?.includes('unique') || e.code === '23505' ? 'نام گروه تکراری است' : (e.message || 'خطا در ذخیره'))
+  }
+}
+
+export function deleteSettingsGroup(groupId) {
+  if (!requireMainAdmin()) return
+  const group = getGroupsCache().find(g => g.id === groupId)
+  const name = group?.name || 'گروه'
+  const count = getMembersOfGroup(groupId).length
+  document.getElementById('deleteMessage').textContent = count
+    ? `گروه «${name}» و ${count} عضویت حذف می‌شود. ادامه؟`
+    : `آیا از حذف گروه «${name}» مطمئن هستید؟`
+  document.getElementById('deleteConfirmBtn').onclick = async function () {
+    try {
+      await deleteGroup(groupId)
+      if (_selectedSettingsGroup === groupId) _selectedSettingsGroup = null
+      _settingsUsersCache = await getUsers()
+      document.getElementById('deleteModal').classList.remove('active')
+      await renderGroupsSettings()
+      showToast('گروه حذف شد')
+    } catch (e) {
+      console.error('deleteSettingsGroup error:', e)
+      showToast('خطا در حذف گروه')
+    }
+  }
+  document.getElementById('deleteModal').classList.add('active')
+}
+
+export async function addSettingsGroupMember(groupId) {
+  if (!requireMainAdmin()) return
+  const select = document.getElementById('settingsGroupAddMemberSelect')
+  const phone = normalizePhone(select?.value || '')
+  if (!phone) {
+    showToast('کاربر را انتخاب کنید')
+    return
+  }
+  try {
+    const members = getMembersOfGroup(groupId)
+    const asManager = members.length === 0
+    await addGroupMember(groupId, phone, { asManager })
+    _settingsUsersCache = await getUsers()
+    await loadGroupsData()
+    renderGroupsListMaster()
+    renderSelectedGroupDetail(false)
+    showToast(asManager ? 'عضو اضافه و به‌عنوان مدیر تنظیم شد' : 'عضو اضافه شد')
+  } catch (e) {
+    console.error('addSettingsGroupMember error:', e)
+    showToast(e.message || 'خطا در افزودن عضو')
+  }
+}
+
+export async function removeSettingsGroupMember(groupId, phone) {
+  if (!requireMainAdmin()) return
+  try {
+    const member = getMembersOfGroup(groupId).find(m => m.user_phone === normalizePhone(phone))
+    await removeGroupMember(groupId, phone)
+    const remaining = getMembersOfGroup(groupId)
+    if (member?.is_manager && remaining.length > 0 && !remaining.some(m => m.is_manager)) {
+      await setGroupManager(groupId, remaining[0].user_phone)
+      showToast('عضو حذف شد؛ مدیر جدید تعیین شد')
+    } else {
+      showToast('عضو حذف شد')
+    }
+    _settingsUsersCache = await getUsers()
+    await loadGroupsData()
+    renderGroupsListMaster()
+    renderSelectedGroupDetail(false)
+  } catch (e) {
+    console.error('removeSettingsGroupMember error:', e)
+    showToast(e.message || 'خطا در حذف عضو')
+  }
+}
+
+export async function makeGroupManager(groupId, phone) {
+  if (!requireMainAdmin()) return
+  try {
+    await setGroupManager(groupId, phone)
+    _settingsUsersCache = await getUsers()
+    await loadGroupsData()
+    renderGroupsListMaster()
+    renderSelectedGroupDetail(false)
+    showToast('مدیر گروه تغییر کرد')
+  } catch (e) {
+    console.error('makeGroupManager error:', e)
+    showToast(e.message || 'خطا در تعیین مدیر')
+  }
 }
 
 export function toggleSettingsUserRow() {
@@ -1593,10 +1978,13 @@ export async function saveUserPermissions(username) {
   })
   permissions = applyAccountingPermissionBundle(permissions)
 
-  const viewPhones = [...document.querySelectorAll(`input[data-view-for="${username}"]:checked`)]
-    .map(cb => normalizePhone(cb.value))
-    .filter(Boolean)
-  permissions.viewUserPhones = viewPhones
+  // Preserve group-derived viewUserPhones (not edited via boolean chips)
+  const cached = _settingsUsersCache.find(u => u.username === username)
+  const phone = normalizePhone(cached?.phone)
+  const membership = phone ? getMembershipByPhone(phone) : null
+  permissions.viewUserPhones = membership?.isManager
+    ? getManagedMemberPhonesFromCache(phone)
+    : []
 
   checkboxes.forEach(cb => {
     const key = cb.dataset.permKey
@@ -1618,10 +2006,9 @@ export async function saveUserPermissions(username) {
   } else {
     const current = getCurrentUser()
     if (current && current.username === username && current.role !== 'admin') {
-      setCurrentUser({ ...current, permissions, viewUserPhones: viewPhones })
+      setCurrentUser({ ...current, permissions, viewUserPhones: permissions.viewUserPhones })
       applyPermissions()
     }
-    const cached = _settingsUsersCache.find(u => u.username === username)
     if (cached) cached.permissions = permissions
     _permissionsDirty = false
     syncPermissionsDirtyUi()

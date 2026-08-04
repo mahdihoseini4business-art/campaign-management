@@ -102,6 +102,40 @@
           </div>
         </section>
 
+        <!-- گروه‌ها -->
+        <section class="settings-pane" data-settings-pane="groups" hidden>
+          <div class="settings-pane-header">
+            <h3>گروه‌ها و اعضا</h3>
+            <p class="settings-pane-desc">گروه‌های داینامیک با یک مدیر از بین اعضا. هر کاربر حداکثر در یک گروه عضو است.</p>
+          </div>
+          <details class="settings-add-user" id="settingsAddGroupDetails">
+            <summary>افزودن گروه جدید</summary>
+            <div class="settings-add-user-body">
+              <div class="form-row settings-add-row">
+                <div class="form-group" style="flex:1;margin:0;">
+                  <label for="newGroupName">نام گروه</label>
+                  <input type="text" class="form-input" id="newGroupName" placeholder="مثلاً دیجیتال مارکتینگ" autocomplete="off">
+                </div>
+                <button type="button" class="btn btn-primary" onclick="app.createSettingsGroup()">ایجاد گروه</button>
+              </div>
+            </div>
+          </details>
+          <div class="settings-users-layout" id="settingsGroupsLayout">
+            <div class="settings-users-master" id="settingsGroupsMaster">
+              <div class="settings-users-toolbar">
+                <div class="settings-pane-desc" style="margin:0;">لیست گروه‌ها</div>
+              </div>
+              <div id="settingsGroupsList" class="settings-users-list"></div>
+            </div>
+            <div class="settings-users-detail" id="settingsGroupsDetail">
+              <button type="button" class="btn btn-sm settings-users-back" id="settingsGroupsBack" onclick="app.backToGroupsList()" hidden>← بازگشت به لیست</button>
+              <div id="settingsGroupDetailBody" class="settings-user-detail-body">
+                <div class="settings-empty-detail">یک گروه را از لیست انتخاب کنید</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- بانک‌ها -->
         <section class="settings-pane" data-settings-pane="banks" hidden>
           <div class="settings-pane-header">

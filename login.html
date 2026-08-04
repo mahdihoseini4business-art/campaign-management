@@ -466,6 +466,7 @@
   import { supabase } from './src/supabase.js'
   import { setCurrentUser, restoreSession, toEnDigits } from './src/utils.js'
   import { sendOTP, verifyOTP } from './src/sms.js'
+  import { resolveViewUserPhonesForSession } from './src/groups.js'
   import { initAppUpdate } from './src/app-update.js'
 
   initAppUpdate().catch(e => console.warn('app update init error:', e))
@@ -556,7 +557,15 @@
         successEl.textContent = 'تأیید موفقیت‌آمیز! در حال انتقال...'
         successEl.classList.add('show')
 
-        // Set user session
+        // Set user session (viewUserPhones derived from group membership)
+        const viewUserPhones = await resolveViewUserPhonesForSession({
+          phone: result.user.phone,
+          role: result.user.role,
+          permissions: result.user.permissions || null
+        })
+        const permissions = result.user.role === 'admin'
+          ? null
+          : { ...(result.user.permissions || {}), viewUserPhones }
         await setCurrentUser({
           username: result.user.username,
           displayName: result.user.display_name || `${result.user.first_name || ''} ${result.user.last_name || ''}`.trim(),
@@ -564,7 +573,8 @@
           lastName: result.user.last_name,
           phone: result.user.phone,
           role: result.user.role,
-          permissions: result.user.permissions || null
+          permissions,
+          viewUserPhones
         })
 
         // Redirect after short delay
