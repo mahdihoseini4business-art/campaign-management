@@ -88,6 +88,38 @@ export const DEFAULT_PRODUCT_CATALOG = [
   'تنظیم موتور', 'دیاگ لانچ', 'دیاگ I700', 'دیاگ blu', 'دیاگ newlite', 'تست باکس شبکه'
 ]
 
+export const PROFIT_MODE = {
+  gross: 'gross',
+  net: 'net',
+  mixed: 'mixed'
+}
+
+function defaultCatalogEntries() {
+  return DEFAULT_PRODUCT_CATALOG.map(name => ({ name, profitMode: PROFIT_MODE.gross }))
+}
+
+/** Normalize one catalog entry (string legacy or object). */
+export function normalizeCatalogEntry(raw) {
+  if (typeof raw === 'string') {
+    const name = raw.trim()
+    if (!name) return null
+    return { name, profitMode: PROFIT_MODE.gross }
+  }
+  if (!raw || typeof raw !== 'object') return null
+  const name = String(raw.name || '').trim()
+  if (!name) return null
+  let profitMode = String(raw.profitMode || PROFIT_MODE.gross).toLowerCase()
+  if (profitMode !== PROFIT_MODE.net && profitMode !== PROFIT_MODE.mixed) {
+    profitMode = PROFIT_MODE.gross
+  }
+  const entry = { name, profitMode }
+  if (profitMode === PROFIT_MODE.mixed) {
+    const amt = Number(raw.netShareAmount)
+    entry.netShareAmount = Number.isFinite(amt) && amt > 0 ? amt : 0
+  }
+  return entry
+}
+
 /** Map a customers DB row → in-memory customer object */
 export function mapCustomerFromDb(c) {
   if (!c || !c.id) return null
@@ -296,8 +328,26 @@ function normalizeDestinationBanks(raw) {
 }
 
 function normalizeProductCatalog(raw) {
-  const list = normalizeDestinationBanks(raw)
-  return list.length ? list : [...DEFAULT_PRODUCT_CATALOG]
+  let list = raw
+  if (typeof list === 'string' && list.trim()) {
+    try {
+      list = JSON.parse(list)
+    } catch (_) {
+      list = list.split(/[\n,]/).map(s => s.trim()).filter(Boolean)
+    }
+  }
+  if (!Array.isArray(list)) list = []
+  const seen = new Set()
+  const out = []
+  for (const item of list) {
+    const entry = normalizeCatalogEntry(item)
+    if (!entry) continue
+    const key = entry.name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(entry)
+  }
+  return out.length ? out : defaultCatalogEntries()
 }
 
 // ============================================
@@ -359,17 +409,38 @@ export async function saveDestinationBanks(banks) {
 }
 
 // ============================================
-// Product catalog (sales product names)
+// Product catalog (sales product names + profit)
 // ============================================
 
 export function getProductCatalog() {
   const list = Array.isArray(data.productCatalog) ? data.productCatalog : []
-  return list.length ? [...list] : [...DEFAULT_PRODUCT_CATALOG]
+  if (!list.length) return defaultCatalogEntries()
+  return list.map(e => ({ ...e }))
+}
+
+/** Catalog product names only (for dropdowns, matrix, bundles). */
+export function getProductCatalogNames() {
+  return getProductCatalog().map(e => e.name)
+}
+
+export function getCatalogEntryByName(name) {
+  const key = String(name || '').trim().toLowerCase()
+  if (!key) return null
+  return getProductCatalog().find(e => e.name.toLowerCase() === key) || null
 }
 
 export async function saveProductCatalog(products) {
-  const cleaned = [...new Set((products || []).map(p => String(p || '').trim()).filter(Boolean))]
-  data.productCatalog = cleaned.length ? cleaned : [...DEFAULT_PRODUCT_CATALOG]
+  const seen = new Set()
+  const cleaned = []
+  for (const p of products || []) {
+    const entry = normalizeCatalogEntry(p)
+    if (!entry) continue
+    const key = entry.name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    cleaned.push(entry)
+  }
+  data.productCatalog = cleaned.length ? cleaned : defaultCatalogEntries()
   await saveSetting('product_catalog', data.productCatalog)
   return getProductCatalog()
 }
@@ -420,7 +491,7 @@ export async function saveProductBundles(bundles) {
 
 /** Union of catalog product names + bundle names (sellable dropdown options). */
 export function getSellableNames() {
-  const products = getProductCatalog()
+  const products = getProductCatalogNames()
   const bundleNames = getProductBundles().map(b => b.name)
   const seen = new Set()
   const out = []
@@ -457,7 +528,7 @@ export function getBundlesUsingProduct(productName) {
  * @returns {Set<string>}
  */
 export function getCustomerOwnedProductNames(customer) {
-  const catalog = getProductCatalog()
+  const catalog = getProductCatalogNames()
   const catalogByLower = new Map(catalog.map(n => [n.toLowerCase(), n]))
   const owned = new Set()
 
@@ -513,7 +584,7 @@ export function validateProductBundle(draft, { excludeId = null } = {}) {
     return { ok: false, error: 'حداقل دو محصول از کاتالوگ انتخاب کنید' }
   }
 
-  const catalog = getProductCatalog()
+  const catalog = getProductCatalogNames()
   const catalogLower = new Set(catalog.map(p => p.toLowerCase()))
   for (const p of productNames) {
     if (!catalogLower.has(p.toLowerCase())) {

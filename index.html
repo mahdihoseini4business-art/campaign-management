@@ -162,10 +162,22 @@
 
           <div class="settings-subsection">
             <h4 class="settings-subsection-title">محصولات</h4>
-            <div class="form-row settings-add-row">
-              <div class="form-group" style="flex:1;margin-bottom:0;">
+            <div class="form-row settings-add-row" style="flex-wrap:wrap;align-items:flex-end;gap:8px;">
+              <div class="form-group" style="flex:1;min-width:140px;margin-bottom:0;">
                 <label for="newProductCatalogItem">نام محصول</label>
                 <input type="text" class="form-input" id="newProductCatalogItem" placeholder="مثلاً آنلاین چینی">
+              </div>
+              <div class="form-group" style="width:160px;margin-bottom:0;">
+                <label for="newProductProfitMode">نوع سود</label>
+                <select class="form-select" id="newProductProfitMode" onchange="app.onNewProductProfitModeChange()">
+                  <option value="gross">ناخالص</option>
+                  <option value="net">کاملاً خالص</option>
+                  <option value="mixed">ترکیبی</option>
+                </select>
+              </div>
+              <div class="form-group" id="newProductNetShareGroup" style="width:160px;margin-bottom:0;display:none;">
+                <label for="newProductNetShareAmount">سود خالص (ریال)</label>
+                <input type="text" class="form-input" id="newProductNetShareAmount" inputmode="numeric" placeholder="مبلغ ثابت" oninput="app.formatInput(this)">
               </div>
               <button type="button" class="btn btn-primary" onclick="app.addProductCatalogItem()">افزودن</button>
             </div>
@@ -519,6 +531,8 @@
       <div class="stat-card"><div class="label">بیعانه‌ها</div><div class="value" style="color:var(--warning)" id="dash-sales-deposit">۰</div></div>
       <div class="stat-card"><div class="label">مانده حساب‌ها</div><div class="value" style="color:var(--danger)" id="dash-sales-balance">۰</div></div>
       <div class="stat-card highlight"><div class="label">جمع فروش‌های تأییدشده</div><div class="value" style="color:var(--accent);font-size:24px;" id="dash-sales-total">۰</div></div>
+      <div class="stat-card"><div class="label">سود خالص</div><div class="value" style="color:var(--success);font-size:20px;" id="dash-sales-net">۰</div></div>
+      <div class="stat-card"><div class="label">سود ناخالص</div><div class="value" style="color:var(--text);font-size:20px;" id="dash-sales-gross">۰</div></div>
       <div class="stat-card"><div class="label">در انتظار تأیید حسابداری</div><div class="value" style="color:var(--warning);font-size:20px;" id="dash-sales-pending">۰</div></div>
       <div class="stat-card"><div class="label">میانگین مبلغ فروش</div><div class="value" style="color:var(--text)" id="dash-avg-sale">۰</div></div>
     </div>
@@ -788,10 +802,10 @@
   <div class="sheet" id="sheet-sales" role="tabpanel" aria-labelledby="tab-sales" hidden>
     <div class="stats">
       <div class="stat-card"><div class="label">تعداد کل فروش</div><div class="value" id="stat-sales-count">0</div></div>
-      <div class="stat-card"><div class="label">فروش نقد (تکمیل)</div><div class="value" style="color: var(--success)" id="stat-sales-cash">۰</div></div>
-      <div class="stat-card"><div class="label">بیعانه‌ها</div><div class="value" style="color: var(--warning)" id="stat-sales-deposit">۰</div></div>
+      <div class="stat-card"><div class="label">فروش نقد (سود خالص)</div><div class="value" style="color: var(--success)" id="stat-sales-cash">۰</div></div>
+      <div class="stat-card"><div class="label">بیعانه‌ها (سود خالص)</div><div class="value" style="color: var(--warning)" id="stat-sales-deposit">۰</div></div>
       <div class="stat-card"><div class="label">مانده حساب‌ها</div><div class="value" style="color: var(--danger)" id="stat-sales-balance">۰</div></div>
-      <div class="stat-card"><div class="label">جمع کل مبلغ</div><div class="value" style="color: var(--accent)" id="stat-sales-total">۰</div></div>
+      <div class="stat-card"><div class="label">جمع کل سود خالص</div><div class="value" style="color: var(--accent)" id="stat-sales-total">۰</div></div>
     </div>
 
     <div id="salesTargetBand" class="sales-target-band-wrap" hidden></div>

@@ -1,6 +1,6 @@
 import {
   getData,
-  getProductCatalog,
+  getProductCatalogNames,
   getCustomerOwnedProductNames,
   customerHasNoProducts
 } from './data.js'
@@ -48,7 +48,7 @@ export function getFilteredProductMatrixCustomers() {
   const data = getData()
   const currentUser = getCurrentUser()
   const search = toEnDigits(document.getElementById('searchProductMatrix')?.value || '').toLowerCase()
-  const catalog = getProductCatalog()
+  const catalog = getProductCatalogNames()
 
   return (data.customers || []).filter(c => {
     const isCS = c.id.startsWith('CS')
@@ -112,7 +112,7 @@ export function renderProductMatrix() {
   const tbody = document.getElementById('productMatrixBody')
   if (!thead || !tbody) return
 
-  const catalog = getProductCatalog()
+  const catalog = getProductCatalogNames()
   const search = toEnDigits(document.getElementById('searchProductMatrix')?.value || '').toLowerCase()
   const filterSig = `${search}|${JSON.stringify(productFilterState)}`
   const customers = getFilteredProductMatrixCustomers()
@@ -169,7 +169,7 @@ export function renderProductMatrix() {
 
 /** Headers + rows for matrix export (بله / خالی). */
 export function getProductMatrixExportAoa() {
-  const catalog = getProductCatalog()
+  const catalog = getProductCatalogNames()
   const headers = ['نام', 'شماره', 'کارشناس', ...catalog, 'بدون محصول']
   const rows = getFilteredProductMatrixCustomers().map(c => {
     const owned = getCustomerOwnedProductNames(c)

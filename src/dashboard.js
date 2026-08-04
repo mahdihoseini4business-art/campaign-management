@@ -9,7 +9,7 @@ import {
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
   getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
   getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin,
-  jalaliEndOfDayMs
+  jalaliEndOfDayMs, getPaymentProfit
 } from './utils.js'
 
 let dashCharts = {}
@@ -476,10 +476,15 @@ function computeDashSalesMetrics(hasDateFilter, inDateRange) {
   let totalBalance = 0
   let totalApproved = 0
   let totalPending = 0
+  let totalNet = 0
+  let totalGross = 0
 
   // Approved payments — attributed to registrant (soldByPhone)
-  forEachDashSalePayment(matchesSelectedSaleRegistrant, hasDateFilter, inDateRange, ({ amount }) => {
+  forEachDashSalePayment(matchesSelectedSaleRegistrant, hasDateFilter, inDateRange, ({ amount, product }) => {
     totalApproved += amount
+    const split = getPaymentProfit(product, amount)
+    totalNet += split.net
+    totalGross += split.gross
   }, ({ product, paidInScope, balance }) => {
     salesCount++
     if (product.status === 'تکمیل') totalCash += paidInScope
@@ -506,7 +511,9 @@ function computeDashSalesMetrics(hasDateFilter, inDateRange) {
     totalBalance,
     totalAll: totalCash + totalDeposit,
     totalApproved,
-    totalPending
+    totalPending,
+    totalNet,
+    totalGross
   }
 }
 
@@ -838,6 +845,10 @@ export async function renderDashboard() {
   document.getElementById('dash-sales-deposit').textContent = formatNumber(salesMetrics.totalDeposit) + ' ریال'
   document.getElementById('dash-sales-balance').textContent = formatNumber(salesMetrics.totalBalance) + ' ریال'
   document.getElementById('dash-sales-total').textContent = formatNumber(salesMetrics.totalApproved) + ' ریال'
+  const netEl = document.getElementById('dash-sales-net')
+  if (netEl) netEl.textContent = formatNumber(salesMetrics.totalNet) + ' ریال'
+  const grossEl = document.getElementById('dash-sales-gross')
+  if (grossEl) grossEl.textContent = formatNumber(salesMetrics.totalGross) + ' ریال'
   const pendingEl = document.getElementById('dash-sales-pending')
   if (pendingEl) pendingEl.textContent = formatNumber(salesMetrics.totalPending) + ' ریال'
 
@@ -1798,12 +1809,13 @@ function buildAdvisorCompareRows(dateFromNum, dateToNum) {
     ({ customer, product, payment, amount }) => {
       const phone = getSaleRegistrantPhone(product, payment, customer)
       if (!phone || amount <= 0) return
+      const net = getPaymentProfit(product, amount).net
       const prev = totals.get(phone) || {
         phone,
         label: advisorLabelForPhone(phone, customer.advisor),
         value: 0
       }
-      prev.value += amount
+      prev.value += net
       if (!prev.label) prev.label = advisorLabelForPhone(phone, customer.advisor)
       totals.set(phone, prev)
     }
@@ -1866,7 +1878,7 @@ function renderAdvisorCompareChart(dateFromNum, dateToNum) {
     data: {
       labels,
       datasets: [{
-        label: 'مبلغ فروش',
+        label: 'سود خالص',
         data: values,
         backgroundColor: colors,
         borderRadius: 6

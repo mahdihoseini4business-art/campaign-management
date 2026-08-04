@@ -19,7 +19,8 @@ import {
   getProductPayments, getPaymentEntryStatus, getWorstPaymentStatus,
   isPaymentFilled, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS,
   computeCustomerLrfm, isProductCountableInSales, soldAtTimePart, formatSoldAt24h, normalizeTimeTo24h,
-  CUSTOMER_LEVELS, formatCustomerLevel, parseCustomerLevel, resolveCustomerLevel, syncCustomerLevel
+  CUSTOMER_LEVELS, formatCustomerLevel, parseCustomerLevel, resolveCustomerLevel, syncCustomerLevel,
+  applyProfitSnapshotToProduct
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -2043,7 +2044,9 @@ export async function addProductRow(customerId) {
     soldByPhone: normalizePhone(user?.phone || ''),
     payments: [firstPay]
   })
-  syncProductStatus(products[products.length - 1])
+  const line = products[products.length - 1]
+  applyProfitSnapshotToProduct(line)
+  syncProductStatus(line)
   await setProducts(customerId, products)
   renderProducts(customerId)
 }
@@ -2136,6 +2139,7 @@ export async function saveProductField(customerId, index, field, value) {
     }
     product.price = String(num)
     product.priceLocked = true
+    applyProfitSnapshotToProduct(product)
   } else {
     product[field] = value
   }
@@ -2154,6 +2158,7 @@ export async function updateProduct(customerId, index, field, value) {
     return
   }
   product[field] = value
+  if (field === 'name') applyProfitSnapshotToProduct(product)
   syncProductStatus(product)
   await setProducts(customerId, products)
   renderProducts(customerId)

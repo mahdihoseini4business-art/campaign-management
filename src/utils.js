@@ -3,7 +3,7 @@
 // ============================================
 
 import { ADMIN_PHONE } from './config.js'
-import { getPlatforms, getStatuses } from './data.js'
+import { getPlatforms, getStatuses, getCatalogEntryByName, getBundleByName, PROFIT_MODE } from './data.js'
 
 /** Dynamic platform labels (value → Persian label) built from settings */
 export function getPlatformLabels() {
@@ -983,6 +983,103 @@ export function getPaymentAmount(product) {
 /** @deprecated use getWorstPaymentStatus */
 export function getPaymentStatus(product) {
   return getWorstPaymentStatus(product)
+}
+
+// ============================================
+// Product profit (net / gross)
+// ============================================
+
+/**
+ * Split a payment amount into net and gross profit shares.
+ * mixed: net = amount * (netShareAmount / max(price, 1)), capped at amount.
+ */
+export function splitPaymentProfit({ amount, invoicePrice, profitMode, netShareAmount }) {
+  const amt = Math.max(0, parseFloat(amount) || 0)
+  if (amt <= 0) return { net: 0, gross: 0 }
+  const mode = profitMode || PROFIT_MODE.gross
+  if (mode === PROFIT_MODE.net) return { net: amt, gross: 0 }
+  if (mode === PROFIT_MODE.mixed) {
+    const price = Math.max(parseFloat(invoicePrice) || 0, 1)
+    const share = Math.max(0, parseFloat(netShareAmount) || 0)
+    const net = Math.min(amt, (amt * share) / price)
+    return { net, gross: amt - net }
+  }
+  return { net: 0, gross: amt }
+}
+
+/**
+ * Build profit snapshot for a sellable name (catalog product or bundle) at a given invoice price.
+ * Bundle: equal weight on price for `net` components; sum of fixed amounts for `mixed`.
+ */
+export function buildProfitSnapshotForSale(name, invoicePrice) {
+  const entry = getCatalogEntryByName(name)
+  if (entry) {
+    const snap = { profitMode: entry.profitMode || PROFIT_MODE.gross }
+    if (snap.profitMode === PROFIT_MODE.mixed) {
+      snap.netShareAmount = Math.max(0, parseFloat(entry.netShareAmount) || 0)
+    }
+    return snap
+  }
+
+  const bundle = getBundleByName(name)
+  if (!bundle) return { profitMode: PROFIT_MODE.gross }
+
+  const components = (bundle.productNames || [])
+    .map(n => getCatalogEntryByName(n))
+    .filter(Boolean)
+  if (!components.length) return { profitMode: PROFIT_MODE.gross }
+
+  const price = Math.max(0, parseFloat(invoicePrice) || 0)
+  const n = components.length
+  const sharePrice = n > 0 ? price / n : 0
+  let totalNetCap = 0
+  for (const c of components) {
+    if (c.profitMode === PROFIT_MODE.net) totalNetCap += sharePrice
+    else if (c.profitMode === PROFIT_MODE.mixed) {
+      totalNetCap += Math.max(0, parseFloat(c.netShareAmount) || 0)
+    }
+  }
+
+  if (totalNetCap <= 0) return { profitMode: PROFIT_MODE.gross }
+  if (price > 0 && totalNetCap >= price) return { profitMode: PROFIT_MODE.net }
+  return { profitMode: PROFIT_MODE.mixed, netShareAmount: totalNetCap }
+}
+
+/** Resolve profit config from sale-line snapshot or live catalog/bundle. */
+export function resolveProductProfitConfig(product) {
+  const line = product || {}
+  const mode = line.profitMode
+  if (mode === PROFIT_MODE.gross || mode === PROFIT_MODE.net || mode === PROFIT_MODE.mixed) {
+    return {
+      profitMode: mode,
+      netShareAmount: mode === PROFIT_MODE.mixed ? (parseFloat(line.netShareAmount) || 0) : 0
+    }
+  }
+  return buildProfitSnapshotForSale(line.name, line.price)
+}
+
+/** Apply profit snapshot fields onto a sale line (mutates). */
+export function applyProfitSnapshotToProduct(product) {
+  if (!product) return product
+  const snap = buildProfitSnapshotForSale(product.name, product.price)
+  product.profitMode = snap.profitMode
+  if (snap.profitMode === PROFIT_MODE.mixed) {
+    product.netShareAmount = snap.netShareAmount || 0
+  } else {
+    delete product.netShareAmount
+  }
+  return product
+}
+
+/** Net/gross split for one payment amount on a product line. */
+export function getPaymentProfit(product, paymentAmount) {
+  const cfg = resolveProductProfitConfig(product)
+  return splitPaymentProfit({
+    amount: paymentAmount,
+    invoicePrice: parseFloat(product?.price) || 0,
+    profitMode: cfg.profitMode,
+    netShareAmount: cfg.netShareAmount
+  })
 }
 
 export function getDefaultPermissions() {

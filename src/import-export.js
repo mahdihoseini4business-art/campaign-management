@@ -7,7 +7,7 @@ import {
   formatCustomerLevel, parseCustomerLevel, syncCustomerLevel,
   normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone,
   jalaliDatePart, jalaliToNum, escapeHtml, escapeAttr, normalizeTimeTo24h,
-  userDisplayName
+  userDisplayName, applyProfitSnapshotToProduct
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
@@ -1858,6 +1858,7 @@ export async function doSalesImport() {
           priceLocked: price > 0,
           payments: []
         }
+        applyProfitSnapshotToProduct(product)
         customer.products.push(product)
         imported++
       } else {
@@ -1893,6 +1894,7 @@ export async function doSalesImport() {
         payments: [payment]
       }
       ensureProductPayments(product)
+      applyProfitSnapshotToProduct(product)
       syncProductStatus(product)
       customer.products.push(product)
       imported++

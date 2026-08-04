@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PROFIT_MODE, normalizeCatalogEntry } from './data.js'
 import {
   loadGroupsData,
   getGroupsCache,
@@ -1335,6 +1335,59 @@ export async function removeDestinationBank(index) {
 // Product catalog Settings
 // ============================================
 
+const PROFIT_MODE_LABELS = {
+  [PROFIT_MODE.gross]: 'ناخالص',
+  [PROFIT_MODE.net]: 'کاملاً خالص',
+  [PROFIT_MODE.mixed]: 'ترکیبی'
+}
+
+function profitModeLabel(mode) {
+  return PROFIT_MODE_LABELS[mode] || PROFIT_MODE_LABELS[PROFIT_MODE.gross]
+}
+
+function parseMoneyInput(raw) {
+  const cleaned = toEnDigits(String(raw || '')).replace(/[^\d.-]/g, '')
+  const n = Number(cleaned)
+  return Number.isFinite(n) ? n : NaN
+}
+
+function readProfitFieldsFromForm(modeId, amountId) {
+  const modeEl = document.getElementById(modeId)
+  let profitMode = String(modeEl?.value || PROFIT_MODE.gross).toLowerCase()
+  if (profitMode !== PROFIT_MODE.net && profitMode !== PROFIT_MODE.mixed) {
+    profitMode = PROFIT_MODE.gross
+  }
+  const entry = { profitMode }
+  if (profitMode === PROFIT_MODE.mixed) {
+    const amt = parseMoneyInput(document.getElementById(amountId)?.value)
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return { ok: false, error: 'مبلغ سود خالص را وارد کنید' }
+    }
+    entry.netShareAmount = amt
+  }
+  return { ok: true, entry }
+}
+
+export function onNewProductProfitModeChange() {
+  const mode = document.getElementById('newProductProfitMode')?.value
+  const group = document.getElementById('newProductNetShareGroup')
+  if (group) group.style.display = mode === PROFIT_MODE.mixed ? '' : 'none'
+}
+
+export function onEditProductProfitModeChange() {
+  const mode = document.getElementById('editProductProfitMode')?.value
+  const group = document.getElementById('editProductNetShareGroup')
+  if (group) group.style.display = mode === PROFIT_MODE.mixed ? '' : 'none'
+}
+
+function catalogEntrySummary(entry) {
+  const mode = entry.profitMode || PROFIT_MODE.gross
+  if (mode === PROFIT_MODE.mixed) {
+    return `${profitModeLabel(mode)} · ${formatNumber(entry.netShareAmount || 0)} ریال`
+  }
+  return profitModeLabel(mode)
+}
+
 export function renderProductsSettingsPane() {
   renderProductCatalogSettings()
   renderProductBundleSettings()
@@ -1350,18 +1403,36 @@ export function renderProductCatalogSettings() {
     list.innerHTML = '<div class="settings-empty-detail">هنوز محصولی ثبت نشده</div>'
     return
   }
-  list.innerHTML = products.map((name, idx) => {
+  list.innerHTML = products.map((entry, idx) => {
+    const name = entry.name
     if (_editingProductIdx === idx) {
+      const mode = entry.profitMode || PROFIT_MODE.gross
+      const shareVal = mode === PROFIT_MODE.mixed && entry.netShareAmount
+        ? formatNumber(entry.netShareAmount)
+        : ''
       return `
-        <div class="settings-config-row is-editing">
-          <input type="text" class="form-input" id="editProductInput" value="${escapeAttr(name)}" style="flex:1;">
+        <div class="settings-config-row is-editing" style="flex-wrap:wrap;align-items:flex-end;gap:8px;">
+          <input type="text" class="form-input" id="editProductInput" value="${escapeAttr(name)}" style="flex:1;min-width:120px;">
+          <select class="form-select" id="editProductProfitMode" style="width:140px;" onchange="app.onEditProductProfitModeChange()">
+            <option value="gross"${mode === PROFIT_MODE.gross ? ' selected' : ''}>ناخالص</option>
+            <option value="net"${mode === PROFIT_MODE.net ? ' selected' : ''}>کاملاً خالص</option>
+            <option value="mixed"${mode === PROFIT_MODE.mixed ? ' selected' : ''}>ترکیبی</option>
+          </select>
+          <div id="editProductNetShareGroup" style="width:150px;${mode === PROFIT_MODE.mixed ? '' : 'display:none;'}">
+            <input type="text" class="form-input" id="editProductNetShareAmount" inputmode="numeric" placeholder="سود خالص (ریال)" value="${escapeAttr(shareVal)}" oninput="app.formatInput(this)">
+          </div>
           <button type="button" class="btn btn-sm btn-primary" onclick="app.saveProductCatalogEdit(${idx})">ذخیره</button>
           <button type="button" class="btn btn-sm" onclick="app.cancelProductCatalogEdit()">لغو</button>
         </div>`
     }
     return `
       <div class="settings-config-row">
-        <span class="settings-config-label">${escapeHtml(name)}</span>
+        <span class="settings-config-label">
+          ${escapeHtml(name)}
+          <span class="settings-config-meta" style="direction:rtl;font-family:inherit;display:block;margin-top:2px;">
+            ${escapeHtml(catalogEntrySummary(entry))}
+          </span>
+        </span>
         <button type="button" class="btn-icon" title="ویرایش" onclick="app.startProductCatalogEdit(${idx})">✏️</button>
         <button type="button" class="btn-icon" title="حذف" onclick="app.removeProductCatalogItem(${idx})" style="color:var(--danger);">🗑</button>
       </div>`
@@ -1385,9 +1456,12 @@ export async function saveProductCatalogEdit(index) {
   const input = document.getElementById('editProductInput')
   const name = (input?.value || '').trim()
   if (!name) { showToast('نام محصول را وارد کنید'); return }
-  const products = [...getProductCatalog()]
+  const profitFields = readProfitFieldsFromForm('editProductProfitMode', 'editProductNetShareAmount')
+  if (!profitFields.ok) { showToast(profitFields.error); return }
+
+  const products = getProductCatalog().map(e => ({ ...e }))
   if (index < 0 || index >= products.length) return
-  if (products.some((p, i) => i !== index && p.toLowerCase() === name.toLowerCase())) {
+  if (products.some((p, i) => i !== index && p.name.toLowerCase() === name.toLowerCase())) {
     showToast('این محصول قبلاً ثبت شده')
     return
   }
@@ -1395,7 +1469,7 @@ export async function saveProductCatalogEdit(index) {
     showToast('این نام قبلاً برای یک باندل استفاده شده')
     return
   }
-  const oldName = products[index]
+  const oldName = products[index].name
   if (oldName !== name) {
     const oldLower = oldName.toLowerCase()
     const newLower = name.toLowerCase()
@@ -1409,7 +1483,7 @@ export async function saveProductCatalogEdit(index) {
       }
     }
   }
-  products[index] = name
+  products[index] = normalizeCatalogEntry({ name, ...profitFields.entry })
   try {
     await saveProductCatalog(products)
     if (oldName !== name) await renameProductInBundles(oldName, name)
@@ -1427,8 +1501,11 @@ export async function addProductCatalogItem() {
   const input = document.getElementById('newProductCatalogItem')
   const name = (input?.value || '').trim()
   if (!name) { showToast('نام محصول را وارد کنید'); return }
+  const profitFields = readProfitFieldsFromForm('newProductProfitMode', 'newProductNetShareAmount')
+  if (!profitFields.ok) { showToast(profitFields.error); return }
+
   const products = getProductCatalog()
-  if (products.some(p => p.toLowerCase() === name.toLowerCase())) {
+  if (products.some(p => p.name.toLowerCase() === name.toLowerCase())) {
     showToast('این محصول قبلاً ثبت شده')
     return
   }
@@ -1436,9 +1513,15 @@ export async function addProductCatalogItem() {
     showToast('این نام قبلاً برای یک باندل استفاده شده')
     return
   }
+  const entry = normalizeCatalogEntry({ name, ...profitFields.entry })
   try {
-    await saveProductCatalog([...products, name])
+    await saveProductCatalog([...products, entry])
     if (input) input.value = ''
+    const modeEl = document.getElementById('newProductProfitMode')
+    if (modeEl) modeEl.value = PROFIT_MODE.gross
+    const shareEl = document.getElementById('newProductNetShareAmount')
+    if (shareEl) shareEl.value = ''
+    onNewProductProfitModeChange()
     renderProductsSettingsPane()
     showToast('محصول اضافه شد')
   } catch (e) {
@@ -1455,19 +1538,19 @@ export async function removeProductCatalogItem(index) {
     showToast('حداقل یک محصول باید در کاتالوگ بماند')
     return
   }
-  const name = products[index]
+  const name = products[index].name
   const usedIn = getBundlesUsingProduct(name)
   if (usedIn.length) {
     showToast(`این محصول در باندل «${usedIn.map(b => b.name).join('، ')}» استفاده شده — ابتدا باندل را ویرایش کنید`)
     return
   }
   openSettingsConfirm(`حذف محصول «${name}»؟`, async () => {
-    const next = [...getProductCatalog()]
+    const next = getProductCatalog().map(e => ({ ...e }))
     if (next.length <= 1) {
       showToast('حداقل یک محصول باید در کاتالوگ بماند')
       return
     }
-    const stillUsed = getBundlesUsingProduct(next[index])
+    const stillUsed = getBundlesUsingProduct(next[index]?.name)
     if (stillUsed.length) {
       showToast('این محصول در باندل استفاده شده')
       return
@@ -1501,7 +1584,7 @@ function renderBundleProductChecks(selectedNames = []) {
   const box = document.getElementById('settingsBundleProductChecks')
   if (!box) return
   const selected = new Set((selectedNames || []).map(String))
-  const catalog = getProductCatalog()
+  const catalog = getProductCatalogNames()
   if (!catalog.length) {
     box.innerHTML = '<div class="settings-empty-detail">ابتدا محصول به کاتالوگ اضافه کنید</div>'
     return
@@ -1641,7 +1724,7 @@ export function renderBundleMigrationForm() {
   const toSel = document.getElementById('migrateToBundleSelect')
   if (!fromSel || !toSel) return
 
-  const catalog = getProductCatalog()
+  const catalog = getProductCatalogNames()
   const prevFrom = fromSel.value
   fromSel.innerHTML = '<option value="">— انتخاب کنید —</option>' + catalog.map(name => {
     const count = countSalesByProductName(name)
@@ -1688,7 +1771,7 @@ export async function runCatalogToBundleMigration() {
           openSettingsConfirm(
             `نام «${fromName}» از کاتالوگ محصولات حذف شود؟`,
             async () => {
-              const products = getProductCatalog().filter(p => p.toLowerCase() !== fromName.toLowerCase())
+              const products = getProductCatalog().filter(p => p.name.toLowerCase() !== fromName.toLowerCase())
               if (products.length < 1) {
                 showToast('حداقل یک محصول باید در کاتالوگ بماند')
                 return

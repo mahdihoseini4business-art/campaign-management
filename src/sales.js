@@ -12,7 +12,8 @@ import {
   getWorstPaymentStatus, getLatestRejectReason, isProductCountableInSales,
   productHasRejectedPayment, getProductPayments, getPaymentEntryStatus,
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
-  normalizePhone, userDisplayName, formatTeamFilterLabel
+  normalizePhone, userDisplayName, formatTeamFilterLabel,
+  getPaymentProfit
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSalesTargetBand } from './dashboard.js'
@@ -389,20 +390,26 @@ export async function renderSales() {
   const dateFilter = getSalesDateFilter()
   const cashSales = countable.filter(s => s.status === 'تکمیل')
   const depositSales = countable.filter(s => s.status === 'بیعانه')
+  const data = getData()
 
-  let totalCash = 0
-  let totalDeposit = 0
-  let totalBalance = 0
-  if (dateFilter.hasDateFilter) {
-    // فقط مبالغ واریز تأییدشده داخل بازه
-    totalCash = cashSales.reduce((sum, s) => sum + (s.deposit || 0), 0)
-    totalDeposit = depositSales.reduce((sum, s) => sum + (s.deposit || 0), 0)
-    totalBalance = depositSales.reduce((sum, s) => sum + (s.balance || 0), 0)
-  } else {
-    totalCash = cashSales.reduce((sum, s) => sum + s.price, 0)
-    totalDeposit = depositSales.reduce((sum, s) => sum + s.deposit, 0)
-    totalBalance = depositSales.reduce((sum, s) => sum + s.balance, 0)
+  function netProfitForSale(s) {
+    const customer = data.customers.find(c => c.id === s.customerId)
+    const product = customer?.products?.[s.productIndex]
+    if (!product) return 0
+    if (dateFilter.hasDateFilter) {
+      const pays = getApprovedPaymentsInRange(product, dateFilter)
+      return pays.reduce((sum, pay) => sum + getPaymentProfit(product, parseFloat(pay.amount) || 0).net, 0)
+    }
+    if (product.status === 'تکمیل') {
+      const price = parseFloat(product.price) || 0
+      return getPaymentProfit(product, price).net
+    }
+    return getPaymentProfit(product, getApprovedPaid(product)).net
   }
+
+  const totalCash = cashSales.reduce((sum, s) => sum + netProfitForSale(s), 0)
+  const totalDeposit = depositSales.reduce((sum, s) => sum + netProfitForSale(s), 0)
+  const totalBalance = depositSales.reduce((sum, s) => sum + (s.balance || 0), 0)
   const totalAll = totalCash + totalDeposit
 
   document.getElementById('stat-sales-count').textContent = countable.length
