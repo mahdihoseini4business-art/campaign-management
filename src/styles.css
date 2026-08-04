@@ -2457,6 +2457,16 @@
     font-weight: 500;
   }
 
+  .settings-user-phone {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-inline-start: 6px;
+    font-variant-numeric: tabular-nums;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
   .settings-view-count {
     color: var(--accent);
   }
