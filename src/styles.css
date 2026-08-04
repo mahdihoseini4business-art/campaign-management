@@ -2132,6 +2132,100 @@
     }
   }
 
+  /* --- Filter toolbars (≤ 768px) --- */
+  @media (max-width: 768px) {
+    .dash-filters {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+    }
+
+    .dash-filters-dates {
+      width: 100%;
+      gap: 8px;
+      flex-wrap: nowrap;
+    }
+
+    .dash-filters-dates .dash-date-input {
+      flex: 1 1 0;
+      min-width: 0;
+      width: auto;
+    }
+
+    .dash-user-filter,
+    .dash-user-filter-btn {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .dash-filters-actions {
+      flex-direction: column;
+      align-items: stretch;
+      width: 100%;
+      gap: 8px;
+    }
+
+    .dash-filters-actions .btn {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .toolbar-filter-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      width: 100%;
+      flex: 1 1 100%;
+    }
+
+    .toolbar-filter-grid > .form-select,
+    .toolbar-filter-grid > .form-input,
+    .toolbar-filter-grid > .search-box,
+    .toolbar-filter-grid > .btn {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: none !important;
+    }
+
+    .followup-filters {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      width: 100%;
+      flex: 1 1 100%;
+    }
+
+    .followup-filters .btn {
+      width: 100%;
+      justify-content: center;
+      white-space: normal;
+      height: auto;
+      min-height: 40px;
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+
+    .accounting-filters {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 6px;
+      width: 100%;
+      flex: 1 1 100%;
+    }
+
+    .accounting-filters .btn {
+      flex: 1 1 0;
+      min-width: 0;
+      width: auto;
+      justify-content: center;
+      white-space: normal;
+      height: auto;
+      min-height: 40px;
+      padding: 8px 6px;
+      font-size: 12px;
+    }
+  }
+
   /* --- Tablets (480px - 768px) --- */
   @media (min-width: 481px) and (max-width: 768px) {
     .header {
@@ -3167,6 +3261,44 @@
 
   .dash-user-filter-btn {
     min-width: 160px;
+  }
+
+  .dash-filters {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .dash-filters-dates {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+
+  .dash-filters-label {
+    font-size: 16px;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .dash-date-input {
+    width: 150px;
+  }
+
+  .dash-filters-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .toolbar-filter-grid {
+    display: contents;
   }
 
   .dash-user-filter-count {

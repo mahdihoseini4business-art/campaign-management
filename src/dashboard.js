@@ -17,6 +17,8 @@ let selectedAdvisorPhones = null
 let dashUsersCache = []
 let dashUserDropdownInited = false
 let salesChartDefaultsReady = false
+/** True after user clicks «اعمال فیلتر» while a filter is active */
+let dashFilterApplied = false
 /** Cached aggregates for product chart metric toggle */
 let productChartCache = { amounts: {}, counts: {} }
 
@@ -1748,8 +1750,45 @@ export function onAdvisorCompareTypeChange() {
   renderAdvisorCompareChart(dateFromNum, dateToNum)
 }
 
+export function applyDashFilter() {
+  dashFilterApplied = hasActiveDashFilter()
+  updateDashClearFilterBtn()
+  renderDashboard()
+}
+
 export function clearDashFilter() {
   document.getElementById('dashDateFrom').value = ''
   document.getElementById('dashDateTo').value = ''
+  if (dashUsersCache.length) {
+    selectedAdvisorPhones = new Set(dashUsersCache.map(u => normalizePhone(u.phone)))
+    document.querySelectorAll('#dashUserCheckboxes .dash-user-cb, #dashUserCheckboxes .dash-group-cb').forEach(cb => {
+      cb.checked = true
+      cb.indeterminate = false
+    })
+    const selectAll = document.getElementById('dashUserSelectAll')
+    if (selectAll) {
+      selectAll.checked = true
+      selectAll.indeterminate = false
+    }
+    updateUserFilterCount()
+  }
+  dashFilterApplied = false
+  updateDashClearFilterBtn()
   renderDashboard()
+}
+
+function hasActiveDashFilter() {
+  const dateFrom = document.getElementById('dashDateFrom')?.value.trim() || ''
+  const dateTo = document.getElementById('dashDateTo')?.value.trim() || ''
+  if (dateFrom || dateTo) return true
+  if (dashUsersCache.length && selectedAdvisorPhones && selectedAdvisorPhones.size < dashUsersCache.length) {
+    return true
+  }
+  return false
+}
+
+function updateDashClearFilterBtn() {
+  const btn = document.getElementById('dashClearFilterBtn')
+  if (!btn) return
+  btn.hidden = !(dashFilterApplied && hasActiveDashFilter())
 }

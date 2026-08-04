@@ -415,10 +415,12 @@
 
   <!-- شیت داشبورد -->
   <div class="sheet active" id="sheet-dashboard" role="tabpanel" aria-labelledby="tab-dashboard">
-    <div class="dash-filters" style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
-      <div style="font-size:16px;font-weight:600;">فیلتر تاریخ:</div>
-      <input type="text" class="form-input" id="dashDateFrom" placeholder="از تاریخ" data-jdp style="width:150px;">
-      <input type="text" class="form-input" id="dashDateTo" placeholder="تا تاریخ" data-jdp style="width:150px;">
+    <div class="dash-filters">
+      <div class="dash-filters-dates">
+        <div class="dash-filters-label">فیلتر تاریخ:</div>
+        <input type="text" class="form-input dash-date-input" id="dashDateFrom" placeholder="از تاریخ" data-jdp>
+        <input type="text" class="form-input dash-date-input" id="dashDateTo" placeholder="تا تاریخ" data-jdp>
+      </div>
       <div class="dash-user-filter" id="dashUserFilter">
         <button type="button" class="btn dash-user-filter-btn" id="dashUserFilterBtn" onclick="app.toggleDashUserDropdown(event)">
           کارشناسان <span class="dash-user-filter-count" id="dashUserFilterCount"></span>
@@ -431,8 +433,10 @@
           <div class="dash-user-options" id="dashUserCheckboxes"></div>
         </div>
       </div>
-      <button class="btn btn-primary" onclick="app.renderDashboard()">اعمال فیلتر</button>
-      <button class="btn" onclick="app.clearDashFilter()">پاک کردن فیلتر</button>
+      <div class="dash-filters-actions">
+        <button type="button" class="btn btn-primary" onclick="app.applyDashFilter()">اعمال فیلتر</button>
+        <button type="button" class="btn" id="dashClearFilterBtn" hidden onclick="app.clearDashFilter()">پاک کردن فیلتر</button>
+      </div>
     </div>
 
     <div class="dashboard-stats dash-stats-fixed">
@@ -602,27 +606,29 @@
       </select>
       <span id="bulkCountCustomers" style="display:none;font-size:13px;color:var(--text-muted);"></span>
       <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchCustomers" oninput="app.renderCustomers()">
-      <select class="form-select" id="filterAdvisor" style="width:200px;min-width:160px;" onchange="app.renderCustomers()">
-        <option value="">همه کارشناسان</option>
-      </select>
-      <select class="form-select" id="filterPlatform" style="width:150px;" onchange="app.renderCustomers()">
-        <option value="">همه پلتفرم‌ها</option>
-      </select>
-      <select class="form-select" id="filterStatus" style="width:150px;" onchange="app.renderCustomers()">
-        <option value="">همه وضعیت‌ها</option>
-      </select>
-      <select class="form-select" id="filterCustomerLevel" style="width:150px;" onchange="app.renderCustomers()">
-        <option value="">همه سطوح</option>
-      </select>
-      <select class="form-select" id="filterTransferIn" style="width:190px;" onchange="app.renderCustomers()">
-        <option value="">همه انتقال‌ها</option>
-        <option value="recent">تازه‌منتقل‌شده به من</option>
-        <option value="out">تازه‌ارسال‌شده توسط من</option>
-      </select>
-      <button type="button" class="btn" id="transferInboxBtn" onclick="app.openTransferInbox()" style="position:relative;">
-        انتقال‌ها
-        <span class="transfer-inbox-badge" id="transferInboxBadge" style="display:none;">0</span>
-      </button>
+      <div class="toolbar-filter-grid">
+        <select class="form-select" id="filterAdvisor" style="width:200px;min-width:160px;" onchange="app.renderCustomers()">
+          <option value="">همه کارشناسان</option>
+        </select>
+        <select class="form-select" id="filterPlatform" style="width:150px;" onchange="app.renderCustomers()">
+          <option value="">همه پلتفرم‌ها</option>
+        </select>
+        <select class="form-select" id="filterStatus" style="width:150px;" onchange="app.renderCustomers()">
+          <option value="">همه وضعیت‌ها</option>
+        </select>
+        <select class="form-select" id="filterCustomerLevel" style="width:150px;" onchange="app.renderCustomers()">
+          <option value="">همه سطوح</option>
+        </select>
+        <select class="form-select" id="filterTransferIn" style="width:190px;" onchange="app.renderCustomers()">
+          <option value="">همه انتقال‌ها</option>
+          <option value="recent">تازه‌منتقل‌شده به من</option>
+          <option value="out">تازه‌ارسال‌شده توسط من</option>
+        </select>
+        <button type="button" class="btn" id="transferInboxBtn" onclick="app.openTransferInbox()" style="position:relative;">
+          انتقال‌ها
+          <span class="transfer-inbox-badge" id="transferInboxBadge" style="display:none;">0</span>
+        </button>
+      </div>
       <div class="toolbar-actions" id="customersActionsMenu">
         <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
         <div class="toolbar-actions-dropdown" hidden>
@@ -735,26 +741,28 @@
         <option value="delete">حذف انتخاب شده‌ها</option>
       </select>
       <span id="bulkCountSales" style="display:none;font-size:13px;color:var(--text-muted);"></span>
-      <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchSales" oninput="app.renderSales()">
-      <input type="text" class="form-input" id="filterSalesDateFrom" placeholder="از تاریخ واریز" data-jdp style="width:140px;" onchange="app.renderSales()">
-      <input type="text" class="form-input" id="filterSalesDateTo" placeholder="تا تاریخ واریز" data-jdp style="width:140px;" onchange="app.renderSales()">
-      <select class="form-select" id="filterSalesPlatform" style="width:140px;" onchange="app.renderSales()">
-        <option value="">همه پلتفرم‌ها</option>
-      </select>
-      <select class="form-select" id="filterSalesAdvisor" style="width:200px;min-width:160px;" onchange="app.renderSales()">
-        <option value="">همه کارشناسان</option>
-      </select>
-      <select class="form-select" id="filterSalesLevel" style="width:130px;" onchange="app.renderSales()">
-        <option value="">همه سطوح</option>
-      </select>
-      <select class="form-select" id="filterSalesStatus" style="width:120px;" onchange="app.renderSales()">
-        <option value="">همه وضعیت‌ها</option>
-        <option value="تکمیل">تکمیل</option>
-        <option value="بیعانه">بیعانه</option>
-      </select>
-      <select class="form-select" id="filterSalesPaymentStatus" style="width:160px;" onchange="app.renderSales()">
-        <option value="">همه وضعیت‌های واریزی</option>
-      </select>
+      <div class="toolbar-filter-grid">
+        <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchSales" oninput="app.renderSales()">
+        <input type="text" class="form-input" id="filterSalesDateFrom" placeholder="از تاریخ واریز" data-jdp style="width:140px;" onchange="app.renderSales()">
+        <input type="text" class="form-input" id="filterSalesDateTo" placeholder="تا تاریخ واریز" data-jdp style="width:140px;" onchange="app.renderSales()">
+        <select class="form-select" id="filterSalesPlatform" style="width:140px;" onchange="app.renderSales()">
+          <option value="">همه پلتفرم‌ها</option>
+        </select>
+        <select class="form-select" id="filterSalesAdvisor" style="width:200px;min-width:160px;" onchange="app.renderSales()">
+          <option value="">همه کارشناسان</option>
+        </select>
+        <select class="form-select" id="filterSalesLevel" style="width:130px;" onchange="app.renderSales()">
+          <option value="">همه سطوح</option>
+        </select>
+        <select class="form-select" id="filterSalesStatus" style="width:120px;" onchange="app.renderSales()">
+          <option value="">همه وضعیت‌ها</option>
+          <option value="تکمیل">تکمیل</option>
+          <option value="بیعانه">بیعانه</option>
+        </select>
+        <select class="form-select" id="filterSalesPaymentStatus" style="width:160px;" onchange="app.renderSales()">
+          <option value="">همه وضعیت‌های واریزی</option>
+        </select>
+      </div>
       <div class="toolbar-actions" id="salesActionsMenu">
         <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
         <div class="toolbar-actions-dropdown" hidden>
