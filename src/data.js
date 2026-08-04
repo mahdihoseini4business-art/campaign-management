@@ -125,6 +125,24 @@ export function normalizeCatalogEntry(raw) {
   return entry
 }
 
+/**
+ * Coerce any product-name value (string, catalog entry, nested object) to a clean display string.
+ * Use wherever product names are shown or stored on sale lines.
+ */
+export function coerceProductName(value) {
+  if (value == null || value === '') return ''
+  if (typeof value === 'string') {
+    const s = value.trim()
+    if (!s || /^\[object\s+Object\]$/i.test(s)) return ''
+    return s
+  }
+  if (typeof value === 'object') {
+    return coerceProductName(value.name)
+  }
+  const s = String(value).trim()
+  return /^\[object\s+Object\]$/i.test(s) ? '' : s
+}
+
 /** Map a customers DB row → in-memory customer object */
 export function mapCustomerFromDb(c) {
   if (!c || !c.id) return null
@@ -144,7 +162,13 @@ export function mapCustomerFromDb(c) {
     advisor: c.advisor || '',
     advisorPhone: c.advisor_phone || '',
     nextFollowupDate: c.next_followup_date || '',
-    products: c.products || [],
+    products: Array.isArray(c.products)
+      ? c.products.map(p => {
+        if (!p || typeof p !== 'object') return p
+        const name = coerceProductName(p.name)
+        return name === p.name ? p : { ...p, name }
+      })
+      : [],
     createdAt: c.created_at || null,
     customerLevel: c.customer_level || '',
     customerLevelLocked: !!c.customer_level_locked,
@@ -513,14 +537,16 @@ export async function saveProductBundles(bundles) {
 /** Union of catalog product names + bundle names (sellable dropdown options). */
 export function getSellableNames() {
   const products = getProductCatalogNames()
-  const bundleNames = getProductBundles().map(b => b.name)
+  const bundleNames = getProductBundles().map(b => coerceProductName(b.name)).filter(Boolean)
   const seen = new Set()
   const out = []
   for (const name of [...products, ...bundleNames]) {
-    const key = name.toLowerCase()
+    const clean = coerceProductName(name)
+    if (!clean) continue
+    const key = clean.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    out.push(name)
+    out.push(clean)
   }
   return out
 }

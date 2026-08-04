@@ -3,7 +3,7 @@
 // ============================================
 
 import { ADMIN_PHONE } from './config.js'
-import { getPlatforms, getStatuses, getCatalogEntryByName, getBundleByName, PROFIT_MODE } from './data.js'
+import { getPlatforms, getStatuses, getCatalogEntryByName, getBundleByName, PROFIT_MODE, coerceProductName } from './data.js'
 
 /** Dynamic platform labels (value → Persian label) built from settings */
 export function getPlatformLabels() {
@@ -162,7 +162,8 @@ export function getCustomerSearchExtras(customer) {
   const depositors = []
   ;(customer?.products || []).forEach(p => {
     ensureProductPayments(p)
-    if (p.name) products.push(p.name)
+    const pname = coerceProductName(p.name)
+    if (pname) products.push(pname)
     ;(p.payments || []).forEach(pay => {
       if (pay.depositorName) depositors.push(pay.depositorName)
     })
@@ -1061,6 +1062,8 @@ export function resolveProductProfitConfig(product) {
 /** Apply profit snapshot fields onto a sale line (mutates). */
 export function applyProfitSnapshotToProduct(product) {
   if (!product) return product
+  const cleaned = coerceProductName(product.name)
+  if (cleaned) product.name = cleaned
   const snap = buildProfitSnapshotForSale(product.name, product.price)
   product.profitMode = snap.profitMode
   if (snap.profitMode === PROFIT_MODE.mixed) {

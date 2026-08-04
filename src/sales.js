@@ -1,4 +1,4 @@
-import { getData, getPlatforms } from './data.js'
+import { getData, getPlatforms, coerceProductName } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import {
@@ -48,7 +48,7 @@ export function getAllSales() {
           ownerAdvisorPhone: normalizePhone(c.advisorPhone || ''),
           soldByPhone,
           platform: c.platform,
-          productName: p.name,
+          productName: coerceProductName(p.name),
           status: p.status,
           price,
           deposit,

@@ -4,7 +4,7 @@
 // ============================================
 
 import { supabase } from './supabase.js'
-import { getSaleToastEnabled, setSaleToastEnabledLocal, saveSaleToastEnabled } from './data.js'
+import { getSaleToastEnabled, setSaleToastEnabledLocal, saveSaleToastEnabled, coerceProductName } from './data.js'
 import { escapeHtml, formatNumber, requireMainAdmin, userDisplayName, getCurrentUser, normalizePhone } from './utils.js'
 
 const CHANNEL_NAME = 'sale-live-toasts'
@@ -102,7 +102,7 @@ export function showSaleToast(payload) {
   if (myPhone && sellerPhone && myPhone === sellerPhone) return
 
   const seller = (payload.sellerName || '').trim() || 'کارشناس'
-  const product = (payload.productName || '').trim() || 'محصول'
+  const product = coerceProductName(payload.productName) || 'محصول'
   const amountRial = parseFloat(payload.amount) || 0
   // مبالغ در سیستم به ریال است؛ در توست مطابق دیزاین به تومان نشان داده می‌شود
   const amountToman = amountRial > 0 ? formatNumber(Math.round(amountRial / 10)) : ''
@@ -226,7 +226,7 @@ export function buildSaleToastPayload({ customer, product, payment }) {
     sellerPhone: user?.phone || '',
     customerId: customer?.id || '',
     customerName: customer?.name || '',
-    productName: product?.name || '',
+    productName: coerceProductName(product?.name),
     amount: payment?.amount || '',
     at: Date.now()
   }

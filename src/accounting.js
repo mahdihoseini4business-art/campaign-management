@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB } from './data.js'
+import { getData, saveCustomerToDB, coerceProductName } from './data.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
   requirePermission, getCurrentUser, normalizePhone, getNowJalaliDateTime,
@@ -32,7 +32,7 @@ export function getAllPayments() {
           customerPhones: getCustomerPhones(c),
           advisor: c.advisor || '',
           advisorPhone: c.advisorPhone || '',
-          productName: product.name || '',
+          productName: coerceProductName(product.name),
           productStatus: product.status || '',
           amount,
           soldAt: pay.soldAt || '',

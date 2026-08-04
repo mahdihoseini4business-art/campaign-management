@@ -1,4 +1,4 @@
-import { getData, getStatuses, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining } from './data.js'
+import { getData, getStatuses, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
 import {
@@ -1010,7 +1010,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
         const value = paidInScope
         const statusKey = product.status === 'تکمیل' ? 'تکمیل' : 'بیعانه'
         salesStatus[statusKey] = (salesStatus[statusKey] || 0) + value
-        const name = product.name || '—'
+        const name = coerceProductName(product.name) || '—'
         productSales[name] = (productSales[name] || 0) + value
         productCounts[name] = (productCounts[name] || 0) + 1
       }

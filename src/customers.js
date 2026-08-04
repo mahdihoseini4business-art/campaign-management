@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn } from './data.js'
+import { getData, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
@@ -1983,17 +1983,18 @@ export async function renderProducts(customerId, users = null) {
       : (p.settlementDate ? `<span style="font-size:12px;color:var(--text-muted);">تسویه: ${escapeHtml(p.settlementDate)}</span>` : '')
 
     const catalog = getSellableNames()
+    const displayName = coerceProductName(p.name)
     const nameOptions = catalog.slice()
-    if (p.name && !nameOptions.includes(p.name)) nameOptions.unshift(p.name)
-    const bundle = getBundleByName(p.name)
+    if (displayName && !nameOptions.includes(displayName)) nameOptions.unshift(displayName)
+    const bundle = getBundleByName(displayName)
     const bundleHint = bundle
       ? `<span class="product-bundle-hint">شامل: ${escapeHtml((bundle.productNames || []).join('، '))}</span>`
       : ''
     const nameHtml = canEdit && !closed
       ? `<select class="product-name" onchange="app.updateProduct('${customerId}', ${i}, 'name', this.value)">
-            ${nameOptions.map(pr => `<option value="${escapeAttr(pr)}" ${p.name === pr ? 'selected' : ''}>${escapeHtml(pr)}</option>`).join('')}
+            ${nameOptions.map(pr => `<option value="${escapeAttr(pr)}" ${displayName === pr ? 'selected' : ''}>${escapeHtml(pr)}</option>`).join('')}
           </select>${bundleHint}`
-      : `<span style="font-size:14px;font-weight:600;">${escapeHtml(p.name || '—')}</span>${bundleHint}`
+      : `<span style="font-size:14px;font-weight:600;">${escapeHtml(displayName || '—')}</span>${bundleHint}`
 
     return `
       <div class="${blockClass}">
@@ -2035,7 +2036,7 @@ export async function addProductRow(customerId) {
     return
   }
   products.push({
-    name: catalog[0],
+    name: coerceProductName(catalog[0]) || catalog[0],
     status: 'بیعانه',
     price: '',
     priceLocked: false,
@@ -2157,7 +2158,7 @@ export async function updateProduct(customerId, index, field, value) {
     showToast('فاکتور بسته شده و قابل ویرایش نیست')
     return
   }
-  product[field] = value
+  product[field] = field === 'name' ? coerceProductName(value) || value : value
   if (field === 'name') applyProfitSnapshotToProduct(product)
   syncProductStatus(product)
   await setProducts(customerId, products)
