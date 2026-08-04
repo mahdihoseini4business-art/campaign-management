@@ -7,7 +7,7 @@ import {
   getVisibleAdvisorPhones, getStatusLabels, formatPhonesDisplay,
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
   getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
-  getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, formatTeamFilterLabel
+  getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones
 } from './utils.js'
 
 let dashCharts = {}
