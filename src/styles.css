@@ -4239,8 +4239,8 @@
 
   .product-matrix-none-col {
     text-align: center;
-    min-width: 88px;
-    white-space: nowrap;
+    min-width: 48px;
+    max-width: 72px;
     font-weight: 700;
   }
 

@@ -127,7 +127,7 @@ export function renderProductMatrix() {
         const mode = getFilterMode(name)
         return `<th class="product-matrix-product-col product-matrix-filterable${filterHeaderClass(mode)}" title="${escapeAttr(name)} — کلیک برای فیلتر" onclick="app.cycleProductMatrixFilter('${escapeAttr(name)}')"><span>${escapeHtml(name)}</span></th>`
       }).join('')}
-      <th class="product-matrix-none-col product-matrix-filterable${filterHeaderClass(noneMode)}" title="بدون محصول — کلیک برای فیلتر" onclick="app.cycleProductMatrixFilter('${escapeAttr(NONE_KEY)}')">بدون محصول</th>
+      <th class="product-matrix-none-col product-matrix-product-col product-matrix-filterable${filterHeaderClass(noneMode)}" title="بدون محصول — کلیک برای فیلتر" onclick="app.cycleProductMatrixFilter('${escapeAttr(NONE_KEY)}')"><span>بدون محصول</span></th>
     </tr>`
 
   syncClearFiltersButton()
