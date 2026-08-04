@@ -1170,7 +1170,10 @@ function buildDashTargetBlocks(targets, viewer) {
     if (admin) {
       blocks.push({
         key: `${target.id}-org`,
-        title: `${title} · کلی`,
+        scope: 'org',
+        userGroupId: null,
+        groupName: null,
+        title,
         className: 'is-org',
         bars: items.map(bar => ({ bar, goalOverride: null, phoneSet: null }))
       })
@@ -1192,7 +1195,10 @@ function buildDashTargetBlocks(targets, viewer) {
       if (!bars.length) continue
       blocks.push({
         key: `${target.id}-${alloc.userGroupId}`,
-        title: `${title} · ${groupName}`,
+        scope: `group:${alloc.userGroupId}`,
+        userGroupId: alloc.userGroupId,
+        groupName,
+        title,
         className: 'is-group-alloc',
         bars
       })
@@ -1202,16 +1208,61 @@ function buildDashTargetBlocks(targets, viewer) {
   return blocks
 }
 
+function buildDashTargetScopeOptions(blocks, viewer) {
+  const options = []
+  const admin = isMainAdmin(viewer)
+  if (admin && blocks.some(b => b.scope === 'org')) {
+    options.push({ value: 'org', label: 'تارگت کلی' })
+  }
+  const seen = new Set()
+  for (const block of blocks) {
+    if (!block.userGroupId || seen.has(block.userGroupId)) continue
+    seen.add(block.userGroupId)
+    options.push({
+      value: `group:${block.userGroupId}`,
+      label: block.groupName || 'گروه'
+    })
+  }
+  return options
+}
+
+function syncDashTargetsScopeSelect(options) {
+  const sel = document.getElementById('dashTargetsScope')
+  if (!sel) return options[0]?.value || 'org'
+
+  const prev = sel.value
+  const preferred = options.some(o => o.value === prev)
+    ? prev
+    : (options.some(o => o.value === 'org') ? 'org' : (options[0]?.value || 'org'))
+
+  sel.innerHTML = options.map(o =>
+    `<option value="${escapeAttr(o.value)}">${escapeHtml(o.label)}</option>`
+  ).join('')
+  sel.value = preferred
+  sel.hidden = options.length <= 1
+  return preferred
+}
+
+let _lastDashTargetDates = { from: 0, to: 99999999 }
+
 function renderDashTargetsProgress(dateFromNum, dateToNum) {
   const el = document.getElementById('dashTargetsProgress')
   if (!el) return
+
+  _lastDashTargetDates = {
+    from: dateFromNum || 0,
+    to: dateToNum || 99999999
+  }
 
   const viewer = getCurrentUser()
   const canSee =
     isMainAdmin(viewer) ||
     !!(viewer?.isGroupManager && viewer?.groupId)
 
+  const scopeSel = document.getElementById('dashTargetsScope')
+
   if (!canSee) {
+    if (scopeSel) scopeSel.hidden = true
     el.innerHTML = '<div class="dash-targets-empty">تارگتی برای نقش شما تعریف نشده است.</div>'
     return
   }
@@ -1221,11 +1272,13 @@ function renderDashTargetsProgress(dateFromNum, dateToNum) {
     targets = getSalesTargets()
   } catch (e) {
     console.error('getSalesTargets error:', e)
+    if (scopeSel) scopeSel.hidden = true
     el.innerHTML = '<div class="dash-targets-empty">خطا در خواندن تارگت‌ها</div>'
     return
   }
 
   if (!targets.length) {
+    if (scopeSel) scopeSel.hidden = true
     el.innerHTML = '<div class="dash-targets-empty">هنوز تارگتی تعریف نشده. از تنظیمات سیستم اضافه کنید.</div>'
     return
   }
@@ -1235,18 +1288,29 @@ function renderDashTargetsProgress(dateFromNum, dateToNum) {
     blocks = buildDashTargetBlocks(targets, viewer)
   } catch (e) {
     console.error('buildDashTargetBlocks error:', e)
+    if (scopeSel) scopeSel.hidden = true
     el.innerHTML = '<div class="dash-targets-empty">خطا در آماده‌سازی تارگت‌ها</div>'
     return
   }
 
   if (!blocks.length) {
+    if (scopeSel) scopeSel.hidden = true
     el.innerHTML = isMainAdmin(viewer)
       ? '<div class="dash-targets-empty">هنوز تارگتی تعریف نشده. از تنظیمات سیستم اضافه کنید.</div>'
       : '<div class="dash-targets-empty">سهمیه‌ای برای گروه شما تعریف نشده است.</div>'
     return
   }
 
-  el.innerHTML = blocks.map(block => {
+  const options = buildDashTargetScopeOptions(blocks, viewer)
+  const selectedScope = syncDashTargetsScopeSelect(options)
+  const visibleBlocks = blocks.filter(b => b.scope === selectedScope)
+
+  if (!visibleBlocks.length) {
+    el.innerHTML = '<div class="dash-targets-empty">نواری برای نمایش نیست</div>'
+    return
+  }
+
+  el.innerHTML = visibleBlocks.map(block => {
     try {
       const barsHtml = (block.bars || []).map(({ bar, goalOverride, phoneSet }) => {
         try {
@@ -1270,6 +1334,10 @@ function renderDashTargetsProgress(dateFromNum, dateToNum) {
       return ''
     }
   }).join('')
+}
+
+export function onDashTargetsScopeChange() {
+  renderDashTargetsProgress(_lastDashTargetDates.from, _lastDashTargetDates.to)
 }
 
 function renderProductSalesChart(productSales = null, productCounts = null) {

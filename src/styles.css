@@ -3301,8 +3301,6 @@
     flex-direction: column;
     gap: 16px;
     margin-top: 8px;
-    max-height: 280px;
-    overflow-y: auto;
     font-family: inherit;
   }
 

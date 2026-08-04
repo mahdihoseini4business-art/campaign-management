@@ -483,7 +483,12 @@
         </div>
       </div>
       <div class="chart-card" id="dashTargetsCard">
-        <div class="chart-title">پیشرفت تارگت فروش</div>
+        <div class="chart-title-row">
+          <div class="chart-title">پیشرفت تارگت فروش</div>
+          <select class="form-select" id="dashTargetsScope" style="width:160px;" onchange="app.onDashTargetsScopeChange()" hidden>
+            <option value="org">تارگت کلی</option>
+          </select>
+        </div>
         <div id="dashTargetsProgress" class="dash-targets-progress"></div>
       </div>
       <div class="chart-card chart-card-wide">
