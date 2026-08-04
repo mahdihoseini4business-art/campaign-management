@@ -1247,6 +1247,19 @@ function syncDashTargetsScopeSelect(options) {
 
 let _lastDashTargetDates = { from: 0, to: 99999999 }
 
+function syncDashTargetsCardTitle(viewer) {
+  const titleEl = document.getElementById('dashTargetsCardTitle')
+  if (!titleEl) return
+  const groupName = (
+    viewer?.isGroupManager && !isMainAdmin(viewer)
+      ? (viewer.groupName || getGroupById(viewer.groupId)?.name || '')
+      : ''
+  ).trim()
+  titleEl.textContent = groupName
+    ? `پیشرفت تارگت فروش ${groupName}`
+    : 'پیشرفت تارگت فروش'
+}
+
 function renderDashTargetsProgress(dateFromNum, dateToNum) {
   const el = document.getElementById('dashTargetsProgress')
   if (!el) return
@@ -1257,6 +1270,7 @@ function renderDashTargetsProgress(dateFromNum, dateToNum) {
   }
 
   const viewer = getCurrentUser()
+  syncDashTargetsCardTitle(viewer)
   const canSee =
     isMainAdmin(viewer) ||
     !!(viewer?.isGroupManager && viewer?.groupId)
