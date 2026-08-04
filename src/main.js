@@ -44,7 +44,7 @@ import { setPage } from './pagination.js'
 // ============================================
 
 function switchTab(tab, el) {
-  const permMap = { dashboard: 'dashboard', customers: 'customers_view', followups: 'followups_view', sales: 'sales_view', products: 'customers_view', accounting: 'accounting' }
+  const permMap = { dashboard: 'dashboard', customers: 'customers_view', followups: 'followups_view', sales: 'sales_view', products: 'products_matrix', accounting: 'accounting' }
   if (permMap[tab] && !hasPermission(permMap[tab])) {
     return
   }

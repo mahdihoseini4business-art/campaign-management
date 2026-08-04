@@ -774,6 +774,7 @@ export const ALL_PERMISSIONS = {
   sales_import: 'ایمپورت فروش',
   sales_add_others: 'ثبت فروش برای مشتریان دیگران',
   sales_export: 'خروجی فروش‌ها',
+  products_matrix: 'ماتریس محصولات',
   accounting: 'تأیید واریزی‌ها (حسابداری)'
 }
 
@@ -782,6 +783,7 @@ export const PERMISSION_GROUPS = [
   { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_delete', 'customers_transfer', 'customers_import', 'customers_export'] },
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_add_others', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_add_others', 'sales_import', 'sales_export'] },
+  { label: 'محصولات', keys: ['products_matrix'] },
   { label: 'حسابداری', keys: ['accounting'] }
 ]
 

@@ -106,7 +106,7 @@ function markCell(has) {
 }
 
 export function renderProductMatrix() {
-  if (!hasPermission('customers_view')) return
+  if (!hasPermission('products_matrix')) return
 
   const thead = document.getElementById('productMatrixHead')
   const tbody = document.getElementById('productMatrixBody')

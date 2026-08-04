@@ -2655,7 +2655,7 @@ export function applyPermissions() {
     else if (t.id === 'tab-customers' || text === 'لیست مشتریان') permKey = 'customers_view'
     else if (t.id === 'tab-followups' || text.startsWith('فالوآپ') || text === 'تاریخچه پیگیری') permKey = 'followups_view'
     else if (t.id === 'tab-sales' || text === 'فروش‌ها') permKey = 'sales_view'
-    else if (t.id === 'tab-products' || text === 'محصولات') permKey = 'customers_view'
+    else if (t.id === 'tab-products' || text === 'محصولات' || text === 'ماتریس محصولات') permKey = 'products_matrix'
     else if (t.id === 'tab-accounting' || text === 'حسابداری') permKey = 'accounting'
     if (permKey && !hasPermission(permKey)) {
       t.style.display = 'none'
