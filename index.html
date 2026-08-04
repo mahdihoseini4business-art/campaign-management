@@ -246,7 +246,26 @@
                   </div>
                   <div class="form-group" style="flex:1;margin-bottom:0;">
                     <label for="salesTargetEnd">تا تاریخ / ددلاین <span class="settings-optional">(اختیاری)</span></label>
-                    <input type="text" class="form-input" id="salesTargetEnd" placeholder="تا تاریخ" data-jdp autocomplete="off">
+                    <input type="text" class="form-input" id="salesTargetEnd" placeholder="تا تاریخ" data-jdp autocomplete="off" onchange="app.onSalesTargetDeadlineChange()" oninput="app.onSalesTargetDeadlineChange()">
+                  </div>
+                </div>
+                <div id="salesTargetUrgencyBlock" class="settings-target-urgency-block" hidden>
+                  <div class="settings-target-bars-heading">رنگ‌بندی تایمر ددلاین</div>
+                  <p class="settings-pane-desc" style="margin:0 0 10px;">وقتی ددلاین ست باشد، تایمر معکوس با این رنگ‌ها (بر اساس زمان باقی‌مانده) برای اعضای گروه نمایش داده می‌شود. بازه‌ها را داینامیک اضافه یا حذف کنید.</p>
+                  <div class="settings-urgency-defaults">
+                    <label class="settings-urgency-color-field">
+                      <span>رنگ عادی (زمان زیاد)</span>
+                      <input type="color" id="salesTargetUrgencyDefault" value="#25b88b">
+                    </label>
+                    <label class="settings-urgency-color-field">
+                      <span>رنگ اتمام مهلت</span>
+                      <input type="color" id="salesTargetUrgencyOverdue" value="#ED1C24">
+                    </label>
+                  </div>
+                  <div id="salesTargetUrgencyStages" class="settings-urgency-stages"></div>
+                  <div class="settings-add-row" style="justify-content:flex-start;gap:8px;margin-top:8px;">
+                    <button type="button" class="btn btn-sm" onclick="app.addDeadlineUrgencyStage()">افزودن بازه رنگی</button>
+                    <button type="button" class="btn btn-sm btn-primary" onclick="app.saveDeadlineUrgencySettings()">ذخیره رنگ‌ها</button>
                   </div>
                 </div>
                 <div class="form-group">

@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getSalesTargets, saveSalesTargets } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY } from './data.js'
 import {
   loadGroupsData,
   getGroupsCache,
@@ -1774,6 +1774,7 @@ function clearSalesTargetForm() {
   const cancelBtn = document.getElementById('salesTargetCancelBtn')
   if (cancelBtn) cancelBtn.hidden = true
   renderSalesTargetDraftBars()
+  syncDeadlineUrgencyBlockVisibility()
 }
 
 function refreshDashboardTargets() {
@@ -1799,6 +1800,123 @@ export function onSalesTargetMetricChange() {
   const input = document.getElementById('salesTargetValue')
   if (label) label.textContent = metric === 'count' ? 'مقدار هدف (تعداد)' : 'مقدار هدف (ریال)'
   if (input) input.placeholder = metric === 'count' ? 'مثلاً ۵۰' : 'مثلاً ۱۰۰۰۰۰۰۰۰'
+}
+
+function shouldShowDeadlineUrgencyBlock() {
+  const endVal = toEnDigits((document.getElementById('salesTargetEnd')?.value || '').trim())
+  if (endVal) return true
+  return (_draftTargetBars || []).some(bar => !!(bar.endDate || '').trim())
+}
+
+export function onSalesTargetDeadlineChange() {
+  syncDeadlineUrgencyBlockVisibility()
+}
+
+function syncDeadlineUrgencyBlockVisibility() {
+  const block = document.getElementById('salesTargetUrgencyBlock')
+  if (!block) return
+  const show = shouldShowDeadlineUrgencyBlock()
+  const wasHidden = block.hidden
+  block.hidden = !show
+  if (show && (wasHidden || !document.querySelector('#salesTargetUrgencyStages .settings-urgency-stage-row'))) {
+    renderDeadlineUrgencySettings()
+  }
+}
+
+function collectDeadlineUrgencyFromDom() {
+  const defaultColor = document.getElementById('salesTargetUrgencyDefault')?.value || DEFAULT_DEADLINE_URGENCY.defaultColor
+  const overdueColor = document.getElementById('salesTargetUrgencyOverdue')?.value || DEFAULT_DEADLINE_URGENCY.overdueColor
+  const stages = []
+  document.querySelectorAll('#salesTargetUrgencyStages .settings-urgency-stage-row').forEach(row => {
+    const id = row.getAttribute('data-stage-id') || ''
+    const withinValue = Math.max(1, parseInt(toEnDigits(row.querySelector('[data-urg-value]')?.value || '1'), 10) || 1)
+    const withinUnit = row.querySelector('[data-urg-unit]')?.value || 'day'
+    const color = row.querySelector('[data-urg-color]')?.value || '#F59E0B'
+    stages.push({ id, withinValue, withinUnit, color })
+  })
+  return { defaultColor, overdueColor, stages }
+}
+
+export function renderDeadlineUrgencySettings() {
+  const box = document.getElementById('salesTargetUrgencyStages')
+  const defaultEl = document.getElementById('salesTargetUrgencyDefault')
+  const overdueEl = document.getElementById('salesTargetUrgencyOverdue')
+  if (!box) return
+
+  let cfg
+  try {
+    cfg = getDeadlineUrgency()
+  } catch (_) {
+    cfg = { ...DEFAULT_DEADLINE_URGENCY, stages: DEFAULT_DEADLINE_URGENCY.stages.map(s => ({ ...s })) }
+  }
+
+  if (defaultEl) defaultEl.value = cfg.defaultColor || DEFAULT_DEADLINE_URGENCY.defaultColor
+  if (overdueEl) overdueEl.value = cfg.overdueColor || DEFAULT_DEADLINE_URGENCY.overdueColor
+
+  const stages = cfg.stages || []
+  if (!stages.length) {
+    box.innerHTML = '<div class="settings-target-draft-empty">هنوز بازه‌ای تعریف نشده. یک بازه اضافه کنید.</div>'
+    return
+  }
+
+  box.innerHTML = stages.map((stage, idx) => `
+    <div class="settings-urgency-stage-row" data-stage-id="${escapeAttr(stage.id)}">
+      <span class="settings-urgency-stage-label">کمتر از</span>
+      <input type="number" class="form-input" data-urg-value min="1" step="1" value="${escapeAttr(String(stage.withinValue))}" style="width:72px;" dir="ltr">
+      <select class="form-select" data-urg-unit style="width:100px;">
+        <option value="day" ${stage.withinUnit === 'day' ? 'selected' : ''}>روز</option>
+        <option value="hour" ${stage.withinUnit === 'hour' ? 'selected' : ''}>ساعت</option>
+        <option value="minute" ${stage.withinUnit === 'minute' ? 'selected' : ''}>دقیقه</option>
+      </select>
+      <input type="color" data-urg-color value="${escapeAttr(stage.color)}" title="رنگ بازه ${idx + 1}" style="width:36px;height:32px;border:none;cursor:pointer;padding:0;">
+      <button type="button" class="btn btn-sm btn-danger" onclick="app.removeDeadlineUrgencyStage(${idx})">حذف</button>
+    </div>
+  `).join('')
+}
+
+export async function addDeadlineUrgencyStage() {
+  const cfg = collectDeadlineUrgencyFromDom()
+  cfg.stages.push({
+    id: `urg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    withinValue: 1,
+    withinUnit: 'day',
+    color: '#F59E0B'
+  })
+  try {
+    await saveDeadlineUrgency(cfg)
+    renderDeadlineUrgencySettings()
+    refreshDashboardTargets()
+    showToast('بازه رنگی اضافه شد')
+  } catch (e) {
+    console.error(e)
+    showToast('خطا در ذخیره بازه رنگی', 'error')
+  }
+}
+
+export async function removeDeadlineUrgencyStage(index) {
+  const cfg = collectDeadlineUrgencyFromDom()
+  cfg.stages.splice(index, 1)
+  try {
+    await saveDeadlineUrgency(cfg)
+    renderDeadlineUrgencySettings()
+    refreshDashboardTargets()
+    showToast('بازه حذف شد')
+  } catch (e) {
+    console.error(e)
+    showToast('خطا در حذف بازه', 'error')
+  }
+}
+
+export async function saveDeadlineUrgencySettings() {
+  try {
+    await saveDeadlineUrgency(collectDeadlineUrgencyFromDom())
+    renderDeadlineUrgencySettings()
+    refreshDashboardTargets()
+    showToast('رنگ‌های تایمر ددلاین ذخیره شد')
+  } catch (e) {
+    console.error(e)
+    showToast('خطا در ذخیره رنگ‌ها', 'error')
+  }
 }
 
 function salesTargetBarMetaText(bar) {
@@ -1980,6 +2098,7 @@ function renderSalesTargetDraftBars() {
   if (!_draftTargetBars.length) {
     box.innerHTML = '<div class="settings-target-draft-empty">هنوز نواری به این گروه اضافه نشده</div>'
     renderSalesTargetAllocations()
+    syncDeadlineUrgencyBlockVisibility()
     return
   }
   box.innerHTML = _draftTargetBars.map((bar, idx) => `
@@ -1989,6 +2108,7 @@ function renderSalesTargetDraftBars() {
     </div>
   `).join('')
   renderSalesTargetAllocations()
+  syncDeadlineUrgencyBlockVisibility()
 }
 
 function readSalesTargetBarFromForm() {

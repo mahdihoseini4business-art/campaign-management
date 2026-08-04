@@ -3998,3 +3998,130 @@
       font-size: 11px;
     }
   }
+
+  /* Deadline countdown timer */
+  .sales-target-countdown {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--timer-color, var(--accent)) 12%, #fff);
+    border: 1px solid color-mix(in srgb, var(--timer-color, var(--accent)) 35%, var(--border));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--timer-color, var(--accent)) 8%, transparent);
+    flex-shrink: 0;
+    direction: ltr;
+  }
+
+  .sales-target-countdown-unit {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 34px;
+    padding: 2px 4px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--timer-color, var(--accent)) 10%, #fff);
+  }
+
+  .sales-target-countdown-unit.is-seconds {
+    animation: salesTimerPulse 1s ease-in-out infinite;
+  }
+
+  @keyframes salesTimerPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.04); opacity: 0.88; }
+  }
+
+  .sales-target-countdown-val {
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--timer-color, var(--accent-hover));
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  .sales-target-countdown-lbl {
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-top: 1px;
+  }
+
+  .sales-target-countdown-sep {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--timer-color, var(--accent));
+    opacity: 0.7;
+    padding-bottom: 10px;
+  }
+
+  .sales-target-countdown.is-overdue {
+    background: color-mix(in srgb, var(--timer-color, var(--danger)) 14%, #fff);
+    border-color: color-mix(in srgb, var(--timer-color, var(--danger)) 40%, var(--border));
+  }
+
+  .sales-target-countdown-ended {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--timer-color, var(--danger));
+    padding: 2px 6px;
+    direction: rtl;
+  }
+
+  /* Settings: deadline urgency colors */
+  .settings-target-urgency-block {
+    margin: 12px 0 4px;
+    padding: 12px;
+    border: 1px dashed color-mix(in srgb, var(--warning) 40%, var(--border));
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--warning-light) 45%, #fff);
+  }
+
+  .settings-urgency-defaults {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 18px;
+    margin-bottom: 10px;
+  }
+
+  .settings-urgency-color-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .settings-urgency-color-field input[type="color"] {
+    width: 36px;
+    height: 32px;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    background: transparent;
+  }
+
+  .settings-urgency-stages {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .settings-urgency-stage-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #fff;
+    border: 1px solid var(--border);
+  }
+
+  .settings-urgency-stage-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 600;
+  }

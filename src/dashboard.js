@@ -1,4 +1,4 @@
-import { getData, getStatuses, getSalesTargets } from './data.js'
+import { getData, getStatuses, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
 import {
@@ -8,7 +8,8 @@ import {
   getVisibleAdvisorPhones, getStatusLabels, formatPhonesDisplay,
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
   getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
-  getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin
+  getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin,
+  jalaliEndOfDayMs
 } from './utils.js'
 
 let dashCharts = {}
@@ -1466,6 +1467,134 @@ function computeSalesTargetBarProgress(bar, goalOverride, phoneSet) {
   }
 }
 
+function padTimerPart(n) {
+  return String(Math.max(0, Math.floor(n))).padStart(2, '0')
+}
+
+function splitCountdownParts(remainingMs) {
+  const totalSec = Math.max(0, Math.floor(remainingMs / 1000))
+  const days = Math.floor(totalSec / 86400)
+  const hours = Math.floor((totalSec % 86400) / 3600)
+  const minutes = Math.floor((totalSec % 3600) / 60)
+  const seconds = totalSec % 60
+  return { days, hours, minutes, seconds, remainingMs }
+}
+
+function renderSalesTargetCountdownHtml(deadlineMs) {
+  if (!deadlineMs) return ''
+  const remainingMs = deadlineMs - Date.now()
+  let urgency
+  try {
+    urgency = getDeadlineUrgency()
+  } catch (_) {
+    urgency = null
+  }
+  const color = colorForDeadlineRemaining(remainingMs, urgency)
+  if (!(remainingMs > 0)) {
+    return `
+      <div class="sales-target-countdown is-overdue" style="--timer-color:${escapeAttr(color)}" data-deadline-ms="${escapeAttr(String(deadlineMs))}" role="timer" aria-live="polite">
+        <span class="sales-target-countdown-ended">مهلت تمام شد</span>
+      </div>
+    `
+  }
+  const parts = splitCountdownParts(remainingMs)
+  return `
+    <div class="sales-target-countdown" style="--timer-color:${escapeAttr(color)}" data-deadline-ms="${escapeAttr(String(deadlineMs))}" role="timer" aria-live="off">
+      <div class="sales-target-countdown-unit">
+        <span class="sales-target-countdown-val" data-part="days">${padTimerPart(parts.days)}</span>
+        <span class="sales-target-countdown-lbl">روز</span>
+      </div>
+      <span class="sales-target-countdown-sep" aria-hidden="true">:</span>
+      <div class="sales-target-countdown-unit">
+        <span class="sales-target-countdown-val" data-part="hours">${padTimerPart(parts.hours)}</span>
+        <span class="sales-target-countdown-lbl">ساعت</span>
+      </div>
+      <span class="sales-target-countdown-sep" aria-hidden="true">:</span>
+      <div class="sales-target-countdown-unit">
+        <span class="sales-target-countdown-val" data-part="minutes">${padTimerPart(parts.minutes)}</span>
+        <span class="sales-target-countdown-lbl">دقیقه</span>
+      </div>
+      <span class="sales-target-countdown-sep" aria-hidden="true">:</span>
+      <div class="sales-target-countdown-unit is-seconds">
+        <span class="sales-target-countdown-val" data-part="seconds">${padTimerPart(parts.seconds)}</span>
+        <span class="sales-target-countdown-lbl">ثانیه</span>
+      </div>
+    </div>
+  `
+}
+
+let _salesTargetCountdownTimer = null
+
+function stopSalesTargetCountdown() {
+  if (_salesTargetCountdownTimer) {
+    clearInterval(_salesTargetCountdownTimer)
+    _salesTargetCountdownTimer = null
+  }
+}
+
+function tickSalesTargetCountdowns() {
+  const wrap = document.getElementById('salesTargetBand')
+  if (!wrap || wrap.hidden) {
+    stopSalesTargetCountdown()
+    return
+  }
+  let urgency
+  try {
+    urgency = getDeadlineUrgency()
+  } catch (_) {
+    urgency = null
+  }
+  const nodes = wrap.querySelectorAll('.sales-target-countdown[data-deadline-ms]')
+  if (!nodes.length) {
+    stopSalesTargetCountdown()
+    return
+  }
+  nodes.forEach(node => {
+    const deadlineMs = Number(node.getAttribute('data-deadline-ms'))
+    if (!Number.isFinite(deadlineMs)) return
+    const remainingMs = deadlineMs - Date.now()
+    const color = colorForDeadlineRemaining(remainingMs, urgency)
+    node.style.setProperty('--timer-color', color)
+
+    if (!(remainingMs > 0)) {
+      if (!node.classList.contains('is-overdue')) {
+        node.classList.add('is-overdue')
+        node.innerHTML = '<span class="sales-target-countdown-ended">مهلت تمام شد</span>'
+      }
+      return
+    }
+
+    const parts = splitCountdownParts(remainingMs)
+    const setPart = (name, value) => {
+      const el = node.querySelector(`[data-part="${name}"]`)
+      if (el) el.textContent = padTimerPart(value)
+    }
+    setPart('days', parts.days)
+    setPart('hours', parts.hours)
+    setPart('minutes', parts.minutes)
+    setPart('seconds', parts.seconds)
+  })
+}
+
+function startSalesTargetCountdown() {
+  stopSalesTargetCountdown()
+  const wrap = document.getElementById('salesTargetBand')
+  if (!wrap || wrap.hidden) return
+  if (!wrap.querySelector('.sales-target-countdown[data-deadline-ms]')) return
+  tickSalesTargetCountdowns()
+  _salesTargetCountdownTimer = setInterval(tickSalesTargetCountdowns, 1000)
+}
+
+function pickSalesTargetDeadlineMs(progresses) {
+  const candidates = (progresses || [])
+    .filter(p => !p.complete && p.bar?.endDate)
+    .map(p => ({ endDate: p.bar.endDate, ms: jalaliEndOfDayMs(p.bar.endDate) }))
+    .filter(c => c.ms != null)
+  if (!candidates.length) return null
+  candidates.sort((a, b) => a.ms - b.ms)
+  return candidates[0].ms
+}
+
 function renderSalesTargetCampaignHtml(block) {
   const progresses = (block.bars || []).map(({ bar, goalOverride, phoneSet }) => ({
     bar,
@@ -1487,11 +1616,10 @@ function renderSalesTargetCampaignHtml(block) {
     focus.deadline
   )
 
+  const deadlineMs = allDone ? null : pickSalesTargetDeadlineMs(progresses)
   const deadlineChip = allDone
     ? `<span class="sales-target-deadline-chip is-done">تکمیل شد</span>`
-    : (focus.deadline
-      ? `<span class="sales-target-deadline-chip ${focus.deadline.className}">${escapeHtml(focus.deadline.text)}</span>`
-      : '')
+    : (deadlineMs ? renderSalesTargetCountdownHtml(deadlineMs) : '')
 
   const ringPct = Math.round(allDone ? 100 : avgPct)
   const barsHtml = progresses.map(p => `
@@ -1536,6 +1664,8 @@ function renderSalesTargetCampaignHtml(block) {
 export function renderSalesTargetBand() {
   const wrap = document.getElementById('salesTargetBand')
   if (!wrap) return
+
+  stopSalesTargetCountdown()
 
   const viewer = getCurrentUser()
   const groupId = viewer?.groupId || null
@@ -1584,6 +1714,7 @@ export function renderSalesTargetBand() {
           requestAnimationFrame(() => { el.style.width = w })
         })
       })
+      startSalesTargetCountdown()
     }
   } catch (e) {
     console.error('renderSalesTargetBand render:', e)

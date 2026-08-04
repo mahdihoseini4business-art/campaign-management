@@ -283,6 +283,13 @@ export function jalaliDateTimeToIso(dateStr, timeStr = '00:00') {
   return d.toISOString()
 }
 
+/** Jalali date end-of-day (23:59:59 Asia/Tehran) as epoch ms, or null. */
+export function jalaliEndOfDayMs(dateStr) {
+  const iso = jalaliDateTimeToIso(dateStr, '23:59')
+  if (!iso) return null
+  return new Date(iso).getTime() + 59 * 1000
+}
+
 // Returns a numeric representation of a Jalali date for comparison/sorting.
 // Empty/invalid dates return 99999999 (sorts to end of list).
 export function jalaliToNum(dateStr) {

@@ -52,6 +52,7 @@ let data = {
   platforms: [],
   statuses: [],
   salesTargets: [],
+  salesTargetDeadlineUrgency: null,
   saleToastEnabled: true
 }
 
@@ -266,6 +267,12 @@ export async function loadData() {
   } catch (e) {
     console.error('normalizeSalesTargets error:', e)
     data.salesTargets = []
+  }
+  try {
+    data.salesTargetDeadlineUrgency = normalizeDeadlineUrgency(settings.sales_target_deadline_urgency)
+  } catch (e) {
+    console.error('normalizeDeadlineUrgency error:', e)
+    data.salesTargetDeadlineUrgency = normalizeDeadlineUrgency(null)
   }
 
   injectDynamicStyles()
@@ -675,6 +682,95 @@ export async function saveSalesTargets(targets) {
   data.salesTargets = normalizeSalesTargets(targets)
   await saveSetting('sales_targets', data.salesTargets)
   return getSalesTargets()
+}
+
+// ============================================
+// Deadline countdown urgency (sales target timer colors)
+// ============================================
+
+export const DEFAULT_DEADLINE_URGENCY = {
+  defaultColor: '#25b88b',
+  overdueColor: '#ED1C24',
+  stages: [
+    { id: 'urg_1h', withinValue: 1, withinUnit: 'hour', color: '#ED1C24' },
+    { id: 'urg_1d', withinValue: 1, withinUnit: 'day', color: '#F59E0B' },
+    { id: 'urg_3d', withinValue: 3, withinUnit: 'day', color: '#D97706' }
+  ]
+}
+
+const URGENCY_UNITS = new Set(['day', 'hour', 'minute'])
+
+function normalizeHexColor(raw, fallback) {
+  const s = String(raw || '').trim()
+  if (/^#[0-9a-fA-F]{6}$/.test(s)) return s.toUpperCase()
+  if (/^#[0-9a-fA-F]{3}$/.test(s)) {
+    const r = s[1], g = s[2], b = s[3]
+    return `#${r}${r}${g}${g}${b}${b}`.toUpperCase()
+  }
+  return fallback
+}
+
+function normalizeUrgencyStage(item) {
+  if (!item || typeof item !== 'object') return null
+  const withinValue = Math.max(1, Math.round(Number(item.withinValue) || 0))
+  if (!Number.isFinite(withinValue) || withinValue <= 0) return null
+  const withinUnit = URGENCY_UNITS.has(item.withinUnit) ? item.withinUnit : 'day'
+  return {
+    id: String(item.id || '').trim() || `urg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    withinValue,
+    withinUnit,
+    color: normalizeHexColor(item.color, '#F59E0B')
+  }
+}
+
+export function normalizeDeadlineUrgency(raw) {
+  let src = raw
+  if (typeof src === 'string' && src.trim()) {
+    try { src = JSON.parse(src) } catch (_) { src = null }
+  }
+  if (!src || typeof src !== 'object') {
+    return {
+      defaultColor: DEFAULT_DEADLINE_URGENCY.defaultColor,
+      overdueColor: DEFAULT_DEADLINE_URGENCY.overdueColor,
+      stages: DEFAULT_DEADLINE_URGENCY.stages.map(s => ({ ...s }))
+    }
+  }
+  const stages = (Array.isArray(src.stages) ? src.stages : [])
+    .map(normalizeUrgencyStage)
+    .filter(Boolean)
+  return {
+    defaultColor: normalizeHexColor(src.defaultColor, DEFAULT_DEADLINE_URGENCY.defaultColor),
+    overdueColor: normalizeHexColor(src.overdueColor, DEFAULT_DEADLINE_URGENCY.overdueColor),
+    stages
+  }
+}
+
+export function urgencyStageMs(stage) {
+  const n = Math.max(0, Number(stage?.withinValue) || 0)
+  if (stage?.withinUnit === 'minute') return n * 60 * 1000
+  if (stage?.withinUnit === 'hour') return n * 60 * 60 * 1000
+  return n * 24 * 60 * 60 * 1000
+}
+
+/** Pick color for remainingMs using configured stages (shortest matching threshold wins). */
+export function colorForDeadlineRemaining(remainingMs, urgency) {
+  const cfg = normalizeDeadlineUrgency(urgency)
+  if (!(remainingMs > 0)) return cfg.overdueColor
+  const sorted = [...(cfg.stages || [])].sort((a, b) => urgencyStageMs(a) - urgencyStageMs(b))
+  for (const stage of sorted) {
+    if (remainingMs <= urgencyStageMs(stage)) return stage.color
+  }
+  return cfg.defaultColor
+}
+
+export function getDeadlineUrgency() {
+  return normalizeDeadlineUrgency(data.salesTargetDeadlineUrgency)
+}
+
+export async function saveDeadlineUrgency(config) {
+  data.salesTargetDeadlineUrgency = normalizeDeadlineUrgency(config)
+  await saveSetting('sales_target_deadline_urgency', data.salesTargetDeadlineUrgency)
+  return getDeadlineUrgency()
 }
 
 // ============================================
