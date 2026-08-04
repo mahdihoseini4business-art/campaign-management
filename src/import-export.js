@@ -13,6 +13,7 @@ import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
 import { getFollowupsForExport, renderFollowups } from './followups.js'
 import { renderSales, getFilteredSales, getSalesDateFilter } from './sales.js'
+import { getProductMatrixExportAoa, hasActiveProductMatrixFilter } from './product-matrix.js'
 
 // ============================================
 // Helpers
@@ -104,6 +105,9 @@ function hasActiveExportScopeFilter(tab) {
       || document.getElementById('filterSalesPaymentStatus')?.value
       || dateFilter?.hasDateFilter
     )
+  }
+  if (tab === 'products') {
+    return hasActiveProductMatrixFilter()
   }
   return false
 }
@@ -438,11 +442,20 @@ const EXPORT_CONFIG = {
       })
       return rows
     }
+  },
+  products: {
+    label: 'ماتریس_محصولات',
+    get headers() {
+      return getProductMatrixExportAoa().headers
+    },
+    getRows() {
+      return getProductMatrixExportAoa().rows
+    }
   }
 }
 
 export function exportTabCSV(tab) {
-  const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export' }[tab]
+  const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'customers_export' }[tab]
   if (exportPerm && !requirePermission(exportPerm)) return
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
@@ -462,7 +475,7 @@ export function exportTabCSV(tab) {
 }
 
 export function exportTabXLSX(tab) {
-  const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export' }[tab]
+  const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'customers_export' }[tab]
   if (exportPerm && !requirePermission(exportPerm)) return
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
@@ -477,6 +490,8 @@ export function exportTabXLSX(tab) {
     forceSheetTextColumns(ws, rows.length, [0, 7]) // شناسه مشتری، ثبت‌کننده
   } else if (tab === 'sales') {
     forceSheetTextColumns(ws, rows.length, [0, 2]) // شناسه مشتری، شماره موبایل
+  } else if (tab === 'products') {
+    forceSheetTextColumns(ws, rows.length, [1]) // شماره
   }
 
   const wb = XLSX.utils.book_new()

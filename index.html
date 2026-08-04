@@ -864,6 +864,14 @@
   <div class="sheet" id="sheet-products" role="tabpanel" aria-labelledby="tab-products" hidden>
     <div class="toolbar">
       <input type="text" class="search-box" placeholder="جستجو (نام، شماره، کارشناس)..." id="searchProductMatrix" oninput="app.renderProductMatrix()">
+      <button type="button" class="btn" id="clearProductMatrixFiltersBtn" hidden onclick="app.clearProductMatrixFilters()">پاک کردن فیلترها</button>
+      <div class="toolbar-actions" id="productsActionsMenu">
+        <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی ▾</button>
+        <div class="toolbar-actions-dropdown" hidden>
+          <button type="button" class="toolbar-actions-item" data-perm="customers_export" onclick="app.exportTabCSV('products');app.closeAllToolbarActions()">خروجی CSV</button>
+          <button type="button" class="toolbar-actions-item" data-perm="customers_export" onclick="app.exportTabXLSX('products');app.closeAllToolbarActions()">خروجی Excel</button>
+        </div>
+      </div>
     </div>
     <div class="table-wrapper product-matrix-wrapper">
       <table class="product-matrix-table">

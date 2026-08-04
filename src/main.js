@@ -5,7 +5,7 @@ import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSetti
 import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, saveProductField, updateProduct, removeProduct, onCustomerPhoneInput, addCustomerPhoneSlot, removeCustomerPhoneSlot, addProductPayment, savePaymentField, updatePaymentField, removeProductPayment, onDestinationBankSelect, closeMergeCustomerModal, confirmMergeCustomers } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, updateFollowupBadge } from './followups.js'
 import { renderSales, sortSales } from './sales.js'
-import { renderProductMatrix } from './product-matrix.js'
+import { renderProductMatrix, cycleProductMatrixFilter, clearProductMatrixFilters } from './product-matrix.js'
 import { renderAccounting, setAccountingFilter, approvePayment, openRejectPaymentModal, closeRejectPaymentModal, confirmRejectPayment } from './accounting.js'
 import { renderDashboard, toggleDashSection, applyDashFilter, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareTypeChange, onProductChartMetricChange, onDashTargetsScopeChange, renderSalesTargetBand } from './dashboard.js'
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners } from './import-export.js'
@@ -331,6 +331,8 @@ const app = {
   renderCustomers,
   renderFollowups,
   renderProductMatrix,
+  cycleProductMatrixFilter,
+  clearProductMatrixFilters,
   renderSales,
   renderAccounting,
   setAccountingFilter,
