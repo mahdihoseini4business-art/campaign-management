@@ -470,6 +470,7 @@
     <button class="tab" role="tab" id="tab-customers" aria-controls="sheet-customers" aria-selected="false" tabindex="-1" onclick="app.switchTab('customers', this)">لیست مشتریان</button>
     <button class="tab" role="tab" id="tab-followups" aria-controls="sheet-followups" aria-selected="false" tabindex="-1" onclick="app.switchTab('followups', this)">فالوآپ‌ها <span class="followup-tab-badge" id="followupTabBadge" style="display:none;">0</span></button>
     <button class="tab" role="tab" id="tab-sales" aria-controls="sheet-sales" aria-selected="false" tabindex="-1" onclick="app.switchTab('sales', this)">فروش‌ها</button>
+    <button class="tab" role="tab" id="tab-products" aria-controls="sheet-products" aria-selected="false" tabindex="-1" onclick="app.switchTab('products', this)">محصولات</button>
     <button class="tab" role="tab" id="tab-accounting" aria-controls="sheet-accounting" aria-selected="false" tabindex="-1" data-perm="accounting" onclick="app.switchTab('accounting', this)">حسابداری</button>
   </div>
 
@@ -857,6 +858,20 @@
       </table>
     </div>
     <div class="pagination" id="salesPagination"></div>
+  </div>
+
+  <!-- شیت ماتریس محصولات -->
+  <div class="sheet" id="sheet-products" role="tabpanel" aria-labelledby="tab-products" hidden>
+    <div class="toolbar">
+      <input type="text" class="search-box" placeholder="جستجو (نام، شماره، کارشناس)..." id="searchProductMatrix" oninput="app.renderProductMatrix()">
+    </div>
+    <div class="table-wrapper product-matrix-wrapper">
+      <table class="product-matrix-table">
+        <thead id="productMatrixHead"></thead>
+        <tbody id="productMatrixBody"></tbody>
+      </table>
+    </div>
+    <div class="pagination" id="productMatrixPagination"></div>
   </div>
 
   <!-- شیت حسابداری -->

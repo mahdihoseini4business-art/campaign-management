@@ -453,6 +453,50 @@ export function getBundlesUsingProduct(productName) {
 }
 
 /**
+ * Catalog product names the customer owns — direct sale or via a bundle purchase.
+ * @returns {Set<string>}
+ */
+export function getCustomerOwnedProductNames(customer) {
+  const catalog = getProductCatalog()
+  const catalogByLower = new Map(catalog.map(n => [n.toLowerCase(), n]))
+  const owned = new Set()
+
+  for (const line of customer?.products || []) {
+    const saleName = String(line?.name || '').trim()
+    if (!saleName) continue
+
+    const direct = catalogByLower.get(saleName.toLowerCase())
+    if (direct) {
+      owned.add(direct)
+      continue
+    }
+
+    const bundle = getBundleByName(saleName)
+    if (!bundle) continue
+    for (const p of bundle.productNames || []) {
+      const canonical = catalogByLower.get(String(p || '').trim().toLowerCase())
+      if (canonical) owned.add(canonical)
+    }
+  }
+
+  return owned
+}
+
+export function customerHasCatalogProduct(customer, productName) {
+  const key = String(productName || '').trim().toLowerCase()
+  if (!key) return false
+  for (const name of getCustomerOwnedProductNames(customer)) {
+    if (name.toLowerCase() === key) return true
+  }
+  return false
+}
+
+/** True when the customer owns no catalog products (after bundle expansion). */
+export function customerHasNoProducts(customer) {
+  return getCustomerOwnedProductNames(customer).size === 0
+}
+
+/**
  * Validate a bundle draft against catalog + other bundles.
  * @returns {{ ok: true, bundle } | { ok: false, error: string }}
  */

@@ -16,6 +16,7 @@ import { refreshNotifications, updateNotificationBadge } from './notifications.j
 import { renderCustomers, updateStats } from './customers.js'
 import { renderFollowups, updateFollowupBadge } from './followups.js'
 import { renderSales } from './sales.js'
+import { renderProductMatrix } from './product-matrix.js'
 import { renderAccounting } from './accounting.js'
 import { renderDashboard } from './dashboard.js'
 import { updateTransferInboxBadge } from './transfers.js'
@@ -79,6 +80,8 @@ async function refreshActiveViews() {
       renderFollowups()
     } else if (tab === 'sales') {
       await renderSales()
+    } else if (tab === 'products') {
+      renderProductMatrix()
     } else if (tab === 'accounting') {
       renderAccounting()
     } else if (tab === 'dashboard') {
