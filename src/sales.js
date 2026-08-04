@@ -15,6 +15,7 @@ import {
   normalizePhone, userDisplayName, formatTeamFilterLabel
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
+import { renderSalesTargetBand } from './dashboard.js'
 
 // ============================================
 // Sales Data
@@ -409,6 +410,8 @@ export async function renderSales() {
   document.getElementById('stat-sales-deposit').textContent = formatNumber(totalDeposit) + ' ریال'
   document.getElementById('stat-sales-balance').textContent = formatNumber(totalBalance) + ' ریال'
   document.getElementById('stat-sales-total').textContent = formatNumber(totalAll) + ' ریال'
+
+  try { renderSalesTargetBand() } catch (e) { console.error('renderSalesTargetBand error:', e) }
 
   if (allSales.length === 0) {
     const colCount = hasPermission('customers_add') ? 14 : 13

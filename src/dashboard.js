@@ -1340,6 +1340,242 @@ export function onDashTargetsScopeChange() {
   renderDashTargetsProgress(_lastDashTargetDates.from, _lastDashTargetDates.to)
 }
 
+function buildMemberTargetBlocks(targets, groupId) {
+  if (!groupId) return []
+  const blocks = []
+  const phoneSet = memberPhoneSetForUserGroup(groupId)
+  const ug = getGroupById(groupId)
+  const groupName = ug?.name || 'گروه شما'
+
+  for (const target of targets || []) {
+    const items = target.items || []
+    if (!items.length) continue
+    const alloc = (target.allocations || []).find(a => a.userGroupId === groupId)
+    if (!alloc) continue
+    const shareMap = new Map((alloc.shares || []).map(s => [s.barId, Number(s.value)]))
+    const bars = items
+      .map(bar => {
+        const shareVal = shareMap.get(bar.id)
+        if (!(shareVal > 0)) return null
+        return { bar, goalOverride: shareVal, phoneSet }
+      })
+      .filter(Boolean)
+    if (!bars.length) continue
+    blocks.push({
+      key: `${target.id}-${groupId}`,
+      title: target.title || 'تارگت فروش',
+      groupName,
+      bars
+    })
+  }
+  return blocks
+}
+
+function salesTargetStage(pct, complete) {
+  if (complete || pct >= 100) return 'is-done'
+  if (pct >= 90) return 'is-near'
+  if (pct >= 75) return 'is-push'
+  if (pct >= 50) return 'is-mid'
+  return 'is-start'
+}
+
+function salesTargetMotivationalCopy(pct, remainingLabel, complete, deadline) {
+  if (complete) {
+    return {
+      message: 'عالی بود — <strong>تارگت محقق شد</strong>. همین ریتم را نگه دارید.',
+      gap: 'هدف گروه تکمیل شد'
+    }
+  }
+  if (deadline?.overdue) {
+    return {
+      message: 'مهلت گذشته، اما هنوز می‌توانید فاصله را کم کنید.',
+      gap: remainingLabel ? `هنوز ${remainingLabel} مانده` : ''
+    }
+  }
+  if (pct >= 90) {
+    return {
+      message: 'تقریباً تمام است — <strong>یک قدم دیگر تا تارگت</strong>.',
+      gap: remainingLabel ? `فقط ${remainingLabel} مانده` : ''
+    }
+  }
+  if (pct >= 75) {
+    return {
+      message: 'نزدیک هدف هستید — الان بهترین زمان برای فشار نهایی است.',
+      gap: remainingLabel ? `هنوز ${remainingLabel} مانده` : ''
+    }
+  }
+  if (pct >= 50) {
+    return {
+      message: 'نیمه راه را رد کردید — شتاب‌تان خوب است.',
+      gap: remainingLabel ? `هنوز ${remainingLabel} مانده` : ''
+    }
+  }
+  if (pct > 0) {
+    return {
+      message: 'شروع قوی — هر فروش شما را به هدف نزدیک‌تر می‌کند.',
+      gap: remainingLabel ? `هنوز ${remainingLabel} مانده` : ''
+    }
+  }
+  return {
+    message: 'تارگت گروه آماده‌ است — اولین فروش، مسیر را باز می‌کند.',
+    gap: remainingLabel ? `هدف: ${remainingLabel}` : ''
+  }
+}
+
+function formatSalesTargetRemaining(bar, current, goal) {
+  const left = Math.max(0, goal - current)
+  if (left <= 0) return ''
+  if (bar.metric === 'count') return `${formatNumber(left)} فروش`
+  return `${formatNumber(left)} ریال`
+}
+
+function computeSalesTargetBarProgress(bar, goalOverride, phoneSet) {
+  const goal = goalOverride != null ? Number(goalOverride) : (Number(bar.value) || 0)
+  const current = computeSalesTargetCurrent(bar, 0, 99999999, phoneSet || null)
+  const pctRaw = goal > 0 ? (current / goal) * 100 : 0
+  const pct = goal > 0 ? Math.min(100, Math.round(pctRaw * 10) / 10) : 0
+  const complete = goal > 0 && current >= goal
+  const deadline = targetDeadlineInfo(bar.endDate)
+  const unit = bar.metric === 'count' ? 'فروش' : 'ریال'
+  return {
+    goal,
+    current,
+    pct,
+    complete,
+    deadline,
+    unit,
+    remainingLabel: formatSalesTargetRemaining(bar, current, goal),
+    currentLabel: `${formatNumber(current)} ${unit}`,
+    goalLabel: `${formatNumber(goal)} ${unit}`
+  }
+}
+
+function renderSalesTargetCampaignHtml(block) {
+  const progresses = (block.bars || []).map(({ bar, goalOverride, phoneSet }) => ({
+    bar,
+    ...computeSalesTargetBarProgress(bar, goalOverride, phoneSet)
+  }))
+  if (!progresses.length) return ''
+
+  const incomplete = progresses.filter(p => !p.complete)
+  const focus = incomplete.length
+    ? incomplete.reduce((a, b) => (a.pct <= b.pct ? a : b))
+    : progresses[0]
+  const avgPct = progresses.reduce((s, p) => s + p.pct, 0) / progresses.length
+  const allDone = progresses.every(p => p.complete)
+  const stage = salesTargetStage(focus.pct, allDone)
+  const copy = salesTargetMotivationalCopy(
+    focus.pct,
+    focus.remainingLabel,
+    allDone,
+    focus.deadline
+  )
+
+  const deadlineChip = allDone
+    ? `<span class="sales-target-deadline-chip is-done">تکمیل شد</span>`
+    : (focus.deadline
+      ? `<span class="sales-target-deadline-chip ${focus.deadline.className}">${escapeHtml(focus.deadline.text)}</span>`
+      : '')
+
+  const ringPct = Math.round(allDone ? 100 : avgPct)
+  const barsHtml = progresses.map(p => `
+    <div class="sales-target-bar-row">
+      <div class="sales-target-bar-meta">
+        <span>${escapeHtml(p.currentLabel)} / ${escapeHtml(p.goalLabel)}</span>
+        <span class="pct">${formatNumber(p.pct)}٪</span>
+      </div>
+      <div class="sales-target-bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(p.pct)}" aria-label="${escapeAttr(block.title || 'تارگت')}">
+        <div class="sales-target-bar-fill" style="width:${p.pct}%;"></div>
+      </div>
+    </div>
+  `).join('')
+
+  return `
+    <article class="sales-target-band ${stage}">
+      <div class="sales-target-band-inner">
+        <div class="sales-target-ring" style="--pct:${ringPct}" aria-hidden="true">
+          <div class="sales-target-ring-inner">
+            <span class="sales-target-ring-value">${formatNumber(ringPct)}٪</span>
+            <span class="sales-target-ring-label">پیشرفت</span>
+          </div>
+        </div>
+        <div class="sales-target-band-body">
+          <div class="sales-target-band-head">
+            <div>
+              <div class="sales-target-eyebrow">تارگت ${escapeHtml(block.groupName || 'گروه')}</div>
+              <h3 class="sales-target-title">${escapeHtml(block.title || 'تارگت فروش')}</h3>
+            </div>
+            ${deadlineChip}
+          </div>
+          <p class="sales-target-message">${copy.message}</p>
+          ${copy.gap ? `<div class="sales-target-gap">${escapeHtml(copy.gap)}</div>` : ''}
+          <div class="sales-target-bars">${barsHtml}</div>
+        </div>
+      </div>
+    </article>
+  `
+}
+
+/** Motivational group-target band for the Sales tab (members & group managers). */
+export function renderSalesTargetBand() {
+  const wrap = document.getElementById('salesTargetBand')
+  if (!wrap) return
+
+  const viewer = getCurrentUser()
+  const groupId = viewer?.groupId || null
+
+  if (!groupId || isMainAdmin(viewer)) {
+    wrap.hidden = true
+    wrap.innerHTML = ''
+    return
+  }
+
+  let targets = []
+  try {
+    targets = getSalesTargets()
+  } catch (e) {
+    console.error('renderSalesTargetBand getSalesTargets:', e)
+    wrap.hidden = true
+    wrap.innerHTML = ''
+    return
+  }
+
+  let blocks = []
+  try {
+    blocks = buildMemberTargetBlocks(targets, groupId)
+  } catch (e) {
+    console.error('renderSalesTargetBand build blocks:', e)
+    wrap.hidden = true
+    wrap.innerHTML = ''
+    return
+  }
+
+  if (!blocks.length) {
+    wrap.hidden = true
+    wrap.innerHTML = ''
+    return
+  }
+
+  try {
+    wrap.innerHTML = blocks.map(renderSalesTargetCampaignHtml).filter(Boolean).join('')
+    wrap.hidden = !wrap.innerHTML.trim()
+    if (!wrap.hidden) {
+      const fills = [...wrap.querySelectorAll('.sales-target-bar-fill')]
+      fills.forEach(el => {
+        const w = el.style.width
+        el.style.width = '0%'
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => { el.style.width = w })
+        })
+      })
+    }
+  } catch (e) {
+    console.error('renderSalesTargetBand render:', e)
+    wrap.hidden = true
+    wrap.innerHTML = ''
+  }
+}
+
 function renderProductSalesChart(productSales = null, productCounts = null) {
   if (productSales) productChartCache.amounts = productSales
   if (productCounts) productChartCache.counts = productCounts

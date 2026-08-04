@@ -6,7 +6,7 @@ import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, sa
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, updateFollowupBadge } from './followups.js'
 import { renderSales, sortSales } from './sales.js'
 import { renderAccounting, setAccountingFilter, approvePayment, openRejectPaymentModal, closeRejectPaymentModal, confirmRejectPayment } from './accounting.js'
-import { renderDashboard, toggleDashSection, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareTypeChange, onProductChartMetricChange, onDashTargetsScopeChange } from './dashboard.js'
+import { renderDashboard, toggleDashSection, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareTypeChange, onProductChartMetricChange, onDashTargetsScopeChange, renderSalesTargetBand } from './dashboard.js'
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners } from './import-export.js'
 import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection, openBulkTransferModal, closeBulkTransferModal, confirmBulkTransfer, refreshCustomerBulkOptions, updateBulkTransferPreview, filterBulkTransferOptions } from './bulk.js'
 import {
@@ -313,6 +313,7 @@ const app = {
   onAdvisorCompareTypeChange,
   onProductChartMetricChange,
   onDashTargetsScopeChange,
+  renderSalesTargetBand,
   renderDashboard,
   renderCustomers,
   renderFollowups,

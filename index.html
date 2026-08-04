@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0155d2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>سیستم مدیریت عملکرد سازمان کارنو</title>
+<title>سیستم مدیریت عملکرد سازمان کارنو - نسخه آزمایشی</title>
 <link rel="icon" type="image/webp" href="/icon.webp">
 <link rel="apple-touch-icon" href="/icon.webp">
 <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
@@ -369,7 +369,7 @@
 <div class="header">
   <div style="display:flex;align-items:center;gap:10px;">
     <img src="/logo.webp" alt="سیستم مدیریت عملکرد سازمان کارنو" style="width:32px;height:32px;border-radius:8px;object-fit:contain;">
-    <h1>سیستم مدیریت عملکرد سازمان کارنو</h1>
+    <h1>سیستم مدیریت عملکرد سازمان کارنو - نسخه آزمایشی</h1>
   </div>
   <div class="header-actions">
     <div class="notification-menu">
@@ -726,6 +726,8 @@
       <div class="stat-card"><div class="label">مانده حساب‌ها</div><div class="value" style="color: var(--danger)" id="stat-sales-balance">۰</div></div>
       <div class="stat-card"><div class="label">جمع کل مبلغ</div><div class="value" style="color: var(--accent)" id="stat-sales-total">۰</div></div>
     </div>
+
+    <div id="salesTargetBand" class="sales-target-band-wrap" hidden></div>
 
     <div class="toolbar">
       <select class="form-select" id="bulkActionSales" style="width:180px;display:none;">

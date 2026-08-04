@@ -1513,6 +1513,13 @@ function refreshDashboardTargets() {
   } catch (e) {
     console.error('refreshDashboardTargets error:', e)
   }
+  try {
+    if (typeof window.app?.renderSalesTargetBand === 'function') {
+      window.app.renderSalesTargetBand()
+    }
+  } catch (e) {
+    console.error('refreshSalesTargetBand error:', e)
+  }
 }
 
 export function onSalesTargetMetricChange() {
