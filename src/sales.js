@@ -13,7 +13,7 @@ import {
   productHasRejectedPayment, getProductPayments, getPaymentEntryStatus,
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
   normalizePhone, userDisplayName, formatTeamFilterLabel,
-  getPaymentProfit
+  getCompletedSaleEconomics
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSalesTargetBand } from './dashboard.js'
@@ -392,23 +392,29 @@ export async function renderSales() {
   const depositSales = countable.filter(s => s.status === 'بیعانه')
   const data = getData()
 
-  function netProfitForSale(s) {
+  function grossProfitForCompleted(s) {
     const customer = data.customers.find(c => c.id === s.customerId)
     const product = customer?.products?.[s.productIndex]
-    if (!product) return 0
+    if (!product || product.status !== 'تکمیل') return 0
     if (dateFilter.hasDateFilter) {
       const pays = getApprovedPaymentsInRange(product, dateFilter)
-      return pays.reduce((sum, pay) => sum + getPaymentProfit(product, parseFloat(pay.amount) || 0).net, 0)
+      if (!pays.length) return 0
     }
-    if (product.status === 'تکمیل') {
-      const price = parseFloat(product.price) || 0
-      return getPaymentProfit(product, price).net
-    }
-    return getPaymentProfit(product, getApprovedPaid(product)).net
+    return getCompletedSaleEconomics(product).grossProfit
   }
 
-  const totalCash = cashSales.reduce((sum, s) => sum + netProfitForSale(s), 0)
-  const totalDeposit = depositSales.reduce((sum, s) => sum + netProfitForSale(s), 0)
+  function depositAmountForSale(s) {
+    const customer = data.customers.find(c => c.id === s.customerId)
+    const product = customer?.products?.[s.productIndex]
+    if (!product) return s.deposit || 0
+    if (dateFilter.hasDateFilter) {
+      return sumPayments(getApprovedPaymentsInRange(product, dateFilter))
+    }
+    return getApprovedPaid(product)
+  }
+
+  const totalCash = cashSales.reduce((sum, s) => sum + grossProfitForCompleted(s), 0)
+  const totalDeposit = depositSales.reduce((sum, s) => sum + depositAmountForSale(s), 0)
   const totalBalance = depositSales.reduce((sum, s) => sum + (s.balance || 0), 0)
   const totalAll = totalCash + totalDeposit
 

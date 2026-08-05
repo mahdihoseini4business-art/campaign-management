@@ -88,6 +88,12 @@ export const DEFAULT_PRODUCT_CATALOG = [
   'تنظیم موتور', 'دیاگ لانچ', 'دیاگ I700', 'دیاگ blu', 'دیاگ newlite', 'تست باکس شبکه'
 ]
 
+export const PRODUCT_KIND = {
+  educational: 'educational',
+  physical: 'physical'
+}
+
+/** @deprecated kept for migrate; prefer PRODUCT_KIND */
 export const PROFIT_MODE = {
   gross: 'gross',
   net: 'net',
@@ -95,32 +101,47 @@ export const PROFIT_MODE = {
 }
 
 function defaultCatalogEntries() {
-  return DEFAULT_PRODUCT_CATALOG.map(name => ({ name, profitMode: PROFIT_MODE.gross }))
+  return DEFAULT_PRODUCT_CATALOG.map(name => ({
+    name,
+    productKind: PRODUCT_KIND.educational
+  }))
 }
 
-/** Normalize one catalog entry (string legacy or object). */
+/** Normalize one catalog entry (string legacy, profitMode legacy, or productKind). */
 export function normalizeCatalogEntry(raw) {
   if (typeof raw === 'string') {
     const name = raw.trim()
     if (!name || name.toLowerCase() === '[object object]') return null
-    return { name, profitMode: PROFIT_MODE.gross }
+    return { name, productKind: PRODUCT_KIND.educational }
   }
   if (!raw || typeof raw !== 'object') return null
-  // Guard against nested/corrupt { name: { name: '...' } } from bad saves
   let nameRaw = raw.name
   if (nameRaw && typeof nameRaw === 'object') {
     nameRaw = nameRaw.name
   }
   const name = String(nameRaw || '').trim()
   if (!name || name.toLowerCase() === '[object object]') return null
-  let profitMode = String(raw.profitMode || PROFIT_MODE.gross).toLowerCase()
-  if (profitMode !== PROFIT_MODE.net && profitMode !== PROFIT_MODE.mixed) {
-    profitMode = PROFIT_MODE.gross
+
+  let productKind = String(raw.productKind || '').toLowerCase()
+  if (productKind !== PRODUCT_KIND.physical && productKind !== PRODUCT_KIND.educational) {
+    // Migrate legacy profitMode
+    const mode = String(raw.profitMode || '').toLowerCase()
+    if (mode === PROFIT_MODE.net) productKind = PRODUCT_KIND.educational
+    else if (mode === PROFIT_MODE.gross || mode === PROFIT_MODE.mixed) {
+      productKind = PRODUCT_KIND.physical
+    } else {
+      productKind = PRODUCT_KIND.educational
+    }
   }
-  const entry = { name, profitMode }
-  if (profitMode === PROFIT_MODE.mixed) {
-    const amt = Number(raw.netShareAmount)
-    entry.netShareAmount = Number.isFinite(amt) && amt > 0 ? amt : 0
+
+  const entry = { name, productKind }
+  if (productKind === PRODUCT_KIND.physical) {
+    let cost = Number(raw.costAmount)
+    if (!Number.isFinite(cost) || cost < 0) {
+      const legacy = Number(raw.netShareAmount)
+      cost = Number.isFinite(legacy) && legacy > 0 ? legacy : 0
+    }
+    entry.costAmount = cost
   }
   return entry
 }

@@ -9,7 +9,7 @@ import {
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
   getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
   getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin,
-  jalaliEndOfDayMs, getPaymentProfit
+  jalaliEndOfDayMs, getCompletedSaleEconomics
 } from './utils.js'
 
 let dashCharts = {}
@@ -456,15 +456,17 @@ function forEachDashSalePayment(matchPayment, hasDateFilter, inDateRange, onPaym
           balance: getProductBalance(p)
         })
       }
-      pays.forEach(pay => {
-        onPayment({
-          customer: c,
-          product: p,
-          payment: pay,
-          amount: parseFloat(pay.amount) || 0,
-          date: jalaliDatePart(pay.soldAt)
+      if (typeof onPayment === 'function') {
+        pays.forEach(pay => {
+          onPayment({
+            customer: c,
+            product: p,
+            payment: pay,
+            amount: parseFloat(pay.amount) || 0,
+            date: jalaliDatePart(pay.soldAt)
+          })
         })
-      })
+      }
     })
   })
 }
@@ -476,19 +478,20 @@ function computeDashSalesMetrics(hasDateFilter, inDateRange) {
   let totalBalance = 0
   let totalApproved = 0
   let totalPending = 0
-  let totalNet = 0
-  let totalGross = 0
+  let completedSalesTotal = 0
+  let completedGrossProfit = 0
 
   // Approved payments — attributed to registrant (soldByPhone)
-  forEachDashSalePayment(matchesSelectedSaleRegistrant, hasDateFilter, inDateRange, ({ amount, product }) => {
+  forEachDashSalePayment(matchesSelectedSaleRegistrant, hasDateFilter, inDateRange, ({ amount }) => {
     totalApproved += amount
-    const split = getPaymentProfit(product, amount)
-    totalNet += split.net
-    totalGross += split.gross
   }, ({ product, paidInScope, balance }) => {
     salesCount++
-    if (product.status === 'تکمیل') totalCash += paidInScope
-    else {
+    if (product.status === 'تکمیل') {
+      totalCash += paidInScope
+      const eco = getCompletedSaleEconomics(product)
+      completedSalesTotal += eco.salesTotal
+      completedGrossProfit += eco.grossProfit
+    } else {
       totalDeposit += paidInScope
       totalBalance += balance
     }
@@ -512,8 +515,8 @@ function computeDashSalesMetrics(hasDateFilter, inDateRange) {
     totalAll: totalCash + totalDeposit,
     totalApproved,
     totalPending,
-    totalNet,
-    totalGross
+    completedSalesTotal,
+    completedGrossProfit
   }
 }
 
@@ -845,10 +848,10 @@ export async function renderDashboard() {
   document.getElementById('dash-sales-deposit').textContent = formatNumber(salesMetrics.totalDeposit) + ' ریال'
   document.getElementById('dash-sales-balance').textContent = formatNumber(salesMetrics.totalBalance) + ' ریال'
   document.getElementById('dash-sales-total').textContent = formatNumber(salesMetrics.totalApproved) + ' ریال'
-  const netEl = document.getElementById('dash-sales-net')
-  if (netEl) netEl.textContent = formatNumber(salesMetrics.totalNet) + ' ریال'
+  const completedTotalEl = document.getElementById('dash-sales-completed-total')
+  if (completedTotalEl) completedTotalEl.textContent = formatNumber(salesMetrics.completedSalesTotal) + ' ریال'
   const grossEl = document.getElementById('dash-sales-gross')
-  if (grossEl) grossEl.textContent = formatNumber(salesMetrics.totalGross) + ' ریال'
+  if (grossEl) grossEl.textContent = formatNumber(salesMetrics.completedGrossProfit) + ' ریال'
   const pendingEl = document.getElementById('dash-sales-pending')
   if (pendingEl) pendingEl.textContent = formatNumber(salesMetrics.totalPending) + ' ریال'
 
@@ -1878,16 +1881,20 @@ function buildAdvisorCompareRows(dateFromNum, dateToNum) {
     matchesSelectedSaleRegistrant,
     hasDateFilter,
     inChartDateRange,
-    ({ customer, product, payment, amount }) => {
-      const phone = getSaleRegistrantPhone(product, payment, customer)
-      if (!phone || amount <= 0) return
-      const net = getPaymentProfit(product, amount).net
+    null,
+    ({ customer, product, payments }) => {
+      if (product.status !== 'تکمیل') return
+      const lastPay = payments[payments.length - 1]
+      const phone = getSaleRegistrantPhone(product, lastPay, customer)
+      if (!phone) return
+      const eco = getCompletedSaleEconomics(product)
+      if (eco.grossProfit <= 0 && eco.salesTotal <= 0) return
       const prev = totals.get(phone) || {
         phone,
         label: advisorLabelForPhone(phone, customer.advisor),
         value: 0
       }
-      prev.value += net
+      prev.value += eco.grossProfit
       if (!prev.label) prev.label = advisorLabelForPhone(phone, customer.advisor)
       totals.set(phone, prev)
     }
@@ -1950,7 +1957,7 @@ function renderAdvisorCompareChart(dateFromNum, dateToNum) {
     data: {
       labels,
       datasets: [{
-        label: 'سود خالص',
+        label: 'سود ناخالص',
         data: values,
         backgroundColor: colors,
         borderRadius: 6

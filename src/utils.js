@@ -3,7 +3,7 @@
 // ============================================
 
 import { ADMIN_PHONE } from './config.js'
-import { getPlatforms, getStatuses, getCatalogEntryByName, getBundleByName, PROFIT_MODE, coerceProductName } from './data.js'
+import { getPlatforms, getStatuses, getCatalogEntryByName, getBundleByName, PRODUCT_KIND, coerceProductName } from './data.js'
 
 /** Dynamic platform labels (value → Persian label) built from settings */
 export function getPlatformLabels() {
@@ -987,102 +987,103 @@ export function getPaymentStatus(product) {
 }
 
 // ============================================
-// Product profit (net / gross)
+// Product cost / gross profit (completed invoices)
 // ============================================
 
 /**
- * Split a payment amount into net and gross profit shares.
- * mixed: net = amount * (netShareAmount / max(price, 1)), capped at amount.
+ * Build cost snapshot for a sellable name (catalog product or bundle).
+ * Bundle cost = sum of physical components' costAmount; educational = 0.
  */
-export function splitPaymentProfit({ amount, invoicePrice, profitMode, netShareAmount }) {
-  const amt = Math.max(0, parseFloat(amount) || 0)
-  if (amt <= 0) return { net: 0, gross: 0 }
-  const mode = profitMode || PROFIT_MODE.gross
-  if (mode === PROFIT_MODE.net) return { net: amt, gross: 0 }
-  if (mode === PROFIT_MODE.mixed) {
-    const price = Math.max(parseFloat(invoicePrice) || 0, 1)
-    const share = Math.max(0, parseFloat(netShareAmount) || 0)
-    const net = Math.min(amt, (amt * share) / price)
-    return { net, gross: amt - net }
-  }
-  return { net: 0, gross: amt }
-}
-
-/**
- * Build profit snapshot for a sellable name (catalog product or bundle) at a given invoice price.
- * Bundle: equal weight on price for `net` components; sum of fixed amounts for `mixed`.
- */
-export function buildProfitSnapshotForSale(name, invoicePrice) {
+export function buildProfitSnapshotForSale(name) {
   const entry = getCatalogEntryByName(name)
   if (entry) {
-    const snap = { profitMode: entry.profitMode || PROFIT_MODE.gross }
-    if (snap.profitMode === PROFIT_MODE.mixed) {
-      snap.netShareAmount = Math.max(0, parseFloat(entry.netShareAmount) || 0)
+    const kind = entry.productKind || PRODUCT_KIND.educational
+    const snap = { productKind: kind }
+    if (kind === PRODUCT_KIND.physical) {
+      snap.costAmount = Math.max(0, parseFloat(entry.costAmount) || 0)
     }
     return snap
   }
 
   const bundle = getBundleByName(name)
-  if (!bundle) return { profitMode: PROFIT_MODE.gross }
+  if (!bundle) return { productKind: PRODUCT_KIND.educational }
 
   const components = (bundle.productNames || [])
     .map(n => getCatalogEntryByName(n))
     .filter(Boolean)
-  if (!components.length) return { profitMode: PROFIT_MODE.gross }
+  if (!components.length) return { productKind: PRODUCT_KIND.educational }
 
-  const price = Math.max(0, parseFloat(invoicePrice) || 0)
-  const n = components.length
-  const sharePrice = n > 0 ? price / n : 0
-  let totalNetCap = 0
+  let totalCost = 0
+  let anyPhysical = false
   for (const c of components) {
-    if (c.profitMode === PROFIT_MODE.net) totalNetCap += sharePrice
-    else if (c.profitMode === PROFIT_MODE.mixed) {
-      totalNetCap += Math.max(0, parseFloat(c.netShareAmount) || 0)
+    if (c.productKind === PRODUCT_KIND.physical) {
+      anyPhysical = true
+      totalCost += Math.max(0, parseFloat(c.costAmount) || 0)
     }
   }
-
-  if (totalNetCap <= 0) return { profitMode: PROFIT_MODE.gross }
-  if (price > 0 && totalNetCap >= price) return { profitMode: PROFIT_MODE.net }
-  return { profitMode: PROFIT_MODE.mixed, netShareAmount: totalNetCap }
+  if (!anyPhysical) return { productKind: PRODUCT_KIND.educational }
+  return { productKind: PRODUCT_KIND.physical, costAmount: totalCost }
 }
 
-/** Resolve profit config from sale-line snapshot or live catalog/bundle. */
-export function resolveProductProfitConfig(product) {
+/** Resolve kind/cost from sale-line snapshot or live catalog/bundle. */
+export function resolveProductCostConfig(product) {
   const line = product || {}
-  const mode = line.profitMode
-  if (mode === PROFIT_MODE.gross || mode === PROFIT_MODE.net || mode === PROFIT_MODE.mixed) {
+  const kind = line.productKind
+  if (kind === PRODUCT_KIND.educational || kind === PRODUCT_KIND.physical) {
     return {
-      profitMode: mode,
-      netShareAmount: mode === PROFIT_MODE.mixed ? (parseFloat(line.netShareAmount) || 0) : 0
+      productKind: kind,
+      costAmount: kind === PRODUCT_KIND.physical ? (parseFloat(line.costAmount) || 0) : 0
     }
   }
-  return buildProfitSnapshotForSale(line.name, line.price)
+  // Legacy sale-line snapshot (profitMode)
+  const mode = String(line.profitMode || '').toLowerCase()
+  if (mode === 'net') {
+    return { productKind: PRODUCT_KIND.educational, costAmount: 0 }
+  }
+  if (mode === 'gross' || mode === 'mixed') {
+    return {
+      productKind: PRODUCT_KIND.physical,
+      costAmount: Math.max(0, parseFloat(line.costAmount ?? line.netShareAmount) || 0)
+    }
+  }
+  return buildProfitSnapshotForSale(line.name)
 }
 
-/** Apply profit snapshot fields onto a sale line (mutates). */
+/** Apply productKind + costAmount onto a sale line (mutates). */
 export function applyProfitSnapshotToProduct(product) {
   if (!product) return product
   const cleaned = coerceProductName(product.name)
   if (cleaned) product.name = cleaned
-  const snap = buildProfitSnapshotForSale(product.name, product.price)
-  product.profitMode = snap.profitMode
-  if (snap.profitMode === PROFIT_MODE.mixed) {
-    product.netShareAmount = snap.netShareAmount || 0
+  const snap = buildProfitSnapshotForSale(product.name)
+  product.productKind = snap.productKind
+  if (snap.productKind === PRODUCT_KIND.physical) {
+    product.costAmount = snap.costAmount || 0
   } else {
-    delete product.netShareAmount
+    delete product.costAmount
   }
+  delete product.profitMode
+  delete product.netShareAmount
   return product
 }
 
-/** Net/gross split for one payment amount on a product line. */
-export function getPaymentProfit(product, paymentAmount) {
-  const cfg = resolveProductProfitConfig(product)
-  return splitPaymentProfit({
-    amount: paymentAmount,
-    invoicePrice: parseFloat(product?.price) || 0,
-    profitMode: cfg.profitMode,
-    netShareAmount: cfg.netShareAmount
-  })
+/**
+ * Economics for a completed invoice only.
+ * @returns {{ salesTotal: number, cost: number, grossProfit: number }}
+ */
+export function getCompletedSaleEconomics(product) {
+  if (!product || product.status !== 'تکمیل') {
+    return { salesTotal: 0, cost: 0, grossProfit: 0 }
+  }
+  const price = Math.max(0, parseFloat(product.price) || 0)
+  const cfg = resolveProductCostConfig(product)
+  const cost = cfg.productKind === PRODUCT_KIND.physical
+    ? Math.max(0, Math.min(price, parseFloat(cfg.costAmount) || 0))
+    : 0
+  return {
+    salesTotal: price,
+    cost,
+    grossProfit: Math.max(0, price - cost)
+  }
 }
 
 export function getDefaultPermissions() {
