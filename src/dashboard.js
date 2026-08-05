@@ -1905,20 +1905,15 @@ function buildAdvisorCompareRows(dateFromNum, dateToNum) {
     matchesSelectedSaleRegistrant,
     hasDateFilter,
     inChartDateRange,
-    null,
-    ({ customer, product, payments }) => {
-      if (product.status !== 'تکمیل') return
-      const lastPay = payments[payments.length - 1]
-      const phone = getSaleRegistrantPhone(product, lastPay, customer)
-      if (!phone) return
-      const eco = getCompletedSaleEconomics(product)
-      if (eco.grossProfit <= 0 && eco.salesTotal <= 0) return
+    ({ customer, product, payment, amount }) => {
+      const phone = getSaleRegistrantPhone(product, payment, customer)
+      if (!phone || amount <= 0) return
       const prev = totals.get(phone) || {
         phone,
         label: advisorLabelForPhone(phone, customer.advisor),
         value: 0
       }
-      prev.value += eco.grossProfit
+      prev.value += amount
       if (!prev.label) prev.label = advisorLabelForPhone(phone, customer.advisor)
       totals.set(phone, prev)
     }
@@ -1981,7 +1976,7 @@ function renderAdvisorCompareChart(dateFromNum, dateToNum) {
     data: {
       labels,
       datasets: [{
-        label: 'سود ناخالص',
+        label: 'مبلغ واریزهای تأییدشده',
         data: values,
         backgroundColor: colors,
         borderRadius: 6
