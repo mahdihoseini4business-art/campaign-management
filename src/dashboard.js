@@ -3,7 +3,7 @@ import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
 import {
   hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliNum,
-  jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr, ownsCustomer,
+  jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr,
   normalizePhone, userDisplayName, canViewOrgWideData, jalaliDiffDays, jalaliDatePart,
   getVisibleAdvisorPhones, getStatusLabels, formatPhonesDisplay,
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
@@ -796,9 +796,6 @@ export async function renderDashboard() {
   })
 
   document.getElementById('dash-total-customers').textContent = scopedCustomers.length
-  document.getElementById('dash-my-customers').textContent = scopedCustomers.filter(c =>
-    ownsCustomer(c, currentUser)
-  ).length
   document.getElementById('dash-total-leads').textContent = scopedCustomers.filter(c => c.id.startsWith('LD')).length
   document.getElementById('dash-total-cs').textContent = scopedCustomers.filter(c => c.id.startsWith('CS')).length
   document.getElementById('dash-total-followups').textContent = data.followups.filter(f => {
