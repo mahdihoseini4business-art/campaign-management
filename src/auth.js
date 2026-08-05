@@ -390,7 +390,6 @@ let _settingsUsersCache = []
 let _selectedSettingsUser = null
 let _selectedSettingsGroup = null
 let _permissionsDirty = false
-let _settingsEscapeBound = false
 let _editingBankIdx = null
 let _editingProductIdx = null
 let _editingBundleId = null
@@ -401,19 +400,6 @@ let _editingSalesTargetId = null
 let _draftTargetBars = []
 /** @type {Record<string, Record<string, number>>} userGroupId -> barId -> share value */
 let _draftAllocations = {}
-
-function ensureSettingsEscapeHandler() {
-  if (_settingsEscapeBound) return
-  _settingsEscapeBound = true
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return
-    const modal = document.getElementById('settingsModal')
-    if (!modal?.classList.contains('active')) return
-    if (document.getElementById('deleteModal')?.classList.contains('active')) return
-    e.preventDefault()
-    closeSettingsModal()
-  })
-}
 
 export function renderSettingsNav(filterQuery = '') {
   const list = document.getElementById('settingsNavList')
@@ -514,7 +500,6 @@ function openSettingsConfirm(message, onConfirm, confirmLabel = 'تأیید') {
 
 export async function openSettingsModal() {
   if (!requireMainAdmin()) return
-  ensureSettingsEscapeHandler()
   _permissionsDirty = false
   _selectedSettingsUser = null
   _selectedSettingsGroup = null

@@ -389,6 +389,8 @@ window.app = app
 
 const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 const modalFocusMemory = new WeakMap()
+const MODAL_BASE_Z = 1000
+let modalStackTop = MODAL_BASE_Z
 
 function getFocusableElements(container) {
   return [...container.querySelectorAll(FOCUSABLE_SELECTOR)].filter(el => {
@@ -398,7 +400,36 @@ function getFocusableElements(container) {
   })
 }
 
+function getActiveModalOverlays() {
+  return [...document.querySelectorAll('.modal-overlay.active')]
+}
+
+function getTopmostModalOverlay() {
+  const active = getActiveModalOverlays()
+  if (!active.length) return null
+  return active.reduce((top, el) => {
+    const z = parseInt(el.style.zIndex, 10) || MODAL_BASE_Z
+    const topZ = parseInt(top.style.zIndex, 10) || MODAL_BASE_Z
+    return z >= topZ ? el : top
+  })
+}
+
+function bringModalToFront(overlay) {
+  modalStackTop += 10
+  overlay.style.zIndex = String(modalStackTop)
+}
+
+function syncModalStackTop() {
+  const active = getActiveModalOverlays()
+  modalStackTop = active.reduce((max, el) => {
+    const z = parseInt(el.style.zIndex, 10) || MODAL_BASE_Z
+    return Math.max(max, z)
+  }, MODAL_BASE_Z)
+}
+
 function activateModalTrap(overlay) {
+  bringModalToFront(overlay)
+
   const dialog = overlay.querySelector('.modal') || overlay
   modalFocusMemory.set(overlay, document.activeElement)
 
@@ -435,6 +466,8 @@ function deactivateModalTrap(overlay) {
     overlay.removeEventListener('keydown', overlay._focusTrapHandler)
     delete overlay._focusTrapHandler
   }
+  overlay.style.zIndex = ''
+  syncModalStackTop()
   const prev = modalFocusMemory.get(overlay)
   modalFocusMemory.delete(overlay)
   if (prev && typeof prev.focus === 'function') {
@@ -444,9 +477,13 @@ function deactivateModalTrap(overlay) {
 
 function initModalFocusTrap() {
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    let wasActive = overlay.classList.contains('active')
+    if (wasActive) activateModalTrap(overlay)
     const observer = new MutationObserver(() => {
-      if (overlay.classList.contains('active')) activateModalTrap(overlay)
-      else deactivateModalTrap(overlay)
+      const isActive = overlay.classList.contains('active')
+      if (isActive && !wasActive) activateModalTrap(overlay)
+      else if (!isActive && wasActive) deactivateModalTrap(overlay)
+      wasActive = isActive
     })
     observer.observe(overlay, { attributes: true, attributeFilter: ['class'] })
   })
@@ -516,19 +553,23 @@ async function init() {
     })
   })
 
-  // Modal close on overlay click
+  // Modal close on overlay click (only the clicked overlay)
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', function (e) {
       if (e.target === this) this.classList.remove('active')
     })
   })
 
-  // Modal close on Escape
+  // Escape closes only the topmost modal so nested confirms stay usable
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') {
-      document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'))
-      closeNotificationMenu()
+    if (e.key !== 'Escape') return
+    const top = getTopmostModalOverlay()
+    if (top) {
+      e.preventDefault()
+      if (top.id === 'settingsModal') closeSettingsModal()
+      else top.classList.remove('active')
     }
+    closeNotificationMenu()
   })
 
   // Tablist keyboard navigation (A11Y-H1)
