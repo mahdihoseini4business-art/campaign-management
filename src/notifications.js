@@ -438,7 +438,7 @@ export async function renderNotificationAdminSection() {
 
   await refreshNotifications()
   if (window.jalaliDatepicker) {
-    try { window.jalaliDatepicker.startWatch({ selector: 'input[data-jdp]', time: false }) } catch (_) { /* ignore */ }
+    try { window.jalaliDatepicker.startWatch({ selector: 'input[data-jdp]', time: false, zIndex: 11000 }) } catch (_) { /* ignore */ }
   }
 }
 

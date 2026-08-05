@@ -2013,7 +2013,7 @@ export async function renderProducts(customerId, users = null) {
   }).join('')
 
   if (window.jalaliDatepicker) {
-    try { window.jalaliDatepicker.startWatch({ time: false }) } catch (_) { /* ignore */ }
+    try { window.jalaliDatepicker.startWatch({ time: false, zIndex: 11000 }) } catch (_) { /* ignore */ }
   }
 }
 

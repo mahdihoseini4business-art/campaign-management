@@ -1561,6 +1561,12 @@
 
   .modal-overlay.active { display: flex; }
 
+  /* Above modal stack (modals rise from 1000); library default z-index is 1000 */
+  jdp-container,
+  jdp-overlay {
+    z-index: 11000 !important;
+  }
+
   .modal {
     background: var(--surface);
     border-radius: var(--radius-lg);

@@ -600,7 +600,7 @@ async function init() {
     }
   })
 
-  // Init jalali datepicker
+  // Init jalali datepicker (zIndex above modal stack; modals start at 1000 and rise)
   if (typeof jalaliDatepicker !== 'undefined' && jalaliDatepicker?.startWatch) {
     jalaliDatepicker.startWatch({
       selector: 'input[data-jdp]',
@@ -610,7 +610,8 @@ async function init() {
       showTodayBtn: true,
       showEmptyBtn: true,
       position: 'center',
-      persianDigits: false
+      persianDigits: false,
+      zIndex: 11000
     })
   } else {
     console.warn('jalaliDatepicker not loaded')
