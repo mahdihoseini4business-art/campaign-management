@@ -571,7 +571,39 @@ export function getBundlesUsingProduct(productName) {
 }
 
 /**
+ * True when the sale line has at least one accounting-approved payment with amount > 0.
+ * Mirrors utils getPaymentEntryStatus / getApprovedPaid without importing utils (circular).
+ */
+function saleLineHasApprovedPayment(line) {
+  if (!line || typeof line !== 'object') return false
+
+  let pays = Array.isArray(line.payments) ? line.payments : null
+  if (!pays) {
+    // Legacy single-payment fields
+    const deposit = parseFloat(line.deposit) || 0
+    const price = parseFloat(line.price) || 0
+    let amount = 0
+    if (line.status === 'بیعانه' && deposit > 0) amount = deposit
+    else if (price > 0) amount = price
+    else if (deposit > 0) amount = deposit
+    const hasLegacy = amount > 0 || line.soldAt || line.depositorName || line.paymentStatus
+    if (!hasLegacy) return false
+    const status = line.paymentStatus || 'approved'
+    return status === 'approved' && amount > 0
+  }
+
+  return pays.some(p => {
+    if (!p) return false
+    const amount = parseFloat(p.amount) || 0
+    if (amount <= 0) return false
+    const status = p.paymentStatus || 'approved'
+    return status === 'approved'
+  })
+}
+
+/**
  * Catalog product names the customer owns — direct sale or via a bundle purchase.
+ * Only sale lines with at least one accounting-approved payment count.
  * @returns {Set<string>}
  */
 export function getCustomerOwnedProductNames(customer) {
@@ -580,7 +612,9 @@ export function getCustomerOwnedProductNames(customer) {
   const owned = new Set()
 
   for (const line of customer?.products || []) {
-    const saleName = String(line?.name || '').trim()
+    if (!saleLineHasApprovedPayment(line)) continue
+
+    const saleName = coerceProductName(line?.name)
     if (!saleName) continue
 
     const direct = catalogByLower.get(saleName.toLowerCase())
