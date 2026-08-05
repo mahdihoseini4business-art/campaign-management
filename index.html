@@ -523,13 +523,17 @@
     <div class="dashboard-stats">
       <div class="stat-card"><div class="label">لیدها</div><div class="value" style="color:var(--tag-ld)" id="dash-total-leads">0</div></div>
       <div class="stat-card"><div class="label">مشتریان تماسی</div><div class="value" style="color:var(--tag-cs)" id="dash-total-cs">0</div></div>
-      <div class="stat-card"><div class="label">تعداد پیگیری‌ها</div><div class="value" style="color:var(--accent)" id="dash-total-followups">0</div></div>
+      <div class="stat-card followup-summary-card">
+        <div class="label">تعداد پیگیری‌ها</div>
+        <div class="followup-summary">
+          <div><span class="followup-summary-label">انجام‌شده</span><span class="followup-summary-value completed" id="dash-followups-completed">0</span></div>
+          <div><span class="followup-summary-label">پیش رو</span><span class="followup-summary-value upcoming" id="dash-followups-upcoming">0</span></div>
+        </div>
+      </div>
       <div class="stat-card"><div class="label">تعداد کل فروش (تایید شده‌ها)</div><div class="value" id="dash-sales-count">0</div></div>
-      <div class="stat-card"><div class="label">فروش نقد</div><div class="value" style="color:var(--success)" id="dash-sales-cash">۰</div></div>
       <div class="stat-card"><div class="label">بیعانه‌ها</div><div class="value" style="color:var(--warning)" id="dash-sales-deposit">۰</div></div>
       <div class="stat-card"><div class="label">مانده حساب‌ها</div><div class="value" style="color:var(--danger)" id="dash-sales-balance">۰</div></div>
       <div class="stat-card highlight"><div class="label">جمع فروش‌های تأییدشده</div><div class="value" style="color:var(--accent);font-size:24px;" id="dash-sales-total">۰</div></div>
-      <div class="stat-card"><div class="label">مبلغ فروش کل</div><div class="value" style="color:var(--accent);font-size:20px;" id="dash-sales-completed-total">۰</div></div>
       <div class="stat-card"><div class="label">سود ناخالص</div><div class="value" style="color:var(--success);font-size:20px;" id="dash-sales-gross">۰</div></div>
       <div class="stat-card"><div class="label">در انتظار تأیید حسابداری</div><div class="value" style="color:var(--warning);font-size:20px;" id="dash-sales-pending">۰</div></div>
       <div class="stat-card"><div class="label">میانگین مبلغ فروش</div><div class="value" style="color:var(--text)" id="dash-avg-sale">۰</div></div>

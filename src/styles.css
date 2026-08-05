@@ -601,6 +601,38 @@
     font-family: 'Vazirmatn', sans-serif;
   }
 
+  .followup-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .followup-summary > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 7px 8px;
+    border-radius: 8px;
+    background: var(--bg);
+  }
+
+  .followup-summary-label {
+    color: var(--text-muted);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .followup-summary-value {
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .followup-summary-value.completed { color: var(--success); }
+  .followup-summary-value.upcoming { color: var(--accent); }
+
   /* --- Table --- */
   .table-wrapper {
     background: var(--surface);

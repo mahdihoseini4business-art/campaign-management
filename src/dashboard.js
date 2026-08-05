@@ -473,28 +473,49 @@ function forEachDashSalePayment(matchPayment, hasDateFilter, inDateRange, onPaym
 
 function computeDashSalesMetrics(hasDateFilter, inDateRange) {
   let salesCount = 0
-  let totalCash = 0
   let totalDeposit = 0
   let totalBalance = 0
   let totalApproved = 0
   let totalPending = 0
-  let completedSalesTotal = 0
   let completedGrossProfit = 0
 
-  // Approved payments — attributed to registrant (soldByPhone)
-  forEachDashSalePayment(matchesSelectedSaleRegistrant, hasDateFilter, inDateRange, ({ amount }) => {
-    totalApproved += amount
-  }, ({ product, paidInScope, balance }) => {
-    salesCount++
-    if (product.status === 'تکمیل') {
-      totalCash += paidInScope
+  // An incomplete invoice stays in deposit/balance until its approved payments cover the price.
+  forEachDashSalePayment(matchesSelectedSaleRegistrant, hasDateFilter, inDateRange, null, ({ product, paidInScope, balance }) => {
+    if (product.status === 'تکمیل') return
+    totalDeposit += paidInScope
+    totalBalance += balance
+  })
+
+  // A completed invoice is attributed to the payment that completed it. This also makes
+  // dashboard date filters use the completion date rather than an earlier deposit date.
+  const data = getData()
+  data.customers.forEach(customer => {
+    if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return
+    if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return
+    ;(customer.products || []).forEach(product => {
+      ensureProductPayments(product)
+      syncProductStatus(product)
+      if (product.status !== 'تکمیل') return
+
+      const price = parseFloat(product.price) || 0
+      let approvedTotal = 0
+      const approvedPayments = getProductPayments(product)
+        .filter(pay => getPaymentEntryStatus(pay) === PAYMENT_STATUS.approved && (parseFloat(pay.amount) || 0) > 0)
+        .slice()
+        .sort((a, b) => String(a.soldAt || '').localeCompare(String(b.soldAt || '')))
+      const completionPayment = approvedPayments.find(pay => {
+        approvedTotal += parseFloat(pay.amount) || 0
+        return approvedTotal >= price
+      })
+      if (!completionPayment) return
+      if (!matchesSelectedSaleRegistrant({ customer, product, payment: completionPayment })) return
+      if (hasDateFilter && !inDateRange(jalaliDatePart(completionPayment.soldAt))) return
+
       const eco = getCompletedSaleEconomics(product)
-      completedSalesTotal += eco.salesTotal
+      salesCount++
+      totalApproved += eco.salesTotal
       completedGrossProfit += eco.grossProfit
-    } else {
-      totalDeposit += paidInScope
-      totalBalance += balance
-    }
+    })
   })
 
   // Pending accounting approval amounts
@@ -509,13 +530,10 @@ function computeDashSalesMetrics(hasDateFilter, inDateRange) {
 
   return {
     salesCount,
-    totalCash,
     totalDeposit,
     totalBalance,
-    totalAll: totalCash + totalDeposit,
     totalApproved,
     totalPending,
-    completedSalesTotal,
     completedGrossProfit
   }
 }
@@ -798,14 +816,26 @@ export async function renderDashboard() {
   document.getElementById('dash-total-customers').textContent = scopedCustomers.length
   document.getElementById('dash-total-leads').textContent = scopedCustomers.filter(c => c.id.startsWith('LD')).length
   document.getElementById('dash-total-cs').textContent = scopedCustomers.filter(c => c.id.startsWith('CS')).length
-  document.getElementById('dash-total-followups').textContent = data.followups.filter(f => {
+  const visibleFollowups = data.followups.filter(f => {
     const customer = data.customers.find(c => c.id === f.customerId)
     if (!customer || !inUserScope(customer)) return false
     if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
-    if (!inDateRange(f.date)) return false
     return true
+  })
+  const completedFollowups = visibleFollowups.filter(f => {
+    const isDone = f.status === 'done' ||
+      f.type === 'پیگیری انجام‌شده' ||
+      f.type === 'پیگیری معوقه انجام‌شده'
+    return isDone && inDateRange(jalaliDatePart(f.doneAt || f.date))
   }).length
+  const upcomingFollowups = scopedCustomers.filter(c => {
+    if (!c.nextFollowupDate) return false
+    const nextDate = jalaliDatePart(c.nextFollowupDate)
+    return jalaliToNum(nextDate) >= todayNum && inDateRange(nextDate)
+  }).length
+  document.getElementById('dash-followups-completed').textContent = completedFollowups
+  document.getElementById('dash-followups-upcoming').textContent = upcomingFollowups
 
   // Fixed snapshot cards — ignore date filter (always current operational state)
   let overdueList = []
@@ -841,12 +871,9 @@ export async function renderDashboard() {
   const salesMetrics = computeDashSalesMetrics(hasDateFilter, inDateRange)
 
   document.getElementById('dash-sales-count').textContent = salesMetrics.salesCount
-  document.getElementById('dash-sales-cash').textContent = formatNumber(salesMetrics.totalCash) + ' ریال'
   document.getElementById('dash-sales-deposit').textContent = formatNumber(salesMetrics.totalDeposit) + ' ریال'
   document.getElementById('dash-sales-balance').textContent = formatNumber(salesMetrics.totalBalance) + ' ریال'
   document.getElementById('dash-sales-total').textContent = formatNumber(salesMetrics.totalApproved) + ' ریال'
-  const completedTotalEl = document.getElementById('dash-sales-completed-total')
-  if (completedTotalEl) completedTotalEl.textContent = formatNumber(salesMetrics.completedSalesTotal) + ' ریال'
   const grossEl = document.getElementById('dash-sales-gross')
   if (grossEl) grossEl.textContent = formatNumber(salesMetrics.completedGrossProfit) + ' ریال'
   const pendingEl = document.getElementById('dash-sales-pending')

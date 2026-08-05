@@ -1077,12 +1077,12 @@ export function getCompletedSaleEconomics(product) {
   const price = Math.max(0, parseFloat(product.price) || 0)
   const cfg = resolveProductCostConfig(product)
   const cost = cfg.productKind === PRODUCT_KIND.physical
-    ? Math.max(0, Math.min(price, parseFloat(cfg.costAmount) || 0))
+    ? Math.max(0, parseFloat(cfg.costAmount) || 0)
     : 0
   return {
     salesTotal: price,
     cost,
-    grossProfit: Math.max(0, price - cost)
+    grossProfit: price - cost
   }
 }
 
