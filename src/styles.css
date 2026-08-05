@@ -4304,6 +4304,73 @@
   .product-matrix-col-advisor {
     right: 260px;
     min-width: 110px;
+    position: sticky;
+    overflow: visible;
+  }
+
+  .product-matrix-advisor-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+
+  .product-matrix-advisor-btn:hover,
+  .product-matrix-advisor-btn.is-filtered {
+    color: var(--secondary);
+    background: var(--secondary-light);
+  }
+
+  .product-matrix-advisor-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .product-matrix-advisor-dropdown.is-fixed {
+    position: fixed;
+    z-index: 200;
+  }
+
+  .product-matrix-advisor-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .product-matrix-advisor-option:hover {
+    background: var(--row-hover);
+  }
+
+  .product-matrix-advisor-option-all {
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+    padding-bottom: 10px;
+    font-weight: 700;
+  }
+
+  .product-matrix-advisor-options {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .product-matrix-advisor-empty {
+    padding: 10px;
+    color: var(--text-muted);
+    font-size: 12px;
   }
 
   .product-matrix-product-col {
