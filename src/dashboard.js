@@ -9,7 +9,7 @@ import {
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
   getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
   getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin,
-  jalaliEndOfDayMs, getCompletedSaleEconomics
+  jalaliEndOfDayMs, getCompletedSaleEconomics, resolveProductCostConfig
 } from './utils.js'
 
 let dashCharts = {}
@@ -1891,7 +1891,7 @@ function advisorLabelForPhone(phone, fallbackName = '') {
   return p || 'نامشخص'
 }
 
-function buildAdvisorCompareRows(dateFromNum, dateToNum) {
+function buildAdvisorCompareRows(dateFromNum, dateToNum, metric = 'net') {
   const hasDateFilter = dateFromNum > 0 || dateToNum < 99999999
   function inChartDateRange(dateStr) {
     if (!hasDateFilter) return true
@@ -1908,12 +1908,21 @@ function buildAdvisorCompareRows(dateFromNum, dateToNum) {
     ({ customer, product, payment, amount }) => {
       const phone = getSaleRegistrantPhone(product, payment, customer)
       if (!phone || amount <= 0) return
+      let value = amount
+      if (metric === 'net') {
+        const price = Math.max(0, parseFloat(product.price) || 0)
+        const cost = Math.max(0, parseFloat(resolveProductCostConfig(product).costAmount) || 0)
+        // Recognize physical-product cost in proportion to each approved payment.
+        // This keeps partial deposits, date filters, and multi-advisor installments accurate.
+        const allocatedCost = price > 0 ? amount * (cost / price) : 0
+        value -= allocatedCost
+      }
       const prev = totals.get(phone) || {
         phone,
         label: advisorLabelForPhone(phone, customer.advisor),
         value: 0
       }
-      prev.value += amount
+      prev.value += value
       if (!prev.label) prev.label = advisorLabelForPhone(phone, customer.advisor)
       totals.set(phone, prev)
     }
@@ -1929,8 +1938,8 @@ function renderAdvisorCompareChart(dateFromNum, dateToNum) {
   destroyDashChart('advisorCompare')
   destroyDashChart(canvas)
 
-  const type = document.getElementById('advisorCompareType')?.value === 'pie' ? 'pie' : 'bar'
-  const rows = buildAdvisorCompareRows(dateFromNum, dateToNum)
+  const metric = document.getElementById('advisorCompareMetric')?.value === 'gross' ? 'gross' : 'net'
+  const rows = buildAdvisorCompareRows(dateFromNum, dateToNum, metric)
   const labels = rows.map(r => r.label)
   const values = rows.map(r => r.value)
   const colors = rows.map((_, i) => ADVISOR_CHART_COLORS[i % ADVISOR_CHART_COLORS.length])
@@ -1947,36 +1956,12 @@ function renderAdvisorCompareChart(dateFromNum, dateToNum) {
     }
   }
 
-  if (type === 'pie') {
-    dashCharts.advisorCompare = new Chart(canvas, {
-      type: 'pie',
-      data: {
-        labels,
-        datasets: [{
-          data: values,
-          backgroundColor: colors,
-          borderWidth: 2,
-          borderColor: '#fff'
-        }]
-      },
-      options: {
-        ...CHART_RESPONSIVE,
-        plugins: {
-          legend: { position: 'bottom', labels: { font: CHART_FONT } },
-          tooltip: moneyTooltip
-        }
-      }
-    })
-    scheduleDashChartsResize()
-    return
-  }
-
   dashCharts.advisorCompare = new Chart(canvas, {
     type: 'bar',
     data: {
       labels,
       datasets: [{
-        label: 'مبلغ واریزهای تأییدشده',
+        label: metric === 'net' ? 'فروش خالص' : 'فروش ناخالص',
         data: values,
         backgroundColor: colors,
         borderRadius: 6
@@ -1997,7 +1982,7 @@ function renderAdvisorCompareChart(dateFromNum, dateToNum) {
   scheduleDashChartsResize()
 }
 
-export function onAdvisorCompareTypeChange() {
+export function onAdvisorCompareMetricChange() {
   const dateFrom = document.getElementById('dashDateFrom')?.value.trim() || ''
   const dateTo = document.getElementById('dashDateTo')?.value.trim() || ''
   const dateFromNum = dateFrom ? jalaliToNum(dateFrom) : 0
