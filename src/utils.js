@@ -760,7 +760,7 @@ export const ALL_PERMISSIONS = {
   dashboard: 'مشاهده داشبورد',
   customers_view: 'مشاهده مشتریان',
   customers_ld: 'مشاهده لیدها (LD)',
-  customers_cs: 'مشاهده مشتریان تماسی (CS)',
+  customers_cs: 'مشاهده مشتریان با شماره (CS)',
   customers_add: 'افزودن و ویرایش مشتری',
   customers_delete: 'حذف مشتری',
   customers_transfer: 'انتقال مالکیت مشتری',
