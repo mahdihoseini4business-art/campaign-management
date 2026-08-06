@@ -613,6 +613,233 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
 }
 
 // ============================================
+// AOV moving-average chart
+// ============================================
+
+function getAovDisplayWindowDays() {
+  const raw = parseInt(document.getElementById('aovDisplayWindow')?.value || '15', 10)
+  return [7, 15, 30, 60].includes(raw) ? raw : 15
+}
+
+function getAovMaWindowDays() {
+  const raw = parseInt(document.getElementById('aovMaWindow')?.value || '7', 10)
+  return [7, 15, 30].includes(raw) ? raw : 7
+}
+
+/** Completed sales with completion date + registrant phone (dashboard AOV rules). */
+function collectCompletedSalePointsForAov() {
+  const points = []
+  const data = getData()
+  data.customers.forEach(customer => {
+    if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return
+    if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return
+    ;(customer.products || []).forEach(product => {
+      ensureProductPayments(product)
+      syncProductStatus(product)
+      if (product.status !== 'تکمیل') return
+
+      const price = parseFloat(product.price) || 0
+      let approvedTotal = 0
+      const approvedPayments = getProductPayments(product)
+        .filter(pay => getPaymentEntryStatus(pay) === PAYMENT_STATUS.approved && (parseFloat(pay.amount) || 0) > 0)
+        .slice()
+        .sort((a, b) => String(a.soldAt || '').localeCompare(String(b.soldAt || '')))
+      const completionPayment = approvedPayments.find(pay => {
+        approvedTotal += parseFloat(pay.amount) || 0
+        return approvedTotal >= price
+      })
+      if (!completionPayment) return
+      if (!matchesSelectedSaleRegistrant({ customer, product, payment: completionPayment })) return
+
+      const phone = getSaleRegistrantPhone(product, completionPayment, customer)
+      if (!phone) return
+      const dateStr = jalaliDatePart(completionPayment.soldAt)
+      const dateNum = jalaliToNum(dateStr)
+      if (!dateStr || dateNum === 99999999) return
+
+      const eco = getCompletedSaleEconomics(product)
+      points.push({ dateNum, price: eco.salesTotal, phone })
+    })
+  })
+  return points
+}
+
+/** Stable color per advisor phone so filter toggles don't reshuffle colors. */
+function colorForAdvisorPhone(phone) {
+  const p = normalizePhone(phone) || ''
+  let hash = 0
+  for (let i = 0; i < p.length; i++) hash = ((hash << 5) - hash + p.charCodeAt(i)) | 0
+  const idx = Math.abs(hash) % ADVISOR_CHART_COLORS.length
+  return ADVISOR_CHART_COLORS[idx]
+}
+
+/**
+ * Rolling AOV (SMA-style): for each display day D, AOV of completed sales in
+ * [D - (maDays-1) .. D] inclusive — same formula as the dashboard card, over a window.
+ */
+function buildAovMaValues(points, dayNums, maDays) {
+  const sorted = points.slice().sort((a, b) => a.dateNum - b.dateNum)
+  let lo = 0
+  let hi = 0
+  let sum = 0
+  let count = 0
+
+  return dayNums.map(dayNum => {
+    const fromStr = jalaliAddDaysStr(jalaliNumToStr(dayNum), -(maDays - 1))
+    const fromNum = jalaliToNum(fromStr)
+    if (!fromStr || fromNum === 99999999) return null
+
+    while (hi < sorted.length && sorted[hi].dateNum <= dayNum) {
+      sum += sorted[hi].price
+      count++
+      hi++
+    }
+    while (lo < hi && sorted[lo].dateNum < fromNum) {
+      sum -= sorted[lo].price
+      count--
+      lo++
+    }
+    if (count <= 0) return null
+    return Math.round(sum / count)
+  })
+}
+
+function resolveAovDisplayDayRange(dateFromNum, dateToNum) {
+  const displayDays = getAovDisplayWindowDays()
+  const today = getTodayJalaliStr()
+  let endStr = today
+  if (dateToNum && dateToNum < 99999999) {
+    const capped = jalaliNumToStr(dateToNum)
+    if (capped && jalaliToNum(capped) < jalaliToNum(today)) endStr = capped
+  }
+  let startStr = jalaliAddDaysStr(endStr, -(displayDays - 1))
+  if (dateFromNum > 0) {
+    const filterStart = jalaliNumToStr(dateFromNum)
+    if (filterStart && jalaliToNum(filterStart) > jalaliToNum(startStr)) {
+      startStr = filterStart
+    }
+  }
+  if (jalaliToNum(startStr) > jalaliToNum(endStr)) {
+    startStr = endStr
+  }
+  return { startStr, endStr, buckets: buildSalesBuckets(startStr, endStr, 'day') }
+}
+
+function renderAovMaChart(dateFromNum, dateToNum) {
+  const canvas = document.getElementById('chartAovMa')
+  if (!canvas || typeof Chart === 'undefined') return
+  destroyDashChart('aovMa')
+  destroyDashChart(canvas)
+
+  const maDays = getAovMaWindowDays()
+  const { buckets } = resolveAovDisplayDayRange(dateFromNum, dateToNum)
+  const labels = buckets.map(b => b.label)
+  const dayNums = buckets.map(b => b.fromNum)
+  const allPoints = collectCompletedSalePointsForAov()
+
+  const byPhone = new Map()
+  for (const p of allPoints) {
+    if (!byPhone.has(p.phone)) byPhone.set(p.phone, [])
+    byPhone.get(p.phone).push(p)
+  }
+
+  const selectedPhones = [...(selectedAdvisorPhones || [])]
+    .filter(Boolean)
+    .map(p => normalizePhone(p))
+    .filter(Boolean)
+    .sort((a, b) => advisorLabelForPhone(a).localeCompare(advisorLabelForPhone(b), 'fa'))
+
+  const datasets = []
+
+  selectedPhones.forEach(phone => {
+    const advisorPoints = byPhone.get(phone) || []
+    const values = buildAovMaValues(advisorPoints, dayNums, maDays)
+    if (!values.some(v => v != null)) return
+    datasets.push({
+      label: advisorLabelForPhone(phone),
+      data: values,
+      borderColor: colorForAdvisorPhone(phone),
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      pointRadius: 2,
+      pointHoverRadius: 4,
+      tension: 0.25,
+      spanGaps: true,
+      fill: false,
+      order: 1
+    })
+  })
+
+  // Overall MA for currently filtered advisors — drawn on top, thicker
+  const totalValues = buildAovMaValues(allPoints, dayNums, maDays)
+  datasets.push({
+    label: 'میانگین کل',
+    data: totalValues,
+    borderColor: '#212529',
+    backgroundColor: 'transparent',
+    borderWidth: 3.5,
+    pointRadius: 3,
+    pointHoverRadius: 5,
+    tension: 0.25,
+    spanGaps: true,
+    fill: false,
+    order: 10
+  })
+
+  dashCharts.aovMa = new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { font: { family: 'Vazirmatn', size: 11 }, boxWidth: 12 }
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              if (ctx.raw == null) return `${ctx.dataset.label}: —`
+              return `${ctx.dataset.label}: ${formatNumber(ctx.raw)} ریال`
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: {
+            font: { family: 'Vazirmatn', size: 10 },
+            maxRotation: 45,
+            minRotation: 0
+          }
+        },
+        y: {
+          ticks: {
+            font: { family: 'Vazirmatn', size: 11 },
+            callback: v => formatNumber(v)
+          }
+        }
+      }
+    }
+  })
+  scheduleDashChartsResize()
+}
+
+export function onAovMaControlsChange() {
+  const dateFrom = document.getElementById('dashDateFrom')?.value.trim() || ''
+  const dateTo = document.getElementById('dashDateTo')?.value.trim() || ''
+  const dateFromNum = dateFrom ? jalaliToNum(dateFrom) : 0
+  const dateToNum = dateTo ? jalaliToNum(dateTo) : 99999999
+  try {
+    renderAovMaChart(dateFromNum, dateToNum)
+  } catch (e) {
+    console.error('onAovMaControlsChange error:', e)
+  }
+}
+
+// ============================================
 // Ownership transfer metrics
 // ============================================
 
@@ -959,7 +1186,7 @@ function destroyDashChart(keyOrCanvas) {
 function destroyAllDashCharts() {
   Object.keys(dashCharts).forEach(key => destroyDashChart(key))
   dashCharts = {}
-  ;['chartCustomers', 'chartSalesStatus', 'chartProducts', 'chartAdvisorCompare', 'chartSalesTimeline']
+  ;['chartCustomers', 'chartSalesStatus', 'chartProducts', 'chartAdvisorCompare', 'chartSalesTimeline', 'chartAovMa']
     .forEach(id => {
       const canvas = document.getElementById(id)
       if (canvas) destroyDashChart(canvas)
@@ -1077,6 +1304,12 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     renderSalesTimelineChart(dateFromNum, dateToNum, currentUser)
   } catch (e) {
     console.error('salesTimeline chart error:', e)
+  }
+
+  try {
+    renderAovMaChart(dateFromNum, dateToNum)
+  } catch (e) {
+    console.error('aovMa chart error:', e)
   }
 
   try {

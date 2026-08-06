@@ -602,6 +602,36 @@
           <canvas id="chartSalesTimeline"></canvas>
         </div>
       </div>
+      <div class="chart-card chart-card-wide">
+        <div class="chart-title-row">
+          <div>
+            <div class="chart-title">میانگین متحرک AOV</div>
+            <div class="sales-chart-hint" style="margin:4px 0 0;">هر نقطه = AOV فروش‌های تکمیل‌شده در N روز منتهی به همان روز؛ خطوط رنگی = کارشناسان، خط ضخیم = میانگین کل (هم‌راستا با فیلتر داشبورد)</div>
+          </div>
+          <div class="sales-chart-controls" style="margin:0;flex-wrap:wrap;">
+            <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
+              دامنه نمایش
+              <select class="form-select" id="aovDisplayWindow" style="width:120px;" onchange="app.onAovMaControlsChange()">
+                <option value="7">۷ روز</option>
+                <option value="15" selected>۱۵ روز</option>
+                <option value="30">۳۰ روز</option>
+                <option value="60">۶۰ روز</option>
+              </select>
+            </label>
+            <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
+              دامنه محاسبه
+              <select class="form-select" id="aovMaWindow" style="width:120px;" onchange="app.onAovMaControlsChange()">
+                <option value="7" selected>۷ روز</option>
+                <option value="15">۱۵ روز</option>
+                <option value="30">۳۰ روز</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="chart-container chart-container-tall">
+          <canvas id="chartAovMa"></canvas>
+        </div>
+      </div>
     </div>
 
     <div class="dash-collapsible" id="dash-overdue-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="dash-overdue-body" onclick="app.toggleDashSection('overdue')">
