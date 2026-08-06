@@ -1,5 +1,6 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB } from './data.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, ownsCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay } from './utils.js'
+import { getUsersSafe } from './auth.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, ownsCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
 let followupFilter = 'today' // today | waiting | overdue | done
@@ -71,6 +72,9 @@ function getPendingItems(applySearch = true) {
     if (!category) continue
 
     const last = [...data.followups].reverse().find(f => f.customerId === c.id && !isDoneFollowup(f))
+    const creatorPhone = normalizePhone(last?.createdByPhone)
+    const ownerPhone = normalizePhone(c.advisorPhone)
+    const setByOther = !!(creatorPhone && ownerPhone && creatorPhone !== ownerPhone)
     const phones = formatPhonesDisplay(c)
     const item = {
       kind: 'pending',
@@ -84,6 +88,8 @@ function getPendingItems(applySearch = true) {
       result: last?.result || '—',
       nextDate: normalizeJalaliDate(c.nextFollowupDate),
       notes: last?.notes || '',
+      createdByPhone: creatorPhone,
+      setByOther,
       category
     }
 
@@ -255,7 +261,7 @@ export function setFollowupFilter(filter) {
 // Render
 // ============================================
 
-export function renderFollowups() {
+export async function renderFollowups() {
   const tbody = document.getElementById('followupBody')
   if (!tbody) return
 
@@ -288,6 +294,13 @@ export function renderFollowups() {
     const search = toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
     const page = paginateList('followups', filtered, `${followupFilter}|${search}`)
     const canEdit = hasPermission('followups_add')
+    const users = await getUsersSafe()
+    const nameByPhone = (phone) => {
+      const p = normalizePhone(phone)
+      if (!p) return ''
+      const u = users.find(x => normalizePhone(x.phone) === p)
+      return u ? userDisplayName(u) : ''
+    }
 
     tbody.innerHTML = page.items.map((item) => {
       const selectCell = hasPermission('followups_delete')
@@ -316,6 +329,14 @@ export function renderFollowups() {
         ? `${escapeHtml(item.customerPhone)}${phoneExtra}`
         : '—'
 
+      const setterName = item.setByOther ? (nameByPhone(item.createdByPhone) || item.createdByPhone) : ''
+      const setterBadge = setterName
+        ? ` <span style="display:inline-block;margin-top:2px;font-size:11px;color:var(--text-muted);">از: ${escapeHtml(setterName)}</span>`
+        : ''
+      const notesHtml = item.notes
+        ? `${escapeHtml(item.notes)}${setterBadge}`
+        : (setterBadge || '—')
+
       return `<tr class="clickable-row" onclick="app.onCustomerRowClick(event, '${escapeAttr(item.customerId)}')">
         ${selectCell}
         <td>${escapeHtml(item.customerName)}${overdueBadge}</td>
@@ -325,7 +346,7 @@ export function renderFollowups() {
         <td>${escapeHtml(item.type)}</td>
         <td>${escapeHtml(item.result)}</td>
         <td style="font-size:13px;">${escapeHtml(item.nextDate) || '—'}</td>
-        <td class="notes-cell" title="${escapeHtml(item.notes)}">${escapeHtml(item.notes) || '—'}</td>
+        <td class="notes-cell" title="${escapeHtml(item.notes)}">${notesHtml}</td>
         <td><div class="actions-cell">${actionBtns}</div></td>
       </tr>`
     }).join('')

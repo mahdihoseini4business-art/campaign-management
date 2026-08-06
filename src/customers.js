@@ -7,7 +7,7 @@ import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
   canViewCustomer, canManageCustomer, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
   getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer, isAdmin, canViewOrgWideData,
-  canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, matchesTabSearch, getCustomerSearchExtras,
+  canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canScheduleFollowupOnCustomer, matchesTabSearch, getCustomerSearchExtras,
   resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
   getCustomerPhones, normalizeCustomerPhones, getPrimaryPhone, formatPhonesDisplay,
@@ -1370,6 +1370,9 @@ export async function openCustomerDetail(id) {
   const canDelete = !isNew && hasPermission('customers_delete') && canManageCustomer(c)
   const canAddSale = !isNew && canAddSaleOnCustomer(c)
   const canAddFollowup = !isNew && canAddNoteOnCustomer(c)
+  const canScheduleFollowup = !isNew && canScheduleFollowupOnCustomer(c)
+  const canClearFollowupDate = canScheduleFollowup && canManageCustomer(c)
+  const schedulingForOther = canScheduleFollowup && !canManageCustomer(c)
 
   const customerFollowups = isNew
     ? []
@@ -1428,11 +1431,17 @@ export async function openCustomerDetail(id) {
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${c.customerLevelLocked ? 'سطح دستی — با انتخاب «خودکار» دوباره محاسبه می‌شود' : `فعلی: ${escapeHtml(levelDisplay)}`}</div>`
     : `<span class="customer-level-badge">${escapeHtml(levelDisplay)}</span>`
 
-  const followupDateControls = canEdit && !isNew
-    ? `<div style="display:flex;gap:6px;align-items:center;">
-          <input type="text" id="detailFollowupDate" placeholder="تاریخ پیگیری" data-jdp style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:150px;">
-          <button class="btn btn-sm btn-primary" onclick="app.setNextFollowup('${escapeAttr(c.id)}')">ذخیره</button>
-          ${c.nextFollowupDate ? `<button class="btn btn-sm" onclick="app.clearNextFollowup('${escapeAttr(c.id)}')" style="color:var(--danger);">حذف</button>` : ''}
+  const followupDateControls = canScheduleFollowup
+    ? `<div style="display:flex;flex-direction:column;gap:8px;align-items:stretch;min-width:min(100%,280px);">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <input type="text" id="detailFollowupDate" placeholder="تاریخ پیگیری" data-jdp style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:150px;">
+            <button class="btn btn-sm btn-primary" onclick="app.setNextFollowup('${escapeAttr(c.id)}')">ذخیره</button>
+            ${canClearFollowupDate && c.nextFollowupDate ? `<button class="btn btn-sm" onclick="app.clearNextFollowup('${escapeAttr(c.id)}')" style="color:var(--danger);">حذف</button>` : ''}
+          </div>
+          ${schedulingForOther ? `
+            <textarea id="detailFollowupScheduleNote" class="form-textarea" placeholder="توضیحات برای کارشناس مسئول (اجباری)..." style="min-height:64px;font-size:13px;"></textarea>
+            <div style="font-size:11px;color:var(--text-muted);">این پیگیری در صف فالوآپ‌های کارشناس مسئول (${escapeHtml(c.advisor || '—')}) ظاهر می‌شود.</div>
+          ` : ''}
         </div>`
     : ''
 
@@ -1693,6 +1702,10 @@ export async function openCustomerDetail(id) {
   }
 
   if (!isNew) renderProducts(c.id, detailUsers)
+
+  if (canScheduleFollowup && window.jalaliDatepicker) {
+    try { window.jalaliDatepicker.startWatch({ time: false, zIndex: 11000 }) } catch (_) { /* ignore */ }
+  }
 }
 
 function resolveUserNameByPhone(phone, users = []) {
@@ -1703,30 +1716,55 @@ function resolveUserNameByPhone(phone, users = []) {
 }
 
 export async function setNextFollowup(customerId) {
-  if (!requirePermission('customers_add')) return
   const data = getData()
   const customer = data.customers.find(c => c.id === customerId)
-  if (!canManageCustomer(customer)) {
-    showToast('فقط کارشناس مسئول می‌تواند تاریخ پیگیری را تنظیم کند')
+  if (!customer || !canScheduleFollowupOnCustomer(customer)) {
+    showToast('شما دسترسی تنظیم تاریخ پیگیری برای این مشتری را ندارید')
     return
   }
   const input = document.getElementById('detailFollowupDate')
-  const date = input.value.trim()
+  const date = input?.value.trim() || ''
   if (!date) { showToast('تاریخ را وارد کنید'); return }
   if (!/^\d{4}\/\d{2}\/\d{2}$/.test(date)) { showToast('فرمت تاریخ صحیح نیست (1405/05/01)'); return }
 
-  const idx = data.customers.findIndex(c => c.id === customerId)
-  if (idx !== -1) {
-    data.customers[idx].nextFollowupDate = date
-    try {
-      await saveCustomerToDB(data.customers[idx])
-      await renderCustomers()
-      openCustomerDetail(customerId)
-      showToast('تاریخ پیگیری تنظیم شد')
-    } catch (e) {
-      console.error('setNextFollowup error:', e)
-      showToast('خطا در ذخیره تاریخ پیگیری')
+  const isOwner = canManageCustomer(customer)
+  let scheduleNote = ''
+  if (!isOwner) {
+    scheduleNote = document.getElementById('detailFollowupScheduleNote')?.value.trim() || ''
+    if (!scheduleNote) {
+      showToast('توضیحات برای کارشناس مسئول الزامی است')
+      return
     }
+  }
+
+  const idx = data.customers.findIndex(c => c.id === customerId)
+  if (idx === -1) return
+
+  data.customers[idx].nextFollowupDate = date
+  try {
+    if (!isOwner) {
+      const today = getTodayJalaliStr()
+      const newFollowup = {
+        customerId,
+        date: today,
+        type: 'سیستمی',
+        result: 'درخواست پیگیری',
+        nextDate: date,
+        notes: scheduleNote,
+        createdByPhone: normalizePhone(getCurrentUser()?.phone || ''),
+        status: 'pending'
+      }
+      const id = await saveFollowupToDB(newFollowup)
+      newFollowup.id = id
+      data.followups.push(newFollowup)
+    }
+    await saveCustomerToDB(data.customers[idx])
+    await renderCustomers()
+    openCustomerDetail(customerId)
+    showToast(isOwner ? 'تاریخ پیگیری تنظیم شد' : 'پیگیری برای کارشناس مسئول ثبت شد')
+  } catch (e) {
+    console.error('setNextFollowup error:', e)
+    showToast('خطا در ذخیره تاریخ پیگیری')
   }
 }
 

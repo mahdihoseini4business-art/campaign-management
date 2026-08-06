@@ -768,7 +768,7 @@ export const ALL_PERMISSIONS = {
   customers_export: 'خروجی مشتریان',
   followups_view: 'مشاهده پیگیری‌ها',
   followups_add: 'افزودن و ویرایش پیگیری',
-  followups_add_others: 'ثبت یادداشت برای مشتریان دیگران',
+  followups_add_others: 'ثبت پیگیری / یادداشت برای مشتریان دیگران',
   followups_delete: 'حذف پیگیری',
   followups_export: 'خروجی پیگیری‌ها',
   sales_view: 'مشاهده فروش‌ها',
@@ -1120,6 +1120,17 @@ export function canAddNoteOnCustomer(customer, user = getCurrentUser()) {
   if (!hasPermission('followups_add') && user?.role !== 'admin') return false
   if (user?.role === 'admin') return true
   if (canManageCustomer(customer, user)) return true
+  return hasPermission('followups_add_others')
+}
+
+/** Set next follow-up date on a customer (owner, or followups_add_others). */
+export function canScheduleFollowupOnCustomer(customer, user = getCurrentUser()) {
+  if (!customer || !canViewCustomer(customer, user)) return false
+  if (user?.role === 'admin') return true
+  if (canManageCustomer(customer, user)) {
+    return hasPermission('customers_add') || hasPermission('followups_add')
+  }
+  if (!hasPermission('followups_add')) return false
   return hasPermission('followups_add_others')
 }
 
