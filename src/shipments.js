@@ -1,10 +1,12 @@
 import { getData, saveCustomerToDB, coerceProductName } from './data.js'
+import { getUsersSafe } from './auth.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
   requirePermission, getCurrentUser, normalizePhone, getNowJalaliDateTime,
   ensureProductPayments, syncProductStatus, formatSoldAt24h, matchesTabSearch,
   getCustomerPhones, getPrimaryPhone, getApprovedPaid, getProductPayments,
-  getPaymentEntryStatus, PAYMENT_STATUS,
+  getPaymentEntryStatus, PAYMENT_STATUS, getSaleRegistrantPhone,
+  canViewScopedCustomer, userDisplayName,
   isPhysicalSaleLine, hasApprovedPayment, getShipmentStatus,
   SHIPMENT_STATUS, renderCopyableCell
 } from './utils.js'
@@ -35,6 +37,9 @@ export function getAllShipments() {
       if (!hasApprovedPayment(product)) return
       const price = parseFloat(product.price) || 0
       const approved = getApprovedPaid(product)
+      const pays = getProductPayments(product)
+      const lastPay = pays[pays.length - 1]
+      const soldByPhone = getSaleRegistrantPhone(product, lastPay, c)
       rows.push({
         customerId: c.id,
         productIndex,
@@ -42,7 +47,9 @@ export function getAllShipments() {
         customerPhone: getPrimaryPhone(c),
         customerPhones: getCustomerPhones(c),
         advisor: c.advisor || '',
-        advisorPhone: c.advisorPhone || '',
+        advisorPhone: soldByPhone,
+        ownerAdvisor: c.advisor || '',
+        soldByPhone,
         productName: coerceProductName(product.name),
         productStatus: product.status || '',
         price,
@@ -58,6 +65,25 @@ export function getAllShipments() {
     })
   })
   return rows
+}
+
+/** Same visibility as sales tab: own/scoped customers, or sales registered by me. */
+function getVisibleShipments() {
+  const data = getData()
+  const currentUser = getCurrentUser()
+  const myPhone = normalizePhone(currentUser?.phone || '')
+  return getAllShipments().filter(s => {
+    if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false
+    if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
+    const customer = data.customers.find(c => c.id === s.customerId)
+    const product = customer?.products?.[s.productIndex]
+    const registeredByMe = !!(myPhone && (
+      s.soldByPhone === myPhone ||
+      (product && getProductPayments(product).some(pay => normalizePhone(pay.soldByPhone) === myPhone))
+    ))
+    if (!canViewScopedCustomer(customer, currentUser) && !registeredByMe) return false
+    return true
+  })
 }
 
 export function setShipmentsFilter(filter) {
@@ -111,7 +137,7 @@ function phonesCell(row) {
   return `${escapeHtml(phones[0])}${extra}`
 }
 
-export function renderShipments() {
+export async function renderShipments() {
   const tbody = document.getElementById('shipmentsBody')
   if (!tbody) return
 
@@ -119,7 +145,19 @@ export function renderShipments() {
   renderShipmentsHeader(canManage)
 
   const search = toEnDigits(document.getElementById('searchShipments')?.value || '').toLowerCase()
-  const allShipments = getAllShipments()
+  const allShipments = getVisibleShipments()
+
+  try {
+    const users = await getUsersSafe()
+    const nameByPhone = new Map(
+      users.filter(u => u.phone).map(u => [normalizePhone(u.phone), userDisplayName(u)])
+    )
+    allShipments.forEach(s => {
+      const phone = s.soldByPhone || s.advisorPhone
+      s.advisor = nameByPhone.get(phone) || s.ownerAdvisor || s.advisor || '—'
+    })
+  } catch (_) { /* keep fallback advisor names */ }
+
   let shipments = allShipments.filter(s => s.shipmentStatus === shipmentsFilter)
 
   if (search) {
@@ -164,7 +202,8 @@ export function renderShipments() {
     return
   }
 
-  const filterSig = `${shipmentsFilter}|${search}|${canManage ? 1 : 0}`
+  const myPhone = normalizePhone(getCurrentUser()?.phone || '')
+  const filterSig = `${shipmentsFilter}|${search}|${canManage ? 1 : 0}|${myPhone}`
   const page = paginateList('shipments', shipments, filterSig)
 
   tbody.innerHTML = page.items.map(s => {
