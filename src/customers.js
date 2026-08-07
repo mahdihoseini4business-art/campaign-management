@@ -2473,6 +2473,8 @@ export async function addProductRow(customerId) {
   renderProducts(customerId)
   focusNewSaleDraftFields()
 }
+
+export async function addProductPayment(customerId, productIndex) {
   const _cust = getData().customers.find(c => c.id === customerId)
   if (!canAddSaleOnCustomer(_cust)) {
     showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
