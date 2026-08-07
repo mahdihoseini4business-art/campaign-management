@@ -17,7 +17,9 @@ import {
   toJalali,
   jalaliDateTimeToIso,
   toEnDigits,
-  normalizeTimeTo24h
+  normalizeTimeTo24h,
+  renderMarkdown,
+  plainTextFromMarkdown
 } from './utils.js'
 
 let cachedNotifications = []
@@ -62,7 +64,7 @@ function formatNotificationDateTime(isoDate) {
 function notificationTitle(n) {
   const t = (n?.title || '').trim()
   if (t) return t
-  const msg = (n?.message || '').trim()
+  const msg = plainTextFromMarkdown(n?.message || '')
   if (!msg) return 'بدون عنوان'
   return msg.length > 60 ? `${msg.slice(0, 60)}…` : msg
 }
@@ -268,7 +270,7 @@ export async function toggleNotificationMenu() {
   }
 }
 
-export function openNotificationDetail(id) {
+export async function openNotificationDetail(id) {
   const n = cachedNotifications.find(x => Number(x.id) === Number(id))
   if (!n) {
     showToast('اعلان پیدا نشد')
@@ -283,7 +285,10 @@ export function openNotificationDetail(id) {
   if (!modal) return
 
   if (titleEl) titleEl.textContent = notificationTitle(n)
-  if (messageEl) messageEl.textContent = n.message || ''
+  if (messageEl) {
+    messageEl.classList.add('markdown-body')
+    messageEl.innerHTML = await renderMarkdown(n.message || '')
+  }
   if (metaEl) {
     const when = formatNotificationDateTime(n.created_at)
     const who = (n.created_by_name || '').trim() || 'نامشخص'
@@ -380,6 +385,39 @@ function clearComposeFields() {
   if (selectAll) selectAll.checked = false
   document.querySelectorAll('#notifRecipientList .notif-recipient-cb').forEach(cb => { cb.checked = false })
   updateNotifRecipientCount()
+  setNotifMessageMode('write')
+  updateNotifMessagePreview()
+}
+
+let notifMessageMode = 'write'
+
+export function setNotifMessageMode(mode) {
+  notifMessageMode = mode === 'preview' ? 'preview' : 'write'
+  const writeTab = document.getElementById('notifMdTabWrite')
+  const previewTab = document.getElementById('notifMdTabPreview')
+  const textarea = document.getElementById('notifMessage')
+  const preview = document.getElementById('notifMessagePreview')
+  const isPreview = notifMessageMode === 'preview'
+
+  writeTab?.classList.toggle('is-active', !isPreview)
+  previewTab?.classList.toggle('is-active', isPreview)
+  writeTab?.setAttribute('aria-selected', isPreview ? 'false' : 'true')
+  previewTab?.setAttribute('aria-selected', isPreview ? 'true' : 'false')
+
+  if (textarea) textarea.hidden = isPreview
+  if (preview) preview.hidden = !isPreview
+  if (isPreview) updateNotifMessagePreview()
+}
+
+export async function updateNotifMessagePreview() {
+  const preview = document.getElementById('notifMessagePreview')
+  if (!preview) return
+  const raw = document.getElementById('notifMessage')?.value || ''
+  if (!raw.trim()) {
+    preview.innerHTML = '<p class="notif-md-preview-empty">پیش‌نمایش متن اعلان اینجا نمایش داده می‌شود</p>'
+    return
+  }
+  preview.innerHTML = await renderMarkdown(raw)
 }
 
 export function updateNotifRecipientCount() {
@@ -429,6 +467,9 @@ export async function renderNotificationAdminSection() {
   if (!isMainAdmin()) return
 
   clearComposeFields()
+
+  // Warm markdown libs for compose preview
+  import('./utils.js').then(m => m.renderMarkdown('')).catch(() => {})
 
   const users = (await getUsersSafe()).filter(u => u.phone)
   try { await loadGroupsData() } catch (_) { /* optional */ }

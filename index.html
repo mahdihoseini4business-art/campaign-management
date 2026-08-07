@@ -389,7 +389,7 @@
         <section class="settings-pane settings-notif-compose" data-settings-pane="notif-compose" id="settingsNotificationsSection" hidden>
           <div class="settings-pane-header">
             <h3>ارسال اعلان</h3>
-            <p class="settings-pane-desc">عنوان و متن اعلان را بنویسید و اعضایی که باید دریافت کنند را انتخاب کنید.</p>
+            <p class="settings-pane-desc">عنوان و متن اعلان را بنویسید (Markdown پشتیبانی می‌شود) و اعضایی که باید دریافت کنند را انتخاب کنید.</p>
           </div>
           <div class="settings-notif-compose-body">
             <div class="settings-notif-fields">
@@ -398,8 +398,16 @@
                 <input type="text" class="form-input" id="notifTitle" placeholder="عنوان کوتاه اعلان" maxlength="120">
               </div>
               <div class="form-group">
-                <label for="notifMessage">متن اعلان <span class="required">*</span></label>
-                <textarea class="form-input" id="notifMessage" rows="4" placeholder="متن کامل اعلان را اینجا بنویسید..." style="resize:vertical;min-height:88px;"></textarea>
+                <div class="notif-message-label-row">
+                  <label for="notifMessage">متن اعلان <span class="required">*</span></label>
+                  <div class="notif-md-tabs" role="tablist" aria-label="حالت ویرایش متن">
+                    <button type="button" class="notif-md-tab is-active" id="notifMdTabWrite" role="tab" aria-selected="true" onclick="app.setNotifMessageMode('write')">نوشتن</button>
+                    <button type="button" class="notif-md-tab" id="notifMdTabPreview" role="tab" aria-selected="false" onclick="app.setNotifMessageMode('preview')">پیش‌نمایش</button>
+                  </div>
+                </div>
+                <textarea class="form-input" id="notifMessage" rows="6" placeholder="متن اعلان با پشتیبانی Markdown&#10;&#10;**پررنگ** · *کج* · `کد`&#10;- لیست&#10;[لینک](https://example.com)" style="resize:vertical;min-height:120px;" oninput="app.updateNotifMessagePreview()"></textarea>
+                <div id="notifMessagePreview" class="notif-message-preview markdown-body" hidden></div>
+                <p class="notif-md-hint">پشتیبانی Markdown: عناوین، لیست، لینک، کد، نقل‌قول و متن پررنگ/کج</p>
               </div>
               <div class="form-group" style="margin-bottom:0;">
                 <label>حذف خودکار (اختیاری)</label>
@@ -466,14 +474,14 @@
 
 <!-- مودال جزئیات اعلان -->
 <div class="modal-overlay" id="notificationDetailModal">
-  <div class="modal" style="max-width: 520px;">
+  <div class="modal" style="max-width: 560px;">
     <div class="modal-header">
       <h2 id="notifDetailTitle">اعلان</h2>
       <button class="modal-close" onclick="app.closeNotificationDetail()">&times;</button>
     </div>
     <div class="modal-body">
       <div id="notifDetailMeta" class="notif-detail-meta"></div>
-      <div id="notifDetailMessage" class="notif-detail-message"></div>
+      <div id="notifDetailMessage" class="notif-detail-message markdown-body"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-danger" id="notifDetailDeleteBtn" style="display:none;">حذف اعلان</button>

@@ -33,7 +33,9 @@ import {
   closeNotificationMenu,
   openNotificationDetail,
   closeNotificationDetail,
-  deleteNotification
+  deleteNotification,
+  setNotifMessageMode,
+  updateNotifMessagePreview
 } from './notifications.js'
 import { initSaleToastFeed, toggleSaleToastSetting, syncSaleToastToggleUi } from './sale-toasts.js'
 import { initLiveSync } from './live-sync.js'
@@ -403,6 +405,8 @@ const app = {
   openNotificationDetail,
   closeNotificationDetail,
   deleteNotification,
+  setNotifMessageMode,
+  updateNotifMessagePreview,
   toggleSaleToastSetting,
   formatInput: (el) => {
     let raw = el.value.replace(/[^\d]/g, '')

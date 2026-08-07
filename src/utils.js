@@ -177,6 +177,63 @@ export function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/`/g, '&#96;')
 }
 
+/** Render Markdown to safe HTML (GFM + line breaks). */
+let _markedReady = null
+let _dompurify = null
+let _mdHooksReady = false
+
+async function ensureMarkdownLibs() {
+  if (_markedReady && _dompurify) return { marked: _markedReady, DOMPurify: _dompurify }
+  const [{ marked }, DOMPurifyMod] = await Promise.all([
+    import('marked'),
+    import('dompurify')
+  ])
+  marked.setOptions({ gfm: true, breaks: true })
+  _markedReady = marked
+  _dompurify = DOMPurifyMod.default || DOMPurifyMod
+  if (!_mdHooksReady) {
+    _dompurify.addHook('afterSanitizeAttributes', (node) => {
+      if (node.tagName !== 'A') return
+      const href = node.getAttribute('href') || ''
+      if (href && !/^(https?:|mailto:)/i.test(href)) {
+        node.removeAttribute('href')
+      }
+      node.setAttribute('target', '_blank')
+      node.setAttribute('rel', 'noopener noreferrer')
+    })
+    _mdHooksReady = true
+  }
+  return { marked: _markedReady, DOMPurify: _dompurify }
+}
+
+export async function renderMarkdown(md) {
+  const { marked, DOMPurify } = await ensureMarkdownLibs()
+  const raw = marked.parse(String(md || ''), { async: false })
+  return DOMPurify.sanitize(raw, {
+    USE_PROFILES: { html: true },
+    ADD_ATTR: ['target', 'rel']
+  })
+}
+
+/** Rough plain-text from markdown for titles / previews */
+export function plainTextFromMarkdown(md) {
+  return String(md || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^>\s?/gm, '')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/^\d+\.\s+/gm, '')
+    .replace(/(\*\*|__)(.*?)\1/g, '$2')
+    .replace(/(\*|_)(.*?)\1/g, '$2')
+    .replace(/~~(.*?)~~/g, '$1')
+    .replace(/^\s*[-*_]{3,}\s*$/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function escapeAttr(str) {
   if (str === null || str === undefined) return ''
   return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
