@@ -846,7 +846,8 @@
           <button type="button" class="toolbar-actions-item" data-perm="customers_import" onclick="app.openImportModal();app.closeAllToolbarActions()">ایمپورت اکسل</button>
         </div>
       </div>
-      <button class="btn btn-primary" data-perm="followups_add" onclick="app.openFollowupModal()">+ پیگیری جدید</button>
+      <button type="button" class="btn btn-done" data-perm="followups_add" onclick="app.openFollowupDonePicker()">ثبت انجام پیگیری</button>
+      <button type="button" class="btn btn-primary" data-perm="followups_add" onclick="app.openFollowupModal()">+ ثبت یادداشت</button>
     </div>
 
     <div class="table-wrapper">
@@ -1073,26 +1074,29 @@
   </div>
 </div>
 
-<!-- مودال پیگیری -->
+<!-- مودال ثبت یادداشت (تاریخچه) -->
 <div class="modal-overlay" id="followupModal">
   <div class="modal">
     <div class="modal-header">
-      <h2 id="followupModalTitle">پیگیری جدید</h2>
+      <h2 id="followupModalTitle">ثبت یادداشت</h2>
       <button class="modal-close" onclick="app.closeFollowupModal()">&times;</button>
     </div>
     <div class="modal-body">
       <input type="hidden" id="editFollowupIndex">
+      <p class="form-hint is-info" id="followupModalGuide" style="margin:0 0 14px;">
+        این فرم تاریخچه تماس را ثبت می‌کند. برای ظاهر شدن در صف امروز، تاریخ «پیگیری بعدی» را هم پر کنید.
+      </p>
       <div class="form-group">
         <label for="followupCustomer">مشتری <span class="required">*</span></label>
         <select class="form-select" id="followupCustomer"><option value="">انتخاب کنید...</option></select>
       </div>
       <div class="form-row">
-        <div class="form-group"><label for="followupDate">تاریخ پیگیری <span class="required">*</span></label><input type="text" class="form-input" id="followupDate" placeholder="تاریخ پیگیری" data-jdp></div>
-        <div class="form-group"><label for="followupNextDate">پیگیری بعدی</label><input type="text" class="form-input" id="followupNextDate" placeholder="پیگیری بعدی" data-jdp></div>
+        <div class="form-group"><label for="followupDate">تاریخ تماس <span class="required">*</span></label><input type="text" class="form-input" id="followupDate" placeholder="تاریخ تماس" data-jdp></div>
+        <div class="form-group"><label for="followupNextDate">پیگیری بعدی <span class="settings-optional">(اختیاری — برای صف)</span></label><input type="text" class="form-input" id="followupNextDate" placeholder="اگر می‌خواهید در صف بیاید" data-jdp></div>
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label for="followupType">نوع پیگیری <span class="required">*</span></label>
+          <label for="followupType">نوع <span class="required">*</span></label>
           <select class="form-select" id="followupType">
             <option value="دایرکت">دایرکت</option><option value="تماس">تماس</option><option value="کامنت">کامنت</option><option value="پیام">پیام</option>
           </select>
@@ -1104,11 +1108,40 @@
           </select>
         </div>
       </div>
-      <div class="form-group"><label for="followupNotes">توضیحات</label><textarea class="form-textarea" id="followupNotes" placeholder="توضیحات این پیگیری..."></textarea></div>
+      <div class="form-group"><label for="followupNotes">توضیحات</label><textarea class="form-textarea" id="followupNotes" placeholder="یادداشت این تماس..."></textarea></div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="app.closeFollowupModal()">انصراف</button>
-      <button class="btn btn-primary" onclick="app.saveFollowup()">ذخیره</button>
+      <button class="btn btn-primary" id="followupModalSaveBtn" onclick="app.saveFollowup()">ثبت یادداشت</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال انتخاب مشتری برای ثبت انجام پیگیری -->
+<div class="modal-overlay" id="followupDonePickModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <h2>ثبت انجام پیگیری</h2>
+      <button class="modal-close" onclick="app.closeFollowupDonePicker()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="form-hint is-info" style="margin:0 0 14px;">
+        مشتری‌ای از صف امروز / معوقه / نزدیک را انتخاب کنید تا نتیجه پیگیری ثبت شود.
+      </p>
+      <div class="form-group">
+        <label for="followupDonePickSearch">جستجو</label>
+        <input type="search" class="form-input" id="followupDonePickSearch" placeholder="نام، شماره یا شناسه..." oninput="app.filterFollowupDonePick(this.value)">
+      </div>
+      <div class="form-group">
+        <label for="followupDonePickCustomer">مشتری در صف <span class="required">*</span></label>
+        <select class="form-select" id="followupDonePickCustomer" size="8" style="height:auto;min-height:200px;" ondblclick="app.confirmFollowupDonePick()">
+          <option value="">انتخاب کنید...</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeFollowupDonePicker()">انصراف</button>
+      <button class="btn btn-done" onclick="app.confirmFollowupDonePick()">ادامه و ثبت انجام</button>
     </div>
   </div>
 </div>

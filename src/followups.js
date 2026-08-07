@@ -416,6 +416,84 @@ export function closeFollowupDoneModal() {
   document.getElementById('followupDoneModal').classList.remove('active')
 }
 
+/** @type {{ id: string, label: string, search: string }[]} */
+let followupDonePickOptions = []
+
+const DONE_PICK_CAT_LABEL = {
+  overdue: 'معوقه',
+  today: 'امروز',
+  waiting: 'نزدیک'
+}
+
+function renderFollowupDonePickOptions(query) {
+  const select = document.getElementById('followupDonePickCustomer')
+  if (!select) return
+  const q = toEnDigits(query || '').toLowerCase().trim()
+  const list = q
+    ? followupDonePickOptions.filter(o => o.search.includes(q))
+    : followupDonePickOptions
+  if (!list.length) {
+    select.innerHTML = '<option value="">مشتری‌ای در صف یافت نشد</option>'
+    return
+  }
+  select.innerHTML = list.map(o =>
+    `<option value="${escapeAttr(o.id)}">${escapeHtml(o.label)}</option>`
+  ).join('')
+  if (list.length === 1) select.value = list[0].id
+}
+
+/** Toolbar CTA: pick a queued customer, then open the done modal. */
+export function openFollowupDonePicker() {
+  if (!requirePermission('followups_add')) return
+  const pending = getPendingItems(false)
+  const catOrder = { overdue: 0, today: 1, waiting: 2 }
+  followupDonePickOptions = pending
+    .slice()
+    .sort((a, b) => {
+      const c = (catOrder[a.category] ?? 9) - (catOrder[b.category] ?? 9)
+      if (c !== 0) return c
+      return dateNum(a.nextDate) - dateNum(b.nextDate)
+    })
+    .map(item => {
+      const catLabel = DONE_PICK_CAT_LABEL[item.category] || ''
+      const label = `${catLabel} · ${item.nextDate || '—'} — ${item.customerId} — ${item.customerName}`
+      return {
+        id: item.customerId,
+        label,
+        search: toEnDigits(`${item.customerId} ${item.customerName} ${item.customerPhone} ${item.nextDate} ${catLabel}`).toLowerCase()
+      }
+    })
+
+  if (!followupDonePickOptions.length) {
+    showToast('مشتری‌ای در صف پیگیری نیست')
+    return
+  }
+
+  const search = document.getElementById('followupDonePickSearch')
+  if (search) search.value = ''
+  renderFollowupDonePickOptions('')
+  document.getElementById('followupDonePickModal')?.classList.add('active')
+  search?.focus()
+}
+
+export function filterFollowupDonePick(query) {
+  renderFollowupDonePickOptions(query)
+}
+
+export function closeFollowupDonePicker() {
+  document.getElementById('followupDonePickModal')?.classList.remove('active')
+}
+
+export function confirmFollowupDonePick() {
+  const customerId = document.getElementById('followupDonePickCustomer')?.value
+  if (!customerId) {
+    showToast('مشتری را انتخاب کنید')
+    return
+  }
+  closeFollowupDonePicker()
+  openFollowupDoneModal(customerId)
+}
+
 export async function confirmFollowupDone() {
   if (!requirePermission('followups_add')) return
   const data = getData()
@@ -485,6 +563,8 @@ export function openFollowupModal(editFollowupId) {
   const modal = document.getElementById('followupModal')
   const title = document.getElementById('followupModalTitle')
   const select = document.getElementById('followupCustomer')
+  const guide = document.getElementById('followupModalGuide')
+  const saveBtn = document.getElementById('followupModalSaveBtn')
 
   select.innerHTML = '<option value="">انتخاب کنید...</option>' +
     data.customers.filter(c => canAddNoteOnCustomer(c)).map(c =>
@@ -494,7 +574,7 @@ export function openFollowupModal(editFollowupId) {
   if (editFollowupId) {
     const f = data.followups.find(x => String(x.id) === String(editFollowupId) || `idx_${data.followups.indexOf(x)}` === editFollowupId)
     if (!f) return
-    title.textContent = 'ویرایش پیگیری'
+    title.textContent = 'ویرایش یادداشت'
     document.getElementById('editFollowupIndex').value = editFollowupId
     select.value = f.customerId
     document.getElementById('followupDate').value = f.date
@@ -502,8 +582,10 @@ export function openFollowupModal(editFollowupId) {
     document.getElementById('followupType').value = f.type
     document.getElementById('followupResult').value = f.result
     document.getElementById('followupNotes').value = f.notes
+    if (guide) guide.hidden = true
+    if (saveBtn) saveBtn.textContent = 'ذخیره تغییرات'
   } else {
-    title.textContent = 'پیگیری جدید'
+    title.textContent = 'ثبت یادداشت'
     document.getElementById('editFollowupIndex').value = ''
     select.value = ''
     document.getElementById('followupDate').value = ''
@@ -511,6 +593,8 @@ export function openFollowupModal(editFollowupId) {
     document.getElementById('followupType').value = 'دایرکت'
     document.getElementById('followupResult').value = 'پاسخ داد'
     document.getElementById('followupNotes').value = ''
+    if (guide) guide.hidden = false
+    if (saveBtn) saveBtn.textContent = 'ثبت یادداشت'
   }
 
   modal.classList.add('active')
@@ -533,7 +617,7 @@ export async function saveFollowup() {
   const notes = document.getElementById('followupNotes').value.trim()
 
   if (!customerId) { showToast('مشتری را انتخاب کنید'); return }
-  if (!date) { showToast('تاریخ پیگیری را وارد کنید'); return }
+  if (!date) { showToast('تاریخ تماس را وارد کنید'); return }
 
   const customer = data.customers.find(c => c.id === customerId)
   if (!customer || !canViewCustomer(customer)) {
@@ -579,7 +663,7 @@ export async function saveFollowup() {
   renderFollowups()
   closeFollowupModal()
   await refreshOpenCustomerDetail(customerId)
-  showToast(editFollowupId ? 'پیگیری ویرایش شد' : 'پیگیری جدید ثبت شد')
+  showToast(editFollowupId ? 'یادداشت ویرایش شد' : 'یادداشت ثبت شد')
 }
 
 export function editFollowup(followupId) {
