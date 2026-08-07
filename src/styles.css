@@ -1295,6 +1295,36 @@
     margin-top: 12px;
   }
 
+  .sale-payment-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+  }
+
+  .sale-submit-btn {
+    min-width: 110px;
+  }
+
+  .sale-product-save-btn {
+    margin-top: 12px;
+  }
+
+  .sale-shipping-fields {
+    margin-top: 12px;
+  }
+
+  .sale-field.is-invalid .sale-field-label {
+    color: var(--danger, #dc2626);
+  }
+
+  .sale-field.is-invalid input,
+  .sale-field.is-invalid select,
+  .sale-field-control input.is-invalid,
+  .sale-field-control select.is-invalid {
+    border-color: var(--danger, #dc2626) !important;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+  }
+
   .product-status-label {
     font-size: 13px;
     font-weight: 600;

@@ -1742,7 +1742,7 @@ export async function openCustomerDetail(id, options = {}) {
   const salesCount = !isNew ? (c.products || []).length : 0
   const salesPanelHtml = `
     <div class="detail-products">
-      <p class="detail-sales-hint">فروش با تکمیل مبلغ، تاریخ، ساعت و بانک مقصد ثبت می‌شود و برای تأیید به حسابداری می‌رود.</p>
+      <p class="detail-sales-hint">پس از تکمیل مبلغ، تاریخ، ساعت و بانک مقصد، دکمهٔ «ثبت فروش» یا «ثبت واریز» را بزنید تا برای تأیید به حسابداری برود.</p>
       <div id="detailProductsList"></div>
       ${canAddSale
         ? `<button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="app.addProductRow('${escapeAttr(c.id)}')">+ ثبت فروش</button>`
@@ -2221,7 +2221,7 @@ export async function renderProducts(customerId, users = null) {
       if (!payEditable) {
         const bankVal = String(pay.destinationBank || '').trim()
         return `
-          <div class="sale-payment payment-row is-readonly">
+          <div class="sale-payment payment-row is-readonly" data-payment-index="${pi}">
             ${head}
             <div class="sale-fields">
               ${saleFieldHtml('مبلغ', `<span class="sale-readonly-value" style="direction:ltr;">${pay.amount ? formatNumber(pay.amount) + ' ریال' : '—'}</span>`)}
@@ -2232,15 +2232,19 @@ export async function renderProducts(customerId, users = null) {
           </div>`
       }
 
+      const submitLabel = (!priceLocked && pi === 0) ? 'ثبت فروش' : 'ثبت واریز'
       return `
-        <div class="sale-payment payment-row${incomplete ? ' is-incomplete' : ''}">
+        <div class="sale-payment payment-row${incomplete ? ' is-incomplete' : ''}" data-payment-index="${pi}">
           ${head}
           <div class="sale-fields">
-            ${saleFieldHtml('مبلغ (ریال)', `<input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="مثلاً ۵٬۰۰۰٬۰۰۰" value="${pay.amount ? formatNumber(pay.amount) : ''}" oninput="app.formatInput(this)" onblur="app.savePaymentField('${customerId}', ${i}, ${pi}, 'amount', app.unformatInput(this))" title="واحد: ریال">`, { required: true })}
-            ${saleFieldHtml('تاریخ', `<input type="text" class="product-settlement" placeholder="انتخاب تاریخ" data-jdp value="${pay.soldAt ? pay.soldAt.split(' ')[0] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtDate', this.value)">`, { required: true })}
-            ${saleFieldHtml('ساعت', `<input type="text" class="product-settlement product-time" inputmode="numeric" placeholder="۱۴:۳۰" maxlength="5" value="${escapeAttr(soldAtTimePart(pay.soldAt))}" onblur="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtTime', this.value)" title="ساعت ۲۴ ساعته، مثلاً ۱۴:۳۰">`, { required: true })}
+            ${saleFieldHtml('مبلغ (ریال)', `<input type="text" inputmode="numeric" class="product-deposit num-input" data-pay-field="amount" placeholder="مثلاً ۵٬۰۰۰٬۰۰۰" value="${pay.amount ? formatNumber(pay.amount) : ''}" oninput="app.formatInput(this)" title="واحد: ریال">`, { required: true })}
+            ${saleFieldHtml('تاریخ', `<input type="text" class="product-settlement" data-pay-field="soldAtDate" placeholder="انتخاب تاریخ" data-jdp value="${pay.soldAt ? pay.soldAt.split(' ')[0] : ''}">`, { required: true })}
+            ${saleFieldHtml('ساعت', `<input type="text" class="product-settlement product-time" data-pay-field="soldAtTime" inputmode="numeric" placeholder="۱۴:۳۰" maxlength="5" value="${escapeAttr(soldAtTimePart(pay.soldAt))}" title="ساعت ۲۴ ساعته، مثلاً ۱۴:۳۰">`, { required: true })}
             ${saleFieldHtml('بانک مقصد', renderDestinationBankField(customerId, i, pi, pay, true), { required: true, className: 'sale-field--bank' })}
-            ${saleFieldHtml('نام واریزکننده', `<input type="text" class="product-settlement product-depositor" placeholder="در صورت نیاز" value="${escapeAttr(pay.depositorName || '')}" onblur="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'depositorName', this.value)">`, { optional: true, full: true })}
+            ${saleFieldHtml('نام واریزکننده', `<input type="text" class="product-settlement product-depositor" data-pay-field="depositorName" placeholder="در صورت نیاز" value="${escapeAttr(pay.depositorName || '')}">`, { optional: true, full: true })}
+          </div>
+          <div class="sale-payment-actions">
+            <button type="button" class="btn btn-sm btn-primary sale-submit-btn" data-sale-submit onclick="app.commitSalePayment('${escapeAttr(customerId)}', ${i}, ${pi})">${submitLabel}</button>
           </div>
         </div>`
     }).join('')
@@ -2251,17 +2255,17 @@ export async function renderProducts(customerId, users = null) {
       const needsPrice = !price
       const disabled = !filled || needsPrice
       const title = needsPrice
-        ? 'ابتدا قیمت کل را ثبت کنید'
-        : (!filled ? 'ابتدا فیلدهای واریزهای فعلی را کامل کنید' : `مانده: ${formatNumber(balance)}`)
+        ? 'ابتدا فروش را با دکمه ثبت ذخیره کنید'
+        : (!filled ? 'ابتدا واریزهای فعلی را با دکمه ثبت ذخیره کنید' : `مانده: ${formatNumber(balance)}`)
       addPayBtn = `<button type="button" class="btn btn-sm sale-add-pay-btn" ${disabled ? 'disabled' : ''} title="${escapeAttr(title)}" onclick="app.addProductPayment('${escapeAttr(customerId)}', ${i})">+ افزودن واریز${balance > 0 ? ` (مانده: ${formatNumber(balance)})` : ''}</button>`
     }
 
     const priceControl = (!canEdit || priceLocked)
       ? `<span class="product-price-locked sale-readonly-value" title="قیمت کل قفل شده"><b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${price ? formatNumber(price) : '—'}</b> ریال</span>`
-      : `<input type="text" inputmode="numeric" class="product-price num-input" placeholder="مثلاً ۱۰٬۰۰۰٬۰۰۰" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" onblur="app.saveProductField('${customerId}', ${i}, 'price', app.unformatInput(this))" title="واحد: ریال">`
+      : `<input type="text" inputmode="numeric" class="product-price num-input" data-sale-field="price" placeholder="مثلاً ۱۰٬۰۰۰٬۰۰۰" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" title="واحد: ریال">`
 
     const settlementControl = canEdit && !closed
-      ? `<input type="text" class="product-settlement" placeholder="انتخاب تاریخ" data-jdp value="${p.settlementDate || ''}" onchange="app.updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">`
+      ? `<input type="text" class="product-settlement" data-sale-field="settlementDate" placeholder="انتخاب تاریخ" data-jdp value="${p.settlementDate || ''}">`
       : (p.settlementDate
         ? `<span class="sale-readonly-value">${escapeHtml(p.settlementDate)}</span>`
         : `<span class="sale-readonly-value sale-readonly-empty">—</span>`)
@@ -2272,27 +2276,31 @@ export async function renderProducts(customerId, users = null) {
     if (displayName && !nameOptions.includes(displayName)) nameOptions.unshift(displayName)
     const bundle = getBundleByName(displayName)
     const bundleHint = bundle
-      ? `<span class="product-bundle-hint">شامل: ${escapeHtml((bundle.productNames || []).join('، '))}</span>`
-      : ''
+      ? `<span class="product-bundle-hint" data-bundle-hint>شامل: ${escapeHtml((bundle.productNames || []).join('، '))}</span>`
+      : `<span class="product-bundle-hint" data-bundle-hint hidden></span>`
     const nameControl = canEdit && !closed
-      ? `<select class="product-name" onchange="app.updateProduct('${customerId}', ${i}, 'name', this.value)">
+      ? `<select class="product-name" data-sale-field="name" onchange="app.onSaleProductNameChange(this)">
             ${nameOptions.map(pr => `<option value="${escapeAttr(pr)}" ${displayName === pr ? 'selected' : ''}>${escapeHtml(pr)}</option>`).join('')}
           </select>${bundleHint}`
       : `<span class="sale-readonly-value" style="font-weight:600;">${escapeHtml(displayName || '—')}</span>${bundleHint}`
 
     const isPhysical = isPhysicalSaleLine(p)
     let shippingFields = ''
-    if (isPhysical) {
-      if (canEdit && !closed) {
-        shippingFields = `
-          ${saleFieldHtml('آدرس گیرنده', `<input type="text" class="product-settlement product-shipping-address" placeholder="آدرس کامل" value="${escapeAttr(p.shippingAddress || '')}" onblur="app.saveProductShippingField('${escapeAttr(customerId)}', ${i}, 'shippingAddress', this.value)">`, { optional: true, full: true })}
-          ${saleFieldHtml('کد پستی', `<input type="text" class="product-settlement product-shipping-postal" inputmode="numeric" placeholder="۱۰ رقم" value="${escapeAttr(p.shippingPostalCode || '')}" onblur="app.saveProductShippingField('${escapeAttr(customerId)}', ${i}, 'shippingPostalCode', this.value)">`, { optional: true })}`
-      } else if (p.shippingAddress || p.shippingPostalCode) {
-        shippingFields = `
+    if (canEdit && !closed) {
+      shippingFields = `<div class="sale-shipping-fields sale-fields" data-shipping-fields ${isPhysical ? '' : 'hidden'}>
+          ${saleFieldHtml('آدرس گیرنده', `<input type="text" class="product-settlement product-shipping-address" data-sale-field="shippingAddress" placeholder="آدرس کامل" value="${escapeAttr(p.shippingAddress || '')}">`, { optional: true, full: true })}
+          ${saleFieldHtml('کد پستی', `<input type="text" class="product-settlement product-shipping-postal" data-sale-field="shippingPostalCode" inputmode="numeric" placeholder="۱۰ رقم" value="${escapeAttr(p.shippingPostalCode || '')}">`, { optional: true })}
+        </div>`
+    } else if (isPhysical && (p.shippingAddress || p.shippingPostalCode)) {
+      shippingFields = `
           ${saleFieldHtml('آدرس گیرنده', `<span class="sale-readonly-value">${escapeHtml(p.shippingAddress || '—')}</span>`, { optional: true, full: true })}
           ${p.shippingPostalCode ? saleFieldHtml('کد پستی', `<span class="sale-readonly-value">${escapeHtml(p.shippingPostalCode)}</span>`, { optional: true }) : ''}`
-      }
     }
+
+    const hasEditablePay = canEdit && pays.some(pay => getPaymentEntryStatus(pay) !== PAYMENT_STATUS.approved)
+    const productDetailsBtn = (canEdit && !closed && !hasEditablePay)
+      ? `<button type="button" class="btn btn-sm sale-product-save-btn" onclick="app.commitSaleProductDetails('${escapeAttr(customerId)}', ${i})">ذخیره جزئیات محصول</button>`
+      : ''
 
     const summaryHtml = `
       <div class="sale-summary" aria-label="خلاصه مالی">
@@ -2303,16 +2311,17 @@ export async function renderProducts(customerId, users = null) {
       </div>`
 
     return `
-      <div class="${blockClass}">
+      <div class="${blockClass}" data-product-index="${i}">
         <section class="sale-step sale-step-product">
           <h4 class="sale-step-title">۱. محصول</h4>
           <div class="sale-fields">
             ${saleFieldHtml('محصول', nameControl, { required: true, full: true, className: 'sale-field--name' })}
             ${saleFieldHtml('قیمت کل (ریال)', priceControl, { required: true })}
             ${saleFieldHtml('تاریخ تسویه', settlementControl, { optional: true })}
-            ${shippingFields}
           </div>
+          ${shippingFields}
           ${summaryHtml}
+          ${productDetailsBtn}
         </section>
         <section class="sale-step sale-step-payments">
           <h4 class="sale-step-title">۲. واریزها</h4>
@@ -2379,11 +2388,11 @@ export async function addProductPayment(customerId, productIndex) {
     return
   }
   if (!(parseFloat(product.price) || 0)) {
-    showToast('ابتدا قیمت کل محصول را ثبت کنید')
+    showToast('ابتدا فروش را با دکمه ثبت ذخیره کنید')
     return
   }
   if (!areProductPaymentsFilled(product)) {
-    showToast('ابتدا فیلدهای واریزهای فعلی را کامل کنید')
+    showToast('ابتدا واریزهای فعلی را با دکمه ثبت ذخیره کنید')
     return
   }
 
@@ -2398,7 +2407,6 @@ export async function addProductPayment(customerId, productIndex) {
   syncProductStatus(product)
   await setProducts(customerId, products)
   renderProducts(customerId)
-  showToast('واریز جدید اضافه شد — در انتظار تأیید حسابداری')
 }
 
 export async function removeProductPayment(customerId, productIndex, paymentIndex) {
@@ -2432,57 +2440,117 @@ function resetPaymentEntry(pay) {
   pay.paymentReviewedBy = ''
 }
 
-export async function saveProductField(customerId, index, field, value) {
-  const products = getProducts(customerId)
-  const product = products[index]
-  if (!product) return
+function unformatSaleNumber(el) {
+  if (!el) return ''
+  return String(el.value || '').replace(/[^\d]/g, '')
+}
 
-  if (field === 'price') {
-    if (isProductPriceLocked(product) && (parseFloat(product.price) || 0) > 0) {
-      showToast('قیمت کل پس از ثبت قابل تغییر نیست')
-      renderProducts(customerId)
-      return
-    }
-    const num = parseFloat(value) || 0
-    if (num <= 0) {
-      showToast('قیمت کل را وارد کنید')
-      return
-    }
-    product.price = String(num)
-    product.priceLocked = true
+function markSaleFieldInvalid(el, invalid) {
+  const field = el?.closest?.('.sale-field')
+  if (field) field.classList.toggle('is-invalid', !!invalid)
+  if (el) el.classList.toggle('is-invalid', !!invalid)
+}
+
+function clearSaleBlockInvalid(blockEl) {
+  blockEl?.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'))
+}
+
+function readSaleProductDraft(blockEl) {
+  const nameEl = blockEl.querySelector('[data-sale-field="name"]')
+  const priceEl = blockEl.querySelector('[data-sale-field="price"]')
+  const settlementEl = blockEl.querySelector('[data-sale-field="settlementDate"]')
+  const addressEl = blockEl.querySelector('[data-sale-field="shippingAddress"]')
+  const postalEl = blockEl.querySelector('[data-sale-field="shippingPostalCode"]')
+  return {
+    name: nameEl ? nameEl.value : null,
+    price: priceEl ? unformatSaleNumber(priceEl) : null,
+    settlementDate: settlementEl ? String(settlementEl.value || '').trim() : null,
+    shippingAddress: addressEl ? String(addressEl.value || '').trim().replace(/\s+/g, ' ') : null,
+    shippingPostalCode: postalEl ? toEnDigits(String(postalEl.value || '')).trim().replace(/\s+/g, '') : null,
+    priceEl,
+    nameEl
+  }
+}
+
+function readSalePaymentDraft(payEl) {
+  const amountEl = payEl.querySelector('[data-pay-field="amount"]')
+  const dateEl = payEl.querySelector('[data-pay-field="soldAtDate"]')
+  const timeEl = payEl.querySelector('[data-pay-field="soldAtTime"]')
+  const bankSelect = payEl.querySelector('[data-pay-field="destinationBank"]')
+  const customBank = payEl.querySelector('.bank-custom-input')
+  const depositorEl = payEl.querySelector('[data-pay-field="depositorName"]')
+  let destinationBank = bankSelect ? String(bankSelect.value || '').trim() : ''
+  if (destinationBank === '__custom__') {
+    destinationBank = customBank ? String(customBank.value || '').trim() : ''
+  }
+  return {
+    amount: unformatSaleNumber(amountEl),
+    soldAtDate: dateEl ? toEnDigits(String(dateEl.value || '')).trim() : '',
+    soldAtTime: timeEl ? String(timeEl.value || '').trim() : '',
+    destinationBank,
+    depositorName: depositorEl ? String(depositorEl.value || '').trim() : '',
+    amountEl,
+    dateEl,
+    timeEl,
+    bankSelect,
+    customBank
+  }
+}
+
+function applySaleProductDraft(product, draft, { lockPrice = false } = {}) {
+  if (draft.name != null) {
+    product.name = coerceProductName(draft.name) || draft.name
     applyProfitSnapshotToProduct(product)
+  }
+  if (draft.settlementDate != null) {
+    product.settlementDate = draft.settlementDate
+  }
+  if (draft.price != null && draft.price !== '') {
+    const num = parseFloat(draft.price) || 0
+    if (num > 0) {
+      if (!isProductPriceLocked(product) || !(parseFloat(product.price) || 0)) {
+        product.price = String(num)
+        if (lockPrice) product.priceLocked = true
+        applyProfitSnapshotToProduct(product)
+      }
+    }
+  }
+  if (isPhysicalSaleLine(product)) {
+    if (draft.shippingAddress != null) product.shippingAddress = draft.shippingAddress
+    if (draft.shippingPostalCode != null) product.shippingPostalCode = draft.shippingPostalCode
   } else {
-    product[field] = value
+    product.shippingAddress = ''
+    product.shippingPostalCode = ''
   }
-
-  syncProductStatus(product)
-  await setProducts(customerId, products)
-  renderProducts(customerId)
 }
 
-export async function updateProduct(customerId, index, field, value) {
-  const products = getProducts(customerId)
-  const product = products[index]
-  if (!product) return
-  if (isInvoiceClosed(product) && field !== 'settlementDate') {
-    showToast('فاکتور بسته شده و قابل ویرایش نیست')
-    return
+export function onSaleProductNameChange(selectEl) {
+  const block = selectEl?.closest('.product-block')
+  if (!block) return
+  const name = selectEl.value
+  const shipping = block.querySelector('[data-shipping-fields]')
+  if (shipping) shipping.hidden = !isPhysicalSaleLine({ name })
+  const hint = block.querySelector('[data-bundle-hint]')
+  if (hint) {
+    const bundle = getBundleByName(coerceProductName(name) || name)
+    if (bundle?.productNames?.length) {
+      hint.hidden = false
+      hint.textContent = `شامل: ${(bundle.productNames || []).join('، ')}`
+    } else {
+      hint.hidden = true
+      hint.textContent = ''
+    }
   }
-  product[field] = field === 'name' ? coerceProductName(value) || value : value
-  if (field === 'name') applyProfitSnapshotToProduct(product)
-  syncProductStatus(product)
-  await setProducts(customerId, products)
-  renderProducts(customerId)
 }
 
-export async function saveProductShippingField(customerId, productIndex, field, value) {
-  if (field !== 'shippingAddress' && field !== 'shippingPostalCode') return
-  const data = getData()
-  const customer = data.customers.find(c => c.id === customerId)
+export async function commitSaleProductDetails(customerId, productIndex) {
+  const customer = getData().customers.find(c => c.id === customerId)
   if (!canAddSaleOnCustomer(customer)) {
     showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
     return
   }
+  const block = document.querySelector(`#detailProductsList .product-block[data-product-index="${productIndex}"]`)
+  if (!block) return
   const products = getProducts(customerId)
   const product = products[productIndex]
   if (!product) return
@@ -2490,31 +2558,55 @@ export async function saveProductShippingField(customerId, productIndex, field, 
     showToast('فاکتور بسته شده و قابل ویرایش نیست')
     return
   }
-  if (!isPhysicalSaleLine(product)) return
 
-  const cleaned = field === 'shippingPostalCode'
-    ? toEnDigits(String(value || '')).trim().replace(/\s+/g, '')
-    : String(value || '').trim().replace(/\s+/g, ' ')
-  product[field] = cleaned
-
-  if (product.shippingAddress) {
-    appendCustomerAddressIfNew(customer, {
-      text: product.shippingAddress,
-      postalCode: product.shippingPostalCode || ''
-    })
+  const btn = block.querySelector('.sale-product-save-btn')
+  const prevLabel = btn?.textContent
+  if (btn) {
+    btn.disabled = true
+    btn.textContent = 'در حال ذخیره…'
   }
 
-  syncProductStatus(product)
-  await saveCustomerToDB(customer)
-  renderProducts(customerId)
+  try {
+    const draft = readSaleProductDraft(block)
+    clearSaleBlockInvalid(block)
+    if (draft.nameEl && !String(draft.name || '').trim()) {
+      markSaleFieldInvalid(draft.nameEl, true)
+      showToast('محصول را انتخاب کنید')
+      return
+    }
+    applySaleProductDraft(product, draft, { lockPrice: false })
+    if (product.shippingAddress) {
+      appendCustomerAddressIfNew(customer, {
+        text: product.shippingAddress,
+        postalCode: product.shippingPostalCode || ''
+      })
+    }
+    syncProductStatus(product)
+    await setProducts(customerId, products)
+    showToast('جزئیات محصول ذخیره شد')
+    renderProducts(customerId)
+  } catch (e) {
+    console.error('commitSaleProductDetails error:', e)
+    showToast('خطا در ذخیره جزئیات محصول')
+  } finally {
+    if (btn) {
+      btn.disabled = false
+      if (prevLabel) btn.textContent = prevLabel
+    }
+  }
 }
 
-export async function savePaymentField(customerId, productIndex, paymentIndex, field, value) {
+export async function commitSalePayment(customerId, productIndex, paymentIndex) {
   const customer = getData().customers.find(c => c.id === customerId)
   if (!canAddSaleOnCustomer(customer)) {
     showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
     return
   }
+
+  const block = document.querySelector(`#detailProductsList .product-block[data-product-index="${productIndex}"]`)
+  const payEl = block?.querySelector(`.sale-payment[data-payment-index="${paymentIndex}"]`)
+  if (!block || !payEl) return
+
   const products = getProducts(customerId)
   const product = products[productIndex]
   if (!product) return
@@ -2525,18 +2617,96 @@ export async function savePaymentField(customerId, productIndex, paymentIndex, f
     showToast('واریز تأییدشده قابل ویرایش نیست')
     return
   }
-  const wasFilled = isPaymentFilled(pay)
-  pay[field] = value
-  resetPaymentEntry(pay)
-  syncProductStatus(product)
-  await setProducts(customerId, products)
-  renderProducts(customerId)
-  maybeBroadcastSaleToast(customer, product, pay, wasFilled)
+  if (isInvoiceClosed(product)) {
+    showToast('فاکتور بسته شده و قابل ویرایش نیست')
+    return
+  }
+
+  const productDraft = readSaleProductDraft(block)
+  const paymentDraft = readSalePaymentDraft(payEl)
+  clearSaleBlockInvalid(block)
+
+  let hasError = false
+  const priceLocked = isProductPriceLocked(product)
+  if (!priceLocked) {
+    const priceNum = parseFloat(productDraft.price) || 0
+    if (priceNum <= 0) {
+      markSaleFieldInvalid(productDraft.priceEl, true)
+      hasError = true
+    }
+  }
+  if (productDraft.nameEl && !String(productDraft.name || '').trim()) {
+    markSaleFieldInvalid(productDraft.nameEl, true)
+    hasError = true
+  }
+
+  const amountNum = parseFloat(paymentDraft.amount) || 0
+  if (amountNum <= 0) {
+    markSaleFieldInvalid(paymentDraft.amountEl, true)
+    hasError = true
+  }
+  if (!paymentDraft.soldAtDate || paymentDraft.soldAtDate.split('/').length !== 3) {
+    markSaleFieldInvalid(paymentDraft.dateEl, true)
+    hasError = true
+  }
+  const time24 = normalizeTimeTo24h(paymentDraft.soldAtTime)
+  if (!paymentDraft.soldAtTime || !time24) {
+    markSaleFieldInvalid(paymentDraft.timeEl, true)
+    hasError = true
+  }
+  if (!paymentDraft.destinationBank) {
+    markSaleFieldInvalid(paymentDraft.bankSelect || paymentDraft.customBank, true)
+    if (paymentDraft.customBank) markSaleFieldInvalid(paymentDraft.customBank, true)
+    hasError = true
+  }
+
+  if (hasError) {
+    payEl.classList.add('is-incomplete')
+    showToast('فیلدهای الزامی را کامل کنید')
+    return
+  }
+
+  const btn = payEl.querySelector('[data-sale-submit]')
+  const prevLabel = btn?.textContent
+  if (btn) {
+    btn.disabled = true
+    btn.textContent = 'در حال ثبت…'
+  }
+
+  try {
+    const wasFilled = isPaymentFilled(pay)
+    applySaleProductDraft(product, productDraft, { lockPrice: true })
+
+    if (product.shippingAddress) {
+      appendCustomerAddressIfNew(customer, {
+        text: product.shippingAddress,
+        postalCode: product.shippingPostalCode || ''
+      })
+    }
+
+    pay.amount = String(amountNum)
+    pay.soldAt = `${paymentDraft.soldAtDate} ${time24}`
+    pay.destinationBank = paymentDraft.destinationBank
+    pay.depositorName = paymentDraft.depositorName
+    resetPaymentEntry(pay)
+    syncProductStatus(product)
+
+    await setProducts(customerId, products)
+    showToast(`واریز ${paymentIndex + 1} ثبت شد — در انتظار تأیید حسابداری`)
+    maybeBroadcastSaleToast(customer, product, pay, wasFilled)
+    renderProducts(customerId)
+  } catch (e) {
+    console.error('commitSalePayment error:', e)
+    showToast('خطا در ثبت فروش')
+    if (btn) {
+      btn.disabled = false
+      if (prevLabel) btn.textContent = prevLabel
+    }
+  }
 }
 
 async function maybeBroadcastSaleToast(customer, product, payment, wasFilled) {
   if (wasFilled || !isPaymentFilled(payment)) return
-  // Guard against concurrent savePaymentField + updatePaymentField both seeing !wasFilled
   if (payment._saleToastSent) return
   payment._saleToastSent = true
   try {
@@ -2565,14 +2735,14 @@ function renderDestinationBankField(customerId, productIndex, paymentIndex, pay,
 
   return `
     <div class="product-bank-field">
-      <select class="product-settlement" onchange="app.onDestinationBankSelect('${escapeAttr(customerId)}', ${productIndex}, ${paymentIndex}, this)">
+      <select class="product-settlement" data-pay-field="destinationBank" onchange="app.onDestinationBankSelect(this)">
         ${options}
       </select>
-      <input type="text" class="product-settlement bank-custom-input" placeholder="نام بانک" value="${isCustom ? escapeAttr(value) : ''}" style="${isCustom ? '' : 'display:none;'}" onblur="app.updatePaymentField('${escapeAttr(customerId)}', ${productIndex}, ${paymentIndex}, 'destinationBank', this.value)">
+      <input type="text" class="product-settlement bank-custom-input" placeholder="نام بانک" value="${isCustom ? escapeAttr(value) : ''}" style="${isCustom ? '' : 'display:none;'}">
     </div>`
 }
 
-export function onDestinationBankSelect(customerId, productIndex, paymentIndex, selectEl) {
+export function onDestinationBankSelect(selectEl) {
   const wrap = selectEl.closest('.product-bank-field')
   const customInput = wrap?.querySelector('.bank-custom-input')
   const val = selectEl.value
@@ -2587,48 +2757,6 @@ export function onDestinationBankSelect(customerId, productIndex, paymentIndex, 
     customInput.style.display = 'none'
     customInput.value = ''
   }
-  updatePaymentField(customerId, productIndex, paymentIndex, 'destinationBank', val)
-}
-
-export async function updatePaymentField(customerId, productIndex, paymentIndex, field, value) {
-  const customer = getData().customers.find(c => c.id === customerId)
-  if (!canAddSaleOnCustomer(customer)) {
-    showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
-    return
-  }
-  const products = getProducts(customerId)
-  const product = products[productIndex]
-  if (!product) return
-  ensureProductPayments(product)
-  const pay = product.payments[paymentIndex]
-  if (!pay) return
-  if (getPaymentEntryStatus(pay) === PAYMENT_STATUS.approved) {
-    showToast('واریز تأییدشده قابل ویرایش نیست')
-    return
-  }
-
-  const wasFilled = isPaymentFilled(pay)
-
-  if (field === 'soldAtDate') {
-    const oldTime = soldAtTimePart(pay.soldAt)
-    pay.soldAt = oldTime ? `${value} ${oldTime}` : value
-  } else if (field === 'soldAtTime') {
-    const time24 = normalizeTimeTo24h(value)
-    if (value && !time24) {
-      showToast('ساعت را به صورت ۲۴ ساعته وارد کنید (مثلاً ۱۴:۳۰)')
-      renderProducts(customerId)
-      return
-    }
-    const oldDate = (pay.soldAt || '').split(' ')[0] || ''
-    pay.soldAt = oldDate ? (time24 ? `${oldDate} ${time24}` : oldDate) : time24
-  } else {
-    pay[field] = value
-  }
-  resetPaymentEntry(pay)
-  syncProductStatus(product)
-  await setProducts(customerId, products)
-  renderProducts(customerId)
-  maybeBroadcastSaleToast(customer, product, pay, wasFilled)
 }
 
 export async function removeProduct(customerId, index) {
