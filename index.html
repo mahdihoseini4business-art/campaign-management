@@ -919,6 +919,7 @@
           <button type="button" class="toolbar-actions-item" data-perm="sales_import" onclick="app.openSalesImportModal();app.closeAllToolbarActions()">ایمپورت از اکسل</button>
         </div>
       </div>
+      <button type="button" class="btn btn-primary" id="startSaleBtn" onclick="app.openStartSaleModal()">+ ثبت فروش</button>
     </div>
 
     <div class="table-wrapper">
@@ -1108,6 +1109,35 @@
     <div class="modal-footer">
       <button class="btn" onclick="app.closeFollowupModal()">انصراف</button>
       <button class="btn btn-primary" onclick="app.saveFollowup()">ذخیره</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال شروع ثبت فروش -->
+<div class="modal-overlay" id="startSaleModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <h2>ثبت فروش</h2>
+      <button class="modal-close" onclick="app.closeStartSaleModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;line-height:1.7;">
+        مشتری را انتخاب کنید تا مستقیم به تب فروش‌ها بروید و فرم ثبت فروش باز شود.
+      </p>
+      <div class="form-group">
+        <label for="startSaleCustomerSearch">جستجو</label>
+        <input type="search" class="form-input" id="startSaleCustomerSearch" placeholder="نام، شماره یا شناسه..." oninput="app.filterStartSaleCustomers(this.value)">
+      </div>
+      <div class="form-group">
+        <label for="startSaleCustomer">مشتری <span class="required">*</span></label>
+        <select class="form-select" id="startSaleCustomer" size="8" style="height:auto;min-height:200px;" ondblclick="app.confirmStartSale()">
+          <option value="">انتخاب کنید...</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeStartSaleModal()">انصراف</button>
+      <button class="btn btn-primary" onclick="app.confirmStartSale()">ادامه و ثبت فروش</button>
     </div>
   </div>
 </div>

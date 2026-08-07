@@ -5,7 +5,7 @@ import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, hasPermission, getCurrentUser,
   jalaliToNum, getTodayJalaliNum, jalaliAddDays, getTodayJalaliStr, jalaliDatePart,
   canViewScopedCustomer, canViewOrgWideData, getVisibleAdvisorPhones,
-  formatSoldAt24h, matchesTabSearch,
+  formatSoldAt24h, matchesTabSearch, isAdmin,
   getPlatformLabels, getPlatformClass, PAYMENT_STATUS_LABELS, PAYMENT_STATUS,
   CUSTOMER_LEVELS, resolveCustomerLevel,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getProductBalance,
@@ -426,6 +426,12 @@ export async function renderSales() {
 
   try { renderSalesTargetBand() } catch (e) { console.error('renderSalesTargetBand error:', e) }
 
+  const startSaleBtn = document.getElementById('startSaleBtn')
+  if (startSaleBtn) {
+    const canStart = isAdmin() || hasPermission('customers_add') || hasPermission('sales_add_others')
+    startSaleBtn.style.display = canStart ? '' : 'none'
+  }
+
   if (allSales.length === 0) {
     const colCount = hasPermission('customers_add') ? 14 : 13
     tbody.innerHTML = `
@@ -433,7 +439,7 @@ export async function renderSales() {
         <div class="empty-state">
           <div class="icon">🛒</div>
           <h3>فروشی ثبت نشده</h3>
-          <p>از پنل مشتریان محصول اضافه کنید</p>
+          <p>با دکمه «+ ثبت فروش» یک فروش جدید ثبت کنید</p>
         </div>
       </td></tr>`
     renderPaginationBar('salesPagination', 'sales', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })

@@ -1920,9 +1920,106 @@ export async function openCustomerDetail(id, options = {}) {
 
   if (!isNew) renderProducts(c.id, detailUsers)
 
+  if (options.startNewSale && canAddSale) {
+    await addProductRow(c.id)
+    focusNewSaleDraftFields()
+  }
+
   if ((activeTab === 'followups' || activeTab === 'sales') && window.jalaliDatepicker) {
     try { window.jalaliDatepicker.startWatch({ time: false, zIndex: 11000 }) } catch (_) { /* ignore */ }
   }
+}
+
+function focusNewSaleDraftFields() {
+  requestAnimationFrame(() => {
+    const blocks = document.querySelectorAll('#detailProductsList .product-block')
+    const last = blocks[blocks.length - 1]
+    if (!last) return
+    const price = last.querySelector('[data-sale-field="price"]')
+    const amount = last.querySelector('[data-pay-field="amount"]')
+    const target = price || amount
+    if (!target) return
+    target.focus()
+    try { target.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) } catch (_) { /* ignore */ }
+  })
+}
+
+/** @type {{ id: string, label: string, search: string }[]} */
+let startSaleCustomerOptions = []
+
+function canStartSaleFlow() {
+  return isAdmin() || hasPermission('customers_add') || hasPermission('sales_add_others')
+}
+
+function renderStartSaleCustomerOptions(query) {
+  const select = document.getElementById('startSaleCustomer')
+  if (!select) return
+  const q = toEnDigits(query || '').toLowerCase().trim()
+  const list = q
+    ? startSaleCustomerOptions.filter(o => o.search.includes(q))
+    : startSaleCustomerOptions
+  if (!list.length) {
+    select.innerHTML = '<option value="">مشتری‌ای یافت نشد</option>'
+    return
+  }
+  select.innerHTML = list.map(o =>
+    `<option value="${escapeAttr(o.id)}">${escapeHtml(o.label)}</option>`
+  ).join('')
+  if (list.length === 1) select.value = list[0].id
+}
+
+export function openStartSaleModal() {
+  if (!canStartSaleFlow()) {
+    showToast('شما دسترسی ثبت فروش ندارید')
+    return
+  }
+  const data = getData()
+  startSaleCustomerOptions = data.customers
+    .filter(c => canAddSaleOnCustomer(c))
+    .map(c => {
+      const phones = getCustomerPhones(c).join(' ')
+      const labelName = c.name || c.platformId || 'بدون نام'
+      return {
+        id: c.id,
+        label: `${c.id} — ${labelName}`,
+        search: toEnDigits(`${c.id} ${labelName} ${c.platformId || ''} ${phones}`).toLowerCase()
+      }
+    })
+    .sort((a, b) => a.label.localeCompare(b.label, 'fa'))
+
+  if (!startSaleCustomerOptions.length) {
+    showToast('مشتری قابل‌ثبت‌فروشی یافت نشد')
+    return
+  }
+
+  const search = document.getElementById('startSaleCustomerSearch')
+  if (search) search.value = ''
+  renderStartSaleCustomerOptions('')
+  document.getElementById('startSaleModal')?.classList.add('active')
+  search?.focus()
+}
+
+export function filterStartSaleCustomers(query) {
+  renderStartSaleCustomerOptions(query)
+}
+
+export function closeStartSaleModal() {
+  document.getElementById('startSaleModal')?.classList.remove('active')
+}
+
+export async function confirmStartSale() {
+  const customerId = document.getElementById('startSaleCustomer')?.value
+  if (!customerId) {
+    showToast('مشتری را انتخاب کنید')
+    return
+  }
+  const customer = getData().customers.find(c => c.id === customerId)
+  if (!customer || !canAddSaleOnCustomer(customer)) {
+    showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
+    return
+  }
+  closeStartSaleModal()
+  await openCustomerDetail(customerId, { tab: 'sales', startNewSale: true })
 }
 
 function resolveUserNameByPhone(phone, users = []) {
@@ -2374,9 +2471,8 @@ export async function addProductRow(customerId) {
   syncProductStatus(line)
   await setProducts(customerId, products)
   renderProducts(customerId)
+  focusNewSaleDraftFields()
 }
-
-export async function addProductPayment(customerId, productIndex) {
   const _cust = getData().customers.find(c => c.id === customerId)
   if (!canAddSaleOnCustomer(_cust)) {
     showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
