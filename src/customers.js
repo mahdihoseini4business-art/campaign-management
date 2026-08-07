@@ -2153,6 +2153,16 @@ function syncDetailTabCount(tabKey, count) {
   if (btn) btn.textContent = formatNumber(count)
 }
 
+function saleFieldHtml(label, controlHtml, { required = false, optional = false, className = '', full = false } = {}) {
+  const req = required ? ' <span class="sale-field-req" aria-hidden="true">*</span>' : ''
+  const opt = optional ? ' <span class="sale-field-opt">اختیاری</span>' : ''
+  const cls = ['sale-field', full ? 'sale-field--full' : '', className].filter(Boolean).join(' ')
+  return `<div class="${cls}">
+    <label class="sale-field-label">${label}${req}${opt}</label>
+    <div class="sale-field-control">${controlHtml}</div>
+  </div>`
+}
+
 export async function renderProducts(customerId, users = null) {
   const container = document.getElementById('detailProductsList')
   if (!container) return
@@ -2199,29 +2209,39 @@ export async function renderProducts(customerId, users = null) {
       const sellerHtml = sellerName
         ? `<span class="record-author" title="ثبت‌کننده فروش">👤 ${escapeHtml(sellerName)}</span>`
         : ''
+      const head = `
+        <div class="sale-payment-head">
+          <span class="payment-index">واریز ${pi + 1}${sellerHtml}</span>
+          <div class="sale-payment-head-actions">
+            ${badge}
+            ${canDeletePay ? `<button type="button" class="btn-remove-product" title="حذف واریز" onclick="app.removeProductPayment('${escapeAttr(customerId)}', ${i}, ${pi})">✕</button>` : ''}
+          </div>
+        </div>`
 
       if (!payEditable) {
+        const bankVal = String(pay.destinationBank || '').trim()
         return `
-          <div class="product-row payment-row">
-            <span class="payment-index">واریز ${pi + 1}${sellerHtml}</span>
-            <span class="product-price" style="direction:ltr;">${pay.amount ? formatNumber(pay.amount) + ' ریال' : '—'}</span>
-            <span class="product-settlement" style="direction:ltr;">${escapeHtml(formatSoldAt24h(pay.soldAt) || '—')}</span>
-            ${renderDestinationBankField(customerId, i, pi, pay, false)}
-            <span style="font-size:13px;">${escapeHtml(pay.depositorName || '—')}</span>
-            ${badge}
+          <div class="sale-payment payment-row is-readonly">
+            ${head}
+            <div class="sale-fields">
+              ${saleFieldHtml('مبلغ', `<span class="sale-readonly-value" style="direction:ltr;">${pay.amount ? formatNumber(pay.amount) + ' ریال' : '—'}</span>`)}
+              ${saleFieldHtml('تاریخ و ساعت', `<span class="sale-readonly-value" style="direction:ltr;">${escapeHtml(formatSoldAt24h(pay.soldAt) || '—')}</span>`)}
+              ${saleFieldHtml('بانک مقصد', `<span class="sale-readonly-value">${escapeHtml(bankVal) || '—'}</span>`)}
+              ${saleFieldHtml('واریزکننده', `<span class="sale-readonly-value">${escapeHtml(pay.depositorName || '—')}</span>`, { optional: true })}
+            </div>
           </div>`
       }
 
       return `
-        <div class="product-row payment-row${incomplete ? ' is-incomplete' : ''}">
-          <span class="payment-index">واریز ${pi + 1}${sellerHtml}</span>
-          <input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="مبلغ واریز (ریال) *" value="${pay.amount ? formatNumber(pay.amount) : ''}" oninput="app.formatInput(this)" onblur="app.savePaymentField('${customerId}', ${i}, ${pi}, 'amount', app.unformatInput(this))" title="واحد: ریال">
-          <input type="text" class="product-settlement" placeholder="تاریخ *" data-jdp value="${pay.soldAt ? pay.soldAt.split(' ')[0] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtDate', this.value)">
-          <input type="text" class="product-settlement product-time" inputmode="numeric" placeholder="ساعت * ۱۴:۳۰" maxlength="5" value="${escapeAttr(soldAtTimePart(pay.soldAt))}" onblur="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtTime', this.value)" title="ساعت ۲۴ ساعته، مثلاً ۱۴:۳۰">
-          ${renderDestinationBankField(customerId, i, pi, pay, true)}
-          <input type="text" class="product-settlement product-depositor" placeholder="نام واریزکننده" value="${escapeAttr(pay.depositorName || '')}" onblur="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'depositorName', this.value)">
-          ${badge}
-          ${canDeletePay ? `<button type="button" class="btn-remove-product" title="حذف واریز" onclick="app.removeProductPayment('${escapeAttr(customerId)}', ${i}, ${pi})">✕</button>` : ''}
+        <div class="sale-payment payment-row${incomplete ? ' is-incomplete' : ''}">
+          ${head}
+          <div class="sale-fields">
+            ${saleFieldHtml('مبلغ (ریال)', `<input type="text" inputmode="numeric" class="product-deposit num-input" placeholder="مثلاً ۵٬۰۰۰٬۰۰۰" value="${pay.amount ? formatNumber(pay.amount) : ''}" oninput="app.formatInput(this)" onblur="app.savePaymentField('${customerId}', ${i}, ${pi}, 'amount', app.unformatInput(this))" title="واحد: ریال">`, { required: true })}
+            ${saleFieldHtml('تاریخ', `<input type="text" class="product-settlement" placeholder="انتخاب تاریخ" data-jdp value="${pay.soldAt ? pay.soldAt.split(' ')[0] : ''}" onchange="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtDate', this.value)">`, { required: true })}
+            ${saleFieldHtml('ساعت', `<input type="text" class="product-settlement product-time" inputmode="numeric" placeholder="۱۴:۳۰" maxlength="5" value="${escapeAttr(soldAtTimePart(pay.soldAt))}" onblur="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'soldAtTime', this.value)" title="ساعت ۲۴ ساعته، مثلاً ۱۴:۳۰">`, { required: true })}
+            ${saleFieldHtml('بانک مقصد', renderDestinationBankField(customerId, i, pi, pay, true), { required: true, className: 'sale-field--bank' })}
+            ${saleFieldHtml('نام واریزکننده', `<input type="text" class="product-settlement product-depositor" placeholder="در صورت نیاز" value="${escapeAttr(pay.depositorName || '')}" onblur="app.updatePaymentField('${customerId}', ${i}, ${pi}, 'depositorName', this.value)">`, { optional: true, full: true })}
+          </div>
         </div>`
     }).join('')
 
@@ -2233,16 +2253,18 @@ export async function renderProducts(customerId, users = null) {
       const title = needsPrice
         ? 'ابتدا قیمت کل را ثبت کنید'
         : (!filled ? 'ابتدا فیلدهای واریزهای فعلی را کامل کنید' : `مانده: ${formatNumber(balance)}`)
-      addPayBtn = `<button type="button" class="btn btn-sm" style="margin-top:8px;" ${disabled ? 'disabled' : ''} title="${escapeAttr(title)}" onclick="app.addProductPayment('${escapeAttr(customerId)}', ${i})">+ افزودن واریز${balance > 0 ? ` (مانده: ${formatNumber(balance)})` : ''}</button>`
+      addPayBtn = `<button type="button" class="btn btn-sm sale-add-pay-btn" ${disabled ? 'disabled' : ''} title="${escapeAttr(title)}" onclick="app.addProductPayment('${escapeAttr(customerId)}', ${i})">+ افزودن واریز${balance > 0 ? ` (مانده: ${formatNumber(balance)})` : ''}</button>`
     }
 
-    const priceHtml = (!canEdit || priceLocked)
-      ? `<span class="product-price-locked" title="قیمت کل قفل شده">قیمت کل (ریال): <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${price ? formatNumber(price) : '—'}</b></span>`
-      : `<input type="text" inputmode="numeric" class="product-price num-input" placeholder="قیمت کل (ریال) *" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" onblur="app.saveProductField('${customerId}', ${i}, 'price', app.unformatInput(this))" title="واحد: ریال">`
+    const priceControl = (!canEdit || priceLocked)
+      ? `<span class="product-price-locked sale-readonly-value" title="قیمت کل قفل شده"><b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${price ? formatNumber(price) : '—'}</b> ریال</span>`
+      : `<input type="text" inputmode="numeric" class="product-price num-input" placeholder="مثلاً ۱۰٬۰۰۰٬۰۰۰" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" onblur="app.saveProductField('${customerId}', ${i}, 'price', app.unformatInput(this))" title="واحد: ریال">`
 
-    const settlementHtml = canEdit && !closed
-      ? `<input type="text" class="product-settlement" placeholder="تاریخ تسویه" data-jdp value="${p.settlementDate || ''}" onchange="app.updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">`
-      : (p.settlementDate ? `<span style="font-size:12px;color:var(--text-muted);">تسویه: ${escapeHtml(p.settlementDate)}</span>` : '')
+    const settlementControl = canEdit && !closed
+      ? `<input type="text" class="product-settlement" placeholder="انتخاب تاریخ" data-jdp value="${p.settlementDate || ''}" onchange="app.updateProduct('${customerId}', ${i}, 'settlementDate', this.value)">`
+      : (p.settlementDate
+        ? `<span class="sale-readonly-value">${escapeHtml(p.settlementDate)}</span>`
+        : `<span class="sale-readonly-value sale-readonly-empty">—</span>`)
 
     const catalog = getSellableNames()
     const displayName = coerceProductName(p.name)
@@ -2252,41 +2274,51 @@ export async function renderProducts(customerId, users = null) {
     const bundleHint = bundle
       ? `<span class="product-bundle-hint">شامل: ${escapeHtml((bundle.productNames || []).join('، '))}</span>`
       : ''
-    const nameHtml = canEdit && !closed
+    const nameControl = canEdit && !closed
       ? `<select class="product-name" onchange="app.updateProduct('${customerId}', ${i}, 'name', this.value)">
             ${nameOptions.map(pr => `<option value="${escapeAttr(pr)}" ${displayName === pr ? 'selected' : ''}>${escapeHtml(pr)}</option>`).join('')}
           </select>${bundleHint}`
-      : `<span style="font-size:14px;font-weight:600;">${escapeHtml(displayName || '—')}</span>${bundleHint}`
+      : `<span class="sale-readonly-value" style="font-weight:600;">${escapeHtml(displayName || '—')}</span>${bundleHint}`
 
     const isPhysical = isPhysicalSaleLine(p)
-    const shippingHtml = isPhysical
-      ? (canEdit && !closed
-        ? `<div class="product-shipping-row">
-            <input type="text" class="product-settlement product-shipping-address" placeholder="آدرس گیرنده (اختیاری)" value="${escapeAttr(p.shippingAddress || '')}" onblur="app.saveProductShippingField('${escapeAttr(customerId)}', ${i}, 'shippingAddress', this.value)">
-            <input type="text" class="product-settlement product-shipping-postal" inputmode="numeric" placeholder="کد پستی (اختیاری)" value="${escapeAttr(p.shippingPostalCode || '')}" onblur="app.saveProductShippingField('${escapeAttr(customerId)}', ${i}, 'shippingPostalCode', this.value)">
-          </div>`
-        : ((p.shippingAddress || p.shippingPostalCode)
-          ? `<div class="product-shipping-row product-shipping-readonly">
-              <span>${escapeHtml(p.shippingAddress || '—')}</span>
-              ${p.shippingPostalCode ? `<span style="color:var(--text-muted);font-size:12px;">کد پستی: ${escapeHtml(p.shippingPostalCode)}</span>` : ''}
-            </div>`
-          : ''))
-      : ''
+    let shippingFields = ''
+    if (isPhysical) {
+      if (canEdit && !closed) {
+        shippingFields = `
+          ${saleFieldHtml('آدرس گیرنده', `<input type="text" class="product-settlement product-shipping-address" placeholder="آدرس کامل" value="${escapeAttr(p.shippingAddress || '')}" onblur="app.saveProductShippingField('${escapeAttr(customerId)}', ${i}, 'shippingAddress', this.value)">`, { optional: true, full: true })}
+          ${saleFieldHtml('کد پستی', `<input type="text" class="product-settlement product-shipping-postal" inputmode="numeric" placeholder="۱۰ رقم" value="${escapeAttr(p.shippingPostalCode || '')}" onblur="app.saveProductShippingField('${escapeAttr(customerId)}', ${i}, 'shippingPostalCode', this.value)">`, { optional: true })}`
+      } else if (p.shippingAddress || p.shippingPostalCode) {
+        shippingFields = `
+          ${saleFieldHtml('آدرس گیرنده', `<span class="sale-readonly-value">${escapeHtml(p.shippingAddress || '—')}</span>`, { optional: true, full: true })}
+          ${p.shippingPostalCode ? saleFieldHtml('کد پستی', `<span class="sale-readonly-value">${escapeHtml(p.shippingPostalCode)}</span>`, { optional: true }) : ''}`
+      }
+    }
+
+    const summaryHtml = `
+      <div class="sale-summary" aria-label="خلاصه مالی">
+        <span class="product-status-label" style="color:${statusColor};">${escapeHtml(statusLabel)}</span>
+        <span class="product-meta">پرداخت‌شده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${approved ? formatNumber(approved) : '۰'}</b></span>
+        ${balance > 0 && !closed ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : `<span class="product-meta">مانده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">۰</b></span>`}
+        ${closedBadge}
+      </div>`
 
     return `
       <div class="${blockClass}">
-        <div class="product-row product-head-row">
-          ${nameHtml}
-          <span class="product-status-label" style="color:${statusColor};">${escapeHtml(statusLabel)}</span>
-          ${priceHtml}
-          ${settlementHtml}
-          <span class="product-meta">پرداخت‌شده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${approved ? formatNumber(approved) : '۰'}</b></span>
-          ${balance > 0 && !closed ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : ''}
-          ${closedBadge}
-          ${shippingHtml}
-        </div>
-        <div class="payment-list">${paymentsHtml || '<div class="payment-empty">هنوز واریزی ثبت نشده</div>'}</div>
-        ${addPayBtn}
+        <section class="sale-step sale-step-product">
+          <h4 class="sale-step-title">۱. محصول</h4>
+          <div class="sale-fields">
+            ${saleFieldHtml('محصول', nameControl, { required: true, full: true, className: 'sale-field--name' })}
+            ${saleFieldHtml('قیمت کل (ریال)', priceControl, { required: true })}
+            ${saleFieldHtml('تاریخ تسویه', settlementControl, { optional: true })}
+            ${shippingFields}
+          </div>
+          ${summaryHtml}
+        </section>
+        <section class="sale-step sale-step-payments">
+          <h4 class="sale-step-title">۲. واریزها</h4>
+          <div class="payment-list">${paymentsHtml || '<div class="payment-empty">هنوز واریزی ثبت نشده</div>'}</div>
+          ${addPayBtn}
+        </section>
       </div>`
   }).join('')
 
@@ -2526,7 +2558,7 @@ function renderDestinationBankField(customerId, productIndex, paymentIndex, pay,
   }
 
   const options = [
-    `<option value="">بانک مقصد *</option>`,
+    `<option value="">انتخاب کنید</option>`,
     ...banks.map(b => `<option value="${escapeAttr(b)}" ${value === b ? 'selected' : ''}>${escapeHtml(b)}</option>`),
     `<option value="__custom__" ${isCustom ? 'selected' : ''}>سایر (ورود دستی)</option>`
   ].join('')
@@ -2536,7 +2568,7 @@ function renderDestinationBankField(customerId, productIndex, paymentIndex, pay,
       <select class="product-settlement" onchange="app.onDestinationBankSelect('${escapeAttr(customerId)}', ${productIndex}, ${paymentIndex}, this)">
         ${options}
       </select>
-      <input type="text" class="product-settlement bank-custom-input" placeholder="نام بانک *" value="${isCustom ? escapeAttr(value) : ''}" style="${isCustom ? '' : 'display:none;'}" onblur="app.updatePaymentField('${escapeAttr(customerId)}', ${productIndex}, ${paymentIndex}, 'destinationBank', this.value)">
+      <input type="text" class="product-settlement bank-custom-input" placeholder="نام بانک" value="${isCustom ? escapeAttr(value) : ''}" style="${isCustom ? '' : 'display:none;'}" onblur="app.updatePaymentField('${escapeAttr(customerId)}', ${productIndex}, ${paymentIndex}, 'destinationBank', this.value)">
     </div>`
 }
 
