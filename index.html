@@ -820,24 +820,24 @@
   <div class="sheet" id="sheet-followups" role="tabpanel" aria-labelledby="tab-followups" hidden>
     <div class="stats">
       <div class="stat-card"><div class="label">پیگیری‌های امروز</div><div class="value" style="color:#ea580c" id="stat-followup-today">0</div></div>
-      <div class="stat-card"><div class="label">در انتظار پیگیری</div><div class="value" style="color:var(--warning)" id="stat-followup-waiting">0</div></div>
+      <div class="stat-card"><div class="label">پیگیری نزدیک</div><div class="value" style="color:var(--warning)" id="stat-followup-waiting">0</div></div>
       <div class="stat-card"><div class="label">معوقه‌ها</div><div class="value" style="color:var(--danger)" id="stat-followup-overdue">0</div></div>
-      <div class="stat-card"><div class="label">انجام شده</div><div class="value" style="color:var(--success)" id="stat-followup-done">0</div></div>
+      <div class="stat-card"><div class="label">تاریخچه انجام</div><div class="value" style="color:var(--success)" id="stat-followup-done">0</div></div>
     </div>
 
     <div class="toolbar" style="gap:10px;flex-wrap:wrap;">
       <div class="followup-filters">
         <button type="button" class="btn followup-filter-btn active" data-filter="today" onclick="app.setFollowupFilter('today')">پیگیری‌های امروز</button>
-        <button type="button" class="btn followup-filter-btn" data-filter="waiting" onclick="app.setFollowupFilter('waiting')">در انتظار پیگیری</button>
+        <button type="button" class="btn followup-filter-btn" data-filter="waiting" onclick="app.setFollowupFilter('waiting')">پیگیری نزدیک</button>
         <button type="button" class="btn followup-filter-btn" data-filter="overdue" onclick="app.setFollowupFilter('overdue')">معوقه‌ها <span class="followup-filter-badge" id="followupOverdueBadge" style="display:none;">0</span></button>
-        <button type="button" class="btn followup-filter-btn" data-filter="done" onclick="app.setFollowupFilter('done')">انجام شده</button>
+        <button type="button" class="btn followup-filter-btn" data-filter="done" onclick="app.setFollowupFilter('done')">تاریخچه انجام</button>
       </div>
       <select class="form-select" id="bulkActionFollowups" style="width:180px;display:none;">
         <option value="">عملیات دسته‌جمعی...</option>
         <option value="delete">حذف انتخاب شده‌ها</option>
       </select>
       <span id="bulkCountFollowups" style="display:none;font-size:13px;color:var(--text-muted);"></span>
-      <input type="text" class="search-box" placeholder="جستجو (مشتری، کارشناس)..." id="searchFollowups" oninput="app.renderFollowups()">
+      <input type="text" class="search-box" placeholder="جستجو (مشتری، کارشناس، محصول، واریزکننده)..." id="searchFollowups" oninput="app.renderFollowups()">
       <div class="toolbar-actions" id="followupsActionsMenu">
         <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
         <div class="toolbar-actions-dropdown" hidden>
