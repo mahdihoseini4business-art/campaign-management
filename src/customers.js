@@ -2283,8 +2283,8 @@ export async function renderProducts(customerId, users = null) {
           <span class="product-meta">پرداخت‌شده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${approved ? formatNumber(approved) : '۰'}</b></span>
           ${balance > 0 && !closed ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : ''}
           ${closedBadge}
+          ${shippingHtml}
         </div>
-        ${shippingHtml}
         <div class="payment-list">${paymentsHtml || '<div class="payment-empty">هنوز واریزی ثبت نشده</div>'}</div>
         ${addPayBtn}
       </div>`
