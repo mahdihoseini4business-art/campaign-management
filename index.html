@@ -1057,19 +1057,25 @@
     </div>
     <div class="modal-body">
       <input type="hidden" id="followupDoneId">
-      <div id="followupDoneInfo" style="background:var(--paper);border-radius:var(--radius-sm);padding:12px;margin-bottom:12px;font-size:13px;line-height:1.8;"></div>
+      <div id="followupDoneInfo" class="followup-done-info"></div>
+      <div id="followupDonePrevNote" class="followup-done-prev" hidden></div>
       <div class="form-group">
         <label for="followupDoneNote">یادداشت <span class="required">*</span></label>
         <textarea class="form-textarea" id="followupDoneNote" placeholder="نتیجه پیگیری را بنویسید..." style="min-height:80px;"></textarea>
       </div>
       <div class="form-group">
-        <label for="followupDoneNextDate">پیگیری بعدی</label>
-        <input type="text" class="form-input" id="followupDoneNextDate" placeholder="اختیاری — تاریخ پیگیری بعدی" data-jdp>
+        <label for="followupDoneNextDate">پیگیری بعدی <span class="settings-optional">(اختیاری)</span></label>
+        <div class="followup-date-shortcuts" role="group" aria-label="میان‌بر تاریخ پیگیری بعدی">
+          <button type="button" class="btn btn-sm" onclick="app.setFollowupDoneNextShortcut(1)">فردا</button>
+          <button type="button" class="btn btn-sm" onclick="app.setFollowupDoneNextShortcut(2)">۲ روز دیگر</button>
+          <button type="button" class="btn btn-sm" onclick="app.setFollowupDoneNextShortcut(7)">هفتهٔ بعد</button>
+        </div>
+        <input type="text" class="form-input" id="followupDoneNextDate" placeholder="یا تاریخ را انتخاب کنید" data-jdp>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="app.closeFollowupDoneModal()">انصراف</button>
-      <button class="btn btn-done" onclick="app.confirmFollowupDone()">ثبت انجام</button>
+      <button class="btn btn-done" id="followupDoneSubmitBtn" onclick="app.confirmFollowupDone()">ثبت انجام</button>
     </div>
   </div>
 </div>

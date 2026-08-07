@@ -1,6 +1,6 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB } from './data.js'
 import { getUsersSafe } from './auth.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, ownsCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, ownsCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
 let followupFilter = 'today' // today | waiting | overdue | done
@@ -395,6 +395,45 @@ export async function renderFollowups() {
 // Done Modal (customerId-based)
 // ============================================
 
+function jalaliNumToDateStr(n) {
+  if (!n || n === 99999999) return ''
+  const y = Math.floor(n / 10000)
+  const m = Math.floor((n % 10000) / 100)
+  const d = n % 100
+  return `${y}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}`
+}
+
+function telHrefFromPhone(phone) {
+  const digits = toEnDigits(String(phone || '')).replace(/\D/g, '')
+  if (!digits) return ''
+  if (/^09\d{9}$/.test(digits)) return `tel:+98${digits.slice(1)}`
+  return `tel:${digits}`
+}
+
+function renderFollowupDonePhoneActions(customer) {
+  const primary = getPrimaryPhone(customer)
+  if (!primary) return '—'
+  const tel = telHrefFromPhone(primary)
+  const telBtn = tel
+    ? `<a class="btn btn-sm" href="${escapeAttr(tel)}" onclick="event.stopPropagation()">تماس</a>`
+    : ''
+  return `<span class="followup-done-phone">
+    <span dir="ltr" style="font-family:'Vazirmatn',sans-serif;">${escapeHtml(primary)}</span>
+    <button type="button" class="btn-copy" title="کپی شماره" aria-label="کپی شماره"
+      data-copy="${escapeAttr(primary)}"
+      onclick="event.stopPropagation(); app.copyToClipboard(this.getAttribute('data-copy') || '')">⧉</button>
+    ${telBtn}
+  </span>`
+}
+
+/** True when done-modal note has unsaved typed content (guards accidental overlay close). */
+export function isFollowupDoneNoteDirty() {
+  const modal = document.getElementById('followupDoneModal')
+  if (!modal?.classList.contains('active')) return false
+  const note = document.getElementById('followupDoneNote')?.value || ''
+  return note.trim().length > 0
+}
+
 export function openFollowupDoneModal(customerId) {
   if (!requirePermission('followups_add')) return
   const data = getData()
@@ -403,18 +442,52 @@ export function openFollowupDoneModal(customerId) {
 
   const cat = classifyDate(customer.nextFollowupDate)
   const name = customer.name || customer.platformId || customerId
+  const statusKey = customer.status || ''
+  const statusLabel = getStatusLabels()[statusKey] || statusKey || '—'
+  const statusClass = getStatusClass(statusKey)
+  const lastNotes = getLatestCustomerNotes(customerId, data.followups)
 
   document.getElementById('followupDoneId').value = customerId
   document.getElementById('followupDoneNote').value = ''
   const nextDateEl = document.getElementById('followupDoneNextDate')
   if (nextDateEl) nextDateEl.value = ''
+
   document.getElementById('followupDoneInfo').innerHTML = `
-    <div><strong>مشتری:</strong> ${escapeHtml(name)} (${escapeHtml(customerId)})</div>
+    <div>
+      <strong>مشتری:</strong> ${escapeHtml(name)}
+      <span style="color:var(--text-muted);">(${escapeHtml(customerId)})</span>
+      <span class="status-badge ${escapeAttr(statusClass)}">${escapeHtml(statusLabel)}</span>
+    </div>
+    <div><strong>شماره:</strong> ${renderFollowupDonePhoneActions(customer)}</div>
     <div><strong>تاریخ پیگیری:</strong> ${escapeHtml(customer.nextFollowupDate || '—')}</div>
     ${cat === 'overdue' ? '<div style="color:var(--danger);font-weight:600;">⚠ این پیگیری معوقه است</div>' : ''}
   `
+
+  const prevEl = document.getElementById('followupDonePrevNote')
+  if (prevEl) {
+    if (lastNotes) {
+      prevEl.hidden = false
+      prevEl.innerHTML = `
+        <div class="followup-done-prev-label">آخرین توضیح قبلی</div>
+        <div class="followup-done-prev-text">${escapeHtml(lastNotes)}</div>
+      `
+    } else {
+      prevEl.hidden = true
+      prevEl.innerHTML = ''
+    }
+  }
+
   document.getElementById('followupDoneModal').classList.add('active')
   document.getElementById('followupDoneNote').focus()
+}
+
+export function setFollowupDoneNextShortcut(days) {
+  const n = Number(days)
+  if (!Number.isFinite(n) || n < 1) return
+  const nextDateEl = document.getElementById('followupDoneNextDate')
+  if (!nextDateEl) return
+  nextDateEl.value = jalaliNumToDateStr(jalaliAddDays(getTodayJalaliStr(), n))
+  nextDateEl.focus()
 }
 
 export function closeFollowupDoneModal() {
@@ -550,7 +623,11 @@ export async function confirmFollowupDone() {
 
     closeFollowupDoneModal()
     renderFollowups()
-    showToast(nextDate ? 'پیگیری انجام شد و پیگیری بعدی تنظیم شد' : 'پیگیری انجام شد')
+    const remainingToday = getPendingItems(false).filter(i => i.category === 'today').length
+    const base = nextDate
+      ? 'ثبت شد و پیگیری بعدی تنظیم شد'
+      : 'ثبت شد'
+    showToast(`${base} — ${remainingToday} پیگیری امروز مانده`)
   } catch (e) {
     console.error('confirmFollowupDone error:', e)
     showToast(e.message || 'خطا در ثبت انجام پیگیری')

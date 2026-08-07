@@ -1671,6 +1671,66 @@
   }
   .btn-done:hover { background: #059669; border-color: #059669; }
 
+  .followup-done-info {
+    background: var(--paper);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+
+  .followup-done-info .status-badge {
+    margin-inline-start: 6px;
+    vertical-align: middle;
+  }
+
+  .followup-done-phone {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .followup-done-phone a.btn {
+    text-decoration: none;
+  }
+
+  .followup-done-prev {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  .followup-done-prev-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+
+  .followup-done-prev-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-muted);
+  }
+
+  .followup-date-shortcuts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .followup-date-shortcuts .btn {
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+
   /* Overdue tag in timeline */
   .overdue-tag {
     display: inline-block;
