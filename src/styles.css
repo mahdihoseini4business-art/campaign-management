@@ -1696,6 +1696,45 @@
     text-decoration: none;
   }
 
+  .followup-phone-td {
+    direction: ltr;
+    text-align: right;
+    font-family: 'Vazirmatn', sans-serif;
+    font-size: 13px;
+  }
+
+  .followup-phone-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+  }
+
+  .followup-phone-tel,
+  .followup-phone-text {
+    font-family: 'Vazirmatn', sans-serif;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .followup-phone-tel {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  .followup-phone-tel:hover {
+    text-decoration: underline;
+  }
+
+  .followup-phone-extra {
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  .followup-name-cell {
+    font-weight: 500;
+  }
+
   .followup-done-prev {
     background: var(--paper);
     border: 1px solid var(--border);

@@ -1197,7 +1197,7 @@ export function switchDetailTab(tab) {
 export function onCustomerRowClick(event, customerId) {
   if (!customerId) return
   const t = event?.target
-  if (t?.closest?.('button, a, input, select, textarea, label, .actions-cell')) return
+  if (t?.closest?.('button, a, input, select, textarea, label, .actions-cell, .followup-phone-cell, .copyable-cell')) return
   openCustomerDetail(customerId)
 }
 

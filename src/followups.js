@@ -355,12 +355,9 @@ export async function renderFollowups() {
       }
 
       const overdueBadge = item.wasOverdue ? ' <span class="overdue-tag">معوقه</span>' : ''
-      const phoneExtra = item.customerPhoneExtra > 0
-        ? ` <span style="color:var(--text-muted);font-size:11px;">+${item.customerPhoneExtra}</span>`
-        : ''
-      const phoneHtml = item.customerPhone
-        ? `${escapeHtml(item.customerPhone)}${phoneExtra}`
-        : '—'
+      const phoneHtml = renderFollowupPhoneCell(item.customerPhone, {
+        extra: item.customerPhoneExtra || 0
+      })
 
       const setterName = item.setByOther ? (nameByPhone(item.createdByPhone) || item.createdByPhone) : ''
       const setterBadge = setterName
@@ -372,8 +369,8 @@ export async function renderFollowups() {
 
       return `<tr class="clickable-row" onclick="app.onCustomerRowClick(event, '${escapeAttr(item.customerId)}')">
         ${selectCell}
-        <td>${escapeHtml(item.customerName)}${overdueBadge}</td>
-        <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${phoneHtml}</td>
+        <td class="followup-name-cell">${escapeHtml(item.customerName)}${overdueBadge}</td>
+        <td class="followup-phone-td">${phoneHtml}</td>
         <td style="font-size:12px;">${escapeHtml(item.advisor) || '—'}</td>
         <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(item.date) || '—'}</td>
         <td>${escapeHtml(item.type)}</td>
@@ -408,6 +405,25 @@ function telHrefFromPhone(phone) {
   if (!digits) return ''
   if (/^09\d{9}$/.test(digits)) return `tel:+98${digits.slice(1)}`
   return `tel:${digits}`
+}
+
+/** Phone + copy + tel link; stops row click from opening the customer panel. */
+function renderFollowupPhoneCell(phone, { extra = 0 } = {}) {
+  const primary = String(phone || '').trim()
+  if (!primary) return '—'
+  const tel = telHrefFromPhone(primary)
+  const extraHtml = extra > 0
+    ? ` <span class="followup-phone-extra">+${extra}</span>`
+    : ''
+  const numberHtml = tel
+    ? `<a class="followup-phone-tel" href="${escapeAttr(tel)}" title="تماس" dir="ltr">${escapeHtml(primary)}</a>`
+    : `<span class="followup-phone-text" dir="ltr">${escapeHtml(primary)}</span>`
+  return `<span class="followup-phone-cell" onclick="event.stopPropagation()">
+    ${numberHtml}${extraHtml}
+    <button type="button" class="btn-copy" title="کپی شماره" aria-label="کپی شماره"
+      data-copy="${escapeAttr(primary)}"
+      onclick="event.stopPropagation(); app.copyToClipboard(this.getAttribute('data-copy') || '')">⧉</button>
+  </span>`
 }
 
 function renderFollowupDonePhoneActions(customer) {
