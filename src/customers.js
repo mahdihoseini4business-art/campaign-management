@@ -1221,7 +1221,7 @@ function renderDetailFooter({ isNew, canEdit, canDelete, customerId, tab = 'info
       ? `<button type="button" class="btn btn-danger" onclick="app.deleteCustomer('${id}')">حذف مشتری</button>`
       : '<span></span>'}
     <div class="detail-footer-actions">
-      ${canEdit && onInfo ? `<button type="button" class="btn btn-primary" onclick="app.saveCustomerDetail('${id}')">ذخیره اطلاعات</button>` : ''}
+      ${canEdit && onInfo ? `<button type="button" class="btn btn-primary" onclick="app.saveCustomerDetail('${id}')">ذخیره اطلاعات مشتری</button>` : ''}
       <button type="button" class="btn" onclick="app.closeDetailModal()">بستن</button>
     </div>
   `
@@ -1414,7 +1414,7 @@ async function createCustomerFromDetail(fields, users) {
   data.customers.push(newCustomer)
   await renderCustomers()
   await openCustomerDetail(id, { tab: 'sales' })
-  showToast('مشتری جدید اضافه شد — می‌توانید محصول ثبت کنید')
+  showToast('مشتری جدید اضافه شد — می‌توانید فروش ثبت کنید')
   return id
 }
 
@@ -1430,7 +1430,7 @@ export async function saveCustomerDetail(customerId) {
 
   phoneFormMode = 'detail'
   const saveBtn = document.querySelector('#detailFooter .btn-primary')
-  const saveLabel = isNew ? 'ایجاد مشتری' : 'ذخیره اطلاعات'
+  const saveLabel = isNew ? 'ایجاد مشتری' : 'ذخیره اطلاعات مشتری'
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'در حال ذخیره...' }
 
   try {
@@ -1742,9 +1742,10 @@ export async function openCustomerDetail(id, options = {}) {
   const salesCount = !isNew ? (c.products || []).length : 0
   const salesPanelHtml = `
     <div class="detail-products">
+      <p class="detail-sales-hint">فروش با تکمیل مبلغ، تاریخ، ساعت و بانک مقصد ثبت می‌شود و برای تأیید به حسابداری می‌رود.</p>
       <div id="detailProductsList"></div>
       ${canAddSale
-        ? `<button class="btn btn-sm" style="margin-top:8px;" onclick="app.addProductRow('${escapeAttr(c.id)}')">+ افزودن محصول</button>`
+        ? `<button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="app.addProductRow('${escapeAttr(c.id)}')">+ ثبت فروش</button>`
         : ''}
     </div>
   `
@@ -2167,7 +2168,7 @@ export async function renderProducts(customerId, users = null) {
   const usersList = detailUsersCache
 
   if (products.length === 0) {
-    container.innerHTML = '<div style="font-size:13px;color:var(--text-muted);padding:8px 0;">محصولی ثبت نشده</div>'
+    container.innerHTML = '<div class="detail-tab-empty">فروشی ثبت نشده</div>'
     return
   }
 
@@ -2232,7 +2233,7 @@ export async function renderProducts(customerId, users = null) {
       const title = needsPrice
         ? 'ابتدا قیمت کل را ثبت کنید'
         : (!filled ? 'ابتدا فیلدهای واریزهای فعلی را کامل کنید' : `مانده: ${formatNumber(balance)}`)
-      addPayBtn = `<button type="button" class="btn btn-sm" style="margin-top:8px;" ${disabled ? 'disabled' : ''} title="${escapeAttr(title)}" onclick="app.addProductPayment('${escapeAttr(customerId)}', ${i})">+ ثبت واریز بعدی${balance > 0 ? ` (مانده: ${formatNumber(balance)})` : ''}</button>`
+      addPayBtn = `<button type="button" class="btn btn-sm" style="margin-top:8px;" ${disabled ? 'disabled' : ''} title="${escapeAttr(title)}" onclick="app.addProductPayment('${escapeAttr(customerId)}', ${i})">+ افزودن واریز${balance > 0 ? ` (مانده: ${formatNumber(balance)})` : ''}</button>`
     }
 
     const priceHtml = (!canEdit || priceLocked)

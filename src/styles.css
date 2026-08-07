@@ -884,6 +884,17 @@
     border: 1px solid var(--border);
   }
 
+  .detail-sales-hint {
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text-muted);
+    background: #f8f9fa;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
   .detail-info {
     display: grid;
     grid-template-columns: 1fr 1fr;
