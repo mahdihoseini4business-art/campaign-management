@@ -1,6 +1,6 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB } from './data.js'
 import { getUsersSafe } from './auth.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, ownsCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, ownsCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
 let followupFilter = 'today' // today | waiting | overdue | done
@@ -300,8 +300,97 @@ export function clearFollowupSearch() {
 // Render
 // ============================================
 
+function buildFollowupEmptyHtml({ title, detail, actionsHtml }) {
+  return `
+    <div class="empty-state">
+      <div class="icon">📋</div>
+      <h3>${title}</h3>
+      ${detail ? `<p>${detail}</p>` : ''}
+      ${actionsHtml ? `<div class="empty-state-actions">${actionsHtml}</div>` : ''}
+    </div>`
+}
+
+function followupDueMeta(item) {
+  if (!item?.nextDate) return ''
+  const today = getTodayJalaliStr()
+  if (item.category === 'overdue') {
+    const days = jalaliDiffDays(item.nextDate, today)
+    if (days == null) return 'معوقه'
+    if (days <= 0) return 'معوقه'
+    return days === 1 ? '۱ روز تأخیر' : `${days} روز تأخیر`
+  }
+  if (item.category === 'today') return 'امروز'
+  if (item.category === 'waiting') {
+    const days = jalaliDiffDays(today, item.nextDate)
+    if (days == null || days <= 0) return ''
+    return days === 1 ? '۱ روز دیگر' : `${days} روز دیگر`
+  }
+  return ''
+}
+
+function followupCardBadge(item) {
+  if (item.kind === 'pending' && item.category === 'overdue') {
+    return '<span class="overdue-tag">معوقه</span>'
+  }
+  if (item.wasOverdue) return '<span class="overdue-tag">معوقه</span>'
+  if (item.kind === 'pending' && item.category === 'today') {
+    return '<span class="followup-card-badge is-today">امروز</span>'
+  }
+  return ''
+}
+
+function renderFollowupItemActions(item, { canEdit }) {
+  let actionBtns = ''
+  if (item.kind === 'pending') {
+    actionBtns += `<button type="button" class="btn btn-sm btn-done" title="انجام شد" onclick="event.stopPropagation();app.openFollowupDoneModal('${escapeAttr(item.customerId)}')">✓ انجام شد</button>`
+  } else {
+    if (canEdit) {
+      actionBtns += `<button type="button" class="btn-icon" title="ویرایش" onclick="event.stopPropagation();app.editFollowup('${escapeAttr(String(item.id))}')">✏</button>`
+    }
+    if (hasPermission('followups_delete')) {
+      actionBtns += ` <button type="button" class="btn-icon" title="حذف" onclick="event.stopPropagation();app.deleteFollowup('${escapeAttr(String(item.id))}')">🗑</button>`
+    }
+  }
+  return actionBtns
+}
+
+function renderFollowupCard(item, { canEdit, nameByPhone }) {
+  const badge = followupCardBadge(item)
+  const phoneHtml = renderFollowupPhoneCell(item.customerPhone, {
+    extra: item.customerPhoneExtra || 0
+  })
+  const dueMeta = followupDueMeta(item)
+  const dueLabel = item.kind === 'pending'
+    ? `موعد: ${escapeHtml(item.nextDate || '—')}${dueMeta ? ` (${escapeHtml(dueMeta)})` : ''}`
+    : `تاریخ: ${escapeHtml(item.date || '—')}`
+  const setterName = item.setByOther ? (nameByPhone(item.createdByPhone) || item.createdByPhone) : ''
+  const setterBadge = setterName
+    ? `<div class="followup-card-from">از: ${escapeHtml(setterName)}</div>`
+    : ''
+  const notes = item.notes ? escapeHtml(item.notes) : '—'
+  const metaDone = item.kind === 'done'
+    ? `<div class="followup-card-meta">${escapeHtml(item.type || '—')} · ${escapeHtml(item.result || '—')}</div>`
+    : ''
+  const catClass = item.category ? ` is-${item.category}` : ''
+  const actionBtns = renderFollowupItemActions(item, { canEdit })
+
+  return `<article class="followup-card${catClass}" onclick="app.onCustomerRowClick(event, '${escapeAttr(item.customerId)}')">
+    <div class="followup-card-header">
+      <div class="followup-card-name">${escapeHtml(item.customerName)}</div>
+      ${badge}
+    </div>
+    <div class="followup-card-phone">${phoneHtml}</div>
+    <div class="followup-card-due">${dueLabel}</div>
+    ${metaDone}
+    <div class="followup-card-notes">${notes}</div>
+    ${setterBadge}
+    <div class="followup-card-actions actions-cell">${actionBtns}</div>
+  </article>`
+}
+
 export async function renderFollowups() {
   const tbody = document.getElementById('followupBody')
+  const cards = document.getElementById('followupCards')
   if (!tbody) return
 
   try {
@@ -350,15 +439,9 @@ export async function renderFollowups() {
         detail = ''
       }
 
-      tbody.innerHTML = `
-        <tr><td colspan="${colCount}">
-          <div class="empty-state">
-            <div class="icon">📋</div>
-            <h3>${title}</h3>
-            ${detail ? `<p>${detail}</p>` : ''}
-            ${actionsHtml ? `<div class="empty-state-actions">${actionsHtml}</div>` : ''}
-          </div>
-        </td></tr>`
+      const emptyHtml = buildFollowupEmptyHtml({ title, detail, actionsHtml })
+      tbody.innerHTML = `<tr><td colspan="${colCount}">${emptyHtml}</td></tr>`
+      if (cards) cards.innerHTML = emptyHtml
       renderPaginationBar('followupPagination', 'followups', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
       return
     }
@@ -381,18 +464,7 @@ export async function renderFollowups() {
           : '<td></td>')
         : ''
 
-      let actionBtns = ''
-      if (item.kind === 'pending') {
-        actionBtns += `<button class="btn btn-sm btn-done" title="انجام شد" onclick="app.openFollowupDoneModal('${escapeAttr(item.customerId)}')">✓ انجام شد</button>`
-      } else {
-        if (canEdit) {
-          actionBtns += `<button class="btn-icon" title="ویرایش" onclick="app.editFollowup('${escapeAttr(String(item.id))}')">✏</button>`
-        }
-        if (hasPermission('followups_delete')) {
-          actionBtns += ` <button class="btn-icon" title="حذف" onclick="app.deleteFollowup('${escapeAttr(String(item.id))}')">🗑</button>`
-        }
-      }
-
+      const actionBtns = renderFollowupItemActions(item, { canEdit })
       const overdueBadge = item.wasOverdue ? ' <span class="overdue-tag">معوقه</span>' : ''
       const phoneHtml = renderFollowupPhoneCell(item.customerPhone, {
         extra: item.customerPhoneExtra || 0
@@ -420,10 +492,18 @@ export async function renderFollowups() {
       </tr>`
     }).join('')
 
+    if (cards) {
+      cards.innerHTML = page.items.map(item =>
+        renderFollowupCard(item, { canEdit, nameByPhone })
+      ).join('')
+    }
+
     renderPaginationBar('followupPagination', 'followups', page)
   } catch (e) {
     console.error('renderFollowups error:', e)
-    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><h3>خطا در نمایش فالوآپ‌ها</h3><p>${escapeHtml(e.message || String(e))}</p></div></td></tr>`
+    const errHtml = `<div class="empty-state"><h3>خطا در نمایش فالوآپ‌ها</h3><p>${escapeHtml(e.message || String(e))}</p></div>`
+    tbody.innerHTML = `<tr><td colspan="10">${errHtml}</td></tr>`
+    if (cards) cards.innerHTML = errHtml
   }
 }
 

@@ -1770,6 +1770,109 @@
     padding: 4px 10px;
   }
 
+  .followup-cards-view {
+    display: none;
+  }
+
+  .followup-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    cursor: pointer;
+    box-shadow: var(--shadow-subtle);
+  }
+
+  .followup-card.is-overdue {
+    background: rgba(220, 38, 38, 0.06);
+    border-color: rgba(220, 38, 38, 0.25);
+  }
+
+  .followup-card.is-today {
+    background: rgba(255, 152, 0, 0.08);
+    border-color: rgba(255, 152, 0, 0.28);
+  }
+
+  .followup-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .followup-card-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.4;
+  }
+
+  .followup-card-badge.is-today {
+    display: inline-block;
+    background: #ea580c;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    white-space: nowrap;
+  }
+
+  .followup-card-phone {
+    direction: ltr;
+    text-align: right;
+  }
+
+  .followup-card-due {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    font-family: 'Vazirmatn', sans-serif;
+  }
+
+  .followup-card.is-overdue .followup-card-due {
+    color: var(--danger);
+  }
+
+  .followup-card-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .followup-card-notes {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .followup-card-from {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .followup-card-actions {
+    margin-top: 4px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .followup-card-actions .btn-done {
+    width: 100%;
+    height: 40px;
+    font-size: 14px;
+    padding: 8px 12px;
+  }
+
   /* Overdue tag in timeline */
   .overdue-tag {
     display: inline-block;
@@ -2765,6 +2868,16 @@
       min-height: 40px;
       padding: 8px 10px;
       font-size: 12px;
+    }
+
+    #sheet-followups .followups-table-view {
+      display: none;
+    }
+
+    #sheet-followups .followup-cards-view {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
 
     .accounting-filters {
