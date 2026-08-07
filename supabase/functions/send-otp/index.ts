@@ -1,5 +1,6 @@
 // Edge Function برای ارسال OTP از طریق SmartSMS API
 // مسیر: /functions/v1/send-otp
+// تنظیمات پنل از app_settings.key = sms_panel خوانده می‌شود؛ در صورت نبود، از env
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -7,6 +8,48 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+const DEFAULT_API_URL = 'https://rest.payamak-panel.com/api/SmartSMS/Send'
+const DEFAULT_MESSAGE_TEMPLATE = 'کد تأیید شما: {code}\n اعتبار: ۵ دقیقه'
+
+function normalizeSmsPanel(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  return {
+    username: String(raw.username ?? '').trim(),
+    password: String(raw.password ?? ''),
+    sender: String(raw.sender ?? '').trim(),
+    apiUrl: String(raw.apiUrl ?? '').trim(),
+    messageTemplate: String(raw.messageTemplate ?? '').trim(),
+  }
+}
+
+async function loadSmsPanelConfig(supabase) {
+  let fromDb = {}
+  try {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'sms_panel')
+      .limit(1)
+      .maybeSingle()
+
+    if (!error && data?.value != null) {
+      fromDb = normalizeSmsPanel(data.value)
+    }
+  } catch (e) {
+    console.error('Failed to load sms_panel from app_settings:', e)
+  }
+
+  const username = fromDb.username || Deno.env.get('SMS_USERNAME') || ''
+  const password = fromDb.password || Deno.env.get('SMS_PASSWORD') || ''
+  const sender = fromDb.sender || Deno.env.get('SMS_SENDER') || ''
+  const apiUrl = fromDb.apiUrl || Deno.env.get('SMS_API_URL') || DEFAULT_API_URL
+  const messageTemplate = fromDb.messageTemplate || Deno.env.get('SMS_MESSAGE_TEMPLATE') || DEFAULT_MESSAGE_TEMPLATE
+
+  if (!username || !password || !sender) return null
+
+  return { username, password, sender, apiUrl, messageTemplate }
 }
 
 serve(async (req) => {
@@ -84,28 +127,26 @@ serve(async (req) => {
       )
     }
 
-    // ارسال پیامک از طریق SmartSMS API
-    const smsUsername = Deno.env.get('SMS_USERNAME')
-    const smsPassword = Deno.env.get('SMS_PASSWORD')
-    const smsSender = Deno.env.get('SMS_SENDER')
-
-    if (!smsUsername || !smsPassword || !smsSender) {
-      console.error('Missing SMS credentials')
+    const smsConfig = await loadSmsPanelConfig(supabase)
+    if (!smsConfig) {
+      console.error('Missing SMS credentials (app_settings.sms_panel or SMS_* env)')
       return new Response(
         JSON.stringify({ success: false, error: 'تنظیمات SMS پیکربندی نشده' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    const smsText = `کد تأیید شما: ${code}\n اعتبار: ۵ دقیقه`
+    const smsText = smsConfig.messageTemplate.includes('{code}')
+      ? smsConfig.messageTemplate.split('{code}').join(code)
+      : `${smsConfig.messageTemplate}\n${code}`
 
-    const smsResponse = await fetch('https://rest.payamak-panel.com/api/SmartSMS/Send', {
+    const smsResponse = await fetch(smsConfig.apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        username: smsUsername,
-        password: smsPassword,
-        from: smsSender,
+        username: smsConfig.username,
+        password: smsConfig.password,
+        from: smsConfig.sender,
         to: phone,
         text: smsText
       })

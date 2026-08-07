@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL } from './data.js'
 import {
   loadGroupsData,
   getGroupsCache,
@@ -380,6 +380,7 @@ const SETTINGS_SECTIONS = [
   { id: 'sales-targets', label: 'تارگت‌های فروش', group: 'داده‌های پایه', keywords: 'تارگت هدف فروش target goal quota' },
   { id: 'platforms', label: 'پلتفرم‌ها', group: 'داده‌های پایه', keywords: 'پلتفرم platform' },
   { id: 'statuses', label: 'وضعیت‌های مشتری', group: 'داده‌های پایه', keywords: 'وضعیت status' },
+  { id: 'sms', label: 'پنل پیامک', group: 'ارتباطات', keywords: 'پیامک sms otp ملی پیامک melipayamak فرستنده api' },
   { id: 'notif-compose', label: 'ارسال اعلان', group: 'اعلان‌ها', keywords: 'اعلان notification ارسال' },
   { id: 'notif-prefs', label: 'ترجیحات اعلان', group: 'اعلان‌ها', keywords: 'toast فروش زنده ترجیح' },
   { id: 'notif-history', label: 'تاریخچه اعلان‌ها', group: 'اعلان‌ها', keywords: 'تاریخچه ارسال‌شده' }
@@ -466,6 +467,7 @@ function applySettingsSection(sectionId) {
   else if (sectionId === 'sales-targets') renderSalesTargetsSettings()
   else if (sectionId === 'platforms') renderPlatformsSettings()
   else if (sectionId === 'statuses') renderStatusesSettings()
+  else if (sectionId === 'sms') renderSmsPanelSettings()
 }
 
 function openSettingsConfirm(message, onConfirm, confirmLabel = 'تأیید') {
@@ -2855,4 +2857,82 @@ export function initProfileMenu() {
       closeProfileMenu()
     }
   })
+}
+
+// ============================================
+// SMS panel settings
+// ============================================
+
+let _smsPasswordStored = false
+
+export function renderSmsPanelSettings() {
+  const cfg = getSmsPanel()
+  _smsPasswordStored = !!cfg.password
+
+  const usernameEl = document.getElementById('smsUsername')
+  const passwordEl = document.getElementById('smsPassword')
+  const senderEl = document.getElementById('smsSender')
+  const apiUrlEl = document.getElementById('smsApiUrl')
+  const templateEl = document.getElementById('smsMessageTemplate')
+  const hintEl = document.getElementById('smsPasswordHint')
+
+  if (usernameEl) usernameEl.value = cfg.username || ''
+  if (senderEl) senderEl.value = cfg.sender || ''
+  if (apiUrlEl) apiUrlEl.value = cfg.apiUrl || DEFAULT_SMS_PANEL.apiUrl
+  if (templateEl) templateEl.value = cfg.messageTemplate || DEFAULT_SMS_PANEL.messageTemplate
+  if (passwordEl) {
+    passwordEl.value = ''
+    passwordEl.placeholder = _smsPasswordStored ? '••••••••  (برای تغییر، رمز جدید وارد کنید)' : 'رمز عبور پنل'
+  }
+  if (hintEl) {
+    hintEl.textContent = _smsPasswordStored
+      ? 'رمز فعلی ذخیره شده است. اگر فیلد را خالی بگذارید، رمز قبلی حفظ می‌شود.'
+      : 'رمز عبور پنل پیامک را وارد کنید.'
+  }
+}
+
+export async function saveSmsPanelSettings() {
+  if (!requireMainAdmin()) return
+
+  const username = toEnDigits(document.getElementById('smsUsername')?.value || '').trim()
+  const passwordInput = document.getElementById('smsPassword')?.value || ''
+  const sender = toEnDigits(document.getElementById('smsSender')?.value || '').trim()
+  const apiUrl = toEnDigits(document.getElementById('smsApiUrl')?.value || '').trim()
+  const messageTemplate = (document.getElementById('smsMessageTemplate')?.value || '').trim()
+
+  if (!username) { showToast('نام کاربری پنل پیامک را وارد کنید'); return }
+  if (!sender) { showToast('شماره فرستنده را وارد کنید'); return }
+  if (!apiUrl) { showToast('آدرس API را وارد کنید'); return }
+  if (!messageTemplate) { showToast('متن پیامک را وارد کنید'); return }
+  if (!messageTemplate.includes('{code}')) {
+    showToast('متن پیامک باید شامل {code} باشد')
+    return
+  }
+
+  const existing = getSmsPanel()
+  const password = passwordInput || existing.password
+  if (!password) {
+    showToast('رمز عبور پنل پیامک را وارد کنید')
+    return
+  }
+
+  try {
+    await saveSmsPanel({
+      username,
+      password,
+      sender,
+      apiUrl,
+      messageTemplate
+    })
+    showToast('تنظیمات پنل پیامک ذخیره شد')
+    renderSmsPanelSettings()
+  } catch (e) {
+    console.error('saveSmsPanelSettings error:', e)
+    showToast(e.message || 'خطا در ذخیره تنظیمات پیامک')
+  }
+}
+
+export function resetSmsMessageTemplate() {
+  const templateEl = document.getElementById('smsMessageTemplate')
+  if (templateEl) templateEl.value = DEFAULT_SMS_PANEL.messageTemplate
 }

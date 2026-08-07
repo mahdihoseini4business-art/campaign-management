@@ -340,6 +340,46 @@
           <div id="settingsStatusesList" class="settings-config-list"></div>
         </section>
 
+        <!-- پنل پیامک -->
+        <section class="settings-pane" data-settings-pane="sms" hidden>
+          <div class="settings-pane-header">
+            <h3>پنل پیامک</h3>
+            <p class="settings-pane-desc">مشخصات اتصال به پنل پیامکی (ملی‌پیامک / SmartSMS) برای ارسال کد تأیید ورود. این مقادیر از تنظیمات خوانده می‌شوند و دیگر نیازی به هاردکد در سرور نیست.</p>
+          </div>
+          <div class="settings-subsection">
+            <div class="form-row" style="flex-wrap:wrap;gap:12px;">
+              <div class="form-group" style="flex:1;min-width:180px;">
+                <label for="smsUsername">نام کاربری</label>
+                <input type="text" class="form-input" id="smsUsername" autocomplete="off" placeholder="نام کاربری پنل">
+              </div>
+              <div class="form-group" style="flex:1;min-width:180px;">
+                <label for="smsPassword">رمز عبور</label>
+                <input type="password" class="form-input" id="smsPassword" autocomplete="new-password" placeholder="رمز عبور پنل">
+                <p class="settings-pane-desc" id="smsPasswordHint" style="margin-top:6px;"></p>
+              </div>
+            </div>
+            <div class="form-row" style="flex-wrap:wrap;gap:12px;">
+              <div class="form-group" style="flex:1;min-width:180px;">
+                <label for="smsSender">شماره فرستنده</label>
+                <input type="text" class="form-input" id="smsSender" inputmode="numeric" placeholder="مثلاً 5000xxxx">
+              </div>
+              <div class="form-group" style="flex:2;min-width:220px;">
+                <label for="smsApiUrl">آدرس API</label>
+                <input type="url" class="form-input" id="smsApiUrl" placeholder="https://rest.payamak-panel.com/api/SmartSMS/Send" dir="ltr">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="smsMessageTemplate">متن پیامک OTP</label>
+              <textarea class="form-input" id="smsMessageTemplate" rows="3" placeholder="کد تأیید شما: {code}"></textarea>
+              <p class="settings-pane-desc" style="margin-top:6px;">از <code>{code}</code> برای جای‌گذاری کد تأیید استفاده کنید.</p>
+            </div>
+            <div class="form-row settings-add-row" style="justify-content:flex-start;gap:8px;">
+              <button type="button" class="btn btn-primary" onclick="app.saveSmsPanelSettings()">ذخیره تنظیمات پیامک</button>
+              <button type="button" class="btn" onclick="app.resetSmsMessageTemplate()">بازنشانی متن پیش‌فرض</button>
+            </div>
+          </div>
+        </section>
+
         <!-- ارسال اعلان -->
         <section class="settings-pane settings-notif-compose" data-settings-pane="notif-compose" id="settingsNotificationsSection" hidden>
           <div class="settings-pane-header">

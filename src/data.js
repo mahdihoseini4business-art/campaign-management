@@ -80,7 +80,28 @@ let data = {
   statuses: [],
   salesTargets: [],
   salesTargetDeadlineUrgency: null,
-  saleToastEnabled: true
+  saleToastEnabled: true,
+  smsPanel: null
+}
+
+export const DEFAULT_SMS_PANEL = {
+  username: '',
+  password: '',
+  sender: '',
+  apiUrl: 'https://rest.payamak-panel.com/api/SmartSMS/Send',
+  messageTemplate: 'کد تأیید شما: {code}\n اعتبار: ۵ دقیقه'
+}
+
+export function normalizeSmsPanel(raw) {
+  const base = { ...DEFAULT_SMS_PANEL }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return base
+  return {
+    username: String(raw.username ?? '').trim(),
+    password: String(raw.password ?? ''),
+    sender: String(raw.sender ?? '').trim(),
+    apiUrl: String(raw.apiUrl ?? '').trim() || DEFAULT_SMS_PANEL.apiUrl,
+    messageTemplate: String(raw.messageTemplate ?? '').trim() || DEFAULT_SMS_PANEL.messageTemplate
+  }
 }
 
 const DEFAULT_PLATFORMS = [
@@ -375,6 +396,12 @@ export async function loadData() {
     ? [...settings.statuses].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [...DEFAULT_STATUSES]
   data.saleToastEnabled = settings.sale_toast_enabled !== false && settings.sale_toast_enabled !== 'false'
+  try {
+    data.smsPanel = normalizeSmsPanel(settings.sms_panel)
+  } catch (e) {
+    console.error('normalizeSmsPanel error:', e)
+    data.smsPanel = normalizeSmsPanel(null)
+  }
   try {
     data.salesTargets = normalizeSalesTargets(settings.sales_targets)
   } catch (e) {
@@ -1529,6 +1556,16 @@ export function setSaleToastEnabledLocal(enabled) {
 export async function saveSaleToastEnabled(enabled) {
   data.saleToastEnabled = !!enabled
   await saveSetting('sale_toast_enabled', !!enabled)
+}
+
+export function getSmsPanel() {
+  return normalizeSmsPanel(data.smsPanel)
+}
+
+export async function saveSmsPanel(config) {
+  const cleaned = normalizeSmsPanel(config)
+  data.smsPanel = cleaned
+  await saveSetting('sms_panel', cleaned)
 }
 
 // ============================================
