@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn } from './data.js'
+import { getData, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
@@ -22,7 +22,7 @@ import {
   isPaymentFilled, isPaymentPristineDraft, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS,
   computeCustomerLrfm, isProductCountableInSales, soldAtTimePart, formatSoldAt24h, normalizeTimeTo24h,
   CUSTOMER_LEVELS, formatCustomerLevel, parseCustomerLevel, resolveCustomerLevel, syncCustomerLevel,
-  applyProfitSnapshotToProduct
+  applyProfitSnapshotToProduct, isGiftSale, getGiftAccountingStatus
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -2281,6 +2281,7 @@ export async function renderProducts(customerId, users = null) {
   }
 
   container.innerHTML = products.map((p, i) => {
+    const isGift = isGiftSale(p)
     const price = parseFloat(p.price) || 0
     const approved = getApprovedPaid(p)
     const balance = getOperationalBalance(p)
@@ -2289,9 +2290,69 @@ export async function renderProducts(customerId, users = null) {
     const closed = isInvoiceClosed(p)
     const priceLocked = isProductPriceLocked(p)
     const statusLabel = p.status || 'بیعانه'
-    const statusColor = statusLabel === 'تکمیل' ? 'var(--success)' : 'var(--warning)'
-    const blockClass = ['product-block', worst === 'rejected' ? 'is-rejected' : '', closed ? 'is-closed' : ''].filter(Boolean).join(' ')
-    const closedBadge = closed ? '<span class="invoice-closed-badge">فاکتور بسته شده</span>' : ''
+    const statusColor = isGift
+      ? 'var(--primary, #2563eb)'
+      : (statusLabel === 'تکمیل' ? 'var(--success)' : 'var(--warning)')
+    const blockClass = [
+      'product-block',
+      worst === 'rejected' ? 'is-rejected' : '',
+      closed ? 'is-closed' : '',
+      isGift ? 'is-gift-sale' : ''
+    ].filter(Boolean).join(' ')
+    const closedBadge = closed
+      ? (isGift
+        ? '<span class="invoice-closed-badge">هدیه تأیید شده</span>'
+        : '<span class="invoice-closed-badge">فاکتور بسته شده</span>')
+      : ''
+    const giftBadge = isGift ? '<span class="gift-badge">هدیه</span>' : ''
+
+    if (isGift) {
+      const giftStatus = getGiftAccountingStatus(p)
+      const giftStatusLabel = PAYMENT_STATUS_LABELS[giftStatus] || giftStatus
+      const rejectHint = (giftStatus === 'rejected' && p.giftRejectReason)
+        ? `<span class="payment-reject-reason" title="${escapeAttr(p.giftRejectReason)}">${escapeHtml(p.giftRejectReason)}</span>`
+        : ''
+      const sellerName = resolveUserNameByPhone(p.soldByPhone, usersList)
+      const sellerHtml = sellerName
+        ? `<span class="record-author" title="ثبت‌کننده هدیه">👤 ${escapeHtml(sellerName)}</span>`
+        : ''
+
+      const catalog = getSellableNames()
+      const displayName = coerceProductName(p.name)
+      const bundle = getBundleByName(displayName)
+      const bundleHint = bundle
+        ? `<span class="product-bundle-hint">شامل: ${escapeHtml((bundle.productNames || []).join('، '))}</span>`
+        : ''
+      const isPhysical = !!displayName && isPhysicalSaleLine(p)
+      let shippingFields = ''
+      if (isPhysical && (p.shippingAddress || p.shippingPostalCode)) {
+        shippingFields = `
+          ${saleFieldHtml('آدرس گیرنده', `<span class="sale-readonly-value">${escapeHtml(p.shippingAddress || '—')}</span>`, { optional: true, full: true })}
+          ${p.shippingPostalCode ? saleFieldHtml('کد پستی', `<span class="sale-readonly-value">${escapeHtml(p.shippingPostalCode)}</span>`, { optional: true }) : ''}`
+      }
+
+      return `
+      <div class="${blockClass}" data-product-index="${i}">
+        <section class="sale-step sale-step-product">
+          <h4 class="sale-step-title">۱. محصول ${giftBadge}${sellerHtml}</h4>
+          <div class="sale-gift-banner" data-gift-banner>
+            <strong>فروش هدیه</strong>
+            <span>قیمت صفر · بدون دریافت وجه</span>
+          </div>
+          <div class="sale-fields">
+            ${saleFieldHtml('محصول', `<span class="sale-readonly-value" style="font-weight:600;">${escapeHtml(displayName || '—')}</span>${bundleHint}`, { required: true, full: true, className: 'sale-field--name' })}
+            ${saleFieldHtml('قیمت کل (ریال)', `<span class="product-price-locked sale-readonly-value"><b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">۰</b> ریال</span>`, { required: true })}
+          </div>
+          ${shippingFields}
+          <div class="sale-summary" aria-label="خلاصه هدیه">
+            <span class="product-status-label" style="color:${statusColor};">${escapeHtml(statusLabel)}</span>
+            <span class="payment-badge payment-${giftStatus}">${escapeHtml(giftStatusLabel)}</span>
+            ${rejectHint}
+            ${closedBadge}
+          </div>
+        </section>
+      </div>`
+    }
 
     const paymentsHtml = pays.map((pay, pi) => {
       const payStatus = getPaymentEntryStatus(pay)
@@ -2365,7 +2426,7 @@ export async function renderProducts(customerId, users = null) {
 
     const priceControl = (!canEdit || priceLocked)
       ? `<span class="product-price-locked sale-readonly-value" title="قیمت کل قفل شده"><b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${price ? formatNumber(price) : '—'}</b> ریال</span>`
-      : `<input type="text" inputmode="numeric" class="product-price num-input" data-sale-field="price" placeholder="مثلاً ۱۰٬۰۰۰٬۰۰۰" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" title="واحد: ریال">`
+      : `<input type="text" inputmode="numeric" class="product-price num-input" data-sale-field="price" placeholder="مثلاً ۱۰٬۰۰۰٬۰۰۰" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this);app.onSalePriceInput(this)" title="واحد: ریال — برای هدیه ۰ وارد کنید">`
 
     const settlementControl = canEdit && !closed
       ? `<input type="text" class="product-settlement" data-sale-field="settlementDate" placeholder="انتخاب تاریخ" data-jdp value="${p.settlementDate || ''}">`
@@ -2406,6 +2467,12 @@ export async function renderProducts(customerId, users = null) {
       ? `<button type="button" class="btn btn-sm sale-product-save-btn" onclick="app.commitSaleProductDetails('${escapeAttr(customerId)}', ${i})">ذخیره جزئیات محصول</button>`
       : ''
 
+    const giftSubmitBtn = (canEdit && !closed && !priceLocked)
+      ? `<div class="sale-gift-actions" data-gift-actions hidden>
+          <button type="button" class="btn btn-sm btn-primary sale-submit-btn" data-gift-submit onclick="app.commitGiftSale('${escapeAttr(customerId)}', ${i})">ثبت هدیه</button>
+        </div>`
+      : ''
+
     const summaryHtml = `
       <div class="sale-summary" aria-label="خلاصه مالی">
         <span class="product-status-label" style="color:${statusColor};">${escapeHtml(statusLabel)}</span>
@@ -2418,16 +2485,22 @@ export async function renderProducts(customerId, users = null) {
       <div class="${blockClass}" data-product-index="${i}">
         <section class="sale-step sale-step-product">
           <h4 class="sale-step-title">۱. محصول</h4>
+          <div class="sale-gift-banner" data-gift-banner hidden>
+            <strong>ثبت هدیه</strong>
+            <span>قیمت صفر یعنی این فروش به‌عنوان هدیه ثبت می‌شود · واریز لازم نیست</span>
+          </div>
+          <p class="sale-gift-error" data-gift-error hidden></p>
           <div class="sale-fields">
             ${saleFieldHtml('محصول', nameControl, { required: true, full: true, className: 'sale-field--name' })}
             ${saleFieldHtml('قیمت کل (ریال)', priceControl, { required: true })}
-            ${saleFieldHtml('تاریخ تسویه', settlementControl, { optional: true })}
+            ${saleFieldHtml('تاریخ تسویه', settlementControl, { optional: true, className: 'sale-field--settlement' })}
           </div>
           ${shippingFields}
           ${summaryHtml}
           ${productDetailsBtn}
+          ${giftSubmitBtn}
         </section>
-        <section class="sale-step sale-step-payments">
+        <section class="sale-step sale-step-payments" data-sale-payments>
           <h4 class="sale-step-title">۲. واریزها</h4>
           <div class="payment-list">${paymentsHtml || '<div class="payment-empty">هنوز واریزی ثبت نشده</div>'}</div>
           ${addPayBtn}
@@ -2438,6 +2511,10 @@ export async function renderProducts(customerId, users = null) {
   if (window.jalaliDatepicker) {
     try { window.jalaliDatepicker.startWatch({ time: false, zIndex: 11000 }) } catch (_) { /* ignore */ }
   }
+
+  container.querySelectorAll('.product-block').forEach(block => {
+    if (block.querySelector('[data-sale-field="price"]')) updateSaleGiftMode(block)
+  })
 }
 
 export async function addProductRow(customerId) {
@@ -2484,6 +2561,10 @@ export async function addProductPayment(customerId, productIndex) {
   const products = getProducts(customerId)
   const product = products[productIndex]
   if (!product) return
+  if (isGiftSale(product)) {
+    showToast('برای فروش هدیه واریز ثبت نمی‌شود')
+    return
+  }
   ensureProductPayments(product)
   syncProductStatus(product)
 
@@ -2645,6 +2726,171 @@ export function onSaleProductNameChange(selectEl) {
       hint.textContent = ''
     }
   }
+  updateSaleGiftMode(block)
+}
+
+export function onSalePriceInput(el) {
+  const block = el?.closest?.('.product-block')
+  if (block) updateSaleGiftMode(block)
+}
+
+/**
+ * Live gift detection: price === 0 + catalog allowGift → hide payments, show gift UI.
+ * Price 0 without allowGift → error, keep payment fields.
+ */
+export function updateSaleGiftMode(blockEl) {
+  if (!blockEl || blockEl.classList.contains('is-gift-sale')) return
+  const priceEl = blockEl.querySelector('[data-sale-field="price"]')
+  if (!priceEl) return
+
+  const nameEl = blockEl.querySelector('[data-sale-field="name"]')
+  const name = coerceProductName(nameEl?.value || '')
+  const priceRaw = unformatSaleNumber(priceEl)
+  const isZero = priceRaw !== '' && Number(priceRaw) === 0
+  const allowed = name ? isProductGiftAllowed(name) : false
+
+  const banner = blockEl.querySelector('[data-gift-banner]')
+  const errorEl = blockEl.querySelector('[data-gift-error]')
+  const paymentsStep = blockEl.querySelector('[data-sale-payments]')
+  const settlementField = blockEl.querySelector('.sale-field--settlement')
+  const giftActions = blockEl.querySelector('[data-gift-actions]')
+  const summary = blockEl.querySelector('.sale-summary')
+
+  const giftOk = isZero && !!name && allowed
+  const giftBlocked = isZero && !!name && !allowed
+
+  blockEl.classList.toggle('is-gift-draft', giftOk)
+
+  if (banner) banner.hidden = !giftOk
+  if (giftActions) giftActions.hidden = !giftOk
+  if (paymentsStep) paymentsStep.hidden = giftOk
+  if (settlementField) settlementField.hidden = giftOk
+  if (summary) summary.hidden = giftOk
+
+  if (errorEl) {
+    if (giftBlocked) {
+      errorEl.hidden = false
+      errorEl.textContent = `ادمین اجازه ثبت هدیه برای «${name}» را نداده است. قیمت را بزرگ‌تر از صفر وارد کنید یا با ادمین هماهنگ کنید.`
+    } else if (isZero && !name) {
+      errorEl.hidden = false
+      errorEl.textContent = 'ابتدا محصول را انتخاب کنید تا مشخص شود هدیه مجاز است یا نه.'
+    } else {
+      errorEl.hidden = true
+      errorEl.textContent = ''
+    }
+  }
+
+  markSaleFieldInvalid(priceEl, giftBlocked)
+}
+
+export async function commitGiftSale(customerId, productIndex) {
+  const customer = getData().customers.find(c => c.id === customerId)
+  if (!canAddSaleOnCustomer(customer)) {
+    showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
+    return
+  }
+
+  const block = document.querySelector(`#detailProductsList .product-block[data-product-index="${productIndex}"]`)
+  if (!block) return
+
+  const products = getProducts(customerId)
+  const product = products[productIndex]
+  if (!product) return
+  if (isGiftSale(product) || isProductPriceLocked(product)) {
+    showToast('این فروش قبلاً ثبت شده است')
+    return
+  }
+  if (isInvoiceClosed(product)) {
+    showToast('فاکتور بسته شده و قابل ویرایش نیست')
+    return
+  }
+
+  const draft = readSaleProductDraft(block)
+  clearSaleBlockInvalid(block)
+
+  let hasError = false
+  const name = coerceProductName(draft.name || '')
+  if (!name) {
+    markSaleFieldInvalid(draft.nameEl, true)
+    hasError = true
+  }
+  const priceRaw = draft.price
+  const priceNum = priceRaw === '' ? NaN : Number(priceRaw)
+  if (priceRaw === '' || priceNum !== 0) {
+    markSaleFieldInvalid(draft.priceEl, true)
+    hasError = true
+  }
+  if (name && !isProductGiftAllowed(name)) {
+    markSaleFieldInvalid(draft.priceEl, true)
+    hasError = true
+    showToast(`ثبت هدیه برای «${name}» مجاز نیست`)
+    updateSaleGiftMode(block)
+    return
+  }
+  if (hasError) {
+    showToast('فیلدهای الزامی را کامل کنید')
+    updateSaleGiftMode(block)
+    return
+  }
+
+  const btn = block.querySelector('[data-gift-submit]')
+  const prevLabel = btn?.textContent
+  if (btn) {
+    btn.disabled = true
+    btn.textContent = 'در حال ثبت…'
+  }
+
+  try {
+    const user = getCurrentUser()
+    const { dateTime } = getNowJalaliDateTime()
+
+    product.name = name
+    product.saleType = 'gift'
+    product.price = '0'
+    product.priceLocked = true
+    product.status = 'هدیه'
+    product.payments = []
+    product.deposit = ''
+    product.settlementDate = ''
+    product.giftAccountingStatus = PAYMENT_STATUS.pending
+    product.giftRejectReason = ''
+    product.giftReviewedAt = ''
+    product.giftReviewedBy = ''
+    product.soldByPhone = normalizePhone(user?.phone || product.soldByPhone || '')
+    product.soldAt = dateTime
+    product.depositorName = ''
+
+    if (draft.shippingAddress != null || draft.shippingPostalCode != null) {
+      applySaleProductDraft(product, {
+        name,
+        price: '0',
+        settlementDate: '',
+        shippingAddress: draft.shippingAddress,
+        shippingPostalCode: draft.shippingPostalCode
+      }, { lockPrice: false })
+    } else {
+      applyProfitSnapshotToProduct(product)
+    }
+
+    if (product.shippingAddress) {
+      appendCustomerAddressIfNew(customer, {
+        text: product.shippingAddress,
+        postalCode: product.shippingPostalCode || ''
+      })
+    }
+
+    syncProductStatus(product)
+    await setProducts(customerId, products)
+    showToast('هدیه ثبت شد و در انتظار تأیید حسابداری است.')
+    renderProducts(customerId)
+  } catch (e) {
+    console.error('commitGiftSale error:', e)
+    showToast('خطا در ثبت هدیه')
+    if (btn) {
+      btn.disabled = false
+      if (prevLabel) btn.textContent = prevLabel
+    }
+  }
 }
 
 /** Switch calm draft state → yellow incomplete once the user starts editing. */
@@ -2671,6 +2917,10 @@ export async function commitSaleProductDetails(customerId, productIndex) {
   const products = getProducts(customerId)
   const product = products[productIndex]
   if (!product) return
+  if (isGiftSale(product)) {
+    showToast('جزئیات هدیه پس از ثبت قابل ویرایش نیست')
+    return
+  }
   if (isInvoiceClosed(product)) {
     showToast('فاکتور بسته شده و قابل ویرایش نیست')
     return
@@ -2727,6 +2977,10 @@ export async function commitSalePayment(customerId, productIndex, paymentIndex) 
   const products = getProducts(customerId)
   const product = products[productIndex]
   if (!product) return
+  if (isGiftSale(product)) {
+    showToast('برای هدیه از دکمه «ثبت هدیه» استفاده کنید')
+    return
+  }
   ensureProductPayments(product)
   const pay = product.payments[paymentIndex]
   if (!pay) return
@@ -2746,10 +3000,24 @@ export async function commitSalePayment(customerId, productIndex, paymentIndex) 
   let hasError = false
   const priceLocked = isProductPriceLocked(product)
   if (!priceLocked) {
-    const priceNum = parseFloat(productDraft.price) || 0
+    const priceRaw = productDraft.price
+    const priceNum = priceRaw === '' ? 0 : (parseFloat(priceRaw) || 0)
     if (priceNum <= 0) {
       markSaleFieldInvalid(productDraft.priceEl, true)
       hasError = true
+      if (priceRaw !== '' && Number(priceRaw) === 0) {
+        const pname = coerceProductName(productDraft.name || '')
+        if (pname && isProductGiftAllowed(pname)) {
+          showToast('برای ثبت هدیه از دکمه «ثبت هدیه» استفاده کنید')
+          updateSaleGiftMode(block)
+          return
+        }
+        if (pname && !isProductGiftAllowed(pname)) {
+          showToast(`ثبت هدیه برای «${pname}» مجاز نیست`)
+          updateSaleGiftMode(block)
+          return
+        }
+      }
     }
   }
   if (productDraft.nameEl && !String(productDraft.name || '').trim()) {

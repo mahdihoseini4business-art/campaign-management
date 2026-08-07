@@ -2,7 +2,9 @@ import {
   getData,
   getProductCatalogNames,
   getCustomerOwnedProductNames,
-  customerHasNoProducts
+  customerHasNoProducts,
+  coerceProductName,
+  isGiftSaleLine
 } from './data.js'
 import { getUsersSafe } from './auth.js'
 import {
@@ -250,9 +252,21 @@ function bindAdvisorOutsideClick() {
   })
 }
 
-function markCell(has) {
+function ownsViaApprovedGift(customer, productName) {
+  const key = String(productName || '').trim().toLowerCase()
+  if (!key) return false
+  return (customer?.products || []).some(line => {
+    if (!isGiftSaleLine(line)) return false
+    if ((line.giftAccountingStatus || 'pending') !== 'approved') return false
+    return coerceProductName(line.name).toLowerCase() === key
+  })
+}
+
+function markCell(has, { gift = false } = {}) {
   if (!has) return '<td class="product-matrix-mark"></td>'
-  return `<td class="product-matrix-mark product-matrix-yes">${MARK_YES}</td>`
+  const title = gift ? ' title="از طریق هدیه"' : ''
+  const giftMark = gift ? ' <span class="gift-badge" style="font-size:9px;padding:0 4px;">هدیه</span>' : ''
+  return `<td class="product-matrix-mark product-matrix-yes"${title}>${MARK_YES}${giftMark}</td>`
 }
 
 export async function renderProductMatrix() {
@@ -333,7 +347,10 @@ export async function renderProductMatrix() {
     const owned = getCustomerOwnedProductNames(c)
     const noProducts = customerHasNoProducts(c)
     const phone = getPrimaryPhone(c) || '—'
-    const productCells = catalog.map(name => markCell(owned.has(name))).join('')
+    const productCells = catalog.map(name => {
+      const has = owned.has(name)
+      return markCell(has, { gift: has && ownsViaApprovedGift(c, name) })
+    }).join('')
     return `<tr>
       <td class="product-matrix-sticky product-matrix-col-name">${escapeHtml(c.name || '—')}</td>
       <td class="product-matrix-sticky product-matrix-col-phone" dir="ltr">${escapeHtml(phone)}</td>

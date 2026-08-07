@@ -178,8 +178,13 @@
                 <label for="newProductCostAmount">بهای تمام‌شده (ریال)</label>
                 <input type="text" class="form-input" id="newProductCostAmount" inputmode="numeric" placeholder="بهای تمام‌شده" oninput="app.formatInput(this)">
               </div>
+              <label class="settings-gift-check" for="newProductAllowGift" title="اگر فعال باشد، در فرم فروش می‌توان قیمت ۰ (هدیه) ثبت کرد">
+                <input type="checkbox" id="newProductAllowGift">
+                <span>قابل هدیه</span>
+              </label>
               <button type="button" class="btn btn-primary" onclick="app.addProductCatalogItem()">افزودن</button>
             </div>
+            <p class="settings-pane-desc" style="margin-top:8px;">فقط محصولاتی که «قابل هدیه» برایشان روشن است، در فرم فروش می‌توانند با قیمت ۰ به‌عنوان هدیه ثبت شوند.</p>
             <div id="settingsProductsList" class="settings-config-list"></div>
           </div>
 
@@ -903,6 +908,7 @@
           <option value="">همه وضعیت‌ها</option>
           <option value="تکمیل">تکمیل</option>
           <option value="بیعانه">بیعانه</option>
+          <option value="هدیه">هدیه</option>
         </select>
         <select class="form-select" id="filterSalesPaymentStatus" style="width:160px;" onchange="app.renderSales()">
           <option value="">همه وضعیت‌های واریزی</option>
@@ -981,6 +987,7 @@
         <button type="button" class="btn accounting-filter-btn active" data-filter="pending" onclick="app.setAccountingFilter('pending')">در انتظار تأیید</button>
         <button type="button" class="btn accounting-filter-btn" data-filter="approved" onclick="app.setAccountingFilter('approved')">تأیید شده‌ها</button>
         <button type="button" class="btn accounting-filter-btn" data-filter="rejected" onclick="app.setAccountingFilter('rejected')">رد شده‌ها</button>
+        <button type="button" class="btn accounting-filter-btn" data-filter="gifts" onclick="app.setAccountingFilter('gifts')">هدایا</button>
       </div>
       <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchAccounting" oninput="app.renderAccounting()">
     </div>

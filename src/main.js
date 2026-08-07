@@ -2,11 +2,11 @@ import './styles.css'
 import { toEnDigits, initDigitConversion, hasPermission, jalaliToNum, showToast, escapeAttr, getStatusOrder, toggleToolbarActions, closeAllToolbarActions, initToolbarActionsMenus, getPrimaryPhone, copyToClipboard } from './utils.js'
 import { getData, loadData, backfillAdvisorPhones } from './data.js'
 import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal as openSettingsModalBase, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, togglePermGroup, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, selectSettingsUser, filterSettingsUsers, backToUsersList, markPermissionsDirty, switchSettingsSection, filterSettingsNav, addDestinationBank, removeDestinationBank, startDestinationBankEdit, cancelDestinationBankEdit, saveDestinationBankEdit, addProductCatalogItem, removeProductCatalogItem, startProductCatalogEdit, cancelProductCatalogEdit, saveProductCatalogEdit, onNewProductKindChange, onEditProductKindChange, onNewProductProfitModeChange, onEditProductProfitModeChange, startProductBundleEdit, cancelProductBundleEdit, saveProductBundleForm, removeProductBundle, runCatalogToBundleMigration, filterViewUserOptions, changeUserGroupAssignment, createSettingsGroup, renameSettingsGroup, deleteSettingsGroup, selectSettingsGroup, backToGroupsList, addSettingsGroupMember, removeSettingsGroupMember, makeGroupManager, addPlatform, removePlatform, updatePlatformField, editPlatform, cancelPlatformEdit, savePlatformEdit, addStatus, removeStatus, updateStatusField, editStatus, cancelStatusEdit, saveStatusEdit, onStatusDragStart, onStatusDragOver, onStatusDrop, onSalesTargetMetricChange, onSalesTargetAllocationChange, onSalesTargetDeadlineChange, addDeadlineUrgencyStage, removeDeadlineUrgencyStage, saveDeadlineUrgencySettings, startSalesTargetEdit, cancelSalesTargetEdit, saveSalesTargetForm, removeSalesTarget, renderSalesTargetsSettings, addSalesTargetBarToDraft, removeSalesTargetBarFromDraft, saveSmsPanelSettings, resetSmsMessageTemplate } from './auth.js'
-import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, switchDetailTab, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, removeProduct, onCustomerPhoneInput, addCustomerPhoneSlot, removeCustomerPhoneSlot, onCustomerAddressInput, addCustomerAddressSlot, removeCustomerAddressSlot, addProductPayment, removeProductPayment, onDestinationBankSelect, commitSalePayment, commitSaleProductDetails, onSaleProductNameChange, markSalePaymentTouched, openStartSaleModal, closeStartSaleModal, confirmStartSale, filterStartSaleCustomers, closeMergeCustomerModal, confirmMergeCustomers } from './customers.js'
+import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, switchDetailTab, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, removeProduct, onCustomerPhoneInput, addCustomerPhoneSlot, removeCustomerPhoneSlot, onCustomerAddressInput, addCustomerAddressSlot, removeCustomerAddressSlot, addProductPayment, removeProductPayment, onDestinationBankSelect, commitSalePayment, commitSaleProductDetails, commitGiftSale, onSaleProductNameChange, onSalePriceInput, markSalePaymentTouched, openStartSaleModal, closeStartSaleModal, confirmStartSale, filterStartSaleCustomers, closeMergeCustomerModal, confirmMergeCustomers } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, clearFollowupSearch, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, openFollowupDonePicker, closeFollowupDonePicker, filterFollowupDonePick, confirmFollowupDonePick, setFollowupDoneNextShortcut, isFollowupDoneNoteDirty, updateFollowupBadge } from './followups.js'
 import { renderSales, sortSales } from './sales.js'
 import { renderProductMatrix, cycleProductMatrixFilter, clearProductMatrixFilters, toggleProductMatrixAdvisorDropdown, toggleProductMatrixAdvisor, toggleProductMatrixAdvisorsAll } from './product-matrix.js'
-import { renderAccounting, setAccountingFilter, approvePayment, openRejectPaymentModal, closeRejectPaymentModal, confirmRejectPayment } from './accounting.js'
+import { renderAccounting, setAccountingFilter, approvePayment, approveGiftSale, openRejectPaymentModal, closeRejectPaymentModal, confirmRejectPayment } from './accounting.js'
 import { renderShipments, setShipmentsFilter, openConfirmShipmentModal, closeConfirmShipmentModal, confirmShipment } from './shipments.js'
 import { renderDashboard, toggleDashSection, applyDashFilter, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareMetricChange, onProductChartMetricChange, onDashTargetsScopeChange, renderSalesTargetBand, onAovMaControlsChange } from './dashboard.js'
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners } from './import-export.js'
@@ -224,7 +224,9 @@ const app = {
   addProductPayment,
   commitSalePayment,
   commitSaleProductDetails,
+  commitGiftSale,
   onSaleProductNameChange,
+  onSalePriceInput,
   markSalePaymentTouched,
   openStartSaleModal,
   closeStartSaleModal,
@@ -368,6 +370,7 @@ const app = {
   setShipmentsFilter,
   goToPage,
   approvePayment,
+  approveGiftSale,
   openRejectPaymentModal,
   closeRejectPaymentModal,
   confirmRejectPayment,

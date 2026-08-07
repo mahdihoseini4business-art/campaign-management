@@ -1,24 +1,51 @@
-import { getData, saveCustomerToDB, coerceProductName } from './data.js'
+import { getData, saveCustomerToDB, coerceProductName, isGiftSaleLine } from './data.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
   requirePermission, getCurrentUser, normalizePhone, getNowJalaliDateTime,
   ensureProductPayments, syncProductStatus, getPaymentEntryStatus,
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, formatSoldAt24h, matchesTabSearch,
-  getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone
+  getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
+  isGiftSale, getGiftAccountingStatus
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSales } from './sales.js'
 import { renderProducts } from './customers.js'
 import { broadcastPaymentRejectToast } from './sale-toasts.js'
 
-let accountingFilter = 'pending' // pending | approved | rejected
-let rejectTarget = null // { customerId, productIndex, paymentIndex }
+let accountingFilter = 'pending' // pending | approved | rejected | gifts
+let rejectTarget = null // { customerId, productIndex, paymentIndex, isGift }
 
 export function getAllPayments() {
   const data = getData()
   const payments = []
   data.customers.forEach(c => {
     ;(c.products || []).forEach((product, productIndex) => {
+      if (isGiftSale(product) || isGiftSaleLine(product)) {
+        syncProductStatus(product)
+        const giftStatus = getGiftAccountingStatus(product)
+        payments.push({
+          customerId: c.id,
+          productIndex,
+          paymentIndex: -1,
+          isGift: true,
+          customerName: c.name || c.platformId || c.id,
+          customerPhone: getPrimaryPhone(c),
+          customerPhones: getCustomerPhones(c),
+          advisor: c.advisor || '',
+          advisorPhone: c.advisorPhone || '',
+          productName: coerceProductName(product.name),
+          productStatus: 'هدیه',
+          amount: 0,
+          soldAt: product.soldAt || '',
+          depositorName: '',
+          destinationBank: '',
+          paymentStatus: giftStatus,
+          paymentRejectReason: product.giftRejectReason || '',
+          paymentReviewedAt: product.giftReviewedAt || '',
+          paymentReviewedBy: product.giftReviewedBy || ''
+        })
+        return
+      }
       ensureProductPayments(product)
       syncProductStatus(product)
       ;(product.payments || []).forEach((pay, paymentIndex) => {
@@ -28,6 +55,7 @@ export function getAllPayments() {
           customerId: c.id,
           productIndex,
           paymentIndex,
+          isGift: false,
           customerName: c.name || c.platformId || c.id,
           customerPhone: getPrimaryPhone(c),
           customerPhones: getCustomerPhones(c),
@@ -68,9 +96,11 @@ export function renderAccounting() {
   }
 
   const search = toEnDigits(document.getElementById('searchAccounting')?.value || '').toLowerCase()
-  // Accounting is a global review queue — anyone with this permission sees all payments
   const allPayments = getAllPayments()
-  let payments = allPayments.filter(p => p.paymentStatus === accountingFilter)
+  let payments = allPayments.filter(p => {
+    if (accountingFilter === 'gifts') return !!p.isGift
+    return p.paymentStatus === accountingFilter
+  })
 
   if (search) {
     payments = payments.filter(p =>
@@ -84,7 +114,8 @@ export function renderAccounting() {
         p.advisor,
         p.destinationBank,
         p.soldAt,
-        p.productStatus
+        p.productStatus,
+        p.isGift ? 'هدیه' : ''
       ])
     )
   }
@@ -100,10 +131,9 @@ export function renderAccounting() {
   setStat('stat-acc-approved', allPayments.filter(p => p.paymentStatus === 'approved').length)
   setStat('stat-acc-rejected', allPayments.filter(p => p.paymentStatus === 'rejected').length)
 
-  // Same formula as dashboard «در انتظار تأیید حسابداری»: sum of pending payment amounts
   const pendingAmountEl = document.getElementById('stat-acc-pending-amount')
   if (pendingAmountEl) {
-    const pendingAmount = pendingPayments.reduce((sum, p) => sum + (p.amount || 0), 0)
+    const pendingAmount = pendingPayments.reduce((sum, p) => sum + (p.isGift ? 0 : (p.amount || 0)), 0)
     pendingAmountEl.textContent = formatNumber(pendingAmount) + ' ریال'
   }
 
@@ -112,7 +142,7 @@ export function renderAccounting() {
       <tr><td colspan="10">
         <div class="empty-state">
           <div class="icon">💳</div>
-          <h3>واریزی‌ای در این وضعیت نیست</h3>
+          <h3>${accountingFilter === 'gifts' ? 'هدیه‌ای در صف نیست' : 'واریزی‌ای در این وضعیت نیست'}</h3>
           <p>فیلتر یا جستجو را تغییر دهید</p>
         </div>
       </td></tr>`
@@ -125,14 +155,29 @@ export function renderAccounting() {
 
   tbody.innerHTML = page.items.map(p => {
     const statusLabel = PAYMENT_STATUS_LABELS[p.paymentStatus] || p.paymentStatus
-    const actions = p.paymentStatus === 'pending'
-      ? `<button class="btn btn-sm btn-approve" onclick="app.approvePayment('${escapeAttr(p.customerId)}', ${p.productIndex}, ${p.paymentIndex})">تأیید</button>
-         <button class="btn btn-sm btn-reject" onclick="app.openRejectPaymentModal('${escapeAttr(p.customerId)}', ${p.productIndex}, ${p.paymentIndex})">رد</button>`
-      : (p.paymentStatus === 'rejected'
-        ? `<span style="font-size:12px;color:var(--danger);">${escapeHtml(p.paymentRejectReason || '—')}</span>`
-        : `<span style="font-size:12px;color:var(--text-muted);">${escapeHtml(formatSoldAt24h(p.paymentReviewedAt) || p.paymentReviewedAt || '—')}</span>`)
+    const typeLabel = p.isGift
+      ? `<span class="gift-badge">هدیه</span>`
+      : escapeHtml(p.productStatus || '—')
+    const amountHtml = p.isGift
+      ? `<span class="gift-badge">۰ · هدیه</span>`
+      : `${formatNumber(p.amount)} ریال`
 
-    return `<tr class="clickable-row" onclick="app.onCustomerRowClick(event, '${escapeAttr(p.customerId)}')">
+    let actions = ''
+    if (p.paymentStatus === 'pending') {
+      if (p.isGift) {
+        actions = `<button class="btn btn-sm btn-approve" onclick="app.approveGiftSale('${escapeAttr(p.customerId)}', ${p.productIndex})">تأیید هدیه</button>
+         <button class="btn btn-sm btn-reject" onclick="app.openRejectPaymentModal('${escapeAttr(p.customerId)}', ${p.productIndex}, -1, true)">رد</button>`
+      } else {
+        actions = `<button class="btn btn-sm btn-approve" onclick="app.approvePayment('${escapeAttr(p.customerId)}', ${p.productIndex}, ${p.paymentIndex})">تأیید</button>
+         <button class="btn btn-sm btn-reject" onclick="app.openRejectPaymentModal('${escapeAttr(p.customerId)}', ${p.productIndex}, ${p.paymentIndex})">رد</button>`
+      }
+    } else if (p.paymentStatus === 'rejected') {
+      actions = `<span style="font-size:12px;color:var(--danger);">${escapeHtml(p.paymentRejectReason || '—')}</span>`
+    } else {
+      actions = `<span style="font-size:12px;color:var(--text-muted);">${escapeHtml(formatSoldAt24h(p.paymentReviewedAt) || p.paymentReviewedAt || '—')}</span>`
+    }
+
+    return `<tr class="clickable-row${p.isGift ? ' gift-row' : ''}" onclick="app.onCustomerRowClick(event, '${escapeAttr(p.customerId)}')">
       <td>${escapeHtml(p.customerName)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${(() => {
         const phones = p.customerPhones || (p.customerPhone ? [p.customerPhone] : [])
@@ -143,12 +188,12 @@ export function renderAccounting() {
         return `${escapeHtml(phones[0])}${extra}`
       })()}</td>
       <td>${escapeHtml(p.advisor) || '—'}</td>
-      <td>${escapeHtml(p.productName)}</td>
-      <td>${escapeHtml(p.productStatus)}</td>
-      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-weight:600;">${formatNumber(p.amount)} ریال</td>
+      <td>${escapeHtml(p.productName)}${p.isGift ? ' <span class="gift-badge">هدیه</span>' : ''}</td>
+      <td>${typeLabel}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-weight:600;">${amountHtml}</td>
       <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;direction:ltr;text-align:right;">${escapeHtml(formatSoldAt24h(p.soldAt)) || '—'}</td>
-      <td>${escapeHtml(p.destinationBank) || '—'}</td>
-      <td>${escapeHtml(p.depositorName) || '—'}</td>
+      <td>${p.isGift ? '—' : (escapeHtml(p.destinationBank) || '—')}</td>
+      <td>${p.isGift ? '—' : (escapeHtml(p.depositorName) || '—')}</td>
       <td><span class="payment-badge payment-${p.paymentStatus}">${escapeHtml(statusLabel)}</span>
         <div class="actions-cell" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">${actions}</div>
       </td>
@@ -177,6 +222,24 @@ async function updatePaymentEntry(customerId, productIndex, paymentIndex, patch)
   return true
 }
 
+async function updateGiftSale(customerId, productIndex, patch) {
+  const data = getData()
+  const customer = data.customers.find(c => c.id === customerId)
+  if (!customer || !customer.products || !customer.products[productIndex]) {
+    showToast('هدیه یافت نشد')
+    return false
+  }
+  const product = customer.products[productIndex]
+  if (!isGiftSale(product)) {
+    showToast('این ردیف هدیه نیست')
+    return false
+  }
+  Object.assign(product, patch)
+  syncProductStatus(product)
+  await saveCustomerToDB(customer)
+  return true
+}
+
 export async function approvePayment(customerId, productIndex, paymentIndex) {
   if (!requirePermission('accounting')) return
   const user = getCurrentUser()
@@ -199,9 +262,31 @@ export async function approvePayment(customerId, productIndex, paymentIndex) {
   }
 }
 
-export function openRejectPaymentModal(customerId, productIndex, paymentIndex) {
+export async function approveGiftSale(customerId, productIndex) {
   if (!requirePermission('accounting')) return
-  rejectTarget = { customerId, productIndex, paymentIndex }
+  const user = getCurrentUser()
+  const { dateTime } = getNowJalaliDateTime()
+  try {
+    const ok = await updateGiftSale(customerId, productIndex, {
+      giftAccountingStatus: PAYMENT_STATUS.approved,
+      giftRejectReason: '',
+      giftReviewedAt: dateTime,
+      giftReviewedBy: normalizePhone(user?.phone || '')
+    })
+    if (!ok) return
+    showToast('هدیه تأیید شد — مالکیت محصول ثبت شد')
+    renderAccounting()
+    renderSales()
+    try { renderProducts(customerId) } catch (_) { /* detail panel may be closed */ }
+  } catch (e) {
+    console.error('approveGiftSale error:', e)
+    showToast('خطا در تأیید هدیه')
+  }
+}
+
+export function openRejectPaymentModal(customerId, productIndex, paymentIndex, isGift = false) {
+  if (!requirePermission('accounting')) return
+  rejectTarget = { customerId, productIndex, paymentIndex, isGift: !!isGift || paymentIndex === -1 }
   const modal = document.getElementById('rejectPaymentModal')
   const reason = document.getElementById('rejectPaymentReason')
   if (reason) reason.value = ''
@@ -224,8 +309,24 @@ export async function confirmRejectPayment() {
   }
   const user = getCurrentUser()
   const { dateTime } = getNowJalaliDateTime()
-  const { customerId, productIndex, paymentIndex } = rejectTarget
+  const { customerId, productIndex, paymentIndex, isGift } = rejectTarget
   try {
+    if (isGift) {
+      const ok = await updateGiftSale(customerId, productIndex, {
+        giftAccountingStatus: PAYMENT_STATUS.rejected,
+        giftRejectReason: reason,
+        giftReviewedAt: dateTime,
+        giftReviewedBy: normalizePhone(user?.phone || '')
+      })
+      if (!ok) return
+      closeRejectPaymentModal()
+      showToast('هدیه رد شد')
+      renderAccounting()
+      renderSales()
+      try { renderProducts(customerId) } catch (_) { /* ignore */ }
+      return
+    }
+
     const data = getData()
     const customer = data.customers.find(c => c.id === customerId)
     const product = customer?.products?.[productIndex]

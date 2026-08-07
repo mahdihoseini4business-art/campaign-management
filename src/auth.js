@@ -1370,10 +1370,11 @@ export function onEditProductProfitModeChange() { onEditProductKindChange() }
 
 function catalogEntrySummary(entry) {
   const kind = entry.productKind || PRODUCT_KIND.educational
+  const gift = entry.allowGift ? ' · قابل هدیه' : ''
   if (kind === PRODUCT_KIND.physical) {
-    return `${productKindLabel(kind)} · بهای تمام‌شده: ${formatNumber(entry.costAmount || 0)} ریال`
+    return `${productKindLabel(kind)} · بهای تمام‌شده: ${formatNumber(entry.costAmount || 0)} ریال${gift}`
   }
-  return productKindLabel(kind)
+  return `${productKindLabel(kind)}${gift}`
 }
 
 export function renderProductsSettingsPane() {
@@ -1398,6 +1399,7 @@ export function renderProductCatalogSettings() {
       const costVal = kind === PRODUCT_KIND.physical && entry.costAmount
         ? formatNumber(entry.costAmount)
         : ''
+      const allowGift = entry.allowGift === true
       return `
         <div class="settings-config-row is-editing" style="flex-wrap:wrap;align-items:flex-end;gap:8px;">
           <input type="text" class="form-input" id="editProductInput" value="${escapeAttr(name)}" style="flex:1;min-width:120px;">
@@ -1408,6 +1410,10 @@ export function renderProductCatalogSettings() {
           <div id="editProductCostGroup" style="width:160px;${kind === PRODUCT_KIND.physical ? '' : 'display:none;'}">
             <input type="text" class="form-input" id="editProductCostAmount" inputmode="numeric" placeholder="بهای تمام‌شده" value="${escapeAttr(costVal)}" oninput="app.formatInput(this)">
           </div>
+          <label class="settings-gift-check" for="editProductAllowGift">
+            <input type="checkbox" id="editProductAllowGift"${allowGift ? ' checked' : ''}>
+            <span>قابل هدیه</span>
+          </label>
           <button type="button" class="btn btn-sm btn-primary" onclick="app.saveProductCatalogEdit(${idx})">ذخیره</button>
           <button type="button" class="btn btn-sm" onclick="app.cancelProductCatalogEdit()">لغو</button>
         </div>`
@@ -1416,6 +1422,7 @@ export function renderProductCatalogSettings() {
       <div class="settings-config-row">
         <span class="settings-config-label">
           ${escapeHtml(name)}
+          ${entry.allowGift ? '<span class="gift-badge" title="قابل ثبت به عنوان هدیه">هدیه</span>' : ''}
           <span class="settings-config-meta" style="direction:rtl;font-family:inherit;display:block;margin-top:2px;">
             ${escapeHtml(catalogEntrySummary(entry))}
           </span>
@@ -1445,6 +1452,7 @@ export async function saveProductCatalogEdit(index) {
   if (!name) { showToast('نام محصول را وارد کنید'); return }
   const kindFields = readProductKindFieldsFromForm('editProductKind', 'editProductCostAmount')
   if (!kindFields.ok) { showToast(kindFields.error); return }
+  const allowGift = !!document.getElementById('editProductAllowGift')?.checked
 
   const products = getProductCatalog().map(e => ({ ...e }))
   if (index < 0 || index >= products.length) return
@@ -1470,7 +1478,7 @@ export async function saveProductCatalogEdit(index) {
       }
     }
   }
-  products[index] = normalizeCatalogEntry({ name, ...kindFields.entry })
+  products[index] = normalizeCatalogEntry({ name, ...kindFields.entry, allowGift })
   try {
     await saveProductCatalog(products)
     if (oldName !== name) await renameProductInBundles(oldName, name)
@@ -1490,6 +1498,7 @@ export async function addProductCatalogItem() {
   if (!name) { showToast('نام محصول را وارد کنید'); return }
   const kindFields = readProductKindFieldsFromForm('newProductKind', 'newProductCostAmount')
   if (!kindFields.ok) { showToast(kindFields.error); return }
+  const allowGift = !!document.getElementById('newProductAllowGift')?.checked
 
   const products = getProductCatalog()
   if (products.some(p => p.name.toLowerCase() === name.toLowerCase())) {
@@ -1500,7 +1509,7 @@ export async function addProductCatalogItem() {
     showToast('این نام قبلاً برای یک باندل استفاده شده')
     return
   }
-  const entry = normalizeCatalogEntry({ name, ...kindFields.entry })
+  const entry = normalizeCatalogEntry({ name, ...kindFields.entry, allowGift })
   try {
     await saveProductCatalog([...products, entry])
     if (input) input.value = ''
@@ -1508,6 +1517,8 @@ export async function addProductCatalogItem() {
     if (kindEl) kindEl.value = PRODUCT_KIND.educational
     const costEl = document.getElementById('newProductCostAmount')
     if (costEl) costEl.value = ''
+    const giftEl = document.getElementById('newProductAllowGift')
+    if (giftEl) giftEl.checked = false
     onNewProductKindChange()
     renderProductsSettingsPane()
     showToast('محصول اضافه شد')

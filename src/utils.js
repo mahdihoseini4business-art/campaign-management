@@ -954,6 +954,20 @@ export const PAYMENT_STATUS_LABELS = {
   rejected: 'رد شده'
 }
 
+/** Registered gift sale line (saleType or legacy status label). */
+export function isGiftSale(product) {
+  if (!product || typeof product !== 'object') return false
+  if (product.saleType === 'gift') return true
+  return String(product.status || '') === 'هدیه'
+}
+
+export function getGiftAccountingStatus(product) {
+  if (!isGiftSale(product)) return null
+  const s = product.giftAccountingStatus || PAYMENT_STATUS.pending
+  if (s === PAYMENT_STATUS.approved || s === PAYMENT_STATUS.rejected) return s
+  return PAYMENT_STATUS.pending
+}
+
 let _paySeq = 0
 export function createPayment(overrides = {}) {
   const { dateTime } = getNowJalaliDateTime()
@@ -976,6 +990,10 @@ export function createPayment(overrides = {}) {
 /** Migrate legacy single-payment product fields into payments[] (in-memory). */
 export function ensureProductPayments(product) {
   if (!product) return product
+  if (isGiftSale(product)) {
+    if (!Array.isArray(product.payments)) product.payments = []
+    return product
+  }
   if (Array.isArray(product.payments)) return product
 
   const price = parseFloat(product.price) || 0
@@ -1079,18 +1097,23 @@ export function areProductPaymentsFilled(product) {
   return pays.every(isPaymentFilled)
 }
 
-/** Price locked once a positive total was saved */
+/** Price locked once a positive total was saved, or gift was registered */
 export function isProductPriceLocked(product) {
   if (!product) return false
   if (product.priceLocked === true) return true
+  if (isGiftSale(product)) return true
   return (parseFloat(product.price) || 0) > 0
 }
 
 /**
  * Invoice closed: total price set, approved payments cover it,
  * and every payment is approved (no pending/rejected left).
+ * Approved gifts are closed (no further edits).
  */
 export function isInvoiceClosed(product) {
+  if (isGiftSale(product)) {
+    return getGiftAccountingStatus(product) === PAYMENT_STATUS.approved
+  }
   ensureProductPayments(product)
   const price = parseFloat(product?.price) || 0
   if (price <= 0) return false
@@ -1102,6 +1125,18 @@ export function isInvoiceClosed(product) {
 
 /** Auto status from approved payments vs total price. */
 export function syncProductStatus(product) {
+  if (isGiftSale(product)) {
+    if (!Array.isArray(product.payments)) product.payments = []
+    product.saleType = 'gift'
+    product.price = '0'
+    product.priceLocked = true
+    product.status = 'هدیه'
+    product.deposit = ''
+    product.invoiceClosed = isInvoiceClosed(product)
+    if (!product.giftAccountingStatus) product.giftAccountingStatus = PAYMENT_STATUS.pending
+    product.paymentStatus = getGiftAccountingStatus(product)
+    return product
+  }
   ensureProductPayments(product)
   const price = parseFloat(product.price) || 0
   if (price > 0) product.priceLocked = true
@@ -1121,16 +1156,24 @@ export function syncProductStatus(product) {
 }
 
 export function productHasRejectedPayment(product) {
+  if (isGiftSale(product)) {
+    return getGiftAccountingStatus(product) === PAYMENT_STATUS.rejected
+  }
   return getProductPayments(product).some(p => getPaymentEntryStatus(p) === PAYMENT_STATUS.rejected)
 }
 
 export function isProductCountableInSales(product) {
+  if (isGiftSale(product)) {
+    // Approved gifts count toward purchase count / levels, not revenue
+    return getGiftAccountingStatus(product) === PAYMENT_STATUS.approved
+  }
   const payments = getProductPayments(product)
   if (payments.length === 0) return false
   return payments.some(p => getPaymentEntryStatus(p) !== PAYMENT_STATUS.rejected && (parseFloat(p.amount) || 0) > 0)
 }
 
 export function getWorstPaymentStatus(product) {
+  if (isGiftSale(product)) return getGiftAccountingStatus(product)
   const payments = getProductPayments(product)
   if (payments.some(p => getPaymentEntryStatus(p) === PAYMENT_STATUS.rejected)) return PAYMENT_STATUS.rejected
   if (payments.some(p => getPaymentEntryStatus(p) === PAYMENT_STATUS.pending)) return PAYMENT_STATUS.pending
@@ -1139,6 +1182,7 @@ export function getWorstPaymentStatus(product) {
 }
 
 export function getLatestRejectReason(product) {
+  if (isGiftSale(product)) return product.giftRejectReason || ''
   const rejected = getProductPayments(product).filter(p => getPaymentEntryStatus(p) === PAYMENT_STATUS.rejected)
   if (!rejected.length) return ''
   return rejected[rejected.length - 1].paymentRejectReason || ''

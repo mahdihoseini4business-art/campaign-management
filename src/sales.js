@@ -13,7 +13,7 @@ import {
   productHasRejectedPayment, getProductPayments, getPaymentEntryStatus,
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
   normalizePhone, userDisplayName, formatTeamFilterLabel,
-  getCompletedSaleEconomics
+  getCompletedSaleEconomics, isGiftSale
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSalesTargetBand } from './dashboard.js'
@@ -55,14 +55,17 @@ export function getAllSales() {
           balance,
           settlementDate: p.settlementDate || '',
           soldAt: lastPay?.soldAt || p.soldAt || '',
-          depositorName: pays.length > 1
-            ? `${pays.length} واریز`
-            : (lastPay?.depositorName || p.depositorName || ''),
+          depositorName: isGiftSale(p)
+            ? 'هدیه'
+            : (pays.length > 1
+              ? `${pays.length} واریز`
+              : (lastPay?.depositorName || p.depositorName || '')),
           paymentCount: pays.length,
           paymentStatus: getWorstPaymentStatus(p),
           paymentRejectReason: getLatestRejectReason(p),
           hasRejected: productHasRejectedPayment(p),
-          countable: isProductCountableInSales(p)
+          countable: isProductCountableInSales(p),
+          isGift: isGiftSale(p)
         })
       })
     }
@@ -150,7 +153,9 @@ export function getFilteredSales() {
     if (!canViewScopedCustomer(customer, currentUser) && !registeredByMe) return false
     if (platformFilter && s.platform !== platformFilter) return false
     if (statusFilter && s.status !== statusFilter) return false
-    if (payStatusFilter && s.paymentStatus !== payStatusFilter) return false
+    if (payStatusFilter === 'gift') {
+      if (!s.isGift) return false
+    } else if (payStatusFilter && s.paymentStatus !== payStatusFilter) return false
     if (levelFilter && customer) {
       const resolved = resolveCustomerLevel(customer, data.customers, data.followups)
       if (resolved !== levelFilter) return false
@@ -165,6 +170,15 @@ export function getFilteredSales() {
 
     if (dateFilter.hasDateFilter) {
       if (!product) return false
+      if (isGiftSale(product) || s.isGift) {
+        const d = jalaliDatePart(product.soldAt || s.soldAt)
+        if (!d) return false
+        const n = jalaliToNum(d)
+        if (n < dateFilter.fromNum || n > dateFilter.toNum) return false
+        if (advisorScopePhones && !matchesAdvisorPhone(s.soldByPhone)) return false
+        s.dateFiltered = true
+        return true
+      }
       ensureProductPayments(product)
       let paysInRange = getApprovedPaymentsInRange(product, dateFilter)
       if (advisorScopePhones) {
@@ -188,16 +202,20 @@ export function getFilteredSales() {
       s.soldByPhone = getSaleRegistrantPhone(product, lastInRange, customer)
       s.advisorPhone = s.soldByPhone
     } else if (advisorScopePhones) {
-      const sellerMatch = matchesAdvisorPhone(s.soldByPhone) ||
-        (product && getProductPayments(product).some(pay =>
-          matchesAdvisorPhone(getSaleRegistrantPhone(product, pay, customer))
-        ))
-      if (!sellerMatch) return false
-      if (product && advisorScopePhones.size === 1) {
-        const only = [...advisorScopePhones][0]
-        if (s.soldByPhone !== only) {
-          s.soldByPhone = only
-          s.advisorPhone = only
+      if (s.isGift) {
+        if (!matchesAdvisorPhone(s.soldByPhone)) return false
+      } else {
+        const sellerMatch = matchesAdvisorPhone(s.soldByPhone) ||
+          (product && getProductPayments(product).some(pay =>
+            matchesAdvisorPhone(getSaleRegistrantPhone(product, pay, customer))
+          ))
+        if (!sellerMatch) return false
+        if (product && advisorScopePhones.size === 1) {
+          const only = [...advisorScopePhones][0]
+          if (s.soldByPhone !== only) {
+            s.soldByPhone = only
+            s.advisorPhone = only
+          }
         }
       }
     }
@@ -214,15 +232,19 @@ function renderSalesRows(allSales) {
   return allSales.map(s => {
     const pClass = getPlatformClass(s.platform)
     const pLabel = getPlatformLabels()[s.platform] || s.platform
-    const statusColor = s.status === 'تکمیل' ? 'var(--success)' : 'var(--warning)'
+    const statusColor = s.isGift
+      ? 'var(--primary, #2563eb)'
+      : (s.status === 'تکمیل' ? 'var(--success)' : 'var(--warning)')
     const balanceClass = s.balance > 0 ? 'color:var(--danger);' : ''
     const selectCell = showSelectCol
       ? `<td><input type="checkbox" data-id="${escapeAttr(s.customerId)}" onchange="app.toggleRowSelect('sales', '${escapeAttr(s.customerId)}', this.checked)"></td>`
       : ''
 
     let settlementHtml = '—'
-    let rowClass = ''
-    if (s.status === 'تکمیل') {
+    let rowClass = s.isGift ? 'gift-row' : ''
+    if (s.isGift) {
+      settlementHtml = '<span class="gift-badge">هدیه</span>'
+    } else if (s.status === 'تکمیل') {
       settlementHtml = '<span class="settlement-badge settlement-ok-badge">تسویه شد</span>'
     } else if (s.settlementDate) {
       const dateNum = jalaliToNum(s.settlementDate)
@@ -244,7 +266,9 @@ function renderSalesRows(allSales) {
 
     const payLabel = PAYMENT_STATUS_LABELS[s.paymentStatus] || s.paymentStatus
     let paymentHtml = `<span class="payment-badge payment-${s.paymentStatus}">${escapeHtml(payLabel)}</span>`
-    if (s.paymentCount > 1) {
+    if (s.isGift) {
+      paymentHtml = `<span class="gift-badge">هدیه</span> ${paymentHtml}`
+    } else if (s.paymentCount > 1) {
       paymentHtml += `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${s.paymentCount} واریز</div>`
     }
     if (s.hasRejected && s.paymentRejectReason) {
@@ -264,11 +288,11 @@ function renderSalesRows(allSales) {
       })()}</td>
       <td style="font-size:12px;">${escapeHtml(s.advisor) || '—'}</td>
       <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${escapeHtml(pLabel)}</span></td>
-      <td>${escapeHtml(s.productName)}</td>
+      <td>${escapeHtml(s.productName)}${s.isGift ? ' <span class="gift-badge">هدیه</span>' : ''}</td>
       <td><span style="color:${statusColor};font-weight:600;">${escapeHtml(s.status)}</span></td>
-      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.price > 0 ? formatNumber(s.price) + ' ریال' : '—'}</td>
-      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.deposit > 0 ? formatNumber(s.deposit) + ' ریال' : '—'}</td>
-      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-weight:600;${balanceClass}">${s.status === 'بیعانه' ? formatNumber(s.balance) + ' ریال' : '—'}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.isGift ? '<span class="gift-badge">۰</span>' : (s.price > 0 ? formatNumber(s.price) + ' ریال' : '—')}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.isGift ? '—' : (s.deposit > 0 ? formatNumber(s.deposit) + ' ریال' : '—')}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-weight:600;${balanceClass}">${s.isGift ? '—' : (s.status === 'بیعانه' ? formatNumber(s.balance) + ' ریال' : '—')}</td>
       <td style="font-size:12px;">${settlementHtml}</td>
       <td style="font-family:'Vazirmatn',sans-serif;font-size:12px;direction:ltr;text-align:right;">${escapeHtml(formatSoldAt24h(s.soldAt)) || '—'}</td>
       <td>${escapeHtml(s.depositorName) || '—'}</td>
@@ -296,14 +320,15 @@ function populateSalesFilterDropdowns() {
   if (statusSel) {
     const val = statusSel.value
     statusSel.innerHTML = '<option value="">همه وضعیت‌ها</option>' +
-      ['تکمیل', 'بیعانه'].map(s => `<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('')
+      ['تکمیل', 'بیعانه', 'هدیه'].map(s => `<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('')
     statusSel.value = val
   }
   const sSel = document.getElementById('filterSalesPaymentStatus')
   if (sSel) {
     const val = sSel.value
     sSel.innerHTML = '<option value="">همه وضعیت‌های واریزی</option>' +
-      Object.entries(PAYMENT_STATUS_LABELS).map(([k, v]) => `<option value="${escapeAttr(k)}">${escapeHtml(v)}</option>`).join('')
+      Object.entries(PAYMENT_STATUS_LABELS).map(([k, v]) => `<option value="${escapeAttr(k)}">${escapeHtml(v)}</option>`).join('') +
+      '<option value="gift">فقط هدایا</option>'
     sSel.value = val
   }
   updateSalesAdvisorFilter()

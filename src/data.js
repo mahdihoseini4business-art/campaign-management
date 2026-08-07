@@ -151,7 +151,8 @@ export const PROFIT_MODE = {
 function defaultCatalogEntries() {
   return DEFAULT_PRODUCT_CATALOG.map(name => ({
     name,
-    productKind: PRODUCT_KIND.educational
+    productKind: PRODUCT_KIND.educational,
+    allowGift: false
   }))
 }
 
@@ -160,7 +161,7 @@ export function normalizeCatalogEntry(raw) {
   if (typeof raw === 'string') {
     const name = raw.trim()
     if (!name || name.toLowerCase() === '[object object]') return null
-    return { name, productKind: PRODUCT_KIND.educational }
+    return { name, productKind: PRODUCT_KIND.educational, allowGift: false }
   }
   if (!raw || typeof raw !== 'object') return null
   let nameRaw = raw.name
@@ -182,7 +183,7 @@ export function normalizeCatalogEntry(raw) {
     }
   }
 
-  const entry = { name, productKind }
+  const entry = { name, productKind, allowGift: raw.allowGift === true }
   if (productKind === PRODUCT_KIND.physical) {
     let cost = Number(raw.costAmount)
     if (!Number.isFinite(cost) || cost < 0) {
@@ -553,6 +554,22 @@ export function getCatalogEntryByName(name) {
   return getProductCatalog().find(e => e.name.toLowerCase() === key) || null
 }
 
+/**
+ * True when admin enabled gift registration for this catalog product.
+ * Bundles are not gift-eligible in phase 1.
+ */
+export function isProductGiftAllowed(productName) {
+  const entry = getCatalogEntryByName(productName)
+  return !!(entry && entry.allowGift === true)
+}
+
+/** Sale line registered as a gift (price 0, no payments). */
+export function isGiftSaleLine(line) {
+  if (!line || typeof line !== 'object') return false
+  if (line.saleType === 'gift') return true
+  return String(line.status || '') === 'هدیه'
+}
+
 export async function saveProductCatalog(products) {
   const seen = new Set()
   const cleaned = []
@@ -680,9 +697,16 @@ function saleLineHasApprovedPayment(line) {
   })
 }
 
+/** Ownership from paid sale or accounting-approved gift. */
+function saleLineGrantsOwnership(line) {
+  if (isGiftSaleLine(line)) {
+    return (line.giftAccountingStatus || 'pending') === 'approved'
+  }
+  return saleLineHasApprovedPayment(line)
+}
+
 /**
- * Catalog product names the customer owns — direct sale or via a bundle purchase.
- * Only sale lines with at least one accounting-approved payment count.
+ * Catalog product names the customer owns — direct sale, bundle purchase, or approved gift.
  * @returns {Set<string>}
  */
 export function getCustomerOwnedProductNames(customer) {
@@ -691,7 +715,7 @@ export function getCustomerOwnedProductNames(customer) {
   const owned = new Set()
 
   for (const line of customer?.products || []) {
-    if (!saleLineHasApprovedPayment(line)) continue
+    if (!saleLineGrantsOwnership(line)) continue
 
     const saleName = coerceProductName(line?.name)
     if (!saleName) continue
