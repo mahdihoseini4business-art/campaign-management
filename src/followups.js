@@ -139,6 +139,11 @@ function getPendingItems(applySearch = true) {
     }
     items.push(item)
   }
+  items.sort((a, b) => {
+    const d = dateNum(a.nextDate) - dateNum(b.nextDate)
+    if (d !== 0) return d
+    return String(a.customerId || '').localeCompare(String(b.customerId || ''), 'fa')
+  })
   return items
 }
 
