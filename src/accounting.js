@@ -4,11 +4,12 @@ import {
   requirePermission, getCurrentUser, normalizePhone, getNowJalaliDateTime,
   ensureProductPayments, syncProductStatus, getPaymentEntryStatus,
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, formatSoldAt24h, matchesTabSearch,
-  getCustomerPhones, getPrimaryPhone
+  getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSales } from './sales.js'
 import { renderProducts } from './customers.js'
+import { broadcastPaymentRejectToast } from './sale-toasts.js'
 
 let accountingFilter = 'pending' // pending | approved | rejected
 let rejectTarget = null // { customerId, productIndex, paymentIndex }
@@ -225,6 +226,13 @@ export async function confirmRejectPayment() {
   const { dateTime } = getNowJalaliDateTime()
   const { customerId, productIndex, paymentIndex } = rejectTarget
   try {
+    const data = getData()
+    const customer = data.customers.find(c => c.id === customerId)
+    const product = customer?.products?.[productIndex]
+    if (product) ensureProductPayments(product)
+    const payment = product?.payments?.[paymentIndex]
+    const sellerPhone = getSaleRegistrantPhone(product, payment, customer)
+
     const ok = await updatePaymentEntry(customerId, productIndex, paymentIndex, {
       paymentStatus: PAYMENT_STATUS.rejected,
       paymentRejectReason: reason,
@@ -234,6 +242,22 @@ export async function confirmRejectPayment() {
     if (!ok) return
     closeRejectPaymentModal()
     showToast('واریزی رد شد')
+    if (sellerPhone) {
+      try {
+        await broadcastPaymentRejectToast({
+          paymentId: payment?.id || '',
+          sellerPhone,
+          customerId,
+          customerName: customer?.name || customer?.platformId || customerId || '',
+          productName: coerceProductName(product?.name),
+          amount: payment?.amount || '',
+          reason,
+          at: Date.now()
+        })
+      } catch (e) {
+        console.error('payment reject toast error:', e)
+      }
+    }
     renderAccounting()
     renderSales()
     try { renderProducts(customerId) } catch (_) { /* detail panel may be closed */ }

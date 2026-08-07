@@ -82,12 +82,12 @@ function isRecipientForMe(payload) {
   return list.some(p => normalizePhone(p) === phone)
 }
 
-function mountToastCard({ titleHtml, detailsHtml, onOpen }) {
+function mountToastCard({ titleHtml, detailsHtml, onOpen, variant = '' }) {
   const stack = stackEl()
   if (!stack) return
 
   const toast = document.createElement('div')
-  toast.className = 'sale-toast-card'
+  toast.className = `sale-toast-card${variant ? ` ${variant}` : ''}`
   toast.setAttribute('role', 'status')
   toast.innerHTML = `
     <div class="sale-toast-content">
@@ -174,6 +174,34 @@ export function showManualNotifToast(payload) {
   import('./notifications.js').then(m => m.refreshNotifications?.()).catch(() => {})
 }
 
+function truncateReason(text, maxLen = 72) {
+  const s = String(text || '').trim().replace(/\s+/g, ' ')
+  if (!s) return ''
+  if (s.length <= maxLen) return s
+  return `${s.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`
+}
+
+/** Toast for the sale registrant when accounting rejects their payment */
+export function showPaymentRejectToast(payload) {
+  if (!payload) return
+  const myPhone = normalizePhone(getCurrentUser()?.phone)
+  const targetPhone = normalizePhone(payload.sellerPhone)
+  if (!myPhone || !targetPhone || myPhone !== targetPhone) return
+
+  const product = coerceProductName(payload.productName) || 'محصول'
+  const customer = (payload.customerName || '').trim() || payload.customerId || ''
+  const reason = truncateReason(payload.reason)
+  const reasonHtml = reason
+    ? `<span class="sale-toast-reject-reason" title="${escapeHtml(String(payload.reason || '').trim())}">${escapeHtml(reason)}</span>`
+    : ''
+
+  mountToastCard({
+    variant: 'is-reject',
+    titleHtml: `⛔ فروش رد شد`,
+    detailsHtml: `${escapeHtml(product)}${customer ? ` · ${escapeHtml(customer)}` : ''}${reasonHtml ? ` — ${reasonHtml}` : ''}`
+  })
+}
+
 async function ensureChannel() {
   if (channel) return channel
   if (channelReady) return channelReady
@@ -187,6 +215,9 @@ async function ensureChannel() {
     })
     ch.on('broadcast', { event: 'manual-notif' }, ({ payload }) => {
       showManualNotifToast(payload)
+    })
+    ch.on('broadcast', { event: 'payment-reject' }, ({ payload }) => {
+      showPaymentRejectToast(payload)
     })
     ch.on('broadcast', { event: 'setting' }, ({ payload }) => {
       if (typeof payload?.enabled === 'boolean') {
@@ -243,6 +274,18 @@ export async function broadcastManualNotifToast(payload) {
     await ch.send({ type: 'broadcast', event: 'manual-notif', payload })
   } catch (e) {
     console.error('broadcastManualNotifToast error:', e)
+  }
+}
+
+export async function broadcastPaymentRejectToast(payload) {
+  if (!payload) return
+  // Show locally if current user is the sale registrant
+  showPaymentRejectToast(payload)
+  try {
+    const ch = await ensureChannel()
+    await ch.send({ type: 'broadcast', event: 'payment-reject', payload })
+  } catch (e) {
+    console.error('broadcastPaymentRejectToast error:', e)
   }
 }
 

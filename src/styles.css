@@ -338,6 +338,31 @@
     color: #f8fafc;
   }
 
+  .sale-toast-card.is-reject {
+    background-color: #7f1d1d;
+    box-shadow: 0 4px 12px rgba(127, 29, 29, 0.35);
+  }
+
+  .sale-toast-card.is-reject .sale-toast-title {
+    color: #fecaca;
+  }
+
+  .sale-toast-card.is-reject .sale-toast-details {
+    color: #fca5a5;
+  }
+
+  .sale-toast-reject-reason {
+    color: #fee2e2;
+  }
+
+  .sale-toast-card.is-reject .sale-toast-close {
+    color: #f87171;
+  }
+
+  .sale-toast-card.is-reject .sale-toast-close:hover {
+    color: #fff;
+  }
+
   .notification-badge {
     position: absolute;
     top: -4px;
