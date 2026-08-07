@@ -77,24 +77,27 @@ function updateAdvisorFilterCount() {
 }
 
 async function ensureAdvisorOptions() {
-  const users = (await getUsersSafe()).filter(u => normalizePhone(u.phone))
-  const byPhone = new Map()
-  for (const u of users) {
-    const phone = normalizePhone(u.phone)
-    byPhone.set(phone, {
-      phone,
-      name: userDisplayName(u) || u.username || phone
-    })
-  }
-  // Include advisors present on customers but missing from users list
+  // Only advisors who currently own at least one customer
+  const phonesWithCustomers = new Map()
   for (const c of getData().customers || []) {
     const phone = normalizePhone(c.advisorPhone)
-    if (!phone || byPhone.has(phone)) continue
-    byPhone.set(phone, { phone, name: c.advisor || phone })
+    if (!phone || phonesWithCustomers.has(phone)) continue
+    phonesWithCustomers.set(phone, c.advisor || phone)
   }
-  advisorOptionsCache = [...byPhone.values()].sort((a, b) =>
-    String(a.name).localeCompare(String(b.name), 'fa')
-  )
+
+  const userNameByPhone = new Map()
+  for (const u of await getUsersSafe()) {
+    const phone = normalizePhone(u.phone)
+    if (!phone) continue
+    userNameByPhone.set(phone, userDisplayName(u) || u.username || phone)
+  }
+
+  advisorOptionsCache = [...phonesWithCustomers.entries()]
+    .map(([phone, fallbackName]) => ({
+      phone,
+      name: userNameByPhone.get(phone) || fallbackName
+    }))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'fa'))
 
   if (selectedAdvisorPhones) {
     const valid = new Set(advisorOptionsCache.map(a => a.phone))
