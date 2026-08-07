@@ -752,6 +752,153 @@ export function findCustomerByAnyPhone(phone, customers, excludeId = null) {
   return findCustomerByPhone(phone, customers, excludeId)
 }
 
+/** Max shipping addresses stored per customer profile */
+export const MAX_CUSTOMER_ADDRESSES = 10
+
+function normalizeAddressEntry(raw) {
+  if (raw == null) return null
+  if (typeof raw === 'string') {
+    const text = String(raw).trim().replace(/\s+/g, ' ')
+    if (!text) return null
+    return { text, postalCode: '' }
+  }
+  if (typeof raw !== 'object') return null
+  const text = String(raw.text || raw.address || '').trim().replace(/\s+/g, ' ')
+  if (!text) return null
+  const postalCode = toEnDigits(String(raw.postalCode || raw.postal || '').trim()).replace(/\s+/g, '')
+  return { text, postalCode }
+}
+
+function addressKey(entry) {
+  if (!entry) return ''
+  return `${toEnDigits(entry.text || '').trim().toLowerCase()}|${toEnDigits(entry.postalCode || '').trim()}`
+}
+
+/**
+ * Normalize customer addresses into a unique array of { text, postalCode }.
+ */
+export function normalizeCustomerAddresses(source) {
+  let raw = []
+  if (Array.isArray(source)) {
+    raw = source
+  } else if (source && typeof source === 'object') {
+    if (Array.isArray(source.addresses)) raw = source.addresses
+  }
+
+  const seen = new Set()
+  const out = []
+  for (const item of raw) {
+    const entry = normalizeAddressEntry(item)
+    if (!entry) continue
+    const key = addressKey(entry)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(entry)
+    if (out.length >= MAX_CUSTOMER_ADDRESSES) break
+  }
+  return out
+}
+
+export function getCustomerAddresses(customer) {
+  return normalizeCustomerAddresses(customer)
+}
+
+/** Append address if text is non-empty and not already present. Mutates customer.addresses. */
+export function appendCustomerAddressIfNew(customer, addressInput) {
+  if (!customer) return false
+  const entry = normalizeAddressEntry(addressInput)
+  if (!entry) return false
+  const list = normalizeCustomerAddresses(customer)
+  const key = addressKey(entry)
+  if (list.some(a => addressKey(a) === key)) {
+    customer.addresses = list
+    return false
+  }
+  if (list.length >= MAX_CUSTOMER_ADDRESSES) {
+    customer.addresses = list
+    return false
+  }
+  list.push(entry)
+  customer.addresses = list
+  return true
+}
+
+export const SHIPMENT_STATUS = {
+  pending: 'pending',
+  shipped: 'shipped'
+}
+
+export const SHIPMENT_STATUS_LABELS = {
+  pending: 'در انتظار ارسال',
+  shipped: 'ارسال شده'
+}
+
+export function getShipmentStatus(product) {
+  if (!product) return SHIPMENT_STATUS.pending
+  return product.shipmentStatus === SHIPMENT_STATUS.shipped
+    ? SHIPMENT_STATUS.shipped
+    : SHIPMENT_STATUS.pending
+}
+
+export function isPhysicalSaleLine(product) {
+  if (!product) return false
+  return resolveProductCostConfig(product).productKind === PRODUCT_KIND.physical
+}
+
+export function hasApprovedPayment(product) {
+  return getApprovedPaid(product) > 0
+}
+
+/** Truncate long strings for table cells: ABCD…WXYZ */
+export function truncateMiddle(str, head = 4, tail = 4) {
+  const s = String(str || '')
+  if (!s) return ''
+  if (s.length <= head + tail) return s
+  return `${s.slice(0, head)}…${s.slice(-tail)}`
+}
+
+export async function copyToClipboard(text) {
+  const value = String(text || '')
+  if (!value) {
+    showToast('مقداری برای کپی نیست')
+    return false
+  }
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value)
+    } else {
+      const ta = document.createElement('textarea')
+      ta.value = value
+      ta.setAttribute('readonly', '')
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    showToast('کپی شد')
+    return true
+  } catch (e) {
+    console.error('copyToClipboard error:', e)
+    showToast('خطا در کپی')
+    return false
+  }
+}
+
+/** Compact cell with truncated/full text + copy button (stops row click). */
+export function renderCopyableCell(fullText, { truncate = false, empty = '—' } = {}) {
+  const raw = String(fullText || '').trim()
+  if (!raw) return empty
+  const display = truncate ? truncateMiddle(raw) : raw
+  return `<span class="copyable-cell" title="${escapeAttr(raw)}">
+    <span class="copyable-cell-text">${escapeHtml(display)}</span>
+    <button type="button" class="btn-copy" title="کپی" aria-label="کپی"
+      data-copy="${escapeAttr(raw)}"
+      onclick="event.stopPropagation(); app.copyToClipboard(this.getAttribute('data-copy') || '')">⧉</button>
+  </span>`
+}
+
 // ============================================
 // Permission System
 // ============================================
@@ -776,7 +923,8 @@ export const ALL_PERMISSIONS = {
   sales_add_others: 'ثبت فروش برای مشتریان دیگران',
   sales_export: 'خروجی فروش‌ها',
   products_matrix: 'ماتریس محصولات',
-  accounting: 'تأیید واریزی‌ها (حسابداری)'
+  accounting: 'تأیید واریزی‌ها (حسابداری)',
+  shipments_manage: 'مدیریت ارسالی‌ها'
 }
 
 export const PERMISSION_GROUPS = [
@@ -785,7 +933,8 @@ export const PERMISSION_GROUPS = [
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_add_others', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_add_others', 'sales_import', 'sales_export'] },
   { label: 'محصولات', keys: ['products_matrix'] },
-  { label: 'حسابداری', keys: ['accounting'] }
+  { label: 'حسابداری', keys: ['accounting'] },
+  { label: 'ارسالی‌ها', keys: ['shipments_manage'] }
 ]
 
 export const PAYMENT_STATUS = {
@@ -1094,6 +1243,7 @@ export function getDefaultPermissions() {
   p.followups_add_others = false
   p.sales_add_others = false
   p.accounting = false
+  p.shipments_manage = false
   return p
 }
 

@@ -40,6 +40,33 @@ function normalizeCustomerPhonesLocal(source) {
   return out
 }
 
+function normalizeCustomerAddressesLocal(source) {
+  let raw = []
+  if (Array.isArray(source)) raw = source
+  else if (source && typeof source === 'object' && Array.isArray(source.addresses)) {
+    raw = source.addresses
+  }
+  const seen = new Set()
+  const out = []
+  for (const item of raw) {
+    let text = ''
+    let postalCode = ''
+    if (typeof item === 'string') {
+      text = item.trim().replace(/\s+/g, ' ')
+    } else if (item && typeof item === 'object') {
+      text = String(item.text || item.address || '').trim().replace(/\s+/g, ' ')
+      postalCode = toEnDigitsLocal(String(item.postalCode || item.postal || '').trim()).replace(/\s+/g, '')
+    }
+    if (!text) continue
+    const key = `${text.toLowerCase()}|${postalCode}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ text, postalCode })
+    if (out.length >= 10) break
+  }
+  return out
+}
+
 let data = {
   customers: [],
   followups: [],
@@ -171,6 +198,9 @@ export function mapCustomerFromDb(c) {
     phones: c.phones,
     phone: c.phone || ''
   })
+  const addresses = normalizeCustomerAddressesLocal({
+    addresses: c.addresses
+  })
   return {
     id: c.id,
     platformId: c.platform_id || '',
@@ -178,6 +208,7 @@ export function mapCustomerFromDb(c) {
     name: c.name || '',
     phones,
     phone: phones[0] || '',
+    addresses,
     status: c.status || 'new',
     notes: c.notes || '',
     advisor: c.advisor || '',
@@ -1004,6 +1035,7 @@ export function getData() {
 
 export async function saveCustomerToDB(customer) {
   const phones = normalizeCustomerPhonesLocal(customer)
+  const addresses = normalizeCustomerAddressesLocal(customer)
   const row = {
     id: customer.id,
     platform_id: customer.platformId || '',
@@ -1011,6 +1043,7 @@ export async function saveCustomerToDB(customer) {
     name: customer.name || '',
     phone: phones[0] || '',
     phones,
+    addresses,
     status: customer.status || 'new',
     notes: customer.notes || '',
     advisor: customer.advisor || '',
@@ -1023,9 +1056,13 @@ export async function saveCustomerToDB(customer) {
   }
 
   let { error } = await supabase.from('customers').upsert(row, { onConflict: 'id' })
-  // Graceful fallback before migration 007 is applied
+  // Graceful fallback before migration 007 / 015 is applied
+  if (error && /addresses/i.test(error.message || '')) {
+    const { addresses: _omitAddr, ...withoutAddresses } = row
+    ;({ error } = await supabase.from('customers').upsert(withoutAddresses, { onConflict: 'id' }))
+  }
   if (error && /phones/i.test(error.message || '')) {
-    const { phones: _omit, ...legacy } = row
+    const { phones: _omit, addresses: _omitAddr2, ...legacy } = row
     ;({ error } = await supabase.from('customers').upsert(legacy, { onConflict: 'id' }))
   }
   if (error) throw new Error('خطا در ذخیره مشتری: ' + error.message)

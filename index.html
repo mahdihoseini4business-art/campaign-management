@@ -483,6 +483,7 @@
     <button class="tab" role="tab" id="tab-sales" aria-controls="sheet-sales" aria-selected="false" tabindex="-1" onclick="app.switchTab('sales', this)">فروش‌ها</button>
     <button class="tab" role="tab" id="tab-products" aria-controls="sheet-products" aria-selected="false" tabindex="-1" data-perm="products_matrix" onclick="app.switchTab('products', this)">محصولات</button>
     <button class="tab" role="tab" id="tab-accounting" aria-controls="sheet-accounting" aria-selected="false" tabindex="-1" data-perm="accounting" onclick="app.switchTab('accounting', this)">حسابداری</button>
+    <button class="tab" role="tab" id="tab-shipments" aria-controls="sheet-shipments" aria-selected="false" tabindex="-1" onclick="app.switchTab('shipments', this)">ارسالی‌ها</button>
   </div>
 
   <!-- شیت داشبورد -->
@@ -967,6 +968,42 @@
     </div>
     <div class="pagination" id="accountingPagination"></div>
   </div>
+
+  <!-- شیت ارسالی‌ها -->
+  <div class="sheet" id="sheet-shipments" role="tabpanel" aria-labelledby="tab-shipments" hidden>
+    <div class="stats">
+      <div class="stat-card"><div class="label">در انتظار ارسال</div><div class="value" style="color:var(--warning)" id="stat-ship-pending">0</div></div>
+      <div class="stat-card"><div class="label">ارسال‌شده</div><div class="value" style="color:var(--success)" id="stat-ship-shipped">0</div></div>
+    </div>
+
+    <div class="toolbar" style="gap:10px;flex-wrap:wrap;">
+      <div class="shipments-filters accounting-filters">
+        <button type="button" class="btn shipments-filter-btn accounting-filter-btn active" data-filter="pending" onclick="app.setShipmentsFilter('pending')">در انتظار ارسال</button>
+        <button type="button" class="btn shipments-filter-btn accounting-filter-btn" data-filter="shipped" onclick="app.setShipmentsFilter('shipped')">ارسال‌شده‌ها</button>
+      </div>
+      <input type="text" class="search-box" placeholder="جستجو (مشتری، محصول، آدرس، کد رهگیری)..." id="searchShipments" oninput="app.renderShipments()">
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead id="shipmentsHead">
+          <tr>
+            <th>مشتری</th>
+            <th>شماره</th>
+            <th>کارشناس</th>
+            <th>محصول</th>
+            <th>وضعیت فروش</th>
+            <th>مبلغ تأییدشده / قیمت کل</th>
+            <th>تاریخ آخرین واریز تأییدشده</th>
+            <th>آدرس گیرنده</th>
+            <th>کد پستی گیرنده</th>
+          </tr>
+        </thead>
+        <tbody id="shipmentsBody"></tbody>
+      </table>
+    </div>
+    <div class="pagination" id="shipmentsPagination"></div>
+  </div>
 </div>
 
 <!-- مودال انجام پیگیری -->
@@ -1141,6 +1178,26 @@
     <div class="modal-footer">
       <button class="btn" onclick="app.closeRejectPaymentModal()">انصراف</button>
       <button class="btn btn-danger" onclick="app.confirmRejectPayment()">رد واریزی</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال تأیید ارسال -->
+<div class="modal-overlay" id="confirmShipmentModal">
+  <div class="modal" style="max-width: 440px;">
+    <div class="modal-header">
+      <h2>تأیید ارسال</h2>
+      <button class="modal-close" onclick="app.closeConfirmShipmentModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="shipmentTrackingCode">کد رهگیری</label>
+        <input type="text" class="form-input" id="shipmentTrackingCode" placeholder="اختیاری — کد رهگیری پست / پیک">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeConfirmShipmentModal()">انصراف</button>
+      <button class="btn btn-primary" onclick="app.confirmShipment()">تأیید ارسال</button>
     </div>
   </div>
 </div>

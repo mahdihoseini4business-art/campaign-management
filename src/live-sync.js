@@ -18,6 +18,7 @@ import { renderFollowups, updateFollowupBadge } from './followups.js'
 import { renderSales } from './sales.js'
 import { renderProductMatrix } from './product-matrix.js'
 import { renderAccounting } from './accounting.js'
+import { renderShipments } from './shipments.js'
 import { renderDashboard } from './dashboard.js'
 import { updateTransferInboxBadge } from './transfers.js'
 
@@ -84,6 +85,8 @@ async function refreshActiveViews() {
       renderProductMatrix()
     } else if (tab === 'accounting') {
       renderAccounting()
+    } else if (tab === 'shipments') {
+      renderShipments()
     } else if (tab === 'dashboard') {
       await renderDashboard()
     } else {

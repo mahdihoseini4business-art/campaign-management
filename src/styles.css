@@ -1237,16 +1237,105 @@
     white-space: nowrap;
   }
 
-  .accounting-filters, .followup-filters {
+  .accounting-filters, .followup-filters, .shipments-filters {
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
   }
 
-  .accounting-filter-btn.active, .followup-filter-btn.active {
+  .accounting-filter-btn.active, .followup-filter-btn.active, .shipments-filter-btn.active {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
+  }
+
+  .copyable-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+  }
+
+  .copyable-cell-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 180px;
+  }
+
+  .btn-copy {
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    background: var(--paper);
+    color: var(--text-muted);
+    border-radius: 4px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .btn-copy:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-light);
+  }
+
+  .product-shipping-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 4px 8px;
+  }
+
+  .product-shipping-row .product-shipping-address {
+    flex: 1 1 220px;
+    min-width: 160px;
+  }
+
+  .product-shipping-row .product-shipping-postal {
+    flex: 0 0 140px;
+  }
+
+  .product-shipping-readonly {
+    font-size: 12px;
+    color: var(--text-muted);
+    gap: 12px;
+  }
+
+  .address-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .address-field-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .address-field-row .customer-address-text {
+    flex: 1 1 180px;
+  }
+
+  .address-field-actions {
+    display: flex;
+    gap: 4px;
+  }
+
+  .address-field-actions .btn-icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .address-field-actions .btn-icon.is-danger:hover {
+    border-color: var(--danger);
+    color: var(--danger);
   }
 
   /* Followup tab badge */
@@ -2260,7 +2349,8 @@
       flex: 1 1 100%;
     }
 
-    .accounting-filters .btn {
+    .accounting-filters .btn,
+    .shipments-filters .btn {
       flex: 1 1 0;
       min-width: 0;
       width: auto;

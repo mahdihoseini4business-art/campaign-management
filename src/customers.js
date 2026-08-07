@@ -11,7 +11,9 @@ import {
   resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
   getCustomerPhones, normalizeCustomerPhones, getPrimaryPhone, formatPhonesDisplay,
-  MAX_CUSTOMER_PHONES,
+  MAX_CUSTOMER_PHONES, MAX_CUSTOMER_ADDRESSES,
+  getCustomerAddresses, normalizeCustomerAddresses, appendCustomerAddressIfNew,
+  isPhysicalSaleLine,
   getStatusLabels, getStatusClass,
   getNowJalaliDateTime, PAYMENT_STATUS_LABELS, createPayment,
   formatTeamFilterLabel,
@@ -57,6 +59,8 @@ let pendingMerge = null
 let phoneSlots = ['']
 /** Which phone form is active: always the customer detail panel. */
 let phoneFormMode = 'detail'
+/** Address slots in customer detail ({ text, postalCode }). */
+let addressSlots = [{ text: '', postalCode: '' }]
 
 function phoneForm() {
   return {
@@ -662,8 +666,9 @@ export async function saveCustomer() {
  * @returns {{ id: string, toast: string }}
  */
 async function applyCustomerEdit(editId, fields) {
-  const { platformId, platform, name, phones, status, notes, advisor, advisorPhone } = fields
+  const { platformId, platform, name, phones, addresses, status, notes, advisor, advisorPhone } = fields
   const phoneFields = { phone: phones[0] || '', phones }
+  const addressFields = { addresses: normalizeCustomerAddresses(addresses || []) }
   const advisorFields = { advisor, advisorPhone }
   const data = getData()
 
@@ -696,8 +701,8 @@ async function applyCustomerEdit(editId, fields) {
   const advisorChanged = normalizePhone(oldCustomer.advisorPhone) !== normalizePhone(advisorPhone)
   // Keep previous owner until after conversion; reassign logs the handoff separately
   const baseFields = advisorChanged
-    ? { platformId, platform, name, ...phoneFields, status, notes, advisor: oldCustomer.advisor, advisorPhone: oldCustomer.advisorPhone }
-    : { platformId, platform, name, ...phoneFields, status, notes, ...advisorFields }
+    ? { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, advisor: oldCustomer.advisor, advisorPhone: oldCustomer.advisorPhone }
+    : { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, ...advisorFields }
 
   let resultId = editId
   let toast = 'اطلاعات مشتری ذخیره شد'
@@ -733,7 +738,7 @@ async function applyCustomerEdit(editId, fields) {
       toAdvisor: advisor,
       toAdvisorPhone: advisorPhone,
       reason: 'handoff',
-      fieldOverrides: { platformId, platform, name, ...phoneFields, status, notes },
+      fieldOverrides: { platformId, platform, name, ...phoneFields, ...addressFields, status, notes },
       skipPermissionCheck: true
     })
   }
@@ -1160,11 +1165,87 @@ function readDetailFormFields(users, fallback = {}) {
   const platform = document.getElementById('detailPlatform')?.value || fallback.platform || 'instagram'
   const name = document.getElementById('detailName')?.value.trim() || ''
   const phones = getFormPhones()
+  const addresses = getFormAddresses()
   const status = document.getElementById('detailStatus')?.value || fallback.status || 'new'
   const notes = fallback.notes || ''
   const advisorSelectValue = document.getElementById('detailAdvisor')?.value || fallback.advisorPhone || ''
   const { advisor, advisorPhone } = resolveAdvisor(advisorSelectValue, users)
-  return { platformId, platform, name, phones, status, notes, advisor, advisorPhone }
+  return { platformId, platform, name, phones, addresses, status, notes, advisor, advisorPhone }
+}
+
+function syncAddressSlotsFromDom() {
+  const container = document.getElementById('detailAddressesList')
+  if (!container) return
+  const rows = container.querySelectorAll('.address-field-row')
+  addressSlots = Array.from(rows).map(row => ({
+    text: row.querySelector('.customer-address-text')?.value || '',
+    postalCode: row.querySelector('.customer-address-postal')?.value || ''
+  }))
+  if (!addressSlots.length) addressSlots = [{ text: '', postalCode: '' }]
+}
+
+function getFormAddresses() {
+  syncAddressSlotsFromDom()
+  return normalizeCustomerAddresses(addressSlots)
+}
+
+function renderAddressFields() {
+  const container = document.getElementById('detailAddressesList')
+  if (!container) return
+  if (!addressSlots.length) addressSlots = [{ text: '', postalCode: '' }]
+  container.innerHTML = addressSlots.map((slot, i) => `
+    <div class="address-field-row" data-index="${i}">
+      <input type="text" class="form-input customer-address-text" data-index="${i}"
+        placeholder="آدرس پستی" value="${escapeAttr(slot.text || '')}"
+        oninput="app.onCustomerAddressInput()">
+      <input type="text" class="form-input customer-address-postal" data-index="${i}"
+        inputmode="numeric" placeholder="کد پستی" value="${escapeAttr(slot.postalCode || '')}"
+        oninput="app.onCustomerAddressInput()" style="max-width:140px;">
+      <div class="address-field-actions"></div>
+    </div>
+  `).join('')
+  refreshAddressFieldActions()
+}
+
+function refreshAddressFieldActions() {
+  const container = document.getElementById('detailAddressesList')
+  if (!container) return
+  addressSlots.forEach((_, i) => {
+    const row = container.querySelector(`.address-field-row[data-index="${i}"]`)
+    const actions = row?.querySelector('.address-field-actions')
+    if (!actions) return
+    const canAdd = i === addressSlots.length - 1
+      && addressSlots.length < MAX_CUSTOMER_ADDRESSES
+    const canRemove = addressSlots.length > 1
+    actions.innerHTML = `
+      ${canAdd ? `<button type="button" class="btn-icon" title="افزودن آدرس" onclick="app.addCustomerAddressSlot()">+</button>` : ''}
+      ${canRemove ? `<button type="button" class="btn-icon is-danger" title="حذف آدرس" onclick="app.removeCustomerAddressSlot(${i})">×</button>` : ''}
+    `
+  })
+}
+
+export function onCustomerAddressInput() {
+  syncAddressSlotsFromDom()
+  refreshAddressFieldActions()
+}
+
+export function addCustomerAddressSlot() {
+  syncAddressSlotsFromDom()
+  if (addressSlots.length >= MAX_CUSTOMER_ADDRESSES) return
+  const last = addressSlots[addressSlots.length - 1]
+  if (!(last?.text || '').trim()) {
+    showToast('ابتدا آدرس فعلی را وارد کنید')
+    return
+  }
+  addressSlots.push({ text: '', postalCode: '' })
+  renderAddressFields()
+}
+
+export function removeCustomerAddressSlot(index) {
+  syncAddressSlotsFromDom()
+  if (addressSlots.length <= 1) return
+  addressSlots.splice(index, 1)
+  renderAddressFields()
 }
 
 function validateDetailPhones() {
@@ -1195,8 +1276,9 @@ function validateDetailPhones() {
  */
 async function createCustomerFromDetail(fields, users) {
   const data = getData()
-  const { platformId, platform, name, phones, status, notes, advisor, advisorPhone } = fields
+  const { platformId, platform, name, phones, addresses, status, notes, advisor, advisorPhone } = fields
   const phoneFields = { phone: phones[0] || '', phones }
+  const addressFields = { addresses: normalizeCustomerAddresses(addresses || []) }
   const { listId } = phoneForm()
   const focusPhoneIndex = (idx = 0) => {
     document.querySelector(`#${listId} .customer-phone-input[data-index="${idx}"]`)?.focus()
@@ -1218,7 +1300,7 @@ async function createCustomerFromDetail(fields, users) {
       const idx = data.customers.findIndex(c => c.id === existById.id)
       if (idx === -1) return null
       const wasLD = existById.id.startsWith('LD')
-      const updatedFields = { platformId, platform, name, ...phoneFields, status, notes, advisor, advisorPhone }
+      const updatedFields = { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, advisor, advisorPhone }
 
       if (wasLD) {
         const newId = await generateId('CS')
@@ -1249,7 +1331,7 @@ async function createCustomerFromDetail(fields, users) {
 
   if (phoneFieldState.status === 'transferable' && phoneFieldState.customer) {
     await transferCustomerOwnership(phoneFieldState.customer, {
-      platformId, platform, name, ...phoneFields, status, notes, advisor, advisorPhone
+      platformId, platform, name, ...phoneFields, ...addressFields, status, notes, advisor, advisorPhone
     }, users)
     return phoneFieldState.customer.id
   }
@@ -1257,7 +1339,7 @@ async function createCustomerFromDetail(fields, users) {
   const type = phones.length ? 'CS' : 'LD'
   const id = await generateId(type)
   const newCustomer = {
-    id, platformId, platform, name, ...phoneFields, status, notes, advisor, advisorPhone,
+    id, platformId, platform, name, ...phoneFields, ...addressFields, status, notes, advisor, advisorPhone,
     nextFollowupDate: '', products: [], createdAt: new Date().toISOString(),
     customerLevel: '', customerLevelLocked: false, referredByPhone: ''
   }
@@ -1454,6 +1536,15 @@ export async function openCustomerDetail(id) {
     return phones.map(p => escapeHtml(p)).join('<br>')
   })()
 
+  const addressesReadonly = (() => {
+    const addrs = getCustomerAddresses(c)
+    if (!addrs.length) return '—'
+    return addrs.map(a => {
+      const postal = a.postalCode ? ` <span style="color:var(--text-muted);font-size:12px;">(${escapeHtml(a.postalCode)})</span>` : ''
+      return `<div>${escapeHtml(a.text)}${postal}</div>`
+    }).join('')
+  })()
+
   const idFieldHtml = isNew
     ? ''
     : `<div class="detail-field">
@@ -1488,6 +1579,10 @@ export async function openCustomerDetail(id) {
         <div class="form-hint" id="detailPhoneHint" hidden></div>
       </div>
       <div class="detail-field">
+        <span class="detail-label">آدرس پستی</span>
+        <div id="detailAddressesList" class="address-fields"></div>
+      </div>
+      <div class="detail-field">
         <span class="detail-label">کارشناس مسئول</span>
         <span class="detail-value">${advisorHtml}</span>
       </div>
@@ -1514,6 +1609,10 @@ export async function openCustomerDetail(id) {
       <div class="detail-field">
         <span class="detail-label">شماره تماس</span>
         <span class="detail-value" style="direction:ltr;text-align:right;">${phonesReadonly}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">آدرس پستی</span>
+        <span class="detail-value">${addressesReadonly}</span>
       </div>
       <div class="detail-field">
         <span class="detail-label">کارشناس مسئول</span>
@@ -1691,6 +1790,10 @@ export async function openCustomerDetail(id) {
     phoneFieldState = { status: 'ok', customer: null, lastActivity: null, index: 0 }
     const existingPhones = isNew ? [] : getCustomerPhones(c)
     phoneSlots = existingPhones.length ? [...existingPhones] : ['']
+    const existingAddresses = isNew ? [] : getCustomerAddresses(c)
+    addressSlots = existingAddresses.length
+      ? existingAddresses.map(a => ({ text: a.text || '', postalCode: a.postalCode || '' }))
+      : [{ text: '', postalCode: '' }]
     populatePlatformDropdown(document.getElementById('detailPlatform'))
     populateStatusDropdown(document.getElementById('detailStatus'))
     const platformEl = document.getElementById('detailPlatform')
@@ -1698,6 +1801,7 @@ export async function openCustomerDetail(id) {
     if (platformEl) platformEl.value = c.platform || 'instagram'
     if (statusEl) statusEl.value = c.status || 'new'
     renderPhoneFields()
+    renderAddressFields()
     document.getElementById('detailPlatformId')?.focus()
   }
 
@@ -2034,6 +2138,21 @@ export async function renderProducts(customerId, users = null) {
           </select>${bundleHint}`
       : `<span style="font-size:14px;font-weight:600;">${escapeHtml(displayName || '—')}</span>${bundleHint}`
 
+    const isPhysical = isPhysicalSaleLine(p)
+    const shippingHtml = isPhysical
+      ? (canEdit && !closed
+        ? `<div class="product-shipping-row">
+            <input type="text" class="product-settlement product-shipping-address" placeholder="آدرس گیرنده (اختیاری)" value="${escapeAttr(p.shippingAddress || '')}" onblur="app.saveProductShippingField('${escapeAttr(customerId)}', ${i}, 'shippingAddress', this.value)">
+            <input type="text" class="product-settlement product-shipping-postal" inputmode="numeric" placeholder="کد پستی (اختیاری)" value="${escapeAttr(p.shippingPostalCode || '')}" onblur="app.saveProductShippingField('${escapeAttr(customerId)}', ${i}, 'shippingPostalCode', this.value)">
+          </div>`
+        : ((p.shippingAddress || p.shippingPostalCode)
+          ? `<div class="product-shipping-row product-shipping-readonly">
+              <span>${escapeHtml(p.shippingAddress || '—')}</span>
+              ${p.shippingPostalCode ? `<span style="color:var(--text-muted);font-size:12px;">کد پستی: ${escapeHtml(p.shippingPostalCode)}</span>` : ''}
+            </div>`
+          : ''))
+      : ''
+
     return `
       <div class="${blockClass}">
         <div class="product-row product-head-row">
@@ -2045,6 +2164,7 @@ export async function renderProducts(customerId, users = null) {
           ${balance > 0 && !closed ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : ''}
           ${closedBadge}
         </div>
+        ${shippingHtml}
         <div class="payment-list">${paymentsHtml || '<div class="payment-empty">هنوز واریزی ثبت نشده</div>'}</div>
         ${addPayBtn}
       </div>`
@@ -2200,6 +2320,40 @@ export async function updateProduct(customerId, index, field, value) {
   if (field === 'name') applyProfitSnapshotToProduct(product)
   syncProductStatus(product)
   await setProducts(customerId, products)
+  renderProducts(customerId)
+}
+
+export async function saveProductShippingField(customerId, productIndex, field, value) {
+  if (field !== 'shippingAddress' && field !== 'shippingPostalCode') return
+  const data = getData()
+  const customer = data.customers.find(c => c.id === customerId)
+  if (!canAddSaleOnCustomer(customer)) {
+    showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
+    return
+  }
+  const products = getProducts(customerId)
+  const product = products[productIndex]
+  if (!product) return
+  if (isInvoiceClosed(product)) {
+    showToast('فاکتور بسته شده و قابل ویرایش نیست')
+    return
+  }
+  if (!isPhysicalSaleLine(product)) return
+
+  const cleaned = field === 'shippingPostalCode'
+    ? toEnDigits(String(value || '')).trim().replace(/\s+/g, '')
+    : String(value || '').trim().replace(/\s+/g, ' ')
+  product[field] = cleaned
+
+  if (product.shippingAddress) {
+    appendCustomerAddressIfNew(customer, {
+      text: product.shippingAddress,
+      postalCode: product.shippingPostalCode || ''
+    })
+  }
+
+  syncProductStatus(product)
+  await saveCustomerToDB(customer)
   renderProducts(customerId)
 }
 
