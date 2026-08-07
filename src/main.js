@@ -430,6 +430,7 @@ const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), textarea:not([disab
 const modalFocusMemory = new WeakMap()
 const MODAL_BASE_Z = 1000
 let modalStackTop = MODAL_BASE_Z
+let modalScrollLockY = 0
 
 function getFocusableElements(container) {
   return [...container.querySelectorAll(FOCUSABLE_SELECTOR)].filter(el => {
@@ -441,6 +442,24 @@ function getFocusableElements(container) {
 
 function getActiveModalOverlays() {
   return [...document.querySelectorAll('.modal-overlay.active')]
+}
+
+function syncBodyScrollLock() {
+  const shouldLock = getActiveModalOverlays().length > 0
+  const body = document.body
+  const isLocked = body.classList.contains('modal-open')
+
+  if (shouldLock === isLocked) return
+
+  if (shouldLock) {
+    modalScrollLockY = window.scrollY || document.documentElement.scrollTop || 0
+    body.classList.add('modal-open')
+    body.style.top = `-${modalScrollLockY}px`
+  } else {
+    body.classList.remove('modal-open')
+    body.style.top = ''
+    window.scrollTo(0, modalScrollLockY)
+  }
 }
 
 function getTopmostModalOverlay() {
@@ -523,9 +542,11 @@ function initModalFocusTrap() {
       if (isActive && !wasActive) activateModalTrap(overlay)
       else if (!isActive && wasActive) deactivateModalTrap(overlay)
       wasActive = isActive
+      syncBodyScrollLock()
     })
     observer.observe(overlay, { attributes: true, attributeFilter: ['class'] })
   })
+  syncBodyScrollLock()
 }
 
 // ============================================
