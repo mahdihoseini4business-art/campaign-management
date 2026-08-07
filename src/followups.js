@@ -290,6 +290,12 @@ export function setFollowupFilter(filter) {
   renderFollowups()
 }
 
+export function clearFollowupSearch() {
+  const el = document.getElementById('searchFollowups')
+  if (el) el.value = ''
+  renderFollowups()
+}
+
 // ============================================
 // Render
 // ============================================
@@ -312,15 +318,45 @@ export async function renderFollowups() {
     const colCount = (hasPermission('followups_delete') ? 1 : 0) + 9
 
     if (filtered.length === 0) {
-      const emptyHint = followupFilter === 'done'
-        ? 'در این بخش پیگیری‌ای وجود ندارد'
-        : 'پیگیری‌های بعد از ۳ روز اینجا نیست؛ از پنل مشتری ببینید.'
+      const searchRaw = (document.getElementById('searchFollowups')?.value || '').trim()
+      const hasSearch = !!toEnDigits(searchRaw).toLowerCase()
+      const overdueCount = hasSearch
+        ? 0
+        : getPendingItems(false).filter(i => i.category === 'overdue').length
+      const distantHint = 'پیگیری‌های بعد از ۳ روز اینجا نیست؛ از پنل مشتری ببینید.'
+
+      let title = 'پیگیری‌ای یافت نشد'
+      let detail = ''
+      let actionsHtml = ''
+
+      if (hasSearch) {
+        title = 'نتیجه‌ای یافت نشد'
+        detail = `نتیجه‌ای برای «${escapeHtml(searchRaw)}» پیدا نشد`
+        actionsHtml = `<button type="button" class="btn btn-sm" onclick="app.clearFollowupSearch()">پاک کردن سرچ</button>`
+      } else if (followupFilter === 'today') {
+        title = 'پیگیری برای امروز ندارید ✓'
+        detail = distantHint
+        if (overdueCount > 0) {
+          actionsHtml = `<button type="button" class="btn btn-sm" onclick="app.setFollowupFilter('overdue')">مشاهده معوقه‌ها (${overdueCount})</button>`
+        }
+      } else if (followupFilter === 'overdue') {
+        title = 'معوقه‌ای نیست'
+        detail = distantHint
+      } else if (followupFilter === 'waiting') {
+        title = 'در ۲–۳ روز آینده موردی نیست'
+        detail = distantHint
+      } else if (followupFilter === 'done') {
+        title = 'هنوز مورد تکمیل‌شده‌ای ثبت نشده'
+        detail = ''
+      }
+
       tbody.innerHTML = `
         <tr><td colspan="${colCount}">
           <div class="empty-state">
             <div class="icon">📋</div>
-            <h3>پیگیری‌ای یافت نشد</h3>
-            <p>${emptyHint}</p>
+            <h3>${title}</h3>
+            ${detail ? `<p>${detail}</p>` : ''}
+            ${actionsHtml ? `<div class="empty-state-actions">${actionsHtml}</div>` : ''}
           </div>
         </td></tr>`
       renderPaginationBar('followupPagination', 'followups', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
