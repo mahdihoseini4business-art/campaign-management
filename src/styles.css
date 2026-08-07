@@ -2440,7 +2440,6 @@
     padding: 24px;
     backdrop-filter: blur(4px);
     overscroll-behavior: contain;
-    touch-action: none;
   }
 
   .modal-overlay.active { display: flex; }
@@ -2460,7 +2459,6 @@
     max-height: 90vh;
     overflow-y: auto;
     overscroll-behavior: contain;
-    touch-action: pan-y;
     animation: modalIn 0.25s ease;
   }
 
