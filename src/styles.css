@@ -2465,6 +2465,13 @@
   .empty-state .icon { font-size: 32px; margin-bottom: 8px; opacity: 0.3; }
   .empty-state h3 { font-size: 15px; margin-bottom: 4px; color: var(--text); }
   .empty-state p { font-size: 13px; }
+  .empty-state-actions {
+    margin-top: 12px;
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
 
   /* --- Legend --- */
   .legend {
