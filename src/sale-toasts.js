@@ -10,8 +10,41 @@ import { escapeHtml, formatNumber, requireMainAdmin, userDisplayName, getCurrent
 const CHANNEL_NAME = 'sale-live-toasts'
 const TOAST_MS = 5000
 const NOTIF_SOUND_URL = '/notif.mp3'
+const TOAST_DEDUPE_MS = 5000
 
 let channel = null
+let channelReady = null
+/** @type {Map<string, number>} */
+const recentSaleToastKeys = new Map()
+/** @type {Map<string, number>} */
+const recentSaleBroadcastKeys = new Map()
+
+function pruneMap(map, now = Date.now()) {
+  for (const [k, t] of map) {
+    if (now - t > TOAST_DEDUPE_MS) map.delete(k)
+  }
+}
+
+function saleToastDedupeKey(payload) {
+  return [
+    payload?.paymentId || '',
+    payload?.customerId || '',
+    normalizePhone(payload?.sellerPhone) || '',
+    String(payload?.amount ?? ''),
+    String(payload?.productName ?? '')
+  ].join('|')
+}
+
+/** Returns true if this is the first claim in the dedupe window. */
+function claimKey(map, payload) {
+  const key = saleToastDedupeKey(payload)
+  if (!key || key === '||||') return true
+  const now = Date.now()
+  pruneMap(map, now)
+  if (map.has(key)) return false
+  map.set(key, now)
+  return true
+}
 
 function stackEl() {
   return document.getElementById('saleToastStack')
@@ -101,6 +134,8 @@ export function showSaleToast(payload) {
   const sellerPhone = normalizePhone(payload.sellerPhone)
   if (myPhone && sellerPhone && myPhone === sellerPhone) return
 
+  if (!claimKey(recentSaleToastKeys, payload)) return
+
   const seller = (payload.sellerName || '').trim() || 'کارشناس'
   const product = coerceProductName(payload.productName) || 'محصول'
   const amountRial = parseFloat(payload.amount) || 0
@@ -141,25 +176,40 @@ export function showManualNotifToast(payload) {
 
 async function ensureChannel() {
   if (channel) return channel
-  channel = supabase.channel(CHANNEL_NAME)
-  channel.on('broadcast', { event: 'sale' }, ({ payload }) => {
-    showSaleToast(payload)
-  })
-  channel.on('broadcast', { event: 'manual-notif' }, ({ payload }) => {
-    showManualNotifToast(payload)
-  })
-  channel.on('broadcast', { event: 'setting' }, ({ payload }) => {
-    if (typeof payload?.enabled === 'boolean') {
-      setSaleToastEnabledLocal(payload.enabled)
-      syncSaleToastToggleUi()
-    }
-  })
-  await new Promise(resolve => {
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') resolve(status)
+  if (channelReady) return channelReady
+
+  channelReady = (async () => {
+    const ch = supabase.channel(CHANNEL_NAME, {
+      config: { broadcast: { self: false } }
     })
-  })
-  return channel
+    ch.on('broadcast', { event: 'sale' }, ({ payload }) => {
+      showSaleToast(payload)
+    })
+    ch.on('broadcast', { event: 'manual-notif' }, ({ payload }) => {
+      showManualNotifToast(payload)
+    })
+    ch.on('broadcast', { event: 'setting' }, ({ payload }) => {
+      if (typeof payload?.enabled === 'boolean') {
+        setSaleToastEnabledLocal(payload.enabled)
+        syncSaleToastToggleUi()
+      }
+    })
+    await new Promise(resolve => {
+      ch.subscribe((status) => {
+        if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') resolve(status)
+      })
+    })
+    channel = ch
+    return ch
+  })()
+
+  try {
+    return await channelReady
+  } catch (e) {
+    channelReady = null
+    channel = null
+    throw e
+  }
 }
 
 export async function initSaleToastFeed() {
@@ -173,7 +223,9 @@ export async function initSaleToastFeed() {
 
 export async function broadcastSaleToast(payload) {
   if (!getSaleToastEnabled()) return
-  // Only broadcast to others — seller does not see their own sale toast
+  if (!payload) return
+  // Prevent double-send when two field saves complete the payment nearly together
+  if (!claimKey(recentSaleBroadcastKeys, payload)) return
   try {
     const ch = await ensureChannel()
     await ch.send({ type: 'broadcast', event: 'sale', payload })
@@ -222,6 +274,7 @@ export async function toggleSaleToastSetting(enabled) {
 export function buildSaleToastPayload({ customer, product, payment }) {
   const user = getCurrentUser()
   return {
+    paymentId: payment?.id || '',
     sellerName: userDisplayName(user) || user?.username || '',
     sellerPhone: user?.phone || '',
     customerId: customer?.id || '',

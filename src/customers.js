@@ -2384,9 +2384,13 @@ export async function savePaymentField(customerId, productIndex, paymentIndex, f
 
 async function maybeBroadcastSaleToast(customer, product, payment, wasFilled) {
   if (wasFilled || !isPaymentFilled(payment)) return
+  // Guard against concurrent savePaymentField + updatePaymentField both seeing !wasFilled
+  if (payment._saleToastSent) return
+  payment._saleToastSent = true
   try {
     await broadcastSaleToast(buildSaleToastPayload({ customer, product, payment }))
   } catch (e) {
+    payment._saleToastSent = false
     console.error('sale toast broadcast error:', e)
   }
 }
