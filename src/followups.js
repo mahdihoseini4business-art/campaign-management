@@ -312,12 +312,15 @@ export async function renderFollowups() {
     const colCount = (hasPermission('followups_delete') ? 1 : 0) + 9
 
     if (filtered.length === 0) {
+      const emptyHint = followupFilter === 'done'
+        ? 'در این بخش پیگیری‌ای وجود ندارد'
+        : 'پیگیری‌های بعد از ۳ روز اینجا نیست؛ از پنل مشتری ببینید.'
       tbody.innerHTML = `
         <tr><td colspan="${colCount}">
           <div class="empty-state">
             <div class="icon">📋</div>
             <h3>پیگیری‌ای یافت نشد</h3>
-            <p>در این بخش پیگیری‌ای وجود ندارد</p>
+            <p>${emptyHint}</p>
           </div>
         </td></tr>`
       renderPaginationBar('followupPagination', 'followups', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
