@@ -38,6 +38,33 @@ function isDoneFollowup(f) {
   return t === 'پیگیری انجام‌شده' || t === 'پیگیری معوقه انجام‌شده'
 }
 
+function followupNoteText(f) {
+  if (!f) return ''
+  return String(f.notes || f.doneNote || '').trim()
+}
+
+/** Newest Jalali date first; stable tie-break on id. */
+function sortFollowupsNewestFirst(list) {
+  return [...list].sort((a, b) => {
+    const diff = jalaliToNum(b.date) - jalaliToNum(a.date)
+    if (diff !== 0) return diff
+    return String(b.id || '').localeCompare(String(a.id || ''), undefined, { numeric: true })
+  })
+}
+
+/** Latest non-empty note an expert registered for this customer. */
+function getLatestCustomerNotes(customerId, followups) {
+  if (!customerId) return ''
+  const sorted = sortFollowupsNewestFirst(
+    (followups || []).filter(f => f.customerId === customerId)
+  )
+  for (const f of sorted) {
+    const note = followupNoteText(f)
+    if (note) return note
+  }
+  return ''
+}
+
 function canSeeCustomer(customer, currentUser) {
   if (!customer) return false
   if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
@@ -71,7 +98,8 @@ function getPendingItems(applySearch = true) {
     const category = classifyDate(c.nextFollowupDate)
     if (!category) continue
 
-    const last = [...data.followups].reverse().find(f => f.customerId === c.id && !isDoneFollowup(f))
+    const customerFollowups = data.followups.filter(f => f.customerId === c.id)
+    const last = [...customerFollowups].reverse().find(f => !isDoneFollowup(f))
     const creatorPhone = normalizePhone(last?.createdByPhone)
     const ownerPhone = normalizePhone(c.advisorPhone)
     const setByOther = !!(creatorPhone && ownerPhone && creatorPhone !== ownerPhone)
@@ -87,7 +115,7 @@ function getPendingItems(applySearch = true) {
       type: last?.type || '—',
       result: last?.result || '—',
       nextDate: normalizeJalaliDate(c.nextFollowupDate),
-      notes: last?.notes || '',
+      notes: getLatestCustomerNotes(c.id, customerFollowups),
       createdByPhone: creatorPhone,
       setByOther,
       category
