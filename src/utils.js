@@ -840,9 +840,14 @@ export function getShipmentStatus(product) {
     : SHIPMENT_STATUS.pending
 }
 
+/**
+ * True when the sellable name is currently physical in catalog/bundle.
+ * Uses live catalog — not resolveProductCostConfig — because legacy
+ * profitMode gross/mixed meant COGS accounting, not "needs shipping".
+ */
 export function isPhysicalSaleLine(product) {
   if (!product) return false
-  return resolveProductCostConfig(product).productKind === PRODUCT_KIND.physical
+  return buildProfitSnapshotForSale(product.name).productKind === PRODUCT_KIND.physical
 }
 
 export function hasApprovedPayment(product) {
