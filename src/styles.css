@@ -1276,6 +1276,12 @@
     box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.12);
   }
 
+  .payment-row.is-draft {
+    border-color: #D6D3D1;
+    background: #F5F5F4;
+    box-shadow: none;
+  }
+
   .payment-index {
     font-size: 13px;
     font-weight: 700;
@@ -1476,6 +1482,12 @@
     color: #92400e;
     background: #fef3c7;
     border: 1px solid #fcd34d;
+  }
+
+  .payment-draft {
+    color: #57534e;
+    background: #e7e5e4;
+    border: 1px solid #d6d3d1;
   }
 
   .payment-approved {

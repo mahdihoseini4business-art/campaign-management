@@ -1059,6 +1059,20 @@ export function isPaymentFilled(payment) {
   return amount > 0 && hasDate && hasTime && !!bank
 }
 
+/**
+ * Fresh draft: only default date/time pre-filled, no amount/bank/depositor yet.
+ * Used to show a calm gray "در حال تکمیل…" state instead of yellow incomplete warning.
+ */
+export function isPaymentPristineDraft(payment) {
+  if (!payment || isPaymentFilled(payment)) return false
+  const status = getPaymentEntryStatus(payment)
+  if (status === PAYMENT_STATUS.approved || status === PAYMENT_STATUS.rejected) return false
+  if ((parseFloat(payment.amount) || 0) > 0) return false
+  if (String(payment.destinationBank || '').trim()) return false
+  if (String(payment.depositorName || '').trim()) return false
+  return true
+}
+
 export function areProductPaymentsFilled(product) {
   const pays = getProductPayments(product)
   if (pays.length === 0) return true

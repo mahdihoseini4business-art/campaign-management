@@ -19,7 +19,7 @@ import {
   formatTeamFilterLabel,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getOperationalBalance,
   getProductPayments, getPaymentEntryStatus, getWorstPaymentStatus,
-  isPaymentFilled, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS,
+  isPaymentFilled, isPaymentPristineDraft, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS,
   computeCustomerLrfm, isProductCountableInSales, soldAtTimePart, formatSoldAt24h, normalizeTimeTo24h,
   CUSTOMER_LEVELS, formatCustomerLevel, parseCustomerLevel, resolveCustomerLevel, syncCustomerLevel,
   applyProfitSnapshotToProduct
@@ -2201,10 +2201,14 @@ export async function renderProducts(customerId, users = null) {
       const rejectHint = (payStatus === 'rejected' && pay.paymentRejectReason)
         ? `<span class="payment-reject-reason" title="${escapeAttr(pay.paymentRejectReason)}">${escapeHtml(pay.paymentRejectReason)}</span>`
         : ''
-      const badge = `<span class="payment-badge payment-${payStatus}">${escapeHtml(payLabel)}</span>${rejectHint}`
       const canDeletePay = canEdit && payStatus !== PAYMENT_STATUS.approved
       const payEditable = canEdit && payStatus !== PAYMENT_STATUS.approved
-      const incomplete = canEdit && !isPaymentFilled(pay)
+      const filled = isPaymentFilled(pay)
+      const pristineDraft = payEditable && isPaymentPristineDraft(pay)
+      const incomplete = payEditable && !filled && !pristineDraft
+      const badge = pristineDraft
+        ? `<span class="payment-badge payment-draft">در حال تکمیل…</span>`
+        : `<span class="payment-badge payment-${payStatus}">${escapeHtml(payLabel)}</span>${rejectHint}`
       const sellerName = resolveUserNameByPhone(pay.soldByPhone || p.soldByPhone, usersList)
       const sellerHtml = sellerName
         ? `<span class="record-author" title="ثبت‌کننده فروش">👤 ${escapeHtml(sellerName)}</span>`
@@ -2232,16 +2236,17 @@ export async function renderProducts(customerId, users = null) {
           </div>`
       }
 
+      const rowStateClass = pristineDraft ? ' is-draft' : (incomplete ? ' is-incomplete' : '')
       const submitLabel = (!priceLocked && pi === 0) ? 'ثبت فروش' : 'ثبت واریز'
       return `
-        <div class="sale-payment payment-row${incomplete ? ' is-incomplete' : ''}" data-payment-index="${pi}">
+        <div class="sale-payment payment-row${rowStateClass}" data-payment-index="${pi}">
           ${head}
           <div class="sale-fields">
-            ${saleFieldHtml('مبلغ (ریال)', `<input type="text" inputmode="numeric" class="product-deposit num-input" data-pay-field="amount" placeholder="مثلاً ۵٬۰۰۰٬۰۰۰" value="${pay.amount ? formatNumber(pay.amount) : ''}" oninput="app.formatInput(this)" title="واحد: ریال">`, { required: true })}
-            ${saleFieldHtml('تاریخ', `<input type="text" class="product-settlement" data-pay-field="soldAtDate" placeholder="انتخاب تاریخ" data-jdp value="${pay.soldAt ? pay.soldAt.split(' ')[0] : ''}">`, { required: true })}
-            ${saleFieldHtml('ساعت', `<input type="text" class="product-settlement product-time" data-pay-field="soldAtTime" inputmode="numeric" placeholder="۱۴:۳۰" maxlength="5" value="${escapeAttr(soldAtTimePart(pay.soldAt))}" title="ساعت ۲۴ ساعته، مثلاً ۱۴:۳۰">`, { required: true })}
+            ${saleFieldHtml('مبلغ (ریال)', `<input type="text" inputmode="numeric" class="product-deposit num-input" data-pay-field="amount" placeholder="مثلاً ۵٬۰۰۰٬۰۰۰" value="${pay.amount ? formatNumber(pay.amount) : ''}" oninput="app.formatInput(this);app.markSalePaymentTouched(this)" title="واحد: ریال">`, { required: true })}
+            ${saleFieldHtml('تاریخ', `<input type="text" class="product-settlement" data-pay-field="soldAtDate" placeholder="انتخاب تاریخ" data-jdp value="${pay.soldAt ? pay.soldAt.split(' ')[0] : ''}" onchange="app.markSalePaymentTouched(this)">`, { required: true })}
+            ${saleFieldHtml('ساعت', `<input type="text" class="product-settlement product-time" data-pay-field="soldAtTime" inputmode="numeric" placeholder="۱۴:۳۰" maxlength="5" value="${escapeAttr(soldAtTimePart(pay.soldAt))}" oninput="app.markSalePaymentTouched(this)" title="ساعت ۲۴ ساعته، مثلاً ۱۴:۳۰">`, { required: true })}
             ${saleFieldHtml('بانک مقصد', renderDestinationBankField(customerId, i, pi, pay, true), { required: true, className: 'sale-field--bank' })}
-            ${saleFieldHtml('نام واریزکننده', `<input type="text" class="product-settlement product-depositor" data-pay-field="depositorName" placeholder="در صورت نیاز" value="${escapeAttr(pay.depositorName || '')}">`, { optional: true, full: true })}
+            ${saleFieldHtml('نام واریزکننده', `<input type="text" class="product-settlement product-depositor" data-pay-field="depositorName" placeholder="در صورت نیاز" value="${escapeAttr(pay.depositorName || '')}" oninput="app.markSalePaymentTouched(this)">`, { optional: true, full: true })}
           </div>
           <div class="sale-payment-actions">
             <button type="button" class="btn btn-sm btn-primary sale-submit-btn" data-sale-submit onclick="app.commitSalePayment('${escapeAttr(customerId)}', ${i}, ${pi})">${submitLabel}</button>
@@ -2543,6 +2548,19 @@ export function onSaleProductNameChange(selectEl) {
   }
 }
 
+/** Switch calm draft state → yellow incomplete once the user starts editing. */
+export function markSalePaymentTouched(el) {
+  const payEl = el?.closest?.('.sale-payment')
+  if (!payEl || !payEl.classList.contains('is-draft')) return
+  payEl.classList.remove('is-draft')
+  payEl.classList.add('is-incomplete')
+  const badge = payEl.querySelector('.payment-badge.payment-draft')
+  if (badge) {
+    badge.className = 'payment-badge payment-pending'
+    badge.textContent = PAYMENT_STATUS_LABELS.pending || 'در انتظار تأیید'
+  }
+}
+
 export async function commitSaleProductDetails(customerId, productIndex) {
   const customer = getData().customers.find(c => c.id === customerId)
   if (!canAddSaleOnCustomer(customer)) {
@@ -2661,7 +2679,13 @@ export async function commitSalePayment(customerId, productIndex, paymentIndex) 
   }
 
   if (hasError) {
+    payEl.classList.remove('is-draft')
     payEl.classList.add('is-incomplete')
+    const draftBadge = payEl.querySelector('.payment-badge.payment-draft')
+    if (draftBadge) {
+      draftBadge.className = 'payment-badge payment-pending'
+      draftBadge.textContent = PAYMENT_STATUS_LABELS.pending || 'در انتظار تأیید'
+    }
     showToast('فیلدهای الزامی را کامل کنید')
     return
   }
@@ -2738,7 +2762,7 @@ function renderDestinationBankField(customerId, productIndex, paymentIndex, pay,
       <select class="product-settlement" data-pay-field="destinationBank" onchange="app.onDestinationBankSelect(this)">
         ${options}
       </select>
-      <input type="text" class="product-settlement bank-custom-input" placeholder="نام بانک" value="${isCustom ? escapeAttr(value) : ''}" style="${isCustom ? '' : 'display:none;'}">
+      <input type="text" class="product-settlement bank-custom-input" placeholder="نام بانک" value="${isCustom ? escapeAttr(value) : ''}" style="${isCustom ? '' : 'display:none;'}" oninput="app.markSalePaymentTouched(this)">
     </div>`
 }
 
@@ -2751,12 +2775,14 @@ export function onDestinationBankSelect(selectEl) {
       customInput.style.display = ''
       customInput.focus()
     }
+    markSalePaymentTouched(selectEl)
     return
   }
   if (customInput) {
     customInput.style.display = 'none'
     customInput.value = ''
   }
+  markSalePaymentTouched(selectEl)
 }
 
 export async function removeProduct(customerId, index) {
