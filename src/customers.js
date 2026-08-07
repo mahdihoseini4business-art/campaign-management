@@ -1935,9 +1935,10 @@ function focusNewSaleDraftFields() {
     const blocks = document.querySelectorAll('#detailProductsList .product-block')
     const last = blocks[blocks.length - 1]
     if (!last) return
+    const name = last.querySelector('[data-sale-field="name"]')
     const price = last.querySelector('[data-sale-field="price"]')
     const amount = last.querySelector('[data-pay-field="amount"]')
-    const target = price || amount
+    const target = (name && !name.value) ? name : (price || amount || name)
     if (!target) return
     target.focus()
     try { target.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) } catch (_) { /* ignore */ }
@@ -2382,11 +2383,12 @@ export async function renderProducts(customerId, users = null) {
       : `<span class="product-bundle-hint" data-bundle-hint hidden></span>`
     const nameControl = canEdit && !closed
       ? `<select class="product-name" data-sale-field="name" onchange="app.onSaleProductNameChange(this)">
+            <option value="" ${displayName ? '' : 'selected'}>انتخاب کنید...</option>
             ${nameOptions.map(pr => `<option value="${escapeAttr(pr)}" ${displayName === pr ? 'selected' : ''}>${escapeHtml(pr)}</option>`).join('')}
           </select>${bundleHint}`
       : `<span class="sale-readonly-value" style="font-weight:600;">${escapeHtml(displayName || '—')}</span>${bundleHint}`
 
-    const isPhysical = isPhysicalSaleLine(p)
+    const isPhysical = !!displayName && isPhysicalSaleLine(p)
     let shippingFields = ''
     if (canEdit && !closed) {
       shippingFields = `<div class="sale-shipping-fields sale-fields" data-shipping-fields ${isPhysical ? '' : 'hidden'}>
@@ -2457,7 +2459,7 @@ export async function addProductRow(customerId) {
     return
   }
   products.push({
-    name: coerceProductName(catalog[0]) || catalog[0],
+    name: '',
     status: 'بیعانه',
     price: '',
     priceLocked: false,
@@ -2467,7 +2469,6 @@ export async function addProductRow(customerId) {
     payments: [firstPay]
   })
   const line = products[products.length - 1]
-  applyProfitSnapshotToProduct(line)
   syncProductStatus(line)
   await setProducts(customerId, products)
   renderProducts(customerId)
@@ -2632,7 +2633,7 @@ export function onSaleProductNameChange(selectEl) {
   if (!block) return
   const name = selectEl.value
   const shipping = block.querySelector('[data-shipping-fields]')
-  if (shipping) shipping.hidden = !isPhysicalSaleLine({ name })
+  if (shipping) shipping.hidden = !(name && isPhysicalSaleLine({ name }))
   const hint = block.querySelector('[data-bundle-hint]')
   if (hint) {
     const bundle = getBundleByName(coerceProductName(name) || name)

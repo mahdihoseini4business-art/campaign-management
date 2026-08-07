@@ -1319,6 +1319,11 @@
     margin-top: 12px;
   }
 
+  /* .sale-fields { display:grid } would otherwise override the HTML hidden attribute */
+  .sale-shipping-fields[hidden] {
+    display: none !important;
+  }
+
   .sale-field.is-invalid .sale-field-label {
     color: var(--danger, #dc2626);
   }
