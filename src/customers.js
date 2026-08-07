@@ -1127,6 +1127,72 @@ async function mergeLdIntoPhoneOwner({ sourceId, survivorId, fields }) {
 // Customer Detail Panel
 // ============================================
 
+const DETAIL_TABS = ['info', 'sales', 'followups']
+const DETAIL_TAB_LABELS = { info: 'اطلاعات', sales: 'فروش‌ها', followups: 'پیگیری‌ها' }
+
+/** @type {{ customerId: string|null, tab: 'info'|'sales'|'followups', canEdit?: boolean, canDelete?: boolean }} */
+let detailPanelState = { customerId: null, tab: 'info', canEdit: false, canDelete: false }
+
+function normalizeDetailTab(tab) {
+  return DETAIL_TABS.includes(tab) ? tab : 'info'
+}
+
+/** Infer which detail tab to open from the active app sheet. */
+function inferDetailTabFromApp() {
+  const sheet = document.querySelector('.sheet.active')
+  const id = sheet?.id || ''
+  if (id === 'sheet-sales' || id === 'sheet-accounting' || id === 'sheet-shipments') return 'sales'
+  if (id === 'sheet-followups') return 'followups'
+  return 'info'
+}
+
+function resolveDetailTab(customerId, options = {}) {
+  if (options.tab) return normalizeDetailTab(options.tab)
+  const modalOpen = document.getElementById('detailModal')?.classList.contains('active')
+  const sameCustomer = modalOpen && detailPanelState.customerId != null && detailPanelState.customerId === customerId
+  if (sameCustomer || options.preserveTab) return normalizeDetailTab(detailPanelState.tab)
+  return inferDetailTabFromApp()
+}
+
+function applyDetailTab(tab) {
+  const next = normalizeDetailTab(tab)
+  detailPanelState.tab = next
+
+  document.querySelectorAll('#detailBody .detail-tab').forEach(btn => {
+    const active = btn.getAttribute('data-detail-tab') === next
+    btn.classList.toggle('is-active', active)
+    btn.setAttribute('aria-selected', active ? 'true' : 'false')
+    btn.setAttribute('tabindex', active ? '0' : '-1')
+  })
+
+  document.querySelectorAll('#detailBody .detail-tab-panel').forEach(panel => {
+    const match = panel.id === `detailTab-${next}`
+    panel.hidden = !match
+    panel.classList.toggle('is-active', match)
+  })
+
+  if (next === 'followups' && window.jalaliDatepicker) {
+    try { window.jalaliDatepicker.startWatch({ time: false, zIndex: 11000 }) } catch (_) { /* ignore */ }
+  }
+  if (next === 'sales' && window.jalaliDatepicker) {
+    try { window.jalaliDatepicker.startWatch({ time: false, zIndex: 11000 }) } catch (_) { /* ignore */ }
+  }
+}
+
+/** Switch tab inside the open customer detail modal. */
+export function switchDetailTab(tab) {
+  if (!document.getElementById('detailModal')?.classList.contains('active')) return
+  if (!document.getElementById(`detailTab-${normalizeDetailTab(tab)}`)) return
+  applyDetailTab(tab)
+  renderDetailFooter({
+    isNew: false,
+    canEdit: !!detailPanelState.canEdit,
+    canDelete: !!detailPanelState.canDelete,
+    customerId: detailPanelState.customerId,
+    tab: detailPanelState.tab
+  })
+}
+
 /** Open customer panel on row click, unless the click was on an interactive control. */
 export function onCustomerRowClick(event, customerId) {
   if (!customerId) return
@@ -1135,7 +1201,7 @@ export function onCustomerRowClick(event, customerId) {
   openCustomerDetail(customerId)
 }
 
-function renderDetailFooter({ isNew, canEdit, canDelete, customerId }) {
+function renderDetailFooter({ isNew, canEdit, canDelete, customerId, tab = 'info' }) {
   const footer = document.getElementById('detailFooter')
   if (!footer) return
   if (isNew) {
@@ -1149,12 +1215,13 @@ function renderDetailFooter({ isNew, canEdit, canDelete, customerId }) {
     return
   }
   const id = escapeAttr(customerId)
+  const onInfo = tab === 'info'
   footer.innerHTML = `
-    ${canDelete
+    ${canDelete && onInfo
       ? `<button type="button" class="btn btn-danger" onclick="app.deleteCustomer('${id}')">حذف مشتری</button>`
       : '<span></span>'}
     <div class="detail-footer-actions">
-      ${canEdit ? `<button type="button" class="btn btn-primary" onclick="app.saveCustomerDetail('${id}')">ذخیره اطلاعات</button>` : ''}
+      ${canEdit && onInfo ? `<button type="button" class="btn btn-primary" onclick="app.saveCustomerDetail('${id}')">ذخیره اطلاعات</button>` : ''}
       <button type="button" class="btn" onclick="app.closeDetailModal()">بستن</button>
     </div>
   `
@@ -1346,7 +1413,7 @@ async function createCustomerFromDetail(fields, users) {
   await saveCustomerToDB(newCustomer)
   data.customers.push(newCustomer)
   await renderCustomers()
-  await openCustomerDetail(id)
+  await openCustomerDetail(id, { tab: 'sales' })
   showToast('مشتری جدید اضافه شد — می‌توانید محصول ثبت کنید')
   return id
 }
@@ -1400,8 +1467,8 @@ export async function saveCustomerDetail(customerId) {
 
     const result = await applyCustomerEdit(customerId, fields)
     await renderCustomers()
-    await openCustomerDetail(result.id)
-    showToast(result.toast)
+  await openCustomerDetail(result.id, { tab: 'info' })
+  showToast(result.toast)
   } catch (e) {
     console.error('saveCustomerDetail error:', e)
     if (e?.code === 'phone_taken') {
@@ -1414,7 +1481,7 @@ export async function saveCustomerDetail(customerId) {
   }
 }
 
-export async function openCustomerDetail(id) {
+export async function openCustomerDetail(id, options = {}) {
   const isNew = id == null || id === ''
   const data = getData()
   const currentUser = getCurrentUser()
@@ -1429,6 +1496,8 @@ export async function openCustomerDetail(id) {
       return
     }
   }
+
+  const activeTab = isNew ? 'info' : resolveDetailTab(isNew ? null : id, options)
 
   const c = isNew
     ? {
@@ -1628,14 +1697,11 @@ export async function openCustomerDetail(id) {
       </div>
     `
 
-  let html = `
+  const infoPanelHtml = `
     <div class="detail-info">
       ${infoFields}
     </div>
-  `
-
-  if (!isNew) {
-    html += `
+    ${!isNew ? `
     <div class="detail-rfm">
       <div class="detail-rfm-title">شاخص‌های LRFM</div>
       <div class="rfm-table-wrap">
@@ -1670,45 +1736,28 @@ export async function openCustomerDetail(id) {
           </tbody>
         </table>
       </div>
-    </div>
+    </div>` : ''}
+  `
 
-    <div style="margin-bottom:20px;padding:12px 16px;background:#f8f9fa;border-radius:8px;border:1px solid var(--border);">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <div>
-          <div style="font-size:13px;font-weight:600;margin-bottom:2px;">تاریخ پیگیری بعدی</div>
-          <div style="font-size:13px;color:${c.nextFollowupDate ? 'var(--accent)' : 'var(--text-muted)'}; font-family:'Vazirmatn',sans-serif;">
-            ${c.nextFollowupDate || 'تنظیم نشده'}
-          </div>
-        </div>
-        ${followupDateControls}
-      </div>
-    </div>
-    `
-  }
-
-  html += `
-    <div class="detail-products" style="margin-bottom:20px;">
-      <div style="font-size:14px;font-weight:600;margin-bottom:12px;">محصولات</div>
+  const salesCount = !isNew ? (c.products || []).length : 0
+  const salesPanelHtml = `
+    <div class="detail-products">
       <div id="detailProductsList"></div>
-      ${isNew
-        ? `<div style="padding:12px;color:var(--text-muted);font-size:13px;background:#f8f9fa;border-radius:8px;border:1px dashed var(--border);">پس از ایجاد مشتری می‌توانید همین‌جا محصول اضافه کنید.</div>`
-        : (canAddSale ? `<button class="btn btn-sm" style="margin-top:8px;" onclick="app.addProductRow('${escapeAttr(c.id)}')">+ افزودن محصول</button>` : '')}
+      ${canAddSale
+        ? `<button class="btn btn-sm" style="margin-top:8px;" onclick="app.addProductRow('${escapeAttr(c.id)}')">+ افزودن محصول</button>`
+        : ''}
     </div>
   `
 
+  let followupsPanelHtml = ''
   if (!isNew) {
-    html += `
-    <div class="detail-timeline-title">
-      تاریخچه پیگیری <span class="count">${customerFollowups.length}</span>
-    </div>
-    `
-
+    let timelineHtml = ''
     if (customerFollowups.length === 0) {
-      html += `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری ثبت نشده</div>`
+      timelineHtml = `<div class="detail-tab-empty">پیگیری ثبت نشده</div>`
     } else {
       const canEditNote = hasPermission('followups_add')
       const canDeleteNote = hasPermission('followups_delete')
-      html += `<div class="timeline">`
+      timelineHtml = `<div class="timeline">`
       customerFollowups.forEach(f => {
         const nextHtml = f.nextDate ? `<div class="timeline-next">پیگیری بعدی: ${f.nextDate}</div>` : ''
         const authorName = resolveUserNameByPhone(f.createdByPhone, detailUsers)
@@ -1729,7 +1778,7 @@ export async function openCustomerDetail(id) {
             : ''
           actionsHtml = `<div class="timeline-actions">${editBtn}${deleteBtn}</div>`
         }
-        html += `
+        timelineHtml += `
           <div class="timeline-item${itemClass}">
             <div class="timeline-header">
               <span class="timeline-date">${f.date}</span>
@@ -1744,11 +1793,11 @@ export async function openCustomerDetail(id) {
           </div>
         `
       })
-      html += `</div>`
+      timelineHtml += `</div>`
     }
 
-    if (canAddFollowup) {
-      html += `
+    const quickNoteHtml = canAddFollowup
+      ? `
       <div class="detail-add-note" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
         <div style="font-size:13px;font-weight:600;margin-bottom:8px;">افزودن توضیحات جدید</div>
         <textarea class="form-textarea" id="detailQuickNote" placeholder="توضیحات جدید را اینجا بنویسید..." style="min-height:60px;margin-bottom:8px;"></textarea>
@@ -1776,13 +1825,76 @@ export async function openCustomerDetail(id) {
             <button class="btn btn-primary" style="width:100%;" onclick="app.addQuickNote('${escapeAttr(c.id)}')">ثبت</button>
           </div>
         </div>
+      </div>`
+      : ''
+
+    followupsPanelHtml = `
+      <div class="detail-next-followup">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:2px;">تاریخ پیگیری بعدی</div>
+            <div style="font-size:13px;color:${c.nextFollowupDate ? 'var(--accent)' : 'var(--text-muted)'}; font-family:'Vazirmatn',sans-serif;">
+              ${c.nextFollowupDate || 'تنظیم نشده'}
+            </div>
+          </div>
+          ${followupDateControls}
+        </div>
+      </div>
+      <div class="detail-timeline-title">
+        تاریخچه پیگیری <span class="count">${customerFollowups.length}</span>
+      </div>
+      ${timelineHtml}
+      ${quickNoteHtml}
+    `
+  }
+
+  let html
+  if (isNew) {
+    html = `
+      ${infoPanelHtml}
+      <div class="detail-tab-empty" style="margin-top:8px;">پس از ایجاد مشتری، تب‌های فروش و پیگیری در دسترس خواهند بود.</div>
+    `
+  } else {
+    const tabBtn = (key, count) => {
+      const active = activeTab === key
+      const countHtml = count != null
+        ? `<span class="detail-tab-count">${formatNumber(count)}</span>`
+        : ''
+      return `<button type="button" class="detail-tab${active ? ' is-active' : ''}" role="tab"
+        id="detailTabBtn-${key}" data-detail-tab="${key}"
+        aria-selected="${active ? 'true' : 'false'}"
+        aria-controls="detailTab-${key}"
+        tabindex="${active ? '0' : '-1'}"
+        onclick="app.switchDetailTab('${key}')">${DETAIL_TAB_LABELS[key]}${countHtml}</button>`
+    }
+
+    html = `
+      <div class="detail-tabs" role="tablist" aria-label="بخش‌های پنل مشتری">
+        ${tabBtn('info')}
+        ${tabBtn('sales', salesCount)}
+        ${tabBtn('followups', customerFollowups.length)}
+      </div>
+      <div class="detail-tab-panel${activeTab === 'info' ? ' is-active' : ''}" role="tabpanel" id="detailTab-info" aria-labelledby="detailTabBtn-info" ${activeTab === 'info' ? '' : 'hidden'}>
+        ${infoPanelHtml}
+      </div>
+      <div class="detail-tab-panel${activeTab === 'sales' ? ' is-active' : ''}" role="tabpanel" id="detailTab-sales" aria-labelledby="detailTabBtn-sales" ${activeTab === 'sales' ? '' : 'hidden'}>
+        ${salesPanelHtml}
+      </div>
+      <div class="detail-tab-panel${activeTab === 'followups' ? ' is-active' : ''}" role="tabpanel" id="detailTab-followups" aria-labelledby="detailTabBtn-followups" ${activeTab === 'followups' ? '' : 'hidden'}>
+        ${followupsPanelHtml}
       </div>
     `
-    }
+  }
+
+  detailPanelState = {
+    customerId: isNew ? null : c.id,
+    tab: activeTab,
+    canEdit,
+    canDelete
   }
 
   document.getElementById('detailBody').innerHTML = html
-  renderDetailFooter({ isNew, canEdit, canDelete, customerId: c.id })
+  renderDetailFooter({ isNew, canEdit, canDelete, customerId: c.id, tab: activeTab })
   document.getElementById('detailModal').classList.add('active')
 
   if (canEdit) {
@@ -1802,12 +1914,12 @@ export async function openCustomerDetail(id) {
     if (statusEl) statusEl.value = c.status || 'new'
     renderPhoneFields()
     renderAddressFields()
-    document.getElementById('detailPlatformId')?.focus()
+    if (activeTab === 'info') document.getElementById('detailPlatformId')?.focus()
   }
 
   if (!isNew) renderProducts(c.id, detailUsers)
 
-  if (canScheduleFollowup && window.jalaliDatepicker) {
+  if ((activeTab === 'followups' || activeTab === 'sales') && window.jalaliDatepicker) {
     try { window.jalaliDatepicker.startWatch({ time: false, zIndex: 11000 }) } catch (_) { /* ignore */ }
   }
 }
@@ -1999,6 +2111,7 @@ export async function updateCustomerLevel(customerId, levelValue) {
 export function closeDetailModal() {
   document.getElementById('detailModal').classList.remove('active')
   phoneFormMode = 'detail'
+  detailPanelState = { customerId: null, tab: 'info', canEdit: false, canDelete: false }
 }
 
 // ============================================
@@ -2034,10 +2147,16 @@ export async function setProducts(customerId, products) {
 }
 let detailUsersCache = []
 
+function syncDetailTabCount(tabKey, count) {
+  const btn = document.querySelector(`#detailBody .detail-tab[data-detail-tab="${tabKey}"] .detail-tab-count`)
+  if (btn) btn.textContent = formatNumber(count)
+}
+
 export async function renderProducts(customerId, users = null) {
   const container = document.getElementById('detailProductsList')
   if (!container) return
   const products = getProducts(customerId)
+  syncDetailTabCount('sales', products.length)
   const data = getData()
   const customer = data.customers.find(c => c.id === customerId)
   const canEdit = canAddSaleOnCustomer(customer)
