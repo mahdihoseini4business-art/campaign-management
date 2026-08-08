@@ -1284,7 +1284,7 @@
 
 <!-- مودال رد واریزی -->
 <div class="modal-overlay" id="rejectPaymentModal">
-  <div class="modal" style="max-width: 440px;">
+  <div class="modal" style="max-width: 480px;">
     <div class="modal-header">
       <h2 id="rejectPaymentModalTitle">رد واریزی</h2>
       <button class="modal-close" onclick="app.closeRejectPaymentModal()">&times;</button>
@@ -1292,7 +1292,9 @@
     <div class="modal-body">
       <div class="form-group">
         <label for="rejectPaymentReason">دلیل رد <span class="required">*</span></label>
-        <textarea class="form-textarea" id="rejectPaymentReason" placeholder="مثلاً مبلغ با گردش بانکی مطابقت ندارد..."></textarea>
+        <textarea class="form-textarea" id="rejectPaymentReason" placeholder="مثلاً مبلغ با گردش بانکی مطابقت ندارد..." oninput="app.onRejectReasonInput()"></textarea>
+        <div class="reject-reason-presets-label">دلایل از پیش تعریف‌شده</div>
+        <div id="rejectReasonPresets" class="reject-reason-presets" role="group" aria-label="دلایل از پیش تعریف‌شده" onclick="app.onRejectReasonPresetClick(event)"></div>
       </div>
     </div>
     <div class="modal-footer">

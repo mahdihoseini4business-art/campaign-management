@@ -2190,6 +2190,47 @@
     border-color: #94a3b8;
   }
 
+  .reject-reason-presets-label {
+    margin-top: 10px;
+    margin-bottom: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .reject-reason-presets {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .reject-reason-preset {
+    appearance: none;
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 8px;
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--text);
+    cursor: pointer;
+    text-align: right;
+    line-height: 1.45;
+    min-height: 36px;
+  }
+
+  .reject-reason-preset:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+  }
+
+  .reject-reason-preset.is-selected {
+    background: #fef2f2;
+    border-color: var(--danger);
+    color: var(--danger);
+    font-weight: 600;
+  }
+
   .sale-payment-head-actions .btn-unapprove,
   .sale-payment-head-actions .btn-edit-reason,
   .sale-summary .btn-unapprove,

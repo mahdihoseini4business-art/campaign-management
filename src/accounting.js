@@ -13,7 +13,18 @@ import { renderProducts } from './customers.js'
 import { broadcastPaymentRejectToast } from './sale-toasts.js'
 
 let accountingFilter = 'pending' // pending | approved | rejected | gifts
-let rejectTarget = null // { customerId, productIndex, paymentIndex, isGift }
+let rejectTarget = null // { customerId, productIndex, paymentIndex, isGift, mode }
+
+export const PRESET_REJECT_REASONS = [
+  'رسید فیک',
+  'ساعت و تاریخ اشتباه',
+  'نام مشتری درست وارد نشده',
+  'عدم وجود تراکنش در گردش حساب',
+  'بانک مقصد اشتباه',
+  'رسید مربوط به مشتری دیگری است',
+  'مبلغ اشتباه',
+  'نام کارت مبدا اشتباه'
+]
 
 export function getAllPayments() {
   const data = getData()
@@ -165,7 +176,7 @@ export function renderAccounting() {
     let actions = ''
     if (p.paymentStatus === 'pending') {
       if (p.isGift) {
-        actions = `<button class="btn btn-sm btn-approve" onclick="app.approveGiftSale('${escapeAttr(p.customerId)}', ${p.productIndex})">تأیید هدیه</button>
+        actions = `<button class="btn btn-sm btn-approve" onclick="app.approveGiftSale('${escapeAttr(p.customerId)}', ${p.productIndex})">تأیید</button>
          <button class="btn btn-sm btn-reject" onclick="app.openRejectPaymentModal('${escapeAttr(p.customerId)}', ${p.productIndex}, -1, true)">رد</button>`
       } else {
         actions = `<button class="btn btn-sm btn-approve" onclick="app.approvePayment('${escapeAttr(p.customerId)}', ${p.productIndex}, ${p.paymentIndex})">تأیید</button>
@@ -431,6 +442,38 @@ export async function unapproveGiftSale(customerId, productIndex) {
   }
 }
 
+function renderRejectReasonPresets() {
+  const wrap = document.getElementById('rejectReasonPresets')
+  if (!wrap || wrap.dataset.ready === '1') return
+  wrap.innerHTML = PRESET_REJECT_REASONS.map(reason =>
+    `<button type="button" class="reject-reason-preset" data-reason="${escapeHtml(reason)}">${escapeHtml(reason)}</button>`
+  ).join('')
+  wrap.dataset.ready = '1'
+}
+
+function syncRejectReasonPresetSelection(current) {
+  const wrap = document.getElementById('rejectReasonPresets')
+  if (!wrap) return
+  const value = (current ?? document.getElementById('rejectPaymentReason')?.value ?? '').trim()
+  wrap.querySelectorAll('.reject-reason-preset').forEach(btn => {
+    btn.classList.toggle('is-selected', (btn.dataset.reason || '').trim() === value)
+  })
+}
+
+export function onRejectReasonPresetClick(event) {
+  const btn = event?.target?.closest?.('.reject-reason-preset')
+  if (!btn) return
+  const reason = (btn.dataset.reason || '').trim()
+  if (!reason) return
+  const el = document.getElementById('rejectPaymentReason')
+  if (el) el.value = reason
+  syncRejectReasonPresetSelection(reason)
+}
+
+export function onRejectReasonInput() {
+  syncRejectReasonPresetSelection()
+}
+
 function applyRejectModalMode(mode, existingReason = '') {
   const title = document.getElementById('rejectPaymentModalTitle')
   const confirmBtn = document.getElementById('rejectPaymentConfirmBtn')
@@ -443,6 +486,8 @@ function applyRejectModalMode(mode, existingReason = '') {
     confirmBtn.classList.toggle('btn-primary', isEdit)
   }
   if (reason) reason.value = existingReason || ''
+  renderRejectReasonPresets()
+  syncRejectReasonPresetSelection(existingReason || '')
 }
 
 export function openRejectPaymentModal(customerId, productIndex, paymentIndex, isGift = false) {

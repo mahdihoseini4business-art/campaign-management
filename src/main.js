@@ -6,7 +6,7 @@ import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, sa
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, clearFollowupSearch, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, openFollowupDonePicker, closeFollowupDonePicker, filterFollowupDonePick, confirmFollowupDonePick, setFollowupDoneNextShortcut, isFollowupDoneNoteDirty, updateFollowupBadge } from './followups.js'
 import { renderSales, sortSales } from './sales.js'
 import { renderProductMatrix, cycleProductMatrixFilter, clearProductMatrixFilters, toggleProductMatrixAdvisorDropdown, toggleProductMatrixAdvisor, toggleProductMatrixAdvisorsAll } from './product-matrix.js'
-import { renderAccounting, setAccountingFilter, approvePayment, approveGiftSale, requestUnapprovePayment, requestUnapproveGiftSale, openRejectPaymentModal, openEditRejectReasonModal, closeRejectPaymentModal, confirmRejectPayment } from './accounting.js'
+import { renderAccounting, setAccountingFilter, approvePayment, approveGiftSale, requestUnapprovePayment, requestUnapproveGiftSale, openRejectPaymentModal, openEditRejectReasonModal, closeRejectPaymentModal, confirmRejectPayment, onRejectReasonPresetClick, onRejectReasonInput } from './accounting.js'
 import { renderShipments, setShipmentsFilter, openConfirmShipmentModal, closeConfirmShipmentModal, confirmShipment } from './shipments.js'
 import { renderDashboard, toggleDashSection, applyDashFilter, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareMetricChange, onProductChartMetricChange, onDashTargetsScopeChange, renderSalesTargetBand, onAovMaControlsChange } from './dashboard.js'
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners } from './import-export.js'
@@ -379,6 +379,8 @@ const app = {
   openEditRejectReasonModal,
   closeRejectPaymentModal,
   confirmRejectPayment,
+  onRejectReasonPresetClick,
+  onRejectReasonInput,
   openConfirmShipmentModal,
   closeConfirmShipmentModal,
   confirmShipment,
