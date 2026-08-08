@@ -46,6 +46,13 @@ import {
 import { initSaleToastFeed, toggleSaleToastSetting, syncSaleToastToggleUi } from './sale-toasts.js'
 import { initLiveSync } from './live-sync.js'
 import { initAppUpdate } from './app-update.js'
+import {
+  initBrowserNotifications,
+  syncBrowserNotifUi,
+  dismissBrowserNotifBanner,
+  requestBrowserNotificationPermission,
+  getNotificationPermission
+} from './browser-notifications.js'
 import { setPage } from './pagination.js'
 
 // ============================================
@@ -192,6 +199,36 @@ async function openSettingsModal() {
   if (!document.getElementById('settingsModal')?.classList.contains('active')) return
   await renderNotificationAdminSection()
   syncSaleToastToggleUi()
+  syncBrowserNotifUi()
+}
+
+async function enableBrowserNotifications() {
+  const profileDropdown = document.getElementById('profileDropdown')
+  if (profileDropdown) {
+    profileDropdown.classList.remove('active')
+    profileDropdown.hidden = true
+    document.getElementById('profileMenuBtn')?.setAttribute('aria-expanded', 'false')
+  }
+
+  const current = getNotificationPermission()
+  if (current === 'granted') {
+    showToast('اعلان مرورگر فعال است')
+    syncBrowserNotifUi()
+    return
+  }
+  if (current === 'denied') {
+    showToast('اعلان‌ها در تنظیمات مرورگر مسدود است — از آیکون قفل کنار آدرس اجازه دهید')
+    syncBrowserNotifUi()
+    return
+  }
+  if (current === 'unsupported') {
+    showToast('این مرورگر از اعلان دسکتاپ پشتیبانی نمی‌کند')
+    syncBrowserNotifUi()
+    return
+  }
+  const result = await requestBrowserNotificationPermission()
+  if (result === 'granted') showToast('اعلان مرورگر فعال شد')
+  else if (result === 'denied') showToast('اجازه اعلان داده نشد')
 }
 
 const app = {
@@ -441,6 +478,8 @@ const app = {
   setNotifMessageMode,
   updateNotifMessagePreview,
   toggleSaleToastSetting,
+  enableBrowserNotifications,
+  dismissBrowserNotifBanner,
   formatInput: (el) => {
     let raw = el.value.replace(/[^\d]/g, '')
     el.value = raw ? Number(raw).toLocaleString('en-US') : ''
@@ -632,6 +671,7 @@ async function init() {
   refreshNotifications().catch(e => console.error('notifications init error:', e))
   initSaleToastFeed().catch(e => console.error('sale toast init error:', e))
   initLiveSync().catch(e => console.error('live sync init error:', e))
+  try { initBrowserNotifications() } catch (e) { console.error('browser notifications init error:', e) }
 
   // Modal accessibility: focus trap + aria (A11Y-H3)
   initModalFocusTrap()

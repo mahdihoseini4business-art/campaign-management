@@ -6,6 +6,7 @@
 import { supabase } from './supabase.js'
 import { getSaleToastEnabled, setSaleToastEnabledLocal, saveSaleToastEnabled, coerceProductName } from './data.js'
 import { escapeHtml, formatNumber, requireMainAdmin, userDisplayName, getCurrentUser, normalizePhone } from './utils.js'
+import { showBrowserNotificationFromHtml } from './browser-notifications.js'
 
 const CHANNEL_NAME = 'sale-live-toasts'
 const TOAST_MS = 5000
@@ -82,7 +83,7 @@ function isRecipientForMe(payload) {
   return list.some(p => normalizePhone(p) === phone)
 }
 
-function mountToastCard({ titleHtml, detailsHtml, onOpen, variant = '' }) {
+function mountToastCard({ titleHtml, detailsHtml, onOpen, variant = '', notifTag = 'sale-toast' }) {
   const stack = stackEl()
   if (!stack) return
 
@@ -114,6 +115,12 @@ function mountToastCard({ titleHtml, detailsHtml, onOpen, variant = '' }) {
 
   stack.appendChild(toast)
   playNotifSound()
+  showBrowserNotificationFromHtml({
+    titleHtml,
+    detailsHtml,
+    tag: notifTag,
+    onClick: typeof onOpen === 'function' ? onOpen : undefined
+  })
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => toast.classList.add('show'))
@@ -144,7 +151,8 @@ export function showSaleToast(payload) {
 
   mountToastCard({
     titleHtml: `⚡ فروش جدید از ${escapeHtml(seller)}`,
-    detailsHtml: `${escapeHtml(product)}${amountToman ? ` — <span class="sale-toast-amount">${escapeHtml(amountToman)} تومان</span>` : ''}`
+    detailsHtml: `${escapeHtml(product)}${amountToman ? ` — <span class="sale-toast-amount">${escapeHtml(amountToman)} تومان</span>` : ''}`,
+    notifTag: `sale-${payload.paymentId || payload.at || Date.now()}`
   })
 }
 
@@ -158,6 +166,7 @@ export function showManualNotifToast(payload) {
   mountToastCard({
     titleHtml: `🔔 اعلان جدید`,
     detailsHtml: `${escapeHtml(title)} — از ${escapeHtml(sender)}`,
+    notifTag: `manual-notif-${payload.id || payload.at || Date.now()}`,
     onOpen: () => {
       import('./notifications.js').then(async (m) => {
         try { await m.refreshNotifications() } catch (_) { /* ignore */ }
@@ -198,7 +207,8 @@ export function showPaymentRejectToast(payload) {
   mountToastCard({
     variant: 'is-reject',
     titleHtml: `⛔ فروش رد شد`,
-    detailsHtml: `${escapeHtml(product)}${customer ? ` · ${escapeHtml(customer)}` : ''}${reasonHtml ? ` — ${reasonHtml}` : ''}`
+    detailsHtml: `${escapeHtml(product)}${customer ? ` · ${escapeHtml(customer)}` : ''}${reasonHtml ? ` — ${reasonHtml}` : ''}`,
+    notifTag: `payment-reject-${payload.paymentId || payload.at || Date.now()}`
   })
 }
 

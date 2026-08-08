@@ -4,6 +4,7 @@
 
 import { ADMIN_PHONE } from './config.js'
 import { getPlatforms, getStatuses, getCatalogEntryByName, getBundleByName, PRODUCT_KIND, coerceProductName } from './data.js'
+import { showBrowserNotification } from './browser-notifications.js'
 
 /** Dynamic platform labels (value → Persian label) built from settings */
 export function getPlatformLabels() {
@@ -251,6 +252,8 @@ export function showToast(msg) {
   void t.offsetWidth // force reflow
   t.classList.add('show')
   toastTimer = setTimeout(() => t.classList.remove('show'), 2500)
+  const text = String(msg || '').trim()
+  if (text) showBrowserNotification({ title: 'CARNO', body: text, tag: 'app-toast' })
 }
 
 // ============================================

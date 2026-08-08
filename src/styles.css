@@ -116,6 +116,53 @@
     padding: 6px 14px;
   }
 
+  .browser-notif-banner {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 11900;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    background: var(--secondary);
+    color: #f8fafc;
+    font-size: 13px;
+    box-shadow: 0 2px 12px rgba(1, 85, 210, 0.28);
+  }
+
+  .browser-notif-banner.is-visible {
+    display: flex;
+  }
+
+  .browser-notif-banner-text {
+    text-align: center;
+  }
+
+  .browser-notif-banner .btn-sm {
+    height: 32px;
+    padding: 6px 14px;
+  }
+
+  .browser-notif-banner-later {
+    background: transparent;
+    color: #e6effa;
+    border-color: rgba(255, 255, 255, 0.35);
+  }
+
+  .browser-notif-banner-later:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: #fff;
+    color: #fff;
+  }
+
+  body:has(#appUpdateBanner.is-visible) .browser-notif-banner.is-visible {
+    top: 52px;
+  }
+
   .profile-menu,
   .notification-menu { position: relative; }
 
@@ -759,6 +806,12 @@
   .btn-danger:hover { background: #c41820; }
 
   .btn-sm { padding: 8px 16px; font-size: 13px; height: 32px; }
+
+  .browser-notif-banner .btn.browser-notif-banner-later:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: #fff;
+    color: #fff;
+  }
 
   .btn-icon {
     width: 40px; height: 40px; padding: 0;
@@ -4220,6 +4273,42 @@
   .settings-pref-row strong {
     display: block;
     margin-bottom: 4px;
+  }
+
+  .settings-pref-row-static {
+    cursor: default;
+    margin-top: 10px;
+    flex-direction: column;
+  }
+
+  .browser-notif-status {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--border);
+    color: var(--text-secondary);
+  }
+
+  .browser-notif-status[data-state="granted"] {
+    background: var(--success-light);
+    color: var(--success);
+  }
+
+  .browser-notif-status[data-state="denied"],
+  .browser-notif-status[data-state="unsupported"] {
+    background: var(--danger-light);
+    color: var(--danger);
+  }
+
+  .browser-notif-hint {
+    margin-top: 8px;
+  }
+
+  .settings-pref-row-static .btn-sm {
+    margin-top: 10px;
   }
 
   .settings-user-row {
