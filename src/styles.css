@@ -2444,10 +2444,13 @@
 
   .modal-overlay.active { display: flex; }
 
-  /* Above modal stack (modals rise from 1000); library default z-index is 1000 */
-  jdp-container,
-  jdp-overlay {
+  /* Above modal stack; overlay must stay below container (library uses zIndex / zIndex-1).
+     Equal z-index lets the later DOM sibling (overlay) paint on top and blur the picker on mobile. */
+  jdp-container {
     z-index: 11000 !important;
+  }
+  jdp-overlay {
+    z-index: 10999 !important;
   }
 
   .modal {
