@@ -1917,7 +1917,7 @@
   }
 
   .followup-filter-btn.active .followup-filter-badge {
-    background: rgba(255, 255, 255, 0.25);
+    background: var(--danger);
     color: #fff;
   }
 
@@ -3776,7 +3776,6 @@
   .settings-recipients-box {
     flex: 1;
     min-height: 0;
-    max-height: 280px;
     overflow: auto;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -3848,6 +3847,7 @@
   .settings-notif-compose:not([hidden]) {
     display: flex;
     flex-direction: column;
+    height: 100%;
     min-height: 100%;
   }
 
@@ -3867,6 +3867,7 @@
   .settings-notif-recipients {
     display: flex;
     flex-direction: column;
+    height: 100%;
     min-height: 0;
     min-width: 0;
     border: 1px solid var(--border);
@@ -3903,11 +3904,11 @@
   @media (max-width: 900px) {
     .settings-notif-compose-body {
       grid-template-columns: 1fr;
+      grid-template-rows: auto minmax(220px, 1fr);
     }
 
-    .settings-recipients-box {
-      max-height: 200px;
-      flex: none;
+    .settings-notif-recipients {
+      min-height: 220px;
     }
   }
 
