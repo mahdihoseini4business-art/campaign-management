@@ -1952,9 +1952,9 @@ function renderSalesTargetCampaignHtml(block) {
     summary.focus.deadline
   )
 
-  const doneChip = summary.allDone
+  const deadlineChip = summary.allDone
     ? `<span class="sales-target-deadline-chip is-done">تکمیل شد</span>`
-    : ''
+    : (summary.deadlineMs ? renderSalesTargetCountdownHtml(summary.deadlineMs) : '')
 
   const barsHtml = progresses.map(p => `
     <div class="sales-target-bar-row">
@@ -1971,13 +1971,14 @@ function renderSalesTargetCampaignHtml(block) {
   return `
     <article class="sales-target-band ${summary.stage}">
       <div class="sales-target-band-inner">
+        ${renderSalesTargetRingHtml(summary.ringPct)}
         <div class="sales-target-band-body">
           <div class="sales-target-band-head">
             <div>
               <div class="sales-target-eyebrow">تارگت ${escapeHtml(block.groupName || 'گروه')}</div>
               <h3 class="sales-target-title">${escapeHtml(block.title || 'تارگت فروش')}</h3>
             </div>
-            ${doneChip}
+            ${deadlineChip}
           </div>
           <p class="sales-target-message">${copy.message}</p>
           ${copy.gap ? `<div class="sales-target-gap">${escapeHtml(copy.gap)}</div>` : ''}
@@ -2032,16 +2033,15 @@ export function renderSalesTargetBand() {
     return
   }
 
-  let hasDeadline = false
   try {
-    hasDeadline = renderSalesTargetHudFromBlocks(blocks)
+    renderSalesTargetHudFromBlocks(blocks)
   } catch (e) {
     console.error('renderSalesTargetHud error:', e)
     hideSalesTargetHud()
   }
 
   if (!wrap) {
-    if (hasDeadline) startSalesTargetCountdown()
+    startSalesTargetCountdown()
     return
   }
 
@@ -2058,11 +2058,12 @@ export function renderSalesTargetBand() {
         })
       })
     }
-    if (hasDeadline) startSalesTargetCountdown()
+    startSalesTargetCountdown()
   } catch (e) {
     console.error('renderSalesTargetBand render:', e)
     wrap.hidden = true
     wrap.innerHTML = ''
+    startSalesTargetCountdown()
   }
 }
 
