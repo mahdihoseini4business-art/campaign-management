@@ -3099,10 +3099,20 @@
     .toolbar-filter-grid > .form-select,
     .toolbar-filter-grid > .form-input,
     .toolbar-filter-grid > .search-box,
-    .toolbar-filter-grid > .btn {
+    .toolbar-filter-grid > .btn,
+    .toolbar-filter-grid > .toolbar-actions {
       width: 100% !important;
       min-width: 0 !important;
       max-width: none !important;
+    }
+
+    .toolbar-filter-grid > .toolbar-actions {
+      margin-inline-start: 0;
+    }
+
+    .toolbar-filter-grid > .toolbar-actions > .btn {
+      width: 100%;
+      justify-content: center;
     }
 
     .followup-filters {

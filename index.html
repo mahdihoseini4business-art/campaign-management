@@ -766,8 +766,8 @@
         <option value="">عملیات دسته‌جمعی...</option>
       </select>
       <span id="bulkCountCustomers" style="display:none;font-size:13px;color:var(--text-muted);"></span>
-      <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchCustomers" oninput="app.renderCustomers()">
       <div class="toolbar-filter-grid">
+        <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchCustomers" oninput="app.renderCustomers()">
         <select class="form-select" id="filterAdvisor" style="width:200px;min-width:160px;" onchange="app.renderCustomers()">
           <option value="">همه کارشناسان</option>
         </select>
@@ -789,13 +789,13 @@
           انتقال‌ها
           <span class="transfer-inbox-badge" id="transferInboxBadge" style="display:none;">0</span>
         </button>
-      </div>
-      <div class="toolbar-actions" id="customersActionsMenu">
-        <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
-        <div class="toolbar-actions-dropdown" hidden>
-          <button type="button" class="toolbar-actions-item" data-perm="customers_export" onclick="app.exportTabCSV('customers');app.closeAllToolbarActions()">خروجی CSV</button>
-          <button type="button" class="toolbar-actions-item" data-perm="customers_export" onclick="app.exportTabXLSX('customers');app.closeAllToolbarActions()">خروجی Excel</button>
-          <button type="button" class="toolbar-actions-item" data-perm="customers_import" onclick="app.openImportModal();app.closeAllToolbarActions()">ایمپورت اکسل</button>
+        <div class="toolbar-actions" id="customersActionsMenu">
+          <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
+          <div class="toolbar-actions-dropdown" hidden>
+            <button type="button" class="toolbar-actions-item" data-perm="customers_export" onclick="app.exportTabCSV('customers');app.closeAllToolbarActions()">خروجی CSV</button>
+            <button type="button" class="toolbar-actions-item" data-perm="customers_export" onclick="app.exportTabXLSX('customers');app.closeAllToolbarActions()">خروجی Excel</button>
+            <button type="button" class="toolbar-actions-item" data-perm="customers_import" onclick="app.openImportModal();app.closeAllToolbarActions()">ایمپورت اکسل</button>
+          </div>
         </div>
       </div>
       <button class="btn btn-primary" data-perm="customers_add" onclick="app.openCustomerModal()">+ مشتری جدید</button>
@@ -899,8 +899,8 @@
         <option value="delete">حذف انتخاب شده‌ها</option>
       </select>
       <span id="bulkCountSales" style="display:none;font-size:13px;color:var(--text-muted);"></span>
+      <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchSales" oninput="app.renderSales()">
       <div class="toolbar-filter-grid">
-        <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchSales" oninput="app.renderSales()">
         <input type="text" class="form-input" id="filterSalesDateFrom" placeholder="از تاریخ واریز" data-jdp style="width:140px;" onchange="app.renderSales()">
         <input type="text" class="form-input" id="filterSalesDateTo" placeholder="تا تاریخ واریز" data-jdp style="width:140px;" onchange="app.renderSales()">
         <select class="form-select" id="filterSalesPlatform" style="width:140px;" onchange="app.renderSales()">
@@ -921,13 +921,13 @@
         <select class="form-select" id="filterSalesPaymentStatus" style="width:160px;" onchange="app.renderSales()">
           <option value="">همه وضعیت‌های واریزی</option>
         </select>
-      </div>
-      <div class="toolbar-actions" id="salesActionsMenu">
-        <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
-        <div class="toolbar-actions-dropdown" hidden>
-          <button type="button" class="toolbar-actions-item" data-perm="sales_export" onclick="app.exportTabCSV('sales');app.closeAllToolbarActions()">خروجی CSV</button>
-          <button type="button" class="toolbar-actions-item" data-perm="sales_export" onclick="app.exportTabXLSX('sales');app.closeAllToolbarActions()">خروجی Excel</button>
-          <button type="button" class="toolbar-actions-item" data-perm="sales_import" onclick="app.openSalesImportModal();app.closeAllToolbarActions()">ایمپورت از اکسل</button>
+        <div class="toolbar-actions" id="salesActionsMenu">
+          <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
+          <div class="toolbar-actions-dropdown" hidden>
+            <button type="button" class="toolbar-actions-item" data-perm="sales_export" onclick="app.exportTabCSV('sales');app.closeAllToolbarActions()">خروجی CSV</button>
+            <button type="button" class="toolbar-actions-item" data-perm="sales_export" onclick="app.exportTabXLSX('sales');app.closeAllToolbarActions()">خروجی Excel</button>
+            <button type="button" class="toolbar-actions-item" data-perm="sales_import" onclick="app.openSalesImportModal();app.closeAllToolbarActions()">ایمپورت از اکسل</button>
+          </div>
         </div>
       </div>
       <button type="button" class="btn btn-primary" id="startSaleBtn" onclick="app.openStartSaleModal()">+ ثبت فروش</button>
