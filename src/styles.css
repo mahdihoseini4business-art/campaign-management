@@ -663,6 +663,7 @@
   .toolbar-actions {
     position: relative;
     margin-inline-start: auto;
+    z-index: 60;
   }
 
   .toolbar-actions-dropdown {
@@ -674,7 +675,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     box-shadow: var(--shadow);
-    z-index: 40;
+    z-index: 60;
     padding: 6px;
     display: flex;
     flex-direction: column;

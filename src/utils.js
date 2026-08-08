@@ -131,6 +131,7 @@ export function syncToolbarActionsMenus() {
     { id: 'customersActionsMenu', perms: ['customers_export', 'customers_import'] },
     { id: 'followupsActionsMenu', perms: ['followups_export'] },
     { id: 'salesActionsMenu', perms: ['sales_export', 'sales_import'] },
+    { id: 'productsActionsMenu', perms: ['products_matrix'] },
   ]
   for (const { id, perms } of menus) {
     const el = document.getElementById(id)

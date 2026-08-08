@@ -455,7 +455,7 @@ const EXPORT_CONFIG = {
 }
 
 export function exportTabCSV(tab) {
-  const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'customers_export' }[tab]
+  const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'products_matrix' }[tab]
   if (exportPerm && !requirePermission(exportPerm)) return
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
@@ -475,7 +475,7 @@ export function exportTabCSV(tab) {
 }
 
 export function exportTabXLSX(tab) {
-  const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'customers_export' }[tab]
+  const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'products_matrix' }[tab]
   if (exportPerm && !requirePermission(exportPerm)) return
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
