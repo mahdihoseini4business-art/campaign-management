@@ -2316,6 +2316,10 @@ export async function renderProducts(customerId, users = null) {
       const unapproveGiftBtn = canUnapproveGift
         ? `<button type="button" class="btn btn-sm btn-unapprove" onclick="app.requestUnapproveGiftSale('${escapeAttr(customerId)}', ${i})">لغو تأیید</button>`
         : ''
+      const canEditGiftReason = hasPermission('accounting') && giftStatus === PAYMENT_STATUS.rejected
+      const editGiftReasonBtn = canEditGiftReason
+        ? `<button type="button" class="btn btn-sm btn-edit-reason" title="اصلاح دلیل رد" onclick="app.openEditRejectReasonModal('${escapeAttr(customerId)}', ${i}, -1, true)">اصلاح دلیل</button>`
+        : ''
       const sellerName = resolveUserNameByPhone(p.soldByPhone, usersList)
       const sellerHtml = sellerName
         ? `<span class="record-author" title="ثبت‌کننده هدیه">👤 ${escapeHtml(sellerName)}</span>`
@@ -2353,6 +2357,7 @@ export async function renderProducts(customerId, users = null) {
             <span class="payment-badge payment-${giftStatus}">${escapeHtml(giftStatusLabel)}</span>
             ${rejectHint}
             ${unapproveGiftBtn}
+            ${editGiftReasonBtn}
             ${closedBadge}
           </div>
         </section>
@@ -2367,6 +2372,7 @@ export async function renderProducts(customerId, users = null) {
         : ''
       const canDeletePay = canEdit && payStatus !== PAYMENT_STATUS.approved
       const canUnapprovePay = hasPermission('accounting') && payStatus === PAYMENT_STATUS.approved
+      const canEditPayReason = hasPermission('accounting') && payStatus === PAYMENT_STATUS.rejected
       const payEditable = canEdit && payStatus !== PAYMENT_STATUS.approved
       const filled = isPaymentFilled(pay)
       const pristineDraft = payEditable && isPaymentPristineDraft(pay)
@@ -2376,6 +2382,9 @@ export async function renderProducts(customerId, users = null) {
         : `<span class="payment-badge payment-${payStatus}">${escapeHtml(payLabel)}</span>${rejectHint}`
       const unapprovePayBtn = canUnapprovePay
         ? `<button type="button" class="btn btn-sm btn-unapprove" title="لغو تأیید حسابداری" onclick="app.requestUnapprovePayment('${escapeAttr(customerId)}', ${i}, ${pi})">لغو تأیید</button>`
+        : ''
+      const editPayReasonBtn = canEditPayReason
+        ? `<button type="button" class="btn btn-sm btn-edit-reason" title="اصلاح دلیل رد" onclick="app.openEditRejectReasonModal('${escapeAttr(customerId)}', ${i}, ${pi})">اصلاح دلیل</button>`
         : ''
       const sellerName = resolveUserNameByPhone(pay.soldByPhone || p.soldByPhone, usersList)
       const sellerHtml = sellerName
@@ -2387,6 +2396,7 @@ export async function renderProducts(customerId, users = null) {
           <div class="sale-payment-head-actions">
             ${badge}
             ${unapprovePayBtn}
+            ${editPayReasonBtn}
             ${canDeletePay ? `<button type="button" class="btn-remove-product" title="حذف واریز" onclick="app.removeProductPayment('${escapeAttr(customerId)}', ${i}, ${pi})">✕</button>` : ''}
           </div>
         </div>`

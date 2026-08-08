@@ -172,7 +172,11 @@ export function renderAccounting() {
          <button class="btn btn-sm btn-reject" onclick="app.openRejectPaymentModal('${escapeAttr(p.customerId)}', ${p.productIndex}, ${p.paymentIndex})">رد</button>`
       }
     } else if (p.paymentStatus === 'rejected') {
-      actions = `<span style="font-size:12px;color:var(--danger);">${escapeHtml(p.paymentRejectReason || '—')}</span>`
+      const editArgs = p.isGift
+        ? `'${escapeAttr(p.customerId)}', ${p.productIndex}, -1, true`
+        : `'${escapeAttr(p.customerId)}', ${p.productIndex}, ${p.paymentIndex}`
+      actions = `<span style="font-size:12px;color:var(--danger);">${escapeHtml(p.paymentRejectReason || '—')}</span>
+        <button type="button" class="btn btn-sm btn-edit-reason" title="اصلاح دلیل رد" onclick="app.openEditRejectReasonModal(${editArgs})">اصلاح دلیل</button>`
     } else {
       actions = `<span style="font-size:12px;color:var(--text-muted);">${escapeHtml(formatSoldAt24h(p.paymentReviewedAt) || p.paymentReviewedAt || '—')}</span>`
     }
@@ -427,19 +431,119 @@ export async function unapproveGiftSale(customerId, productIndex) {
   }
 }
 
+function applyRejectModalMode(mode, existingReason = '') {
+  const title = document.getElementById('rejectPaymentModalTitle')
+  const confirmBtn = document.getElementById('rejectPaymentConfirmBtn')
+  const reason = document.getElementById('rejectPaymentReason')
+  const isEdit = mode === 'editReason'
+  if (title) title.textContent = isEdit ? 'اصلاح دلیل رد' : 'رد واریزی'
+  if (confirmBtn) {
+    confirmBtn.textContent = isEdit ? 'ذخیره دلیل' : 'رد واریزی'
+    confirmBtn.classList.toggle('btn-danger', !isEdit)
+    confirmBtn.classList.toggle('btn-primary', isEdit)
+  }
+  if (reason) reason.value = existingReason || ''
+}
+
 export function openRejectPaymentModal(customerId, productIndex, paymentIndex, isGift = false) {
   if (!requirePermission('accounting')) return
-  rejectTarget = { customerId, productIndex, paymentIndex, isGift: !!isGift || paymentIndex === -1 }
-  const modal = document.getElementById('rejectPaymentModal')
-  const reason = document.getElementById('rejectPaymentReason')
-  if (reason) reason.value = ''
-  if (modal) modal.classList.add('active')
-  reason?.focus()
+  rejectTarget = { customerId, productIndex, paymentIndex, isGift: !!isGift || paymentIndex === -1, mode: 'reject' }
+  applyRejectModalMode('reject')
+  document.getElementById('rejectPaymentModal')?.classList.add('active')
+  document.getElementById('rejectPaymentReason')?.focus()
+}
+
+export function openEditRejectReasonModal(customerId, productIndex, paymentIndex = -1, isGift = false) {
+  if (!requirePermission('accounting')) return
+  const gift = !!isGift || paymentIndex === -1
+  const data = getData()
+  const customer = data.customers.find(c => c.id === customerId)
+  const product = customer?.products?.[productIndex]
+  if (!product) {
+    showToast(gift ? 'هدیه یافت نشد' : 'واریزی یافت نشد')
+    return
+  }
+  let existing = ''
+  if (gift) {
+    if (!isGiftSale(product)) {
+      showToast('این ردیف هدیه نیست')
+      return
+    }
+    if (getGiftAccountingStatus(product) !== PAYMENT_STATUS.rejected) {
+      showToast('این هدیه رد نشده است')
+      return
+    }
+    existing = product.giftRejectReason || ''
+  } else {
+    ensureProductPayments(product)
+    const pay = product.payments?.[paymentIndex]
+    if (!pay) {
+      showToast('واریزی یافت نشد')
+      return
+    }
+    if (getPaymentEntryStatus(pay) !== PAYMENT_STATUS.rejected) {
+      showToast('این واریز رد نشده است')
+      return
+    }
+    existing = pay.paymentRejectReason || ''
+  }
+  rejectTarget = { customerId, productIndex, paymentIndex, isGift: gift, mode: 'editReason' }
+  applyRejectModalMode('editReason', existing)
+  document.getElementById('rejectPaymentModal')?.classList.add('active')
+  document.getElementById('rejectPaymentReason')?.focus()
 }
 
 export function closeRejectPaymentModal() {
   rejectTarget = null
+  applyRejectModalMode('reject')
   document.getElementById('rejectPaymentModal')?.classList.remove('active')
+}
+
+async function saveEditedRejectReason(reason) {
+  const { customerId, productIndex, paymentIndex, isGift } = rejectTarget
+  try {
+    if (isGift) {
+      const data = getData()
+      const product = data.customers.find(c => c.id === customerId)?.products?.[productIndex]
+      if (!product || getGiftAccountingStatus(product) !== PAYMENT_STATUS.rejected) {
+        showToast('این هدیه رد نشده است')
+        return
+      }
+      if ((product.giftRejectReason || '').trim() === reason) {
+        closeRejectPaymentModal()
+        showToast('دلیل رد تغییری نکرد')
+        return
+      }
+      const ok = await updateGiftSale(customerId, productIndex, { giftRejectReason: reason })
+      if (!ok) return
+    } else {
+      const data = getData()
+      const product = data.customers.find(c => c.id === customerId)?.products?.[productIndex]
+      if (product) ensureProductPayments(product)
+      const payment = product?.payments?.[paymentIndex]
+      if (!payment || getPaymentEntryStatus(payment) !== PAYMENT_STATUS.rejected) {
+        showToast('این واریز رد نشده است')
+        return
+      }
+      if ((payment.paymentRejectReason || '').trim() === reason) {
+        closeRejectPaymentModal()
+        showToast('دلیل رد تغییری نکرد')
+        return
+      }
+      const ok = await updatePaymentEntry(customerId, productIndex, paymentIndex, {
+        paymentRejectReason: reason
+      })
+      if (!ok) return
+    }
+    closeRejectPaymentModal()
+    showToast('دلیل رد به‌روز شد')
+    renderAccounting()
+    renderSales()
+    try { renderProducts(customerId) } catch (_) { /* detail panel may be closed */ }
+  } catch (e) {
+    console.error('saveEditedRejectReason error:', e)
+    showToast('خطا در ذخیره دلیل رد')
+  }
 }
 
 export async function confirmRejectPayment() {
@@ -448,6 +552,10 @@ export async function confirmRejectPayment() {
   const reason = (document.getElementById('rejectPaymentReason')?.value || '').trim()
   if (!reason) {
     showToast('دلیل رد را وارد کنید')
+    return
+  }
+  if (rejectTarget.mode === 'editReason') {
+    await saveEditedRejectReason(reason)
     return
   }
   const user = getCurrentUser()

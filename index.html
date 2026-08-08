@@ -1286,7 +1286,7 @@
 <div class="modal-overlay" id="rejectPaymentModal">
   <div class="modal" style="max-width: 440px;">
     <div class="modal-header">
-      <h2>رد واریزی</h2>
+      <h2 id="rejectPaymentModalTitle">رد واریزی</h2>
       <button class="modal-close" onclick="app.closeRejectPaymentModal()">&times;</button>
     </div>
     <div class="modal-body">
@@ -1296,8 +1296,8 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn" onclick="app.closeRejectPaymentModal()">انصراف</button>
-      <button class="btn btn-danger" onclick="app.confirmRejectPayment()">رد واریزی</button>
+      <button type="button" class="btn" onclick="app.closeRejectPaymentModal()">انصراف</button>
+      <button type="button" class="btn btn-danger" id="rejectPaymentConfirmBtn" onclick="app.confirmRejectPayment()">رد واریزی</button>
     </div>
   </div>
 </div>

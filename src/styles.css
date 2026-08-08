@@ -2179,8 +2179,21 @@
     background: #fff7ed;
   }
 
+  .btn-edit-reason {
+    background: #fff;
+    color: var(--text);
+    border-color: var(--border);
+  }
+
+  .btn-edit-reason:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+  }
+
   .sale-payment-head-actions .btn-unapprove,
-  .sale-summary .btn-unapprove {
+  .sale-payment-head-actions .btn-edit-reason,
+  .sale-summary .btn-unapprove,
+  .sale-summary .btn-edit-reason {
     white-space: nowrap;
   }
 
@@ -2458,6 +2471,10 @@
   }
 
   .modal-overlay.active { display: flex; }
+
+  #rejectPaymentModal.active {
+    z-index: 1100;
+  }
 
   /* Above modal stack; overlay must stay below container (library uses zIndex / zIndex-1).
      Equal z-index lets the later DOM sibling (overlay) paint on top and blur the picker on mobile. */
