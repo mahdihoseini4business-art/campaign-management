@@ -986,7 +986,9 @@ export const ALL_PERMISSIONS = {
   sales_export: 'خروجی فروش‌ها',
   products_matrix: 'ماتریس محصولات',
   accounting: 'تأیید واریزی‌ها (حسابداری)',
-  shipments_manage: 'مدیریت ارسالی‌ها'
+  shipments_manage: 'مدیریت ارسالی‌ها',
+  refunds_view: 'مشاهده عودت وجه',
+  refunds_manage: 'مدیریت عودت وجه'
 }
 
 export const PERMISSION_GROUPS = [
@@ -996,7 +998,28 @@ export const PERMISSION_GROUPS = [
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_add_others', 'sales_import', 'sales_export'] },
   { label: 'محصولات', keys: ['products_matrix'] },
   { label: 'حسابداری', keys: ['accounting'] },
-  { label: 'ارسالی‌ها', keys: ['shipments_manage'] }
+  { label: 'ارسالی‌ها', keys: ['shipments_manage'] },
+  { label: 'عودت وجه', keys: ['refunds_view', 'refunds_manage'] }
+]
+
+export const REFUND_STATUS = {
+  requested: 'requested',
+  awaiting: 'awaiting',
+  completed: 'completed',
+  rejected: 'rejected'
+}
+
+export const REFUND_STATUS_LABELS = {
+  requested: 'درخواست عودت',
+  awaiting: 'در انتظار عودت',
+  completed: 'عودت انجام‌شده',
+  rejected: 'رد شده'
+}
+
+export const REFUND_KANBAN_STATUSES = [
+  REFUND_STATUS.requested,
+  REFUND_STATUS.awaiting,
+  REFUND_STATUS.completed
 ]
 
 export const PAYMENT_STATUS = {
@@ -1099,6 +1122,102 @@ export function sumProductPayments(product, predicate) {
 
 export function getApprovedPaid(product) {
   return sumProductPayments(product, p => getPaymentEntryStatus(p) === PAYMENT_STATUS.approved)
+}
+
+/** Completed refund records written back onto the product JSON. */
+export function getProductRefundRecords(product) {
+  if (!product || !Array.isArray(product.refunds)) return []
+  return product.refunds.filter(r => r && (parseFloat(r.amount) || 0) > 0)
+}
+
+export function getProductCompletedRefundTotal(product) {
+  return getProductRefundRecords(product).reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0)
+}
+
+export function getPaymentRefundedAmount(product, paymentId) {
+  const id = String(paymentId || '')
+  if (!id) return 0
+  return getProductRefundRecords(product)
+    .filter(r => String(r.paymentId || '') === id)
+    .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0)
+}
+
+export function isPaymentFullyRefunded(product, payment) {
+  if (!payment) return false
+  const approved = parseFloat(payment.amount) || 0
+  if (approved <= 0) return false
+  return getPaymentRefundedAmount(product, payment.id) >= approved - 0.5
+}
+
+/** Product fully refunded when completed refunds cover all approved payments. */
+export function isProductFullyRefunded(product) {
+  const approved = getApprovedPaid(product)
+  if (approved <= 0) return false
+  return getProductCompletedRefundTotal(product) >= approved - 0.5
+}
+
+export function getPaymentRefundBadge(product, payment) {
+  const refunded = getPaymentRefundedAmount(product, payment)
+  if (refunded <= 0) return null
+  const approved = parseFloat(payment?.amount) || 0
+  if (approved > 0 && refunded >= approved - 0.5) {
+    return { kind: 'full', label: 'عودت‌شده' }
+  }
+  return { kind: 'partial', label: 'عودت جزئی' }
+}
+
+export function getProductRefundBadge(product) {
+  const refunded = getProductCompletedRefundTotal(product)
+  if (refunded <= 0) return null
+  if (isProductFullyRefunded(product)) {
+    return { kind: 'full', label: 'عودت‌شده' }
+  }
+  return { kind: 'partial', label: 'عودت جزئی' }
+}
+
+/**
+ * Apply a completed refund onto product JSON (idempotent by refund id).
+ * Also bumps payment.refundedAmount for quick display.
+ */
+export function applyCompletedRefundToProduct(product, refund) {
+  if (!product || !refund) return product
+  ensureProductPayments(product)
+  if (!Array.isArray(product.refunds)) product.refunds = []
+  const id = refund.id != null ? String(refund.id) : ''
+  const paymentId = String(refund.paymentId || '')
+  const amount = parseFloat(refund.amount) || 0
+  if (!paymentId || amount <= 0) return product
+
+  const existingIdx = product.refunds.findIndex(r => String(r.id) === id)
+  const entry = {
+    id,
+    paymentId,
+    amount,
+    completedAt: refund.completedAt || refund.completed_at || '',
+    completedBy: refund.completedByPhone || refund.completed_by_phone || ''
+  }
+  if (existingIdx >= 0) product.refunds[existingIdx] = entry
+  else product.refunds.push(entry)
+
+  const pay = getProductPayments(product).find(p => String(p.id) === paymentId)
+  if (pay) {
+    pay.refundedAmount = getPaymentRefundedAmount(product, paymentId)
+  }
+  return product
+}
+
+/** Remove a completed refund writeback (e.g. if status leaves completed). */
+export function removeCompletedRefundFromProduct(product, refundId) {
+  if (!product || !Array.isArray(product.refunds)) return product
+  const id = String(refundId || '')
+  const removed = product.refunds.find(r => String(r.id) === id)
+  product.refunds = product.refunds.filter(r => String(r.id) !== id)
+  if (removed) {
+    const paymentId = String(removed.paymentId || '')
+    const pay = getProductPayments(product).find(p => String(p.id) === paymentId)
+    if (pay) pay.refundedAmount = getPaymentRefundedAmount(product, paymentId)
+  }
+  return product
 }
 
 /** Paid amounts that count toward sales (exclude rejected). */
@@ -1364,6 +1483,8 @@ export function getDefaultPermissions() {
   p.sales_add_others = false
   p.accounting = false
   p.shipments_manage = false
+  p.refunds_view = false
+  p.refunds_manage = false
   return p
 }
 

@@ -2738,6 +2738,10 @@ export function applyPermissions() {
     else if (t.id === 'tab-sales' || text === 'فروش‌ها') permKey = 'sales_view'
     else if (t.id === 'tab-products' || text === 'محصولات' || text === 'ماتریس محصولات') permKey = 'products_matrix'
     else if (t.id === 'tab-accounting' || text === 'حسابداری') permKey = 'accounting'
+    else if (t.id === 'tab-refunds' || text === 'عودت وجه') {
+      t.style.display = (hasPermission('refunds_view') || hasPermission('refunds_manage')) ? '' : 'none'
+      return
+    }
     if (permKey && !hasPermission(permKey)) {
       t.style.display = 'none'
     } else {

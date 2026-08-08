@@ -11,6 +11,7 @@ import {
   getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin,
   jalaliEndOfDayMs, getCompletedSaleEconomics, resolveProductCostConfig
 } from './utils.js'
+import { sumCompletedRefundsForDash } from './refunds.js'
 
 let dashCharts = {}
 /** @type {Set<string>|null} null = not initialized yet (treat as all) */
@@ -1119,6 +1120,14 @@ export async function renderDashboard() {
     ? Math.round(salesMetrics.totalApproved / salesMetrics.salesCount)
     : 0
   document.getElementById('dash-avg-sale').textContent = formatNumber(avgSale) + ' ریال'
+
+  const refundsTotal = sumCompletedRefundsForDash({
+    dateFromNum,
+    dateToNum,
+    advisorPhones: selectedAdvisorPhones
+  })
+  const refundsEl = document.getElementById('dash-refunds-total')
+  if (refundsEl) refundsEl.textContent = formatNumber(refundsTotal) + ' ریال'
 
   try {
     renderTransferMetrics(dateFromNum, dateToNum)

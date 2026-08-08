@@ -72,6 +72,7 @@ let data = {
   followups: [],
   ownershipTransfers: [],
   ownershipTransferAcks: [],
+  refunds: [],
   convertedCount: 0,
   destinationBanks: [],
   productCatalog: [],
@@ -347,12 +348,13 @@ async function fetchAllRows(table, opts = {}) {
 }
 
 export async function loadData() {
-  const [customersRes, followupsRes, settingsRes, transfersRes, acksRes] = await Promise.all([
+  const [customersRes, followupsRes, settingsRes, transfersRes, acksRes, refundsRes] = await Promise.all([
     fetchAllRows('customers', { orderCol: 'id' }),
     fetchAllRows('followups', { orderCol: 'id' }),
     supabase.from('app_settings').select('*'),
     fetchAllRows('ownership_transfers', { orderCol: 'id', ascending: true }),
-    fetchAllRows('ownership_transfer_acks', { orderCol: 'id' })
+    fetchAllRows('ownership_transfer_acks', { orderCol: 'id' }),
+    fetchAllRows('refunds', { orderCol: 'id', ascending: false })
   ])
 
   const errors = []
@@ -366,6 +368,10 @@ export async function loadData() {
   // ownership_transfer_acks may be missing before migration 009 — treat as empty
   if (acksRes.error && !/ownership_transfer_acks|does not exist|relation/i.test(acksRes.error.message || '')) {
     errors.push('تأیید انتقال‌ها: ' + acksRes.error.message)
+  }
+  // refunds may be missing before migration 016 — treat as empty
+  if (refundsRes.error && !/refunds|does not exist|relation/i.test(refundsRes.error.message || '')) {
+    errors.push('عودت‌ها: ' + refundsRes.error.message)
   }
 
   if (errors.length > 0) {
@@ -384,6 +390,10 @@ export async function loadData() {
   data.ownershipTransferAcks = (acksRes.error || !acksRes.data)
     ? []
     : acksRes.data.map(mapOwnershipTransferAckRow)
+
+  data.refunds = (refundsRes.error || !refundsRes.data)
+    ? []
+    : refundsRes.data.map(mapRefundRow)
 
   // Load settings (convertedCount, destination banks, …)
   const settings = {}
@@ -697,12 +707,23 @@ function saleLineHasApprovedPayment(line) {
   })
 }
 
-/** Ownership from paid sale or accounting-approved gift. */
+/** Ownership from paid sale or accounting-approved gift (excludes fully refunded lines). */
 function saleLineGrantsOwnership(line) {
   if (isGiftSaleLine(line)) {
     return (line.giftAccountingStatus || 'pending') === 'approved'
   }
-  return saleLineHasApprovedPayment(line)
+  if (!saleLineHasApprovedPayment(line)) return false
+  // Inline check to avoid circular import with utils.isProductFullyRefunded
+  const refunds = Array.isArray(line.refunds) ? line.refunds : []
+  const refunded = refunds.reduce((s, r) => s + (parseFloat(r?.amount) || 0), 0)
+  if (refunded <= 0) return true
+  const payments = Array.isArray(line.payments) ? line.payments : []
+  const approved = payments.reduce((s, p) => {
+    const st = p?.paymentStatus || 'approved'
+    if (st !== 'approved') return s
+    return s + (parseFloat(p.amount) || 0)
+  }, 0)
+  return refunded < approved - 0.5
 }
 
 /**
@@ -1459,6 +1480,110 @@ export async function saveOwnershipTransferToDB(transfer) {
   }
   if (error) throw new Error('خطا در ثبت انتقال: ' + error.message)
   return mapOwnershipTransferRow(inserted)
+}
+
+// ============================================
+// Refunds (عودت وجه)
+// ============================================
+
+export function mapRefundRow(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    productIndex: row.product_index ?? 0,
+    productName: row.product_name || '',
+    paymentId: row.payment_id || '',
+    amount: parseFloat(row.amount) || 0,
+    isFullPayment: !!row.is_full_payment,
+    status: row.status || 'requested',
+    note: row.note || '',
+    rejectReason: row.reject_reason || '',
+    advisorPhone: row.advisor_phone || '',
+    customerName: row.customer_name || '',
+    createdByPhone: row.created_by_phone || '',
+    createdByName: row.created_by_name || '',
+    updatedByPhone: row.updated_by_phone || '',
+    completedByPhone: row.completed_by_phone || '',
+    completedAt: row.completed_at || null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null
+  }
+}
+
+export function getRefunds() {
+  return Array.isArray(data.refunds) ? data.refunds : []
+}
+
+function upsertRefundInCache(mapped) {
+  if (!Array.isArray(data.refunds)) data.refunds = []
+  const idx = data.refunds.findIndex(r => String(r.id) === String(mapped.id))
+  if (idx >= 0) data.refunds[idx] = mapped
+  else data.refunds.unshift(mapped)
+  return mapped
+}
+
+export async function saveRefundToDB(refund) {
+  const row = {
+    customer_id: refund.customerId,
+    product_index: refund.productIndex ?? 0,
+    product_name: refund.productName || '',
+    payment_id: refund.paymentId,
+    amount: refund.amount,
+    is_full_payment: !!refund.isFullPayment,
+    status: refund.status || 'requested',
+    note: refund.note || '',
+    reject_reason: refund.rejectReason || '',
+    advisor_phone: refund.advisorPhone || null,
+    customer_name: refund.customerName || '',
+    created_by_phone: refund.createdByPhone || null,
+    created_by_name: refund.createdByName || null,
+    updated_by_phone: refund.updatedByPhone || null,
+    completed_by_phone: refund.completedByPhone || null,
+    completed_at: refund.completedAt || null
+  }
+  const { data: inserted, error } = await supabase
+    .from('refunds')
+    .insert(row)
+    .select('*')
+    .single()
+  if (error) throw new Error('خطا در ثبت عودت: ' + error.message)
+  bumpLocalWrite()
+  return upsertRefundInCache(mapRefundRow(inserted))
+}
+
+export async function updateRefundInDB(id, patch) {
+  const row = { updated_at: new Date().toISOString() }
+  if (patch.status != null) row.status = patch.status
+  if (patch.note != null) row.note = patch.note
+  if (patch.rejectReason != null) row.reject_reason = patch.rejectReason
+  if (patch.updatedByPhone != null) row.updated_by_phone = patch.updatedByPhone
+  if (patch.completedByPhone != null) row.completed_by_phone = patch.completedByPhone
+  if (Object.prototype.hasOwnProperty.call(patch, 'completedAt')) {
+    row.completed_at = patch.completedAt
+  }
+  const { data: updated, error } = await supabase
+    .from('refunds')
+    .update(row)
+    .eq('id', id)
+    .select('*')
+    .single()
+  if (error) throw new Error('خطا در به‌روزرسانی عودت: ' + error.message)
+  bumpLocalWrite()
+  return upsertRefundInCache(mapRefundRow(updated))
+}
+
+export async function refreshRefundsFromDB() {
+  const res = await fetchAllRows('refunds', { orderCol: 'id', ascending: false })
+  if (res.error) {
+    if (/refunds|does not exist|relation/i.test(res.error.message || '')) {
+      data.refunds = []
+      return data.refunds
+    }
+    throw new Error('خطا در بارگذاری عودت‌ها: ' + res.error.message)
+  }
+  data.refunds = (res.data || []).map(mapRefundRow)
+  return data.refunds
 }
 
 // ============================================

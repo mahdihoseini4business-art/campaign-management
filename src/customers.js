@@ -22,7 +22,8 @@ import {
   isPaymentFilled, isPaymentPristineDraft, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS,
   computeCustomerLrfm, isProductCountableInSales, soldAtTimePart, formatSoldAt24h, normalizeTimeTo24h,
   CUSTOMER_LEVELS, formatCustomerLevel, parseCustomerLevel, resolveCustomerLevel, syncCustomerLevel,
-  applyProfitSnapshotToProduct, isGiftSale, getGiftAccountingStatus
+  applyProfitSnapshotToProduct, isGiftSale, getGiftAccountingStatus,
+  getPaymentRefundBadge, getProductRefundBadge
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -1141,7 +1142,7 @@ function normalizeDetailTab(tab) {
 function inferDetailTabFromApp() {
   const sheet = document.querySelector('.sheet.active')
   const id = sheet?.id || ''
-  if (id === 'sheet-sales' || id === 'sheet-accounting' || id === 'sheet-shipments') return 'sales'
+  if (id === 'sheet-sales' || id === 'sheet-accounting' || id === 'sheet-shipments' || id === 'sheet-refunds') return 'sales'
   if (id === 'sheet-followups') return 'followups'
   return 'info'
 }
@@ -2380,6 +2381,10 @@ export async function renderProducts(customerId, users = null) {
       const badge = pristineDraft
         ? `<span class="payment-badge payment-draft">در حال تکمیل…</span>`
         : `<span class="payment-badge payment-${payStatus}">${escapeHtml(payLabel)}</span>${rejectHint}`
+      const refundBadgeInfo = getPaymentRefundBadge(p, pay)
+      const refundBadgeHtml = refundBadgeInfo
+        ? ` <span class="refund-badge${refundBadgeInfo.kind === 'partial' ? ' is-partial' : ''}">${escapeHtml(refundBadgeInfo.label)}</span>`
+        : ''
       const unapprovePayBtn = canUnapprovePay
         ? `<button type="button" class="btn btn-sm btn-unapprove" title="لغو تأیید حسابداری" onclick="app.requestUnapprovePayment('${escapeAttr(customerId)}', ${i}, ${pi})">لغو تأیید</button>`
         : ''
@@ -2394,7 +2399,7 @@ export async function renderProducts(customerId, users = null) {
         <div class="sale-payment-head">
           <span class="payment-index">واریز ${pi + 1}${sellerHtml}</span>
           <div class="sale-payment-head-actions">
-            ${badge}
+            ${badge}${refundBadgeHtml}
             ${unapprovePayBtn}
             ${editPayReasonBtn}
             ${canDeletePay ? `<button type="button" class="btn-remove-product" title="حذف واریز" onclick="app.removeProductPayment('${escapeAttr(customerId)}', ${i}, ${pi})">✕</button>` : ''}
@@ -2496,6 +2501,10 @@ export async function renderProducts(customerId, users = null) {
     const summaryHtml = `
       <div class="sale-summary" aria-label="خلاصه مالی">
         <span class="product-status-label" style="color:${statusColor};">${escapeHtml(statusLabel)}</span>
+        ${(() => {
+          const rb = getProductRefundBadge(p)
+          return rb ? `<span class="refund-badge${rb.kind === 'partial' ? ' is-partial' : ''}">${escapeHtml(rb.label)}</span>` : ''
+        })()}
         <span class="product-meta">پرداخت‌شده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${approved ? formatNumber(approved) : '۰'}</b></span>
         ${balance > 0 && !closed ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : `<span class="product-meta">مانده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">۰</b></span>`}
         ${closedBadge}

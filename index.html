@@ -537,6 +537,7 @@
     <button class="tab" role="tab" id="tab-products" aria-controls="sheet-products" aria-selected="false" tabindex="-1" data-perm="products_matrix" onclick="app.switchTab('products', this)">محصولات</button>
     <button class="tab" role="tab" id="tab-accounting" aria-controls="sheet-accounting" aria-selected="false" tabindex="-1" data-perm="accounting" onclick="app.switchTab('accounting', this)">حسابداری</button>
     <button class="tab" role="tab" id="tab-shipments" aria-controls="sheet-shipments" aria-selected="false" tabindex="-1" onclick="app.switchTab('shipments', this)">ارسالی‌ها</button>
+    <button class="tab" role="tab" id="tab-refunds" aria-controls="sheet-refunds" aria-selected="false" tabindex="-1" onclick="app.switchTab('refunds', this)">عودت وجه</button>
   </div>
 
   <!-- شیت داشبورد -->
@@ -591,6 +592,7 @@
       <div class="stat-card"><div class="label">سود ناخالص</div><div class="value" style="color:var(--success);font-size:20px;" id="dash-sales-gross">۰</div></div>
       <div class="stat-card"><div class="label">در انتظار تأیید حسابداری</div><div class="value" style="color:var(--warning);font-size:20px;" id="dash-sales-pending">۰</div></div>
       <div class="stat-card"><div class="label">میانگین مبلغ فروش</div><div class="value" style="color:var(--text)" id="dash-avg-sale">۰</div></div>
+      <div class="stat-card"><div class="label">عودتی‌ها</div><div class="value" style="color:var(--danger);font-size:20px;" id="dash-refunds-total">۰</div></div>
     </div>
 
     <div class="chart-grid">
@@ -1057,6 +1059,65 @@
     </div>
     <div class="pagination" id="shipmentsPagination"></div>
   </div>
+
+  <!-- شیت عودت وجه -->
+  <div class="sheet" id="sheet-refunds" role="tabpanel" aria-labelledby="tab-refunds" hidden>
+    <div class="stats">
+      <div class="stat-card"><div class="label">درخواست عودت</div><div class="value" style="color:var(--warning)" id="stat-refund-requested">0</div></div>
+      <div class="stat-card"><div class="label">در انتظار عودت</div><div class="value" style="color:var(--secondary)" id="stat-refund-awaiting">0</div></div>
+      <div class="stat-card"><div class="label">عودت انجام‌شده</div><div class="value" style="color:var(--success)" id="stat-refund-completed">0</div></div>
+      <div class="stat-card"><div class="label">رد شده</div><div class="value" style="color:var(--danger)" id="stat-refund-rejected">0</div></div>
+    </div>
+
+    <div class="toolbar" style="gap:10px;flex-wrap:wrap;">
+      <div class="refunds-filters accounting-filters">
+        <button type="button" class="btn refunds-view-btn accounting-filter-btn active" data-view="kanban" onclick="app.setRefundsView('kanban')">کانبان</button>
+        <button type="button" class="btn refunds-view-btn accounting-filter-btn" data-view="rejected" onclick="app.setRefundsView('rejected')">ردشده‌ها</button>
+      </div>
+      <input type="text" class="search-box" placeholder="جستجو (مشتری، محصول، کارشناس)..." id="searchRefunds" oninput="app.renderRefunds()">
+      <button type="button" class="btn btn-primary" id="refundCreateBtn" data-perm="refunds_manage" onclick="app.openRefundWizard()">درخواست عودت</button>
+    </div>
+
+    <div id="refundsKanban" class="refund-kanban">
+      <div class="refund-col-wrap">
+        <div class="refund-col-head">درخواست عودت <span id="refundColCount-requested">0</span></div>
+        <div class="refund-col" id="refundCol-requested"
+          ondragover="app.onRefundDragOver(event)" ondragleave="app.onRefundDragLeave(event)"
+          ondrop="app.onRefundDrop(event, 'requested')"></div>
+      </div>
+      <div class="refund-col-wrap">
+        <div class="refund-col-head">در انتظار عودت <span id="refundColCount-awaiting">0</span></div>
+        <div class="refund-col" id="refundCol-awaiting"
+          ondragover="app.onRefundDragOver(event)" ondragleave="app.onRefundDragLeave(event)"
+          ondrop="app.onRefundDrop(event, 'awaiting')"></div>
+      </div>
+      <div class="refund-col-wrap">
+        <div class="refund-col-head">عودت انجام‌شده <span id="refundColCount-completed">0</span></div>
+        <div class="refund-col" id="refundCol-completed"
+          ondragover="app.onRefundDragOver(event)" ondragleave="app.onRefundDragLeave(event)"
+          ondrop="app.onRefundDrop(event, 'completed')"></div>
+      </div>
+    </div>
+
+    <div id="refundsRejectedWrap" hidden>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>مشتری</th>
+              <th>محصول</th>
+              <th>مبلغ</th>
+              <th>کارشناس</th>
+              <th>دلیل رد</th>
+              <th>ثبت‌کننده</th>
+              <th>تاریخ</th>
+            </tr>
+          </thead>
+          <tbody id="refundsRejectedBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- مودال انجام پیگیری -->
@@ -1320,6 +1381,78 @@
     <div class="modal-footer">
       <button class="btn" onclick="app.closeConfirmShipmentModal()">انصراف</button>
       <button class="btn btn-primary" onclick="app.confirmShipment()">تأیید ارسال</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال ویزارد عودت وجه -->
+<div class="modal-overlay" id="refundWizardModal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header">
+      <h2>درخواست عودت وجه</h2>
+      <button class="modal-close" onclick="app.closeRefundWizard()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="refund-wizard-steps" aria-hidden="true">
+        <span class="refund-wizard-step-dot active" data-step="1">۱</span>
+        <span class="refund-wizard-step-dot" data-step="2">۲</span>
+        <span class="refund-wizard-step-dot" data-step="3">۳</span>
+      </div>
+      <div id="refundWizardStep1">
+        <div class="form-group">
+          <label>انتخاب مشتری</label>
+          <input type="text" class="form-input" id="refundWizardCustomerSearch" placeholder="جستجوی نام، شماره، کد..." oninput="app.onRefundWizardCustomerSearch()">
+        </div>
+        <div id="refundWizardCustomerList" class="refund-wizard-list"></div>
+      </div>
+      <div id="refundWizardStep2" hidden>
+        <div class="form-group">
+          <label>انتخاب محصول و واریز</label>
+          <div id="refundWizardPaymentList" class="refund-wizard-list"></div>
+        </div>
+        <div id="refundWizardAmountWrap" hidden>
+          <div class="form-group">
+            <label for="refundWizardAmount">مبلغ عودت</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="text" class="form-input" id="refundWizardAmount" inputmode="numeric" placeholder="مبلغ" oninput="app.formatInput(this)">
+              <button type="button" class="btn" onclick="app.setRefundWizardFullAmount()">کل مبلغ</button>
+            </div>
+            <div class="sales-chart-hint" id="refundWizardAmountMax" style="margin-top:6px;"></div>
+          </div>
+        </div>
+      </div>
+      <div id="refundWizardStep3" hidden>
+        <div id="refundWizardSummary" class="refund-wizard-summary"></div>
+        <div class="form-group" style="margin-top:12px;">
+          <label for="refundWizardNote">یادداشت (اختیاری)</label>
+          <textarea class="form-textarea" id="refundWizardNote" placeholder="توضیح کوتاه..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn" onclick="app.closeRefundWizard()">انصراف</button>
+      <button type="button" class="btn" id="refundWizardBackBtn" style="display:none;" onclick="app.refundWizardBack()">قبلی</button>
+      <button type="button" class="btn btn-primary" id="refundWizardNextBtn" onclick="app.refundWizardNext()">بعدی</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال رد عودت -->
+<div class="modal-overlay" id="rejectRefundModal">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-header">
+      <h2>رد درخواست عودت</h2>
+      <button class="modal-close" onclick="app.closeRejectRefundModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="rejectRefundReason">دلیل رد <span class="required">*</span></label>
+        <textarea class="form-textarea" id="rejectRefundReason" placeholder="دلیل رد درخواست..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn" onclick="app.closeRejectRefundModal()">انصراف</button>
+      <button type="button" class="btn btn-danger" onclick="app.confirmRejectRefund()">رد درخواست</button>
     </div>
   </div>
 </div>

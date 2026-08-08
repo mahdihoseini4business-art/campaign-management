@@ -8,6 +8,12 @@ import { renderSales, sortSales } from './sales.js'
 import { renderProductMatrix, cycleProductMatrixFilter, clearProductMatrixFilters, toggleProductMatrixAdvisorDropdown, toggleProductMatrixAdvisor, toggleProductMatrixAdvisorsAll } from './product-matrix.js'
 import { renderAccounting, setAccountingFilter, approvePayment, approveGiftSale, requestUnapprovePayment, requestUnapproveGiftSale, openRejectPaymentModal, openEditRejectReasonModal, closeRejectPaymentModal, confirmRejectPayment, onRejectReasonPresetClick, onRejectReasonInput } from './accounting.js'
 import { renderShipments, setShipmentsFilter, openConfirmShipmentModal, closeConfirmShipmentModal, confirmShipment } from './shipments.js'
+import {
+  renderRefunds, setRefundsView, openRefundWizard, closeRefundWizard, refundWizardBack, refundWizardNext,
+  onRefundWizardCustomerSearch, selectRefundWizardCustomer, selectRefundWizardPayment, setRefundWizardFullAmount,
+  onRefundDragStart, onRefundDragEnd, onRefundDragOver, onRefundDragLeave, onRefundDrop,
+  openRejectRefundModal, closeRejectRefundModal, confirmRejectRefund
+} from './refunds.js'
 import { renderDashboard, toggleDashSection, applyDashFilter, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareMetricChange, onProductChartMetricChange, onDashTargetsScopeChange, renderSalesTargetBand, onAovMaControlsChange } from './dashboard.js'
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners } from './import-export.js'
 import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection, openBulkTransferModal, closeBulkTransferModal, confirmBulkTransfer, refreshCustomerBulkOptions, updateBulkTransferPreview, filterBulkTransferOptions } from './bulk.js'
@@ -47,8 +53,10 @@ import { setPage } from './pagination.js'
 // ============================================
 
 function switchTab(tab, el) {
-  const permMap = { dashboard: 'dashboard', customers: 'customers_view', followups: 'followups_view', sales: 'sales_view', products: 'products_matrix', accounting: 'accounting' }
-  if (permMap[tab] && !hasPermission(permMap[tab])) {
+  const permMap = { dashboard: 'dashboard', customers: 'customers_view', followups: 'followups_view', sales: 'sales_view', products: 'products_matrix', accounting: 'accounting', refunds: 'refunds_view' }
+  if (tab === 'refunds') {
+    if (!hasPermission('refunds_view') && !hasPermission('refunds_manage')) return
+  } else if (permMap[tab] && !hasPermission(permMap[tab])) {
     return
   }
 
@@ -88,6 +96,7 @@ function switchTab(tab, el) {
   if (tab === 'products') renderProductMatrix()
   if (tab === 'accounting') renderAccounting()
   if (tab === 'shipments') renderShipments()
+  if (tab === 'refunds') renderRefunds()
 }
 
 /** Rightmost accessible tab in RTL = first visible tab in DOM order. */
@@ -370,6 +379,24 @@ const app = {
   setAccountingFilter,
   renderShipments,
   setShipmentsFilter,
+  renderRefunds,
+  setRefundsView,
+  openRefundWizard,
+  closeRefundWizard,
+  refundWizardBack,
+  refundWizardNext,
+  onRefundWizardCustomerSearch,
+  selectRefundWizardCustomer,
+  selectRefundWizardPayment,
+  setRefundWizardFullAmount,
+  onRefundDragStart,
+  onRefundDragEnd,
+  onRefundDragOver,
+  onRefundDragLeave,
+  onRefundDrop,
+  openRejectRefundModal,
+  closeRejectRefundModal,
+  confirmRejectRefund,
   goToPage,
   approvePayment,
   approveGiftSale,

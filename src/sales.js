@@ -13,7 +13,7 @@ import {
   productHasRejectedPayment, getProductPayments, getPaymentEntryStatus,
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
   normalizePhone, userDisplayName, formatTeamFilterLabel,
-  getCompletedSaleEconomics, isGiftSale
+  getCompletedSaleEconomics, isGiftSale, getProductRefundBadge
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSalesTargetBand } from './dashboard.js'
@@ -65,7 +65,8 @@ export function getAllSales() {
           paymentRejectReason: getLatestRejectReason(p),
           hasRejected: productHasRejectedPayment(p),
           countable: isProductCountableInSales(p),
-          isGift: isGiftSale(p)
+          isGift: isGiftSale(p),
+          refundBadge: getProductRefundBadge(p)
         })
       })
     }
@@ -274,6 +275,9 @@ function renderSalesRows(allSales) {
     if (s.hasRejected && s.paymentRejectReason) {
       paymentHtml += `<div class="payment-reject-reason" title="${escapeAttr(s.paymentRejectReason)}">${escapeHtml(s.paymentRejectReason)}</div>`
     }
+    if (s.refundBadge) {
+      paymentHtml += ` <span class="refund-badge${s.refundBadge.kind === 'partial' ? ' is-partial' : ''}">${escapeHtml(s.refundBadge.label)}</span>`
+    }
 
     return `<tr class="clickable-row ${rowClass}" onclick="app.onCustomerRowClick(event, '${escapeAttr(s.customerId)}')">
       ${selectCell}
@@ -288,7 +292,7 @@ function renderSalesRows(allSales) {
       })()}</td>
       <td style="font-size:12px;">${escapeHtml(s.advisor) || '—'}</td>
       <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${escapeHtml(pLabel)}</span></td>
-      <td>${escapeHtml(s.productName)}${s.isGift ? ' <span class="gift-badge">هدیه</span>' : ''}</td>
+      <td>${escapeHtml(s.productName)}${s.isGift ? ' <span class="gift-badge">هدیه</span>' : ''}${s.refundBadge ? ` <span class="refund-badge${s.refundBadge.kind === 'partial' ? ' is-partial' : ''}">${escapeHtml(s.refundBadge.label)}</span>` : ''}</td>
       <td><span style="color:${statusColor};font-weight:600;">${escapeHtml(s.status)}</span></td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.isGift ? '<span class="gift-badge">۰</span>' : (s.price > 0 ? formatNumber(s.price) + ' ریال' : '—')}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.isGift ? '—' : (s.deposit > 0 ? formatNumber(s.deposit) + ' ریال' : '—')}</td>
