@@ -1,6 +1,6 @@
 // ============================================
 // Hybrid live sync: Realtime patch + polling backup
-// Customers/followups: single-row patch on postgres_changes
+// Customers/followups/refunds: single-row patch on postgres_changes
 // Polling/visibility: full loadData()
 // ============================================
 
@@ -10,7 +10,9 @@ import {
   upsertCustomerInCache,
   removeCustomerFromCache,
   upsertFollowupInCache,
-  removeFollowupFromCache
+  removeFollowupFromCache,
+  upsertRefundInCache,
+  removeRefundFromCache
 } from './data.js'
 import { refreshNotifications, updateNotificationBadge } from './notifications.js'
 import { renderCustomers, updateStats } from './customers.js'
@@ -218,6 +220,33 @@ function onRemoteNotifChange() {
   scheduleNotifRefresh('realtime')
 }
 
+function onRefundChange(payload) {
+  if (isLocalWriteSuppressed()) return
+  const event = payload?.eventType || payload?.event
+  try {
+    if (event === 'DELETE') {
+      const id = payload.old?.id
+      if (id == null || !removeRefundFromCache(id)) {
+        fallbackFullCore('refund-delete')
+        return
+      }
+      lastSyncAt = Date.now()
+      scheduleUiRefresh()
+      return
+    }
+    const row = payload.new
+    if (row?.id == null || !upsertRefundInCache(row)) {
+      fallbackFullCore('refund-upsert')
+      return
+    }
+    lastSyncAt = Date.now()
+    scheduleUiRefresh()
+  } catch (e) {
+    console.error('onRefundChange error:', e)
+    fallbackFullCore('refund-error')
+  }
+}
+
 async function ensureRealtimeChannel() {
   if (channel) return channel
 
@@ -225,6 +254,7 @@ async function ensureRealtimeChannel() {
     .channel(CHANNEL_NAME)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, onCustomerChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'followups' }, onFollowupChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'refunds' }, onRefundChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, onRemoteNotifChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'notification_reads' }, onRemoteNotifChange)
 

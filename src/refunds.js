@@ -18,7 +18,11 @@ import { renderProducts } from './customers.js'
 
 let refundsView = 'kanban' // kanban | rejected
 let dragRefundId = null
+let dragClearTimer = null
 let rejectTargetId = null
+let wizardBusy = false
+let rejectBusy = false
+const movingRefundIds = new Set()
 
 const wizard = {
   step: 1,
@@ -65,6 +69,7 @@ export function getPaymentRefundableRemaining(customerId, product, payment, excl
   const completed = getPaymentRefundedAmount(product, payment.id)
   const active = getRefunds()
     .filter(r =>
+      String(r.customerId) === String(customerId) &&
       String(r.paymentId) === String(payment.id) &&
       (r.status === REFUND_STATUS.requested || r.status === REFUND_STATUS.awaiting) &&
       (excludeRefundId == null || String(r.id) !== String(excludeRefundId))
@@ -169,6 +174,15 @@ function renderRefundCard(r, canManage) {
   const rejectBtn = canManage && (r.status === REFUND_STATUS.requested || r.status === REFUND_STATUS.awaiting)
     ? `<button type="button" class="btn btn-sm btn-reject" onclick="event.stopPropagation();app.openRejectRefundModal(${Number(r.id)})">رد</button>`
     : ''
+  const statusSelect = canManage && r.status !== REFUND_STATUS.completed
+    ? `<select class="refund-status-select" aria-label="تغییر وضعیت"
+        onclick="event.stopPropagation()"
+        onchange="app.onRefundStatusSelect(event, ${Number(r.id)})">
+        ${REFUND_KANBAN_STATUSES.map(st =>
+          `<option value="${st}"${r.status === st ? ' selected' : ''}>${escapeHtml(REFUND_STATUS_LABELS[st] || st)}</option>`
+        ).join('')}
+      </select>`
+    : ''
   return `
     <div class="refund-card${draggable ? ' is-draggable' : ''}"
       data-refund-id="${escapeAttr(String(r.id))}"
@@ -180,7 +194,7 @@ function renderRefundCard(r, canManage) {
       <div class="refund-card-amount">${formatNumber(r.amount)} ریال</div>
       <div class="refund-card-meta">کارشناس: ${escapeHtml(resolveAdvisorName(r.advisorPhone))}</div>
       ${r.note ? `<div class="refund-card-note">${escapeHtml(r.note)}</div>` : ''}
-      <div class="refund-card-actions">${rejectBtn}</div>
+      <div class="refund-card-actions">${statusSelect}${rejectBtn}</div>
     </div>`
 }
 
@@ -204,21 +218,38 @@ function renderRejectedTable(items) {
   `).join('')
 }
 
+function setKanbanDragging(on) {
+  document.getElementById('refundsKanban')?.classList.toggle('is-dragging-refund', !!on)
+}
+
 export function onRefundDragStart(event, id) {
   if (!canManageRefunds()) {
     event.preventDefault()
     return
   }
+  if (dragClearTimer) {
+    clearTimeout(dragClearTimer)
+    dragClearTimer = null
+  }
   dragRefundId = id
-  event.dataTransfer?.setData('text/plain', String(id))
-  event.dataTransfer.effectAllowed = 'move'
+  try {
+    event.dataTransfer?.setData('text/plain', String(id))
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+  } catch (_) { /* ignore */ }
   event.currentTarget?.classList.add('is-dragging')
+  setKanbanDragging(true)
 }
 
 export function onRefundDragEnd(event) {
   event.currentTarget?.classList.remove('is-dragging')
   document.querySelectorAll('.refund-col').forEach(c => c.classList.remove('is-drop-target'))
-  dragRefundId = null
+  setKanbanDragging(false)
+  // dragend can race ahead of drop; keep id for one tick
+  if (dragClearTimer) clearTimeout(dragClearTimer)
+  dragClearTimer = setTimeout(() => {
+    dragRefundId = null
+    dragClearTimer = null
+  }, 0)
 }
 
 export function onRefundDragOver(event) {
@@ -230,30 +261,55 @@ export function onRefundDragOver(event) {
 }
 
 export function onRefundDragLeave(event) {
-  event.currentTarget?.classList.remove('is-drop-target')
+  const col = event.currentTarget
+  const related = event.relatedTarget
+  if (related && col?.contains(related)) return
+  col?.classList.remove('is-drop-target')
 }
 
 export async function onRefundDrop(event, status) {
   event.preventDefault()
   event.currentTarget?.classList.remove('is-drop-target')
+  setKanbanDragging(false)
   if (!requirePermission('refunds_manage')) return
   if (!REFUND_KANBAN_STATUSES.includes(status)) return
-  const id = dragRefundId || Number(event.dataTransfer?.getData('text/plain'))
+  const fromTransfer = event.dataTransfer?.getData('text/plain')
+  const id = dragRefundId || (fromTransfer ? Number(fromTransfer) : 0)
   dragRefundId = null
+  if (dragClearTimer) {
+    clearTimeout(dragClearTimer)
+    dragClearTimer = null
+  }
   if (!id) return
   await moveRefundStatus(id, status)
 }
 
-async function moveRefundStatus(id, nextStatus, extra = {}) {
-  const refund = getRefunds().find(r => String(r.id) === String(id))
-  if (!refund) {
-    showToast('درخواست عودت پیدا نشد')
+export async function onRefundStatusSelect(event, id) {
+  if (!requirePermission('refunds_manage')) {
+    renderRefunds()
     return
   }
-  if (refund.status === nextStatus && !extra.rejectReason) return
+  const status = event.target?.value
+  if (!REFUND_KANBAN_STATUSES.includes(status)) {
+    renderRefunds()
+    return
+  }
+  const ok = await moveRefundStatus(id, status)
+  if (!ok) renderRefunds()
+}
+
+async function moveRefundStatus(id, nextStatus, extra = {}) {
+  const key = String(id)
+  if (movingRefundIds.has(key)) return false
+  const refund = getRefunds().find(r => String(r.id) === key)
+  if (!refund) {
+    showToast('درخواست عودت پیدا نشد')
+    return false
+  }
+  if (refund.status === nextStatus && !extra.rejectReason) return true
   if (refund.status === REFUND_STATUS.completed && nextStatus !== REFUND_STATUS.completed) {
     showToast('عودت انجام‌شده قابل جابجایی نیست')
-    return
+    return false
   }
 
   const user = getCurrentUser()
@@ -272,29 +328,43 @@ async function moveRefundStatus(id, nextStatus, extra = {}) {
     patch.completedByPhone = null
   }
 
+  movingRefundIds.add(key)
+  let wroteBack = false
   try {
-    const updated = await updateRefundInDB(id, patch)
     if (nextStatus === REFUND_STATUS.completed) {
-      await writebackCompletedRefund(updated)
-    } else if (refund.status === REFUND_STATUS.completed) {
+      await writebackCompletedRefund({ ...refund, ...patch })
+      wroteBack = true
+    }
+    await updateRefundInDB(id, patch)
+    if (refund.status === REFUND_STATUS.completed && nextStatus !== REFUND_STATUS.completed) {
       await undoCompletedRefundWriteback(refund)
     }
     showToast(nextStatus === REFUND_STATUS.rejected ? 'درخواست رد شد' : 'وضعیت به‌روز شد')
     renderRefunds()
+    return true
   } catch (e) {
     console.error(e)
+    if (wroteBack) {
+      try { await undoCompletedRefundWriteback(refund) } catch (_) { /* ignore */ }
+    }
     showToast(e.message || 'خطا در به‌روزرسانی')
+    renderRefunds()
+    return false
+  } finally {
+    movingRefundIds.delete(key)
   }
 }
 
 async function writebackCompletedRefund(refund) {
   const data = getData()
   const customer = data.customers.find(c => c.id === refund.customerId)
-  if (!customer) return
+  if (!customer) throw new Error('مشتری برای ثبت عودت پیدا نشد')
   const found = findProductAndPayment(customer, refund.paymentId, refund.productIndex)
-  if (!found) {
-    showToast('محصول/واریز برای ثبت عودت پیدا نشد')
-    return
+  if (!found) throw new Error('محصول/واریز برای ثبت عودت پیدا نشد')
+  const remaining = getPaymentRefundableRemaining(customer.id, found.product, found.payment, refund.id)
+  const amount = parseFloat(refund.amount) || 0
+  if (amount > remaining + 0.5) {
+    throw new Error(`مبلغ عودت از سقف قابل عودت (${formatNumber(remaining)} ریال) بیشتر است`)
   }
   applyCompletedRefundToProduct(found.product, refund)
   syncProductStatus(found.product)
@@ -309,7 +379,9 @@ async function undoCompletedRefundWriteback(refund) {
   const found = findProductAndPayment(customer, refund.paymentId, refund.productIndex)
   if (!found) return
   removeCompletedRefundFromProduct(found.product, refund.id)
+  syncProductStatus(found.product)
   await saveCustomerToDB(customer)
+  try { renderProducts(customer.id) } catch (_) { /* ignore */ }
 }
 
 export function openRejectRefundModal(id) {
@@ -327,6 +399,7 @@ export function closeRejectRefundModal() {
 }
 
 export async function confirmRejectRefund() {
+  if (rejectBusy) return
   if (!requirePermission('refunds_manage')) return
   const reason = toEnDigits(document.getElementById('rejectRefundReason')?.value || '').trim()
   if (!reason) {
@@ -336,7 +409,12 @@ export async function confirmRejectRefund() {
   const id = rejectTargetId
   closeRejectRefundModal()
   if (!id) return
-  await moveRefundStatus(id, REFUND_STATUS.rejected, { rejectReason: reason })
+  rejectBusy = true
+  try {
+    await moveRefundStatus(id, REFUND_STATUS.rejected, { rejectReason: reason })
+  } finally {
+    rejectBusy = false
+  }
 }
 
 // ============================================
@@ -345,6 +423,7 @@ export async function confirmRejectRefund() {
 
 export function openRefundWizard() {
   if (!requirePermission('refunds_manage')) return
+  wizardBusy = false
   wizard.step = 1
   wizard.customerId = null
   wizard.productIndex = null
@@ -353,6 +432,12 @@ export function openRefundWizard() {
   wizard.note = ''
   const search = document.getElementById('refundWizardCustomerSearch')
   if (search) search.value = ''
+  const amountEl = document.getElementById('refundWizardAmount')
+  if (amountEl) amountEl.value = ''
+  const noteEl = document.getElementById('refundWizardNote')
+  if (noteEl) noteEl.value = ''
+  const nextBtn = document.getElementById('refundWizardNextBtn')
+  if (nextBtn) nextBtn.disabled = false
   document.getElementById('refundWizardModal')?.classList.add('active')
   renderRefundWizard()
 }
@@ -467,7 +552,7 @@ function renderWizardStep2() {
     return
   }
   list.innerHTML = rows.map(({ product, productIndex, pay, remaining }) => {
-    const selected = wizard.paymentId === pay.id
+    const selected = String(wizard.paymentId) === String(pay.id)
     return `<button type="button" class="refund-wizard-pick${selected ? ' selected' : ''}"
       onclick="app.selectRefundWizardPayment(${productIndex}, '${escapeAttr(pay.id)}')">
       <strong>${escapeHtml(coerceProductName(product.name) || '—')}</strong>
@@ -479,7 +564,7 @@ function renderWizardStep2() {
   const amountWrap = document.getElementById('refundWizardAmountWrap')
   if (amountWrap) amountWrap.hidden = !wizard.paymentId
   if (wizard.paymentId) {
-    const row = rows.find(r => r.pay.id === wizard.paymentId)
+    const row = rows.find(r => String(r.pay.id) === String(wizard.paymentId))
     const max = row?.remaining || 0
     const amountEl = document.getElementById('refundWizardAmount')
     if (amountEl && !amountEl.value) {
@@ -495,7 +580,7 @@ export function selectRefundWizardPayment(productIndex, paymentId) {
   wizard.paymentId = paymentId
   const customer = getData().customers.find(c => c.id === wizard.customerId)
   const product = customer?.products?.[productIndex]
-  const pay = product && getProductPayments(product).find(p => p.id === paymentId)
+  const pay = product && getProductPayments(product).find(p => String(p.id) === String(paymentId))
   const remaining = product && pay ? getPaymentRefundableRemaining(customer.id, product, pay) : 0
   wizard.amount = remaining
   const amountEl = document.getElementById('refundWizardAmount')
@@ -506,7 +591,7 @@ export function selectRefundWizardPayment(productIndex, paymentId) {
 export function setRefundWizardFullAmount() {
   const customer = getData().customers.find(c => c.id === wizard.customerId)
   const product = customer?.products?.[wizard.productIndex]
-  const pay = product && getProductPayments(product).find(p => p.id === wizard.paymentId)
+  const pay = product && getProductPayments(product).find(p => String(p.id) === String(wizard.paymentId))
   if (!product || !pay) return
   const remaining = getPaymentRefundableRemaining(customer.id, product, pay)
   wizard.amount = remaining
@@ -524,7 +609,7 @@ function renderWizardStep3() {
   if (!box) return
   const customer = getData().customers.find(c => c.id === wizard.customerId)
   const product = customer?.products?.[wizard.productIndex]
-  const pay = product && getProductPayments(product).find(p => p.id === wizard.paymentId)
+  const pay = product && getProductPayments(product).find(p => String(p.id) === String(wizard.paymentId))
   const amountEl = document.getElementById('refundWizardAmount')
   if (amountEl) wizard.amount = parseAmountInput(amountEl.value)
   const noteEl = document.getElementById('refundWizardNote')
@@ -546,6 +631,7 @@ export function refundWizardBack() {
 }
 
 export async function refundWizardNext() {
+  if (wizardBusy) return
   if (wizard.step === 1) {
     if (!wizard.customerId) {
       showToast('مشتری را انتخاب کنید')
@@ -564,7 +650,7 @@ export async function refundWizardNext() {
     wizard.amount = parseAmountInput(amountEl?.value)
     const customer = getData().customers.find(c => c.id === wizard.customerId)
     const product = customer?.products?.[wizard.productIndex]
-    const pay = product && getProductPayments(product).find(p => p.id === wizard.paymentId)
+    const pay = product && getProductPayments(product).find(p => String(p.id) === String(wizard.paymentId))
     const max = product && pay ? getPaymentRefundableRemaining(customer.id, product, pay) : 0
     if (wizard.amount <= 0) {
       showToast('مبلغ عودت نامعتبر است')
@@ -582,15 +668,24 @@ export async function refundWizardNext() {
   await submitRefundWizard()
 }
 
+function setWizardBusyUi(busy) {
+  const nextBtn = document.getElementById('refundWizardNextBtn')
+  if (nextBtn) nextBtn.disabled = !!busy
+}
+
 async function submitRefundWizard() {
   if (!requirePermission('refunds_manage')) return
   const customer = getData().customers.find(c => c.id === wizard.customerId)
   const product = customer?.products?.[wizard.productIndex]
-  const pay = product && getProductPayments(product).find(p => p.id === wizard.paymentId)
+  const pay = product && getProductPayments(product).find(p => String(p.id) === String(wizard.paymentId))
   if (!customer || !product || !pay) {
     showToast('اطلاعات ناقص است')
     return
   }
+  const amountEl = document.getElementById('refundWizardAmount')
+  if (amountEl) wizard.amount = parseAmountInput(amountEl.value)
+  const noteEl = document.getElementById('refundWizardNote')
+  wizard.note = noteEl ? noteEl.value.trim() : (wizard.note || '')
   const max = getPaymentRefundableRemaining(customer.id, product, pay)
   const amount = wizard.amount
   if (amount <= 0 || amount > max) {
@@ -600,6 +695,9 @@ async function submitRefundWizard() {
   const user = getCurrentUser()
   const phone = normalizePhone(user?.phone || '')
   const approved = parseFloat(pay.amount) || 0
+  const alreadyRefunded = getPaymentRefundedAmount(product, pay.id)
+  wizardBusy = true
+  setWizardBusyUi(true)
   try {
     await saveRefundToDB({
       customerId: customer.id,
@@ -607,7 +705,7 @@ async function submitRefundWizard() {
       productName: coerceProductName(product.name),
       paymentId: pay.id,
       amount,
-      isFullPayment: amount >= approved - 0.5,
+      isFullPayment: (alreadyRefunded + amount) >= approved - 0.5,
       status: REFUND_STATUS.requested,
       note: wizard.note || '',
       advisorPhone: getSaleRegistrantPhone(product, pay, customer),
@@ -621,6 +719,9 @@ async function submitRefundWizard() {
   } catch (e) {
     console.error(e)
     showToast(e.message || 'خطا در ثبت درخواست')
+  } finally {
+    wizardBusy = false
+    setWizardBusyUi(false)
   }
 }
 

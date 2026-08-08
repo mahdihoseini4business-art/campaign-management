@@ -1515,12 +1515,28 @@ export function getRefunds() {
   return Array.isArray(data.refunds) ? data.refunds : []
 }
 
-function upsertRefundInCache(mapped) {
+function upsertMappedRefund(mapped) {
+  if (!mapped?.id && mapped?.id !== 0) return null
   if (!Array.isArray(data.refunds)) data.refunds = []
   const idx = data.refunds.findIndex(r => String(r.id) === String(mapped.id))
   if (idx >= 0) data.refunds[idx] = mapped
   else data.refunds.unshift(mapped)
   return mapped
+}
+
+/** Insert or replace a refund from a DB row. Returns false if row invalid. */
+export function upsertRefundInCache(dbRow) {
+  const mapped = mapRefundRow(dbRow)
+  if (!mapped?.id && mapped?.id !== 0) return false
+  upsertMappedRefund(mapped)
+  return true
+}
+
+export function removeRefundFromCache(id) {
+  if (id == null || id === '') return false
+  const before = (data.refunds || []).length
+  data.refunds = (data.refunds || []).filter(r => String(r.id) !== String(id))
+  return (data.refunds || []).length !== before
 }
 
 export async function saveRefundToDB(refund) {
@@ -1549,7 +1565,7 @@ export async function saveRefundToDB(refund) {
     .single()
   if (error) throw new Error('خطا در ثبت عودت: ' + error.message)
   bumpLocalWrite()
-  return upsertRefundInCache(mapRefundRow(inserted))
+  return upsertMappedRefund(mapRefundRow(inserted))
 }
 
 export async function updateRefundInDB(id, patch) {
@@ -1570,7 +1586,7 @@ export async function updateRefundInDB(id, patch) {
     .single()
   if (error) throw new Error('خطا در به‌روزرسانی عودت: ' + error.message)
   bumpLocalWrite()
-  return upsertRefundInCache(mapRefundRow(updated))
+  return upsertMappedRefund(mapRefundRow(updated))
 }
 
 export async function refreshRefundsFromDB() {

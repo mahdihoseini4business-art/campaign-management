@@ -1795,6 +1795,10 @@
     background: rgba(13, 110, 253, 0.06);
   }
 
+  .refund-kanban.is-dragging-refund .refund-card {
+    pointer-events: none;
+  }
+
   .refund-col-empty {
     text-align: center;
     color: var(--text-muted);
@@ -1849,6 +1853,20 @@
     margin-top: 8px;
     display: flex;
     justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .refund-status-select {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    height: 32px;
+    border: 1px solid var(--border, #dee2e6);
+    border-radius: 8px;
+    background: #fff;
+    padding: 0 8px;
   }
 
   .refund-wizard-steps {

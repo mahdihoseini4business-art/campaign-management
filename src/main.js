@@ -12,7 +12,7 @@ import {
   renderRefunds, setRefundsView, openRefundWizard, closeRefundWizard, refundWizardBack, refundWizardNext,
   onRefundWizardCustomerSearch, selectRefundWizardCustomer, selectRefundWizardPayment, setRefundWizardFullAmount,
   onRefundDragStart, onRefundDragEnd, onRefundDragOver, onRefundDragLeave, onRefundDrop,
-  openRejectRefundModal, closeRejectRefundModal, confirmRejectRefund
+  onRefundStatusSelect, openRejectRefundModal, closeRejectRefundModal, confirmRejectRefund
 } from './refunds.js'
 import { renderDashboard, toggleDashSection, applyDashFilter, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareMetricChange, onProductChartMetricChange, onDashTargetsScopeChange, renderSalesTargetBand, onAovMaControlsChange } from './dashboard.js'
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners } from './import-export.js'
@@ -394,6 +394,7 @@ const app = {
   onRefundDragOver,
   onRefundDragLeave,
   onRefundDrop,
+  onRefundStatusSelect,
   openRejectRefundModal,
   closeRejectRefundModal,
   confirmRejectRefund,
