@@ -5,7 +5,7 @@ import {
   ensureProductPayments, syncProductStatus, getPaymentEntryStatus,
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, formatSoldAt24h, matchesTabSearch,
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
-  isGiftSale, getGiftAccountingStatus
+  isGiftSale, getGiftAccountingStatus, getShipmentStatus, SHIPMENT_STATUS
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSales } from './sales.js'
@@ -281,6 +281,149 @@ export async function approveGiftSale(customerId, productIndex) {
   } catch (e) {
     console.error('approveGiftSale error:', e)
     showToast('خطا در تأیید هدیه')
+  }
+}
+
+function openAccountingConfirm(message, onConfirm, confirmLabel = 'تأیید') {
+  const msg = document.getElementById('deleteMessage')
+  const btn = document.getElementById('deleteConfirmBtn')
+  const header = document.querySelector('#deleteModal .modal-header h2')
+  const modal = document.getElementById('deleteModal')
+  if (!msg || !btn || !modal) {
+    if (window.confirm(message)) onConfirm()
+    return
+  }
+  const prevLabel = btn.textContent
+  const prevHeader = header?.textContent
+  msg.textContent = message
+  btn.textContent = confirmLabel
+  if (header) header.textContent = 'تأیید'
+  const restore = () => {
+    btn.textContent = prevLabel
+    if (header && prevHeader) header.textContent = prevHeader
+  }
+  btn.onclick = () => {
+    modal.classList.remove('active')
+    restore()
+    onConfirm()
+  }
+  const cancelBtn = document.querySelector('#deleteModal .modal-footer .btn:not(.btn-danger)')
+  const closeBtn = document.querySelector('#deleteModal .modal-close')
+  if (cancelBtn) cancelBtn.addEventListener('click', restore, { once: true })
+  if (closeBtn) closeBtn.addEventListener('click', restore, { once: true })
+  modal.classList.add('active')
+}
+
+function productShippedWarning(product) {
+  if (getShipmentStatus(product) !== SHIPMENT_STATUS.shipped) return ''
+  return ' توجه: این محصول قبلاً ارسال شده و وضعیت ارسال تغییر نمی‌کند.'
+}
+
+export function requestUnapprovePayment(customerId, productIndex, paymentIndex) {
+  if (!requirePermission('accounting')) return
+  const data = getData()
+  const customer = data.customers.find(c => c.id === customerId)
+  const product = customer?.products?.[productIndex]
+  if (!product) {
+    showToast('واریزی یافت نشد')
+    return
+  }
+  ensureProductPayments(product)
+  const pay = product.payments?.[paymentIndex]
+  if (!pay || getPaymentEntryStatus(pay) !== PAYMENT_STATUS.approved) {
+    showToast('این واریز تأییدشده نیست')
+    return
+  }
+  const message =
+    'این واریز از حالت تأیید خارج شود؟ کارشناس می‌تواند دوباره اطلاعات را ویرایش کند.' +
+    productShippedWarning(product)
+  openAccountingConfirm(message, () => {
+    unapprovePayment(customerId, productIndex, paymentIndex)
+  }, 'لغو تأیید')
+}
+
+export function requestUnapproveGiftSale(customerId, productIndex) {
+  if (!requirePermission('accounting')) return
+  const data = getData()
+  const customer = data.customers.find(c => c.id === customerId)
+  const product = customer?.products?.[productIndex]
+  if (!product || !isGiftSale(product)) {
+    showToast('هدیه یافت نشد')
+    return
+  }
+  if (getGiftAccountingStatus(product) !== PAYMENT_STATUS.approved) {
+    showToast('این هدیه تأییدشده نیست')
+    return
+  }
+  const message =
+    'این هدیه از حالت تأیید خارج شود؟ دوباره در صف حسابداری قرار می‌گیرد.' +
+    productShippedWarning(product)
+  openAccountingConfirm(message, () => {
+    unapproveGiftSale(customerId, productIndex)
+  }, 'لغو تأیید')
+}
+
+export async function unapprovePayment(customerId, productIndex, paymentIndex) {
+  if (!requirePermission('accounting')) return
+  try {
+    const data = getData()
+    const customer = data.customers.find(c => c.id === customerId)
+    const product = customer?.products?.[productIndex]
+    if (!product) {
+      showToast('واریزی یافت نشد')
+      return
+    }
+    ensureProductPayments(product)
+    const pay = product.payments?.[paymentIndex]
+    if (!pay || getPaymentEntryStatus(pay) !== PAYMENT_STATUS.approved) {
+      showToast('این واریز تأییدشده نیست')
+      return
+    }
+    const ok = await updatePaymentEntry(customerId, productIndex, paymentIndex, {
+      paymentStatus: PAYMENT_STATUS.pending,
+      paymentRejectReason: '',
+      paymentReviewedAt: '',
+      paymentReviewedBy: ''
+    })
+    if (!ok) return
+    showToast('تأیید واریز لغو شد — قابل ویرایش است')
+    renderAccounting()
+    renderSales()
+    try { renderProducts(customerId) } catch (_) { /* detail panel may be closed */ }
+  } catch (e) {
+    console.error('unapprovePayment error:', e)
+    showToast('خطا در لغو تأیید واریزی')
+  }
+}
+
+export async function unapproveGiftSale(customerId, productIndex) {
+  if (!requirePermission('accounting')) return
+  try {
+    const data = getData()
+    const customer = data.customers.find(c => c.id === customerId)
+    const product = customer?.products?.[productIndex]
+    if (!product || !isGiftSale(product)) {
+      showToast('هدیه یافت نشد')
+      return
+    }
+    if (getGiftAccountingStatus(product) !== PAYMENT_STATUS.approved) {
+      showToast('این هدیه تأییدشده نیست')
+      return
+    }
+    const ok = await updateGiftSale(customerId, productIndex, {
+      giftAccountingStatus: PAYMENT_STATUS.pending,
+      giftRejectReason: '',
+      giftReviewedAt: '',
+      giftReviewedBy: ''
+    })
+    if (!ok) return
+    showToast('تأیید هدیه لغو شد')
+    renderAccounting()
+    renderSales()
+    try { renderProducts(customerId) } catch (_) { /* detail panel may be closed */ }
+  } catch (e) {
+    console.error('unapproveGiftSale error:', e)
+    showToast('خطا در لغو تأیید هدیه')
   }
 }
 

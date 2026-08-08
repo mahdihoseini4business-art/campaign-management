@@ -2169,6 +2169,21 @@
     border-color: var(--danger);
   }
 
+  .btn-unapprove {
+    background: #fff;
+    color: #9a3412;
+    border-color: #ea580c;
+  }
+
+  .btn-unapprove:hover {
+    background: #fff7ed;
+  }
+
+  .sale-payment-head-actions .btn-unapprove,
+  .sale-summary .btn-unapprove {
+    white-space: nowrap;
+  }
+
   .btn-sm {
     font-size: 12px;
     padding: 4px 10px;

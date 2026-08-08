@@ -2312,6 +2312,10 @@ export async function renderProducts(customerId, users = null) {
       const rejectHint = (giftStatus === 'rejected' && p.giftRejectReason)
         ? `<span class="payment-reject-reason" title="${escapeAttr(p.giftRejectReason)}">${escapeHtml(p.giftRejectReason)}</span>`
         : ''
+      const canUnapproveGift = hasPermission('accounting') && giftStatus === PAYMENT_STATUS.approved
+      const unapproveGiftBtn = canUnapproveGift
+        ? `<button type="button" class="btn btn-sm btn-unapprove" onclick="app.requestUnapproveGiftSale('${escapeAttr(customerId)}', ${i})">لغو تأیید</button>`
+        : ''
       const sellerName = resolveUserNameByPhone(p.soldByPhone, usersList)
       const sellerHtml = sellerName
         ? `<span class="record-author" title="ثبت‌کننده هدیه">👤 ${escapeHtml(sellerName)}</span>`
@@ -2348,6 +2352,7 @@ export async function renderProducts(customerId, users = null) {
             <span class="product-status-label" style="color:${statusColor};">${escapeHtml(statusLabel)}</span>
             <span class="payment-badge payment-${giftStatus}">${escapeHtml(giftStatusLabel)}</span>
             ${rejectHint}
+            ${unapproveGiftBtn}
             ${closedBadge}
           </div>
         </section>
@@ -2361,6 +2366,7 @@ export async function renderProducts(customerId, users = null) {
         ? `<span class="payment-reject-reason" title="${escapeAttr(pay.paymentRejectReason)}">${escapeHtml(pay.paymentRejectReason)}</span>`
         : ''
       const canDeletePay = canEdit && payStatus !== PAYMENT_STATUS.approved
+      const canUnapprovePay = hasPermission('accounting') && payStatus === PAYMENT_STATUS.approved
       const payEditable = canEdit && payStatus !== PAYMENT_STATUS.approved
       const filled = isPaymentFilled(pay)
       const pristineDraft = payEditable && isPaymentPristineDraft(pay)
@@ -2368,6 +2374,9 @@ export async function renderProducts(customerId, users = null) {
       const badge = pristineDraft
         ? `<span class="payment-badge payment-draft">در حال تکمیل…</span>`
         : `<span class="payment-badge payment-${payStatus}">${escapeHtml(payLabel)}</span>${rejectHint}`
+      const unapprovePayBtn = canUnapprovePay
+        ? `<button type="button" class="btn btn-sm btn-unapprove" title="لغو تأیید حسابداری" onclick="app.requestUnapprovePayment('${escapeAttr(customerId)}', ${i}, ${pi})">لغو تأیید</button>`
+        : ''
       const sellerName = resolveUserNameByPhone(pay.soldByPhone || p.soldByPhone, usersList)
       const sellerHtml = sellerName
         ? `<span class="record-author" title="ثبت‌کننده فروش">👤 ${escapeHtml(sellerName)}</span>`
@@ -2377,6 +2386,7 @@ export async function renderProducts(customerId, users = null) {
           <span class="payment-index">واریز ${pi + 1}${sellerHtml}</span>
           <div class="sale-payment-head-actions">
             ${badge}
+            ${unapprovePayBtn}
             ${canDeletePay ? `<button type="button" class="btn-remove-product" title="حذف واریز" onclick="app.removeProductPayment('${escapeAttr(customerId)}', ${i}, ${pi})">✕</button>` : ''}
           </div>
         </div>`
