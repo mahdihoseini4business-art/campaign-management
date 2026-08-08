@@ -395,19 +395,14 @@ export async function renderSales() {
       return salesSortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa')
     })
   } else {
+    // Newest payment/sale datetime first (Jalali date + 24h time)
     allSales.sort((a, b) => {
-      const aRej = a.hasRejected ? 0 : 1
-      const bRej = b.hasRejected ? 0 : 1
-      if (aRej !== bRej) return aRej - bRej
-
-      const aPending = a.status === 'بیعانه' && a.settlementDate
-      const bPending = b.status === 'بیعانه' && b.settlementDate
-      const aNum = aPending ? jalaliToNum(a.settlementDate) : 99999999
-      const bNum = bPending ? jalaliToNum(b.settlementDate) : 99999999
-      const aOverdue = aPending && aNum < getTodayJalaliNum() ? 0 : 1
-      const bOverdue = bPending && bNum < getTodayJalaliNum() ? 0 : 1
-      if (aOverdue !== bOverdue) return aOverdue - bOverdue
-      return aNum - bNum
+      const ka = formatSoldAt24h(a.soldAt) || ''
+      const kb = formatSoldAt24h(b.soldAt) || ''
+      if (!ka && !kb) return 0
+      if (!ka) return 1
+      if (!kb) return -1
+      return kb.localeCompare(ka, 'en')
     })
   }
 
