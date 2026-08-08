@@ -4267,8 +4267,10 @@
     flex-wrap: wrap;
   }
 
-  .toolbar-filter-grid {
-    display: contents;
+  @media (min-width: 769px) {
+    .toolbar-filter-grid {
+      display: contents;
+    }
   }
 
   .dash-user-filter-count {
