@@ -1034,15 +1034,24 @@ export async function renderDashboard() {
     return matchesSelectedUsers(c)
   }
 
+  const hasDateFilter = !!(dateFrom || dateTo)
+
   const scopedCustomers = data.customers.filter(c => {
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false
     return inUserScope(c)
   })
 
-  document.getElementById('dash-total-customers').textContent = scopedCustomers.length
-  document.getElementById('dash-total-leads').textContent = scopedCustomers.filter(c => c.id.startsWith('LD')).length
-  document.getElementById('dash-total-cs').textContent = scopedCustomers.filter(c => c.id.startsWith('CS')).length
+  function customerCreatedInRange(c) {
+    if (!hasDateFilter) return true
+    return inDateRange(gregorianToJalaliStr(c.createdAt))
+  }
+
+  const datedCustomers = scopedCustomers.filter(customerCreatedInRange)
+
+  document.getElementById('dash-total-customers').textContent = datedCustomers.length
+  document.getElementById('dash-total-leads').textContent = datedCustomers.filter(c => c.id.startsWith('LD')).length
+  document.getElementById('dash-total-cs').textContent = datedCustomers.filter(c => c.id.startsWith('CS')).length
   const visibleFollowups = data.followups.filter(f => {
     const customer = data.customers.find(c => c.id === f.customerId)
     if (!customer || !inUserScope(customer)) return false
@@ -1064,7 +1073,6 @@ export async function renderDashboard() {
   document.getElementById('dash-followups-completed').textContent = completedFollowups
   document.getElementById('dash-followups-upcoming').textContent = upcomingFollowups
 
-  // Fixed snapshot cards — ignore date filter (always current operational state)
   let overdueList = []
   let soonList = []
   let setCount = 0
@@ -1072,14 +1080,16 @@ export async function renderDashboard() {
 
   scopedCustomers.forEach(c => {
     if (c.nextFollowupDate) {
-      const dNum = jalaliToNum(c.nextFollowupDate)
+      const nextDate = jalaliDatePart(c.nextFollowupDate)
+      if (hasDateFilter && !inDateRange(nextDate)) return
+      const dNum = jalaliToNum(nextDate)
       // Overdue/soon lists: managers only see subordinates
       if (matchesFollowupMonitorScope(c)) {
         if (dNum < todayNum) overdueList.push(c)
         else if (dNum <= in3DaysNum) soonList.push(c)
       }
       setCount++
-    } else {
+    } else if (customerCreatedInRange(c)) {
       noSetCount++
     }
   })
@@ -1091,10 +1101,9 @@ export async function renderDashboard() {
   document.getElementById('dash-overdue-badge').textContent = overdueList.length
   document.getElementById('dash-soon-badge').textContent = soonList.length
 
-  const activeCustomers = scopedCustomers.filter(c => c.products && c.products.length > 0)
+  const activeCustomers = datedCustomers.filter(c => c.products && c.products.length > 0)
   document.getElementById('dash-active-customers').textContent = activeCustomers.length
 
-  const hasDateFilter = !!(dateFrom || dateTo)
   const salesMetrics = computeDashSalesMetrics(hasDateFilter, inDateRange)
 
   document.getElementById('dash-sales-count').textContent = salesMetrics.salesCount
@@ -1216,11 +1225,13 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     const statusColors = {}
     for (const s of getStatuses()) statusColors[s.key] = s.bgColor
 
+    const hasDateFilter = dateFromNum > 0 || dateToNum < 99999999
     const custStatusCounts = {}
     data.customers.forEach(c => {
       if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
       if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
       if (!inUserScope(c)) return
+      if (hasDateFilter && !inChartDateRange(gregorianToJalaliStr(c.createdAt))) return
       const label = statusLabels[c.status] || c.status
       custStatusCounts[label] = (custStatusCounts[label] || 0) + 1
     })
