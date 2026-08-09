@@ -826,7 +826,7 @@
 
   .accounting-bank-balances {
     margin: -8px 0 24px;
-    background: var(--surface, #fff);
+    background: transparent;
     border: 1px solid var(--border, #e9ecef);
     border-radius: var(--radius);
     overflow: hidden;
@@ -909,6 +909,7 @@
     display: grid;
     grid-template-rows: 1fr;
     transition: grid-template-rows 0.3s ease;
+    background: transparent;
   }
 
   .accounting-bank-balances.is-collapsed .accounting-bank-balances-body {
