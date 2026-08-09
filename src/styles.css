@@ -826,15 +826,66 @@
 
   .accounting-bank-balances {
     margin: -8px 0 24px;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e9ecef);
+    border-radius: var(--radius);
+    overflow: hidden;
   }
 
-  .accounting-bank-balances-head {
+  .accounting-bank-balances-toggle {
     display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px 16px;
-    margin-bottom: 10px;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    margin: 0;
+    padding: 12px 16px;
+    border: 0;
+    background: var(--bg-soft, #f8f9fa);
+    color: inherit;
+    font: inherit;
+    text-align: right;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .accounting-bank-balances-toggle:hover {
+    background: #eef1f4;
+  }
+
+  .accounting-bank-balances-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  .accounting-bank-balances:not(.is-collapsed) .accounting-bank-balances-toggle {
+    border-bottom: 1px solid var(--border, #e9ecef);
+  }
+
+  .accounting-bank-balances-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 10px;
+    line-height: 1;
+    transition: transform 0.3s ease;
+  }
+
+  .accounting-bank-balances.is-collapsed .accounting-bank-balances-chevron {
+    transform: rotate(-90deg);
+  }
+
+  .accounting-bank-balances-toggle-main {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .accounting-bank-balances-title {
     font-size: 13px;
     font-weight: 700;
     color: var(--text);
@@ -844,6 +895,35 @@
     font-size: 11px;
     font-weight: 500;
     color: var(--text-muted);
+  }
+
+  .accounting-bank-balances-toggle-meta {
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: 'Vazirmatn', sans-serif;
+    color: var(--accent);
+  }
+
+  .accounting-bank-balances-body {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.3s ease;
+  }
+
+  .accounting-bank-balances.is-collapsed .accounting-bank-balances-body {
+    grid-template-rows: 0fr;
+  }
+
+  .accounting-bank-balances-body-inner {
+    min-height: 0;
+    overflow: hidden;
+    padding: 12px 14px;
+  }
+
+  .accounting-bank-balances.is-collapsed .accounting-bank-balances-body-inner {
+    padding-top: 0;
+    padding-bottom: 0;
   }
 
   .accounting-bank-balances-grid {
@@ -861,10 +941,7 @@
   .accounting-bank-balances-empty {
     font-size: 12px;
     color: var(--text-muted);
-    padding: 12px 14px;
-    background: var(--bg-soft, #f8f9fa);
-    border: 1px dashed var(--border, #e9ecef);
-    border-radius: var(--radius);
+    padding: 4px 0;
   }
 
   .dashboard-stats {

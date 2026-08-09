@@ -15,6 +15,8 @@ import { broadcastPaymentRejectToast } from './sale-toasts.js'
 
 let accountingFilter = 'pending' // pending | approved | rejected | gifts
 let rejectTarget = null // { customerId, productIndex, paymentIndex, isGift, mode }
+/** Destination-bank balances accordion (collapsed by default). */
+let bankBalancesExpanded = false
 
 export const PRESET_REJECT_REASONS = [
   'رسید فیک',
@@ -130,29 +132,41 @@ function renderAccountingBankBalances(allPayments) {
     rows.push({ bank, amount })
   }
 
-  if (!rows.length) {
-    wrap.innerHTML = `
-      <div class="accounting-bank-balances-head">
-        <span>موجودی کارت‌ها · ${escapeHtml(month.label)}</span>
-        <span class="accounting-bank-balances-note">از اول هر ماه شمسی صفر می‌شود</span>
-      </div>
-      <div class="accounting-bank-balances-empty">بانک مقصدی در تنظیمات تعریف نشده است</div>`
-    return
-  }
+  const monthTotal = rows.reduce((s, r) => s + (r.amount || 0), 0)
+  const collapsed = !bankBalancesExpanded
+  const bodyInner = !rows.length
+    ? `<div class="accounting-bank-balances-empty">بانک مقصدی در تنظیمات تعریف نشده است</div>`
+    : `<div class="accounting-bank-balances-grid">
+        ${rows.map(r => `
+          <div class="stat-card accounting-bank-card">
+            <div class="label">${escapeHtml(r.bank)}</div>
+            <div class="value" style="color:var(--accent);font-size:18px;direction:ltr;">${formatNumber(r.amount)} <span style="font-size:12px;font-weight:600;">ریال</span></div>
+          </div>
+        `).join('')}
+      </div>`
 
+  wrap.classList.toggle('is-collapsed', collapsed)
   wrap.innerHTML = `
-    <div class="accounting-bank-balances-head">
-      <span>موجودی کارت‌ها · ${escapeHtml(month.label)}</span>
-      <span class="accounting-bank-balances-note">واریزهای تأییدشده این ماه · از اول ماه شمسی صفر می‌شود</span>
-    </div>
-    <div class="accounting-bank-balances-grid">
-      ${rows.map(r => `
-        <div class="stat-card accounting-bank-card">
-          <div class="label">${escapeHtml(r.bank)}</div>
-          <div class="value" style="color:var(--accent);font-size:18px;direction:ltr;">${formatNumber(r.amount)} <span style="font-size:12px;font-weight:600;">ریال</span></div>
-        </div>
-      `).join('')}
+    <button type="button" class="accounting-bank-balances-toggle" onclick="app.toggleAccountingBankBalances()" aria-expanded="${collapsed ? 'false' : 'true'}">
+      <span class="accounting-bank-balances-chevron" aria-hidden="true">▼</span>
+      <span class="accounting-bank-balances-toggle-main">
+        <span class="accounting-bank-balances-title">بانک‌های مقصد · ${escapeHtml(month.label)}</span>
+        <span class="accounting-bank-balances-note">واریزهای تأییدشده این ماه · از اول ماه شمسی صفر می‌شود</span>
+      </span>
+      <span class="accounting-bank-balances-toggle-meta" style="direction:ltr;">${formatNumber(monthTotal)} ریال</span>
+    </button>
+    <div class="accounting-bank-balances-body">
+      <div class="accounting-bank-balances-body-inner">${bodyInner}</div>
     </div>`
+}
+
+export function toggleAccountingBankBalances() {
+  bankBalancesExpanded = !bankBalancesExpanded
+  const wrap = document.getElementById('accountingBankBalances')
+  if (!wrap) return
+  wrap.classList.toggle('is-collapsed', !bankBalancesExpanded)
+  const btn = wrap.querySelector('.accounting-bank-balances-toggle')
+  if (btn) btn.setAttribute('aria-expanded', bankBalancesExpanded ? 'true' : 'false')
 }
 
 export function renderAccounting() {
