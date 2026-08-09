@@ -582,41 +582,43 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
   )
 
   // MA3: for day view = 3-day MA of daily bars; for week/month = MA of last 3 buckets
-  const maWindow = 3
-  const maValues = movingAverageSeries(totals, maWindow)
-  const maLabel = timeframe === 'day'
-    ? 'میانگین متحرک ۳روزه'
-    : 'میانگین متحرک ۳دوره'
+  const showMa3 = !!document.getElementById('salesChartShowMa3')?.checked
+  const datasets = [
+    {
+      type: 'bar',
+      label: 'مبلغ فروش',
+      data: totals,
+      backgroundColor: '#0d6efd',
+      borderRadius: 6,
+      maxBarThickness: 48,
+      order: 2
+    }
+  ]
+  if (showMa3) {
+    const maLabel = timeframe === 'day'
+      ? 'میانگین متحرک ۳روزه'
+      : 'میانگین متحرک ۳دوره'
+    datasets.push({
+      type: 'line',
+      label: maLabel,
+      data: movingAverageSeries(totals, 3),
+      borderColor: '#dc3545',
+      backgroundColor: 'transparent',
+      borderWidth: 2.5,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      pointBackgroundColor: '#dc3545',
+      tension: 0.25,
+      spanGaps: true,
+      order: 1
+    })
+  }
 
   dashCharts.salesTimeline = new Chart(canvas, {
     type: 'bar',
     data: {
       labels: buckets.map(b => b.label),
-      datasets: [
-        {
-          type: 'bar',
-          label: 'مبلغ فروش',
-          data: totals,
-          backgroundColor: '#0d6efd',
-          borderRadius: 6,
-          maxBarThickness: 48,
-          order: 2
-        },
-        {
-          type: 'line',
-          label: maLabel,
-          data: maValues,
-          borderColor: '#dc3545',
-          backgroundColor: 'transparent',
-          borderWidth: 2.5,
-          pointRadius: 3,
-          pointHoverRadius: 5,
-          pointBackgroundColor: '#dc3545',
-          tension: 0.25,
-          spanGaps: true,
-          order: 1
-        }
-      ]
+      datasets
     },
     options: {
       responsive: true,
@@ -624,7 +626,7 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: {
-          display: true,
+          display: showMa3,
           position: 'bottom',
           labels: { font: { family: 'Vazirmatn', size: 11 }, boxWidth: 12 }
         },

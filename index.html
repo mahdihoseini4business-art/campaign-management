@@ -669,6 +669,10 @@
             <option value="week">هر میله = ۱ هفته</option>
             <option value="month">هر میله = ۱ ماه</option>
           </select>
+          <label class="sales-chart-ma-toggle" for="salesChartShowMa3">
+            <input type="checkbox" id="salesChartShowMa3" checked onchange="app.applySalesChart()">
+            <span>میانگین متحرک ۳روزه</span>
+          </label>
           <button type="button" class="btn btn-primary" onclick="app.applySalesChart()">اعمال نمودار</button>
         </div>
         <div class="sales-chart-hint" id="salesChartHint"></div>

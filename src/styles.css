@@ -4869,6 +4869,24 @@
     margin-bottom: 8px;
   }
 
+  .sales-chart-ma-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+
+  .sales-chart-ma-toggle input {
+    width: 15px;
+    height: 15px;
+    accent-color: #dc3545;
+    cursor: pointer;
+  }
+
   .sales-chart-hint {
     font-size: 12px;
     color: var(--text-muted);
