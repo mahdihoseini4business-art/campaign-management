@@ -540,6 +540,16 @@ function computeDashSalesMetrics(hasDateFilter, inDateRange) {
   }
 }
 
+function movingAverageSeries(values, windowSize = 3) {
+  const w = Math.max(1, Math.floor(windowSize) || 1)
+  return values.map((_, i) => {
+    if (i < w - 1) return null
+    let sum = 0
+    for (let j = i - w + 1; j <= i; j++) sum += Number(values[j]) || 0
+    return Math.round(sum / w)
+  })
+}
+
 function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
   const canvas = document.getElementById('chartSalesTimeline')
   if (!canvas) return
@@ -571,26 +581,59 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
     }
   )
 
+  // MA3: for day view = 3-day MA of daily bars; for week/month = MA of last 3 buckets
+  const maWindow = 3
+  const maValues = movingAverageSeries(totals, maWindow)
+  const maLabel = timeframe === 'day'
+    ? 'میانگین متحرک ۳روزه'
+    : 'میانگین متحرک ۳دوره'
+
   dashCharts.salesTimeline = new Chart(canvas, {
     type: 'bar',
     data: {
       labels: buckets.map(b => b.label),
-      datasets: [{
-        label: 'مبلغ فروش',
-        data: totals,
-        backgroundColor: '#0d6efd',
-        borderRadius: 6,
-        maxBarThickness: 48
-      }]
+      datasets: [
+        {
+          type: 'bar',
+          label: 'مبلغ فروش',
+          data: totals,
+          backgroundColor: '#0d6efd',
+          borderRadius: 6,
+          maxBarThickness: 48,
+          order: 2
+        },
+        {
+          type: 'line',
+          label: maLabel,
+          data: maValues,
+          borderColor: '#dc3545',
+          backgroundColor: 'transparent',
+          borderWidth: 2.5,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          pointBackgroundColor: '#dc3545',
+          tension: 0.25,
+          spanGaps: true,
+          order: 1
+        }
+      ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: { font: { family: 'Vazirmatn', size: 11 }, boxWidth: 12 }
+        },
         tooltip: {
           callbacks: {
-            label: (ctx) => formatNumber(ctx.raw || 0) + ' ریال'
+            label: (ctx) => {
+              if (ctx.raw == null) return `${ctx.dataset.label}: —`
+              return `${ctx.dataset.label}: ${formatNumber(ctx.raw)} ریال`
+            }
           }
         }
       },
@@ -1335,15 +1378,43 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
 
     const salesCanvas = document.getElementById('chartSalesStatus')
     if (salesCanvas) {
+      const salesStatusEntries = [
+        { label: 'تکمیل', value: salesStatus['تکمیل'] || 0, color: '#198754' },
+        { label: 'بیعانه', value: salesStatus['بیعانه'] || 0, color: '#ffc107' }
+      ]
+      const salesStatusTotal = salesStatusEntries.reduce((s, e) => s + e.value, 0)
+      const salesStatusWithPct = salesStatusEntries.map(e => ({
+        ...e,
+        pct: salesStatusTotal > 0 ? Math.round((e.value / salesStatusTotal) * 100) : 0
+      }))
       dashCharts.salesStatus = new Chart(salesCanvas, {
         type: 'pie',
         data: {
-          labels: Object.keys(salesStatus),
-          datasets: [{ data: Object.values(salesStatus), backgroundColor: ['#198754', '#ffc107'], borderWidth: 2, borderColor: '#fff' }]
+          labels: salesStatusWithPct.map(e => `${e.label} ${formatNumber(e.pct)}٪`),
+          datasets: [{
+            data: salesStatusWithPct.map(e => e.value),
+            backgroundColor: salesStatusWithPct.map(e => e.color),
+            borderWidth: 2,
+            borderColor: '#fff'
+          }]
         },
         options: {
           ...CHART_RESPONSIVE,
-          plugins: { legend: { position: 'bottom', labels: { font: CHART_FONT } } }
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { font: CHART_FONT, boxWidth: 12, padding: 10 }
+            },
+            tooltip: {
+              callbacks: {
+                label(ctx) {
+                  const item = salesStatusWithPct[ctx.dataIndex]
+                  if (!item) return ''
+                  return ` ${item.label}: ${formatNumber(item.value)} ریال (${formatNumber(item.pct)}٪)`
+                }
+              }
+            }
+          }
         }
       })
     }
