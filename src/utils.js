@@ -373,6 +373,32 @@ export function getTodayJalaliStr() {
   return `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.day).padStart(2, '0')}`
 }
 
+export const JALALI_MONTH_NAMES = [
+  'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+  'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'
+]
+
+/** Current Jalali calendar month (Tehran), for monthly rollups that reset on month start. */
+export function getCurrentJalaliMonthInfo() {
+  const today = getTodayJalaliStr()
+  const parts = today.split('/')
+  const year = Number(parts[0]) || 0
+  const month = Number(parts[1]) || 0
+  const monthName = JALALI_MONTH_NAMES[month - 1] || String(month)
+  return {
+    year,
+    month,
+    prefix: `${parts[0]}/${parts[1]}`,
+    label: `${monthName} ${parts[0] || ''}`
+  }
+}
+
+export function isInJalaliMonth(dateStr, monthPrefix) {
+  if (!monthPrefix) return false
+  const part = jalaliDatePart(dateStr)
+  return !!part && part.startsWith(monthPrefix)
+}
+
 export function getTodayJalaliNum() {
   return jalaliToNum(getTodayJalaliStr())
 }

@@ -1,11 +1,12 @@
-import { getData, saveCustomerToDB, coerceProductName, isGiftSaleLine } from './data.js'
+import { getData, saveCustomerToDB, coerceProductName, isGiftSaleLine, getDestinationBanks } from './data.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
   requirePermission, getCurrentUser, normalizePhone, getNowJalaliDateTime,
   ensureProductPayments, syncProductStatus, getPaymentEntryStatus,
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, formatSoldAt24h, matchesTabSearch,
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
-  isGiftSale, getGiftAccountingStatus, getShipmentStatus, SHIPMENT_STATUS
+  isGiftSale, getGiftAccountingStatus, getShipmentStatus, SHIPMENT_STATUS,
+  getCurrentJalaliMonthInfo, isInJalaliMonth
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSales } from './sales.js'
@@ -98,11 +99,69 @@ export function setAccountingFilter(filter) {
   renderAccounting()
 }
 
+/** Monthly approved deposits per destination bank (resets each Jalali month). */
+function renderAccountingBankBalances(allPayments) {
+  const wrap = document.getElementById('accountingBankBalances')
+  if (!wrap) return
+
+  const month = getCurrentJalaliMonthInfo()
+  const configured = getDestinationBanks()
+  const totals = new Map()
+  for (const bank of configured) totals.set(bank, 0)
+
+  for (const p of allPayments || []) {
+    if (p.isGift) continue
+    if (p.paymentStatus !== PAYMENT_STATUS.approved) continue
+    const amount = parseFloat(p.amount) || 0
+    if (amount <= 0) continue
+    if (!isInJalaliMonth(p.soldAt, month.prefix)) continue
+    const bank = String(p.destinationBank || '').trim() || 'نامشخص'
+    totals.set(bank, (totals.get(bank) || 0) + amount)
+  }
+
+  const rows = []
+  const seen = new Set()
+  for (const bank of configured) {
+    rows.push({ bank, amount: totals.get(bank) || 0 })
+    seen.add(bank)
+  }
+  for (const [bank, amount] of totals.entries()) {
+    if (seen.has(bank)) continue
+    rows.push({ bank, amount })
+  }
+
+  if (!rows.length) {
+    wrap.innerHTML = `
+      <div class="accounting-bank-balances-head">
+        <span>موجودی کارت‌ها · ${escapeHtml(month.label)}</span>
+        <span class="accounting-bank-balances-note">از اول هر ماه شمسی صفر می‌شود</span>
+      </div>
+      <div class="accounting-bank-balances-empty">بانک مقصدی در تنظیمات تعریف نشده است</div>`
+    return
+  }
+
+  wrap.innerHTML = `
+    <div class="accounting-bank-balances-head">
+      <span>موجودی کارت‌ها · ${escapeHtml(month.label)}</span>
+      <span class="accounting-bank-balances-note">واریزهای تأییدشده این ماه · از اول ماه شمسی صفر می‌شود</span>
+    </div>
+    <div class="accounting-bank-balances-grid">
+      ${rows.map(r => `
+        <div class="stat-card accounting-bank-card">
+          <div class="label">${escapeHtml(r.bank)}</div>
+          <div class="value" style="color:var(--accent);font-size:18px;direction:ltr;">${formatNumber(r.amount)} <span style="font-size:12px;font-weight:600;">ریال</span></div>
+        </div>
+      `).join('')}
+    </div>`
+}
+
 export function renderAccounting() {
   const tbody = document.getElementById('accountingBody')
   if (!tbody) return
   if (!hasPermission('accounting')) {
     tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><h3>دسترسی ندارید</h3></div></td></tr>`
+    const wrap = document.getElementById('accountingBankBalances')
+    if (wrap) wrap.innerHTML = ''
     return
   }
 
@@ -147,6 +206,8 @@ export function renderAccounting() {
     const pendingAmount = pendingPayments.reduce((sum, p) => sum + (p.isGift ? 0 : (p.amount || 0)), 0)
     pendingAmountEl.textContent = formatNumber(pendingAmount) + ' ریال'
   }
+
+  renderAccountingBankBalances(allPayments)
 
   if (payments.length === 0) {
     tbody.innerHTML = `

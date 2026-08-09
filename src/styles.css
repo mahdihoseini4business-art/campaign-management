@@ -824,6 +824,49 @@
   /* --- Stats --- */
   .stats { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
 
+  .accounting-bank-balances {
+    margin: -8px 0 24px;
+  }
+
+  .accounting-bank-balances-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px 16px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .accounting-bank-balances-note {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+
+  .accounting-bank-balances-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .accounting-bank-card {
+    min-width: 160px;
+    flex: 1 1 160px;
+    max-width: 280px;
+  }
+
+  .accounting-bank-balances-empty {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 12px 14px;
+    background: var(--bg-soft, #f8f9fa);
+    border: 1px dashed var(--border, #e9ecef);
+    border-radius: var(--radius);
+  }
+
   .dashboard-stats {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
