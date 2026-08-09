@@ -17,12 +17,15 @@ import { getUsersSafe } from './auth.js'
 import { renderProducts } from './customers.js'
 
 let refundsView = 'kanban' // kanban | rejected
-let dragRefundId = null
-let dragClearTimer = null
 let rejectTargetId = null
+let completeTargetId = null
 let wizardBusy = false
 let rejectBusy = false
+let completeBusy = false
 const movingRefundIds = new Set()
+
+const REFUND_DRAG_THRESHOLD = 8
+let refundDrag = null
 
 const wizard = {
   step: 1,
@@ -106,6 +109,7 @@ function refundMatchesSearch(r, q, users = []) {
     r.productName,
     r.note,
     r.rejectReason,
+    r.accountInfo,
     phones,
     resolveAdvisorName(r.advisorPhone, users),
     formatNumber(r.amount)
@@ -127,6 +131,7 @@ export function setRefundsView(view) {
 
 export async function renderRefunds() {
   if (!hasPermission('refunds_view') && !hasPermission('refunds_manage')) return
+  if (refundDrag?.active) return
 
   let users = []
   try {
@@ -199,14 +204,13 @@ function renderRefundCard(r, canManage, users = []) {
   return `
     <div class="refund-card${draggable ? ' is-draggable' : ''}"
       data-refund-id="${escapeAttr(String(r.id))}"
-      draggable="${draggable ? 'true' : 'false'}"
-      ondragstart="app.onRefundDragStart(event, ${Number(r.id)})"
-      ondragend="app.onRefundDragEnd(event)">
+      ${draggable ? `onpointerdown="app.onRefundCardPointerDown(event, ${Number(r.id)})"` : ''}>
       <div class="refund-card-title">${escapeHtml(r.customerName || r.customerId)}</div>
       <div class="refund-card-meta">${escapeHtml(r.productName || '—')}</div>
       <div class="refund-card-amount">${formatNumber(r.amount)} ریال</div>
       <div class="refund-card-meta">کارشناس: ${escapeHtml(resolveAdvisorName(r.advisorPhone, users))}</div>
       ${r.note ? `<div class="refund-card-note">${escapeHtml(r.note)}</div>` : ''}
+      ${r.accountInfo ? `<div class="refund-card-account"><strong>حساب:</strong> ${escapeHtml(r.accountInfo)}</div>` : ''}
       <div class="refund-card-actions">${statusSelect}${rejectBtn}</div>
     </div>`
 }
@@ -233,68 +237,124 @@ function renderRejectedTable(items, users = []) {
 
 function setKanbanDragging(on) {
   document.getElementById('refundsKanban')?.classList.toggle('is-dragging-refund', !!on)
+  document.body.classList.toggle('is-refund-dragging', !!on)
 }
 
-export function onRefundDragStart(event, id) {
-  if (!canManageRefunds()) {
-    event.preventDefault()
-    return
-  }
-  if (dragClearTimer) {
-    clearTimeout(dragClearTimer)
-    dragClearTimer = null
-  }
-  dragRefundId = id
-  try {
-    event.dataTransfer?.setData('text/plain', String(id))
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
-  } catch (_) { /* ignore */ }
-  event.currentTarget?.classList.add('is-dragging')
+function statusFromRefundCol(el) {
+  const wrap = el?.closest?.('.refund-col-wrap')
+  const col = wrap?.querySelector?.('.refund-col') || el?.closest?.('.refund-col')
+  const status = col?.id?.replace(/^refundCol-/, '') || ''
+  return REFUND_KANBAN_STATUSES.includes(status) ? status : null
+}
+
+function highlightRefundDropCol(status) {
+  document.querySelectorAll('.refund-col-wrap').forEach(wrap => {
+    const col = wrap.querySelector('.refund-col')
+    const colStatus = col?.id?.replace(/^refundCol-/, '')
+    const on = !!status && colStatus === status
+    wrap.classList.toggle('is-drop-target', on)
+    col?.classList.toggle('is-drop-target', on)
+  })
+}
+
+function cleanupRefundDrag() {
+  window.removeEventListener('pointermove', onRefundPointerMove)
+  window.removeEventListener('pointerup', onRefundPointerUp)
+  window.removeEventListener('pointercancel', onRefundPointerUp)
+  if (refundDrag?.ghost) refundDrag.ghost.remove()
+  refundDrag?.card?.classList.remove('is-drag-placeholder')
+  highlightRefundDropCol(null)
+  setKanbanDragging(false)
+  refundDrag = null
+}
+
+function beginRefundDragVisual(event) {
+  const card = refundDrag.card
+  const rect = card.getBoundingClientRect()
+  refundDrag.offsetX = event.clientX - rect.left
+  refundDrag.offsetY = event.clientY - rect.top
+  refundDrag.active = true
+
+  const ghost = card.cloneNode(true)
+  ghost.classList.add('refund-card-ghost')
+  ghost.classList.remove('is-draggable', 'is-drag-placeholder')
+  ghost.removeAttribute('onpointerdown')
+  ghost.querySelectorAll('select, button, textarea, input').forEach(el => {
+    el.disabled = true
+    el.removeAttribute('onchange')
+    el.removeAttribute('onclick')
+  })
+  ghost.style.width = `${rect.width}px`
+  ghost.style.left = `${rect.left}px`
+  ghost.style.top = `${rect.top}px`
+  document.body.appendChild(ghost)
+  refundDrag.ghost = ghost
+
+  card.classList.add('is-drag-placeholder')
   setKanbanDragging(true)
+  try { card.setPointerCapture?.(event.pointerId) } catch (_) { /* ignore */ }
 }
 
-export function onRefundDragEnd(event) {
-  event.currentTarget?.classList.remove('is-dragging')
-  document.querySelectorAll('.refund-col').forEach(c => c.classList.remove('is-drop-target'))
-  setKanbanDragging(false)
-  // dragend can race ahead of drop; keep id for one tick
-  if (dragClearTimer) clearTimeout(dragClearTimer)
-  dragClearTimer = setTimeout(() => {
-    dragRefundId = null
-    dragClearTimer = null
-  }, 0)
+function updateRefundDragGhost(event) {
+  if (!refundDrag?.ghost) return
+  refundDrag.ghost.style.left = `${event.clientX - refundDrag.offsetX}px`
+  refundDrag.ghost.style.top = `${event.clientY - refundDrag.offsetY}px`
 }
 
-export function onRefundDragOver(event) {
-  if (!canManageRefunds()) return
-  event.preventDefault()
-  const col = event.currentTarget
-  col?.classList.add('is-drop-target')
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+function updateRefundDropTarget(event) {
+  const status = statusFromRefundCol(document.elementFromPoint(event.clientX, event.clientY))
+  refundDrag.overStatus = status
+  highlightRefundDropCol(status)
 }
 
-export function onRefundDragLeave(event) {
-  const col = event.currentTarget
-  const related = event.relatedTarget
-  if (related && col?.contains(related)) return
-  col?.classList.remove('is-drop-target')
-}
-
-export async function onRefundDrop(event, status) {
-  event.preventDefault()
-  event.currentTarget?.classList.remove('is-drop-target')
-  setKanbanDragging(false)
-  if (!requirePermission('refunds_manage')) return
-  if (!REFUND_KANBAN_STATUSES.includes(status)) return
-  const fromTransfer = event.dataTransfer?.getData('text/plain')
-  const id = dragRefundId || (fromTransfer ? Number(fromTransfer) : 0)
-  dragRefundId = null
-  if (dragClearTimer) {
-    clearTimeout(dragClearTimer)
-    dragClearTimer = null
+function onRefundPointerMove(event) {
+  if (!refundDrag) return
+  if (refundDrag.pointerId != null && event.pointerId !== refundDrag.pointerId) return
+  const dx = event.clientX - refundDrag.startX
+  const dy = event.clientY - refundDrag.startY
+  if (!refundDrag.active) {
+    if (Math.hypot(dx, dy) < REFUND_DRAG_THRESHOLD) return
+    beginRefundDragVisual(event)
   }
-  if (!id) return
+  event.preventDefault()
+  updateRefundDragGhost(event)
+  updateRefundDropTarget(event)
+}
+
+async function onRefundPointerUp(event) {
+  if (!refundDrag) return
+  if (refundDrag.pointerId != null && event.pointerId !== refundDrag.pointerId) return
+  const wasActive = refundDrag.active
+  const id = refundDrag.id
+  const status = refundDrag.overStatus
+  cleanupRefundDrag()
+  if (!wasActive || !status) return
   await moveRefundStatus(id, status)
+}
+
+export function onRefundCardPointerDown(event, id) {
+  if (!canManageRefunds()) return
+  if (event.button != null && event.button !== 0) return
+  if (event.target.closest('select, button, input, textarea, a, label')) return
+  const card = event.currentTarget
+  if (!card?.classList.contains('is-draggable')) return
+  if (refundDrag) cleanupRefundDrag()
+
+  refundDrag = {
+    id,
+    card,
+    startX: event.clientX,
+    startY: event.clientY,
+    offsetX: 0,
+    offsetY: 0,
+    pointerId: event.pointerId,
+    active: false,
+    ghost: null,
+    overStatus: null
+  }
+  window.addEventListener('pointermove', onRefundPointerMove, { passive: false })
+  window.addEventListener('pointerup', onRefundPointerUp)
+  window.addEventListener('pointercancel', onRefundPointerUp)
 }
 
 export async function onRefundStatusSelect(event, id) {
@@ -319,10 +379,19 @@ async function moveRefundStatus(id, nextStatus, extra = {}) {
     showToast('درخواست عودت پیدا نشد')
     return false
   }
-  if (refund.status === nextStatus && !extra.rejectReason) return true
+  if (refund.status === nextStatus && !extra.rejectReason && extra.accountInfo == null) return true
   if (refund.status === REFUND_STATUS.completed && nextStatus !== REFUND_STATUS.completed) {
     showToast('عودت انجام‌شده قابل جابجایی نیست')
     return false
+  }
+
+  if (nextStatus === REFUND_STATUS.completed && refund.status !== REFUND_STATUS.completed) {
+    const accountInfo = String(extra.accountInfo != null ? extra.accountInfo : (refund.accountInfo || '')).trim()
+    if (!accountInfo) {
+      openCompleteRefundModal(id)
+      return false
+    }
+    extra = { ...extra, accountInfo }
   }
 
   const user = getCurrentUser()
@@ -395,6 +464,58 @@ async function undoCompletedRefundWriteback(refund) {
   syncProductStatus(found.product)
   await saveCustomerToDB(customer)
   try { renderProducts(customer.id) } catch (_) { /* ignore */ }
+}
+
+export function openCompleteRefundModal(id) {
+  if (!requirePermission('refunds_manage')) return
+  const refund = getRefunds().find(r => String(r.id) === String(id))
+  if (!refund) {
+    showToast('درخواست عودت پیدا نشد')
+    return
+  }
+  completeTargetId = id
+  const summary = document.getElementById('completeRefundSummary')
+  if (summary) {
+    summary.innerHTML = `
+      <div><strong>مشتری:</strong> ${escapeHtml(refund.customerName || refund.customerId || '—')}</div>
+      <div><strong>محصول:</strong> ${escapeHtml(refund.productName || '—')}</div>
+      <div><strong>مبلغ عودت:</strong> <span dir="ltr">${formatNumber(refund.amount)} ریال</span></div>
+    `
+  }
+  const input = document.getElementById('completeRefundAccountInfo')
+  if (input) {
+    input.value = refund.accountInfo || ''
+    input.focus()
+  }
+  document.getElementById('completeRefundModal')?.classList.add('active')
+}
+
+export function closeCompleteRefundModal() {
+  completeTargetId = null
+  document.getElementById('completeRefundModal')?.classList.remove('active')
+}
+
+export async function confirmCompleteRefund() {
+  if (completeBusy) return
+  if (!requirePermission('refunds_manage')) return
+  const accountInfo = toEnDigits(document.getElementById('completeRefundAccountInfo')?.value || '').trim()
+  if (!accountInfo) {
+    showToast('اطلاعات حساب را وارد کنید')
+    document.getElementById('completeRefundAccountInfo')?.focus()
+    return
+  }
+  const id = completeTargetId
+  closeCompleteRefundModal()
+  if (!id) return
+  completeBusy = true
+  const confirmBtn = document.getElementById('completeRefundConfirmBtn')
+  if (confirmBtn) confirmBtn.disabled = true
+  try {
+    await moveRefundStatus(id, REFUND_STATUS.completed, { accountInfo })
+  } finally {
+    completeBusy = false
+    if (confirmBtn) confirmBtn.disabled = false
+  }
 }
 
 export function openRejectRefundModal(id) {

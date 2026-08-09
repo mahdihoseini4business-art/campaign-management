@@ -1498,6 +1498,7 @@ export function mapRefundRow(row) {
     isFullPayment: !!row.is_full_payment,
     status: row.status || 'requested',
     note: row.note || '',
+    accountInfo: row.account_info || '',
     rejectReason: row.reject_reason || '',
     advisorPhone: row.advisor_phone || '',
     customerName: row.customer_name || '',
@@ -1549,6 +1550,7 @@ export async function saveRefundToDB(refund) {
     is_full_payment: !!refund.isFullPayment,
     status: refund.status || 'requested',
     note: refund.note || '',
+    account_info: refund.accountInfo || '',
     reject_reason: refund.rejectReason || '',
     advisor_phone: refund.advisorPhone || null,
     customer_name: refund.customerName || '',
@@ -1572,6 +1574,7 @@ export async function updateRefundInDB(id, patch) {
   const row = { updated_at: new Date().toISOString() }
   if (patch.status != null) row.status = patch.status
   if (patch.note != null) row.note = patch.note
+  if (patch.accountInfo != null) row.account_info = patch.accountInfo
   if (patch.rejectReason != null) row.reject_reason = patch.rejectReason
   if (patch.updatedByPhone != null) row.updated_by_phone = patch.updatedByPhone
   if (patch.completedByPhone != null) row.completed_by_phone = patch.completedByPhone

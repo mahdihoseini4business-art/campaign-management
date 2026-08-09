@@ -1090,7 +1090,7 @@
 
     <div class="toolbar" style="gap:10px;flex-wrap:wrap;">
       <div class="refunds-filters accounting-filters">
-        <button type="button" class="btn refunds-view-btn accounting-filter-btn active" data-view="kanban" onclick="app.setRefundsView('kanban')">کانبان</button>
+        <button type="button" class="btn refunds-view-btn accounting-filter-btn active" data-view="kanban" onclick="app.setRefundsView('kanban')">صف عودت</button>
         <button type="button" class="btn refunds-view-btn accounting-filter-btn" data-view="rejected" onclick="app.setRefundsView('rejected')">ردشده‌ها</button>
       </div>
       <input type="text" class="search-box" placeholder="جستجو (مشتری، محصول، کارشناس)..." id="searchRefunds" oninput="app.renderRefunds()">
@@ -1100,21 +1100,15 @@
     <div id="refundsKanban" class="refund-kanban">
       <div class="refund-col-wrap">
         <div class="refund-col-head">درخواست عودت <span id="refundColCount-requested">0</span></div>
-        <div class="refund-col" id="refundCol-requested"
-          ondragover="app.onRefundDragOver(event)" ondragleave="app.onRefundDragLeave(event)"
-          ondrop="app.onRefundDrop(event, 'requested')"></div>
+        <div class="refund-col" id="refundCol-requested"></div>
       </div>
       <div class="refund-col-wrap">
         <div class="refund-col-head">در انتظار عودت <span id="refundColCount-awaiting">0</span></div>
-        <div class="refund-col" id="refundCol-awaiting"
-          ondragover="app.onRefundDragOver(event)" ondragleave="app.onRefundDragLeave(event)"
-          ondrop="app.onRefundDrop(event, 'awaiting')"></div>
+        <div class="refund-col" id="refundCol-awaiting"></div>
       </div>
       <div class="refund-col-wrap">
         <div class="refund-col-head">عودت انجام‌شده <span id="refundColCount-completed">0</span></div>
-        <div class="refund-col" id="refundCol-completed"
-          ondragover="app.onRefundDragOver(event)" ondragleave="app.onRefundDragLeave(event)"
-          ondrop="app.onRefundDrop(event, 'completed')"></div>
+        <div class="refund-col" id="refundCol-completed"></div>
       </div>
     </div>
 
@@ -1452,6 +1446,28 @@
       <button type="button" class="btn" onclick="app.closeRefundWizard()">انصراف</button>
       <button type="button" class="btn" id="refundWizardBackBtn" style="display:none;" onclick="app.refundWizardBack()">قبلی</button>
       <button type="button" class="btn btn-primary" id="refundWizardNextBtn" onclick="app.refundWizardNext()">بعدی</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال تأیید عودت و اطلاعات حساب -->
+<div class="modal-overlay" id="completeRefundModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <h2>تأیید عودت وجه</h2>
+      <button class="modal-close" onclick="app.closeCompleteRefundModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="completeRefundSummary" class="refund-wizard-summary" style="margin-bottom:16px;"></div>
+      <div class="form-group">
+        <label for="completeRefundAccountInfo">اطلاعات حساب جهت واریز <span class="required">*</span></label>
+        <textarea class="form-textarea" id="completeRefundAccountInfo" placeholder="شماره شبا، شماره کارت و نام صاحب حساب..."></textarea>
+        <div class="form-hint">این مشخصات برای واریز مبلغ عودت استفاده می‌شود.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn" onclick="app.closeCompleteRefundModal()">انصراف</button>
+      <button type="button" class="btn btn-primary" id="completeRefundConfirmBtn" onclick="app.confirmCompleteRefund()">تأیید عودت</button>
     </div>
   </div>
 </div>

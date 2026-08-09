@@ -1810,6 +1810,28 @@
     border-color: #fdba74;
   }
 
+  #sheet-refunds,
+  #sheet-refunds input,
+  #sheet-refunds select,
+  #sheet-refunds textarea,
+  #sheet-refunds button,
+  #sheet-refunds table,
+  #refundWizardModal,
+  #refundWizardModal input,
+  #refundWizardModal select,
+  #refundWizardModal textarea,
+  #refundWizardModal button,
+  #rejectRefundModal,
+  #rejectRefundModal input,
+  #rejectRefundModal textarea,
+  #rejectRefundModal button,
+  #completeRefundModal,
+  #completeRefundModal input,
+  #completeRefundModal textarea,
+  #completeRefundModal button {
+    font-family: 'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif;
+  }
+
   .refund-kanban {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1843,13 +1865,14 @@
     flex: 1;
   }
 
-  .refund-col.is-drop-target {
+  .refund-col.is-drop-target,
+  .refund-col-wrap.is-drop-target {
     outline: 2px dashed var(--accent, #0d6efd);
     outline-offset: -4px;
     background: rgba(13, 110, 253, 0.06);
   }
 
-  .refund-kanban.is-dragging-refund .refund-card {
+  .refund-kanban.is-dragging-refund .refund-card:not(.is-drag-placeholder) {
     pointer-events: none;
   }
 
@@ -1871,10 +1894,29 @@
 
   .refund-card.is-draggable {
     cursor: grab;
+    user-select: none;
+    touch-action: none;
   }
 
-  .refund-card.is-dragging {
-    opacity: 0.55;
+  .refund-card.is-drag-placeholder {
+    opacity: 0.2;
+  }
+
+  .refund-card-ghost {
+    position: fixed;
+    z-index: 10050;
+    margin: 0;
+    pointer-events: none;
+    box-shadow: var(--shadow-lg, 0 8px 24px rgba(28,25,23,0.16));
+    transform: rotate(1.2deg) scale(1.03);
+    cursor: grabbing;
+    opacity: 1;
+  }
+
+  body.is-refund-dragging,
+  body.is-refund-dragging * {
+    cursor: grabbing !important;
+    user-select: none !important;
   }
 
   .refund-card-title {
@@ -1895,12 +1937,26 @@
     direction: ltr;
     text-align: right;
     margin: 6px 0;
+    font-family: 'Vazirmatn', sans-serif;
   }
 
   .refund-card-note {
     font-size: 11px;
     color: var(--text-muted);
     margin-top: 6px;
+  }
+
+  .refund-card-account {
+    font-size: 12px;
+    margin-top: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--accent-light, #e8f8f2);
+    border: 1px solid #b7ebd8;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.6;
   }
 
   .refund-card-actions {
@@ -1921,6 +1977,8 @@
     border-radius: 8px;
     background: #fff;
     padding: 0 8px;
+    font-family: inherit;
+    color: inherit;
   }
 
   .refund-wizard-steps {
