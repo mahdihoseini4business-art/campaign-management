@@ -3,6 +3,7 @@ import { showToast, requirePermission, hasPermission, canTransferCustomer, norma
 import { renderCustomers, reassignCustomerOwnership } from './customers.js'
 import { renderFollowups } from './followups.js'
 import { renderSales, parseSaleRowKey } from './sales.js'
+import { deleteOrphanedRefundsForCustomer } from './refunds.js'
 import { getUsersSafe } from './auth.js'
 import { updateTransferInboxBadge } from './transfers.js'
 
@@ -151,6 +152,7 @@ async function bulkDelete(tab, ids) {
         await deleteCustomerFromDB(id)
         data.customers = data.customers.filter(c => c.id !== id)
         data.followups = data.followups.filter(f => f.customerId !== id)
+        data.refunds = (data.refunds || []).filter(r => r.customerId !== id)
         deleted++
       } catch (e) {
         console.error('Bulk delete customer error:', e)
@@ -192,6 +194,11 @@ async function bulkDelete(tab, ids) {
       syncCustomerLevel(customer, data.customers, data.followups)
       try {
         await saveCustomerToDB(customer)
+        try {
+          await deleteOrphanedRefundsForCustomer(customerId)
+        } catch (refundErr) {
+          console.error('Bulk delete sale refunds error:', refundErr)
+        }
         deleted += indices.length
       } catch (e) {
         console.error('Bulk delete sales error:', e)

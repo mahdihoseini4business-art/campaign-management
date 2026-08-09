@@ -1192,6 +1192,7 @@ export async function deleteCustomerFromDB(id) {
   // Delete followups first
   const { error: followupError } = await supabase.from('followups').delete().eq('customer_id', id)
   if (followupError) throw new Error('خطا در حذف پیگیری‌ها: ' + followupError.message)
+  await deleteRefundsForCustomerFromDB(id)
   // Delete customer
   const { error } = await supabase.from('customers').delete().eq('id', id)
   if (error) throw new Error('خطا در حذف مشتری: ' + error.message)
@@ -1916,6 +1917,48 @@ export function removeRefundFromCache(id) {
   const before = (data.refunds || []).length
   data.refunds = (data.refunds || []).filter(r => String(r.id) !== String(id))
   return (data.refunds || []).length !== before
+}
+
+function isMissingRefundsTable(error) {
+  return /refunds|does not exist|relation/i.test(error?.message || '')
+}
+
+export async function deleteRefundFromDB(id) {
+  if (id == null || id === '') return false
+  bumpLocalWrite()
+  const { error } = await supabase.from('refunds').delete().eq('id', id)
+  if (error && !isMissingRefundsTable(error)) {
+    throw new Error('خطا در حذف عودت: ' + error.message)
+  }
+  removeRefundFromCache(id)
+  bumpLocalWrite()
+  return true
+}
+
+export async function deleteRefundsByIdsFromDB(ids) {
+  const unique = [...new Set((ids || []).filter(id => id != null && id !== ''))]
+  if (!unique.length) return 0
+  bumpLocalWrite()
+  const { error } = await supabase.from('refunds').delete().in('id', unique)
+  if (error && !isMissingRefundsTable(error)) {
+    throw new Error('خطا در حذف عودت‌ها: ' + error.message)
+  }
+  unique.forEach(removeRefundFromCache)
+  bumpLocalWrite()
+  return unique.length
+}
+
+export async function deleteRefundsForCustomerFromDB(customerId) {
+  if (customerId == null || customerId === '') return 0
+  bumpLocalWrite()
+  const { error } = await supabase.from('refunds').delete().eq('customer_id', customerId)
+  if (error && !isMissingRefundsTable(error)) {
+    throw new Error('خطا در حذف عودت‌ها: ' + error.message)
+  }
+  const before = (data.refunds || []).length
+  data.refunds = (data.refunds || []).filter(r => String(r.customerId) !== String(customerId))
+  bumpLocalWrite()
+  return before - (data.refunds || []).length
 }
 
 export async function saveRefundToDB(refund) {

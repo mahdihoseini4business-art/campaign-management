@@ -1,6 +1,6 @@
 import {
   getData, saveCustomerToDB, saveRefundToDB, updateRefundInDB, getRefunds,
-  coerceProductName
+  deleteRefundsByIdsFromDB, coerceProductName
 } from './data.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
@@ -79,6 +79,29 @@ function findProductAndPayment(customer, paymentId, productIndexHint) {
   return null
 }
 
+/** True if the refund still belongs to a live sale/order. */
+export function refundHasLiveOrder(r, customers = getData().customers) {
+  if (!r?.customerId) return false
+  const customer = (customers || []).find(c => String(c.id) === String(r.customerId))
+  if (!customer) return false
+  const payId = r.paymentId != null && String(r.paymentId) !== '' ? String(r.paymentId) : ''
+  if (payId) return !!findProductAndPayment(customer, payId, r.productIndex)
+  const idx = Number(r.productIndex)
+  return Number.isInteger(idx) && idx >= 0 && !!customer.products?.[idx]
+}
+
+/** Remove refunds whose sale/order no longer exists (DB + cache). */
+export async function deleteOrphanedRefundsForCustomer(customerId) {
+  if (customerId == null || customerId === '') return 0
+  const customers = getData().customers
+  const ids = getRefunds()
+    .filter(r => String(r.customerId) === String(customerId) && !refundHasLiveOrder(r, customers))
+    .map(r => r.id)
+    .filter(id => id != null && id !== '')
+  if (!ids.length) return 0
+  return deleteRefundsByIdsFromDB(ids)
+}
+
 /** Remaining refundable for a payment (approved − completed writeback − active requests). */
 export function getPaymentRefundableRemaining(customerId, product, payment, excludeRefundId = null) {
   if (!payment || getPaymentEntryStatus(payment) !== PAYMENT_STATUS.approved) return 0
@@ -101,6 +124,7 @@ function getVisibleRefunds() {
   const myPhone = normalizePhone(currentUser?.phone || '')
   return getRefunds().filter(r => {
     if (!r?.customerId) return false
+    if (!refundHasLiveOrder(r, data.customers)) return false
     if (r.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (r.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
     const customer = data.customers.find(c => c.id === r.customerId)
@@ -1226,9 +1250,11 @@ async function submitRefundWizard() {
 
 /** Sum of completed refunds for dashboard card (date + advisor filters). */
 export function sumCompletedRefundsForDash({ dateFromNum = 0, dateToNum = 99999999, advisorPhones = null } = {}) {
+  const customers = getData().customers
   let total = 0
   for (const r of getRefunds()) {
     if (r.status !== REFUND_STATUS.completed) continue
+    if (!refundHasLiveOrder(r, customers)) continue
     if (advisorPhones instanceof Set) {
       const phone = normalizePhone(r.advisorPhone)
       if (!phone || !advisorPhones.has(phone)) continue

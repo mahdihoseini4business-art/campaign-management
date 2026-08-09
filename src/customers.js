@@ -890,12 +890,13 @@ export function deleteCustomer(id) {
   const customer = data.customers.find(c => c.id === id)
   if (customer && !canManageCustomer(customer)) { showToast('فقط کارشناس مسئول می‌تواند این مشتری را حذف کند'); return }
   document.getElementById('deleteMessage').textContent =
-    `آیا از حذف "${customer.name || customer.id}" مطمئن هستید؟ تمام پیگیری‌های مرتبط هم حذف می‌شوند.`
+    `آیا از حذف "${customer.name || customer.id}" مطمئن هستید؟ تمام پیگیری‌ها و عودت‌های مرتبط هم حذف می‌شوند.`
   document.getElementById('deleteConfirmBtn').onclick = async function () {
     try {
       await deleteCustomerFromDB(id)
       data.customers = data.customers.filter(c => c.id !== id)
       data.followups = data.followups.filter(f => f.customerId !== id)
+      data.refunds = (data.refunds || []).filter(r => r.customerId !== id)
       closeDetailModal()
       await renderCustomers()
       closeDeleteModal()
