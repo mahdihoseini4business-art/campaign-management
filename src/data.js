@@ -1498,6 +1498,7 @@ export function mapRefundRow(row) {
     isFullPayment: !!row.is_full_payment,
     status: row.status || 'requested',
     note: row.note || '',
+    reason: row.refund_reason || '',
     accountInfo: row.account_info || '',
     accountHolderName: row.account_holder_name || '',
     sheba: row.sheba || '',
@@ -1509,6 +1510,8 @@ export function mapRefundRow(row) {
     createdByName: row.created_by_name || '',
     updatedByPhone: row.updated_by_phone || '',
     completedByPhone: row.completed_by_phone || '',
+    requestedAt: row.requested_at || row.created_at || null,
+    awaitingAt: row.awaiting_at || null,
     completedAt: row.completed_at || null,
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null
@@ -1553,6 +1556,7 @@ export async function saveRefundToDB(refund) {
     is_full_payment: !!refund.isFullPayment,
     status: refund.status || 'requested',
     note: refund.note || '',
+    refund_reason: refund.reason || '',
     account_info: refund.accountInfo || '',
     account_holder_name: refund.accountHolderName || '',
     sheba: refund.sheba || '',
@@ -1564,6 +1568,8 @@ export async function saveRefundToDB(refund) {
     created_by_name: refund.createdByName || null,
     updated_by_phone: refund.updatedByPhone || null,
     completed_by_phone: refund.completedByPhone || null,
+    requested_at: refund.requestedAt || new Date().toISOString(),
+    awaiting_at: refund.awaitingAt || null,
     completed_at: refund.completedAt || null
   }
   const { data: inserted, error } = await supabase
@@ -1580,6 +1586,7 @@ export async function updateRefundInDB(id, patch) {
   const row = { updated_at: new Date().toISOString() }
   if (patch.status != null) row.status = patch.status
   if (patch.note != null) row.note = patch.note
+  if (patch.reason != null) row.refund_reason = patch.reason
   if (patch.accountInfo != null) row.account_info = patch.accountInfo
   if (patch.accountHolderName != null) row.account_holder_name = patch.accountHolderName
   if (patch.sheba != null) row.sheba = patch.sheba
@@ -1587,6 +1594,12 @@ export async function updateRefundInDB(id, patch) {
   if (patch.rejectReason != null) row.reject_reason = patch.rejectReason
   if (patch.updatedByPhone != null) row.updated_by_phone = patch.updatedByPhone
   if (patch.completedByPhone != null) row.completed_by_phone = patch.completedByPhone
+  if (Object.prototype.hasOwnProperty.call(patch, 'requestedAt')) {
+    row.requested_at = patch.requestedAt
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'awaitingAt')) {
+    row.awaiting_at = patch.awaitingAt
+  }
   if (Object.prototype.hasOwnProperty.call(patch, 'completedAt')) {
     row.completed_at = patch.completedAt
   }

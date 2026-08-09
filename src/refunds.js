@@ -8,8 +8,8 @@ import {
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
   PAYMENT_STATUS, getSaleRegistrantPhone, canViewScopedCustomer, matchesTabSearch,
   getCustomerPhones, getPrimaryPhone, jalaliDatePart, jalaliToNum,
-  gregorianToJalaliStr, formatSoldAt24h,
-  REFUND_STATUS, REFUND_STATUS_LABELS, REFUND_KANBAN_STATUSES,
+  gregorianToJalaliStr, gregorianToJalaliDateTimeStr, formatSoldAt24h,
+  REFUND_STATUS, REFUND_STATUS_LABELS, REFUND_KANBAN_STATUSES, PRESET_REFUND_REASONS,
   getPaymentRefundedAmount, applyCompletedRefundToProduct, removeCompletedRefundFromProduct,
   getProductRefundBadge
 } from './utils.js'
@@ -33,8 +33,11 @@ const wizard = {
   productIndex: null,
   paymentId: null,
   amount: 0,
+  reason: '',
   note: ''
 }
+
+const REFUND_REASON_OTHER = 'سایر'
 
 function canManageRefunds() {
   return hasPermission('refunds_manage')
@@ -108,6 +111,7 @@ function refundMatchesSearch(r, q, users = []) {
     r.customerId,
     r.productName,
     r.note,
+    r.reason,
     r.rejectReason,
     r.accountInfo,
     r.accountHolderName,
@@ -212,6 +216,8 @@ function renderRefundCard(r, canManage, users = []) {
       <div class="refund-card-meta">${escapeHtml(r.productName || '—')}</div>
       <div class="refund-card-amount">${formatNumber(r.amount)} ریال</div>
       <div class="refund-card-meta">کارشناس: ${escapeHtml(resolveAdvisorName(r.advisorPhone, users))}</div>
+      ${r.reason ? `<div class="refund-card-meta">دلیل: ${escapeHtml(r.reason)}</div>` : ''}
+      ${renderRefundStageTimes(r)}
       ${r.note ? `<div class="refund-card-note">${escapeHtml(r.note)}</div>` : ''}
       ${renderPayoutBlock(r)}
       <div class="refund-card-actions">${statusSelect}${rejectBtn}</div>
@@ -379,6 +385,26 @@ function resolvePayoutFields(refund, extra = {}) {
       ? normalizeCardNumber(extra.cardNumber)
       : normalizeCardNumber(refund?.cardNumber || '')
   }
+}
+
+function formatRefundDateTime(iso) {
+  return gregorianToJalaliDateTimeStr(iso) || ''
+}
+
+function renderRefundStageTimes(r) {
+  const rows = []
+  const requested = r.requestedAt || r.createdAt
+  if (requested) {
+    rows.push(`<div><span>${escapeHtml(REFUND_STATUS_LABELS.requested)}:</span> <span dir="ltr">${escapeHtml(formatRefundDateTime(requested))}</span></div>`)
+  }
+  if (r.awaitingAt) {
+    rows.push(`<div><span>${escapeHtml(REFUND_STATUS_LABELS.awaiting)}:</span> <span dir="ltr">${escapeHtml(formatRefundDateTime(r.awaitingAt))}</span></div>`)
+  }
+  if (r.completedAt) {
+    rows.push(`<div><span>${escapeHtml(REFUND_STATUS_LABELS.completed)}:</span> <span dir="ltr">${escapeHtml(formatRefundDateTime(r.completedAt))}</span></div>`)
+  }
+  if (!rows.length) return ''
+  return `<div class="refund-card-times">${rows.join('')}</div>`
 }
 
 function renderPayoutBlock(r) {
@@ -576,14 +602,21 @@ async function moveRefundStatus(id, nextStatus, extra = {}) {
 
   const user = getCurrentUser()
   const phone = normalizePhone(user?.phone || '')
+  const nowIso = new Date().toISOString()
   const patch = {
     status: nextStatus,
     updatedByPhone: phone,
     ...extra
   }
 
+  if (nextStatus === REFUND_STATUS.requested && refund.status !== REFUND_STATUS.requested) {
+    patch.requestedAt = nowIso
+  }
+  if (nextStatus === REFUND_STATUS.awaiting && refund.status !== REFUND_STATUS.awaiting) {
+    patch.awaitingAt = nowIso
+  }
   if (nextStatus === REFUND_STATUS.completed) {
-    patch.completedAt = new Date().toISOString()
+    patch.completedAt = nowIso
     patch.completedByPhone = phone
   } else if (refund.status === REFUND_STATUS.completed) {
     patch.completedAt = null
@@ -744,6 +777,7 @@ export function openRefundWizard() {
   wizard.productIndex = null
   wizard.paymentId = null
   wizard.amount = 0
+  wizard.reason = ''
   wizard.note = ''
   const search = document.getElementById('refundWizardCustomerSearch')
   if (search) search.value = ''
@@ -803,6 +837,44 @@ export function renderRefundWizard() {
   if (wizard.step === 1) renderWizardStep1()
   else if (wizard.step === 2) renderWizardStep2()
   else renderWizardStep3()
+}
+
+export function onRefundWizardReasonClick(event) {
+  const btn = event?.target?.closest?.('.refund-reason-preset')
+  if (!btn) return
+  const reason = (btn.dataset.reason || '').trim()
+  if (!reason) return
+  wizard.reason = wizard.reason === reason ? '' : reason
+  if (wizard.step === 3) renderWizardStep3()
+  else renderRefundReasonPresets()
+}
+
+function renderRefundReasonPresets() {
+  const wrap = document.getElementById('refundWizardReasonPresets')
+  if (!wrap) return
+  wrap.innerHTML = PRESET_REFUND_REASONS.map(reason =>
+    `<button type="button" class="reject-reason-preset refund-reason-preset${wizard.reason === reason ? ' is-selected' : ''}" data-reason="${escapeAttr(reason)}">${escapeHtml(reason)}</button>`
+  ).join('')
+  const hint = document.getElementById('refundWizardReasonHint')
+  if (hint) hint.hidden = wizard.reason !== REFUND_REASON_OTHER
+}
+
+function resolveWizardReason() {
+  const preset = String(wizard.reason || '').trim()
+  const note = String(document.getElementById('refundWizardNote')?.value || wizard.note || '').trim()
+  if (!preset) {
+    showToast('دلیل عودت را انتخاب کنید')
+    return null
+  }
+  if (preset === REFUND_REASON_OTHER) {
+    if (!note) {
+      showToast('برای گزینه سایر، توضیح را در یادداشت بنویسید')
+      document.getElementById('refundWizardNote')?.focus()
+      return null
+    }
+    return note
+  }
+  return preset
 }
 
 function renderWizardStep1() {
@@ -930,13 +1002,15 @@ function renderWizardStep3() {
   if (amountEl) wizard.amount = parseAmountInput(amountEl.value)
   const noteEl = document.getElementById('refundWizardNote')
   wizard.note = noteEl ? noteEl.value.trim() : ''
+  renderRefundReasonPresets()
 
   box.innerHTML = `
     <div><strong>مشتری:</strong> ${escapeHtml(customer?.name || wizard.customerId || '—')}</div>
     <div><strong>محصول:</strong> ${escapeHtml(coerceProductName(product?.name) || '—')}</div>
     <div><strong>مبلغ عودت:</strong> <span dir="ltr">${formatNumber(wizard.amount)} ریال</span></div>
     <div><strong>تاریخ واریز:</strong> ${escapeHtml(formatSoldAt24h(pay?.soldAt) || '—')}</div>
-    ${wizard.note ? `<div><strong>یادداشت:</strong> ${escapeHtml(wizard.note)}</div>` : ''}
+    ${wizard.reason ? `<div><strong>دلیل:</strong> ${escapeHtml(wizard.reason === REFUND_REASON_OTHER ? (wizard.note || REFUND_REASON_OTHER) : wizard.reason)}</div>` : ''}
+    ${wizard.note && wizard.reason !== REFUND_REASON_OTHER ? `<div><strong>یادداشت:</strong> ${escapeHtml(wizard.note)}</div>` : ''}
   `
 }
 
@@ -978,7 +1052,6 @@ export async function refundWizardNext() {
     }
     wizard.step = 3
     renderRefundWizard()
-    document.getElementById('refundWizardHolder')?.focus()
     return
   }
 
@@ -1003,6 +1076,8 @@ async function submitRefundWizard() {
   if (amountEl) wizard.amount = parseAmountInput(amountEl.value)
   const noteEl = document.getElementById('refundWizardNote')
   wizard.note = noteEl ? noteEl.value.trim() : (wizard.note || '')
+  const reason = resolveWizardReason()
+  if (!reason) return
   const payout = readPayoutFields(PAYOUT_FIELD_IDS.wizard)
   if (!validatePayoutFields(payout, PAYOUT_FIELD_IDS.wizard)) return
   const max = getPaymentRefundableRemaining(customer.id, product, pay)
@@ -1026,7 +1101,9 @@ async function submitRefundWizard() {
       amount,
       isFullPayment: (alreadyRefunded + amount) >= approved - 0.5,
       status: REFUND_STATUS.requested,
+      reason,
       note: wizard.note || '',
+      requestedAt: new Date().toISOString(),
       accountHolderName: payout.accountHolderName,
       sheba: payout.sheba,
       cardNumber: payout.cardNumber,

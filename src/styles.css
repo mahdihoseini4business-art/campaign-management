@@ -1507,6 +1507,16 @@
     border-radius: var(--radius);
   }
 
+  .sale-refund-summary {
+    margin-top: 8px;
+    background: var(--danger-light, #FEF2F2);
+    border-color: #fecaca;
+  }
+
+  .sale-refund-summary .product-meta {
+    line-height: 1.7;
+  }
+
   .sale-payment {
     padding: 12px 14px;
     background: #FAFAF9;
@@ -1944,6 +1954,27 @@
     font-size: 11px;
     color: var(--text-muted);
     margin-top: 6px;
+  }
+
+  .refund-card-times {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+
+  .refund-card-times [dir="ltr"] {
+    font-family: 'Vazirmatn', sans-serif;
+  }
+
+  .refund-reason-preset.is-selected {
+    background: var(--accent-light, #e8f8f2);
+    border-color: var(--accent);
+    color: var(--accent-hover, #1e9e77);
+    font-weight: 600;
   }
 
   .refund-card-account {
@@ -3469,6 +3500,9 @@
     }
     .sale-summary {
       gap: 6px 10px;
+    }
+    .sale-refund-summary {
+      margin-top: 6px;
     }
     .import-map-row {
       flex-direction: column;

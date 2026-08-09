@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed } from './data.js'
+import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
@@ -23,7 +23,7 @@ import {
   computeCustomerLrfm, isProductCountableInSales, soldAtTimePart, formatSoldAt24h, normalizeTimeTo24h,
   CUSTOMER_LEVELS, formatCustomerLevel, parseCustomerLevel, resolveCustomerLevel, syncCustomerLevel,
   applyProfitSnapshotToProduct, isGiftSale, getGiftAccountingStatus,
-  getPaymentRefundBadge, getProductRefundBadge
+  getPaymentRefundBadge, getProductRefundBadge, getProductRefundRecords, REFUND_STATUS
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -2252,6 +2252,34 @@ function syncDetailTabCount(tabKey, count) {
   if (btn) btn.textContent = formatNumber(count)
 }
 
+function renderSaleRefundSummaries(customerId, product, remaining) {
+  const paymentIds = new Set(getProductPayments(product).map(p => String(p.id)))
+  const byId = new Map()
+  getRefunds().forEach(r => {
+    if (String(r.customerId) !== String(customerId)) return
+    if (!paymentIds.has(String(r.paymentId))) return
+    if (r.status !== REFUND_STATUS.completed) return
+    byId.set(String(r.id), r)
+  })
+  getProductRefundRecords(product).forEach(rec => {
+    const id = rec.id != null ? String(rec.id) : ''
+    if (!id || byId.has(id)) return
+    byId.set(id, { amount: rec.amount, reason: rec.reason || '' })
+  })
+  const refunds = [...byId.values()]
+  if (!refunds.length) return ''
+  const remain = Math.max(0, Math.round(remaining || 0))
+  return refunds.map(r => {
+    const amount = parseFloat(r.amount) || 0
+    const reason = String(r.reason || '').trim() || '—'
+    return `
+      <div class="sale-summary sale-refund-summary" aria-label="خلاصه عودت">
+        <span class="product-status-label" style="color:var(--danger);">بیعانه</span>
+        <span class="product-meta">مبلغ <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${formatNumber(amount)}</b> ریال به دلیل ${escapeHtml(reason)} عودت داده شد. مانده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${formatNumber(remain)}</b></span>
+      </div>`
+  }).join('')
+}
+
 function saleFieldHtml(label, controlHtml, { required = false, optional = false, className = '', full = false } = {}) {
   const req = required ? ' <span class="sale-field-req" aria-hidden="true">*</span>' : ''
   const opt = optional ? ' <span class="sale-field-opt">اختیاری</span>' : ''
@@ -2509,6 +2537,7 @@ export async function renderProducts(customerId, users = null) {
         ${balance > 0 && !closed ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : `<span class="product-meta">مانده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">۰</b></span>`}
         ${closedBadge}
       </div>`
+    const refundSummariesHtml = renderSaleRefundSummaries(customerId, p, balance)
 
     return `
       <div class="${blockClass}" data-product-index="${i}">
@@ -2526,6 +2555,7 @@ export async function renderProducts(customerId, users = null) {
           </div>
           ${shippingFields}
           ${summaryHtml}
+          ${refundSummariesHtml}
           ${productDetailsBtn}
           ${giftSubmitBtn}
         </section>
@@ -2783,7 +2813,6 @@ export function updateSaleGiftMode(blockEl) {
   const paymentsStep = blockEl.querySelector('[data-sale-payments]')
   const settlementField = blockEl.querySelector('.sale-field--settlement')
   const giftActions = blockEl.querySelector('[data-gift-actions]')
-  const summary = blockEl.querySelector('.sale-summary')
 
   const giftOk = isZero && !!name && allowed
   const giftBlocked = isZero && !!name && !allowed
@@ -2794,7 +2823,7 @@ export function updateSaleGiftMode(blockEl) {
   if (giftActions) giftActions.hidden = !giftOk
   if (paymentsStep) paymentsStep.hidden = giftOk
   if (settlementField) settlementField.hidden = giftOk
-  if (summary) summary.hidden = giftOk
+  blockEl.querySelectorAll('.sale-summary').forEach(el => { el.hidden = giftOk })
 
   if (errorEl) {
     if (giftBlocked) {

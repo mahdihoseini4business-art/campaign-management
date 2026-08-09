@@ -11,6 +11,7 @@ import { renderShipments, setShipmentsFilter, openConfirmShipmentModal, closeCon
 import {
   renderRefunds, setRefundsView, openRefundWizard, closeRefundWizard, refundWizardBack, refundWizardNext,
   onRefundWizardCustomerSearch, selectRefundWizardCustomer, selectRefundWizardPayment, setRefundWizardFullAmount,
+  onRefundWizardReasonClick,
   onRefundCardPointerDown, onRefundStatusSelect,
   onRefundShebaInput, onRefundCardInput, onRefundDigitFieldKeydown,
   openCompleteRefundModal, closeCompleteRefundModal, confirmCompleteRefund,
@@ -428,6 +429,7 @@ const app = {
   selectRefundWizardCustomer,
   selectRefundWizardPayment,
   setRefundWizardFullAmount,
+  onRefundWizardReasonClick,
   onRefundCardPointerDown,
   onRefundStatusSelect,
   onRefundShebaInput,

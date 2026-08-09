@@ -424,6 +424,18 @@ export function gregorianToJalaliStr(input) {
   return `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.day).padStart(2, '0')}`
 }
 
+/** Jalali date + 24h time in Asia/Tehran, e.g. "1404/05/18 14:30" */
+export function gregorianToJalaliDateTimeStr(input) {
+  if (!input) return ''
+  const d = input instanceof Date ? input : new Date(input)
+  if (Number.isNaN(d.getTime())) return ''
+  const tehran = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Tehran' }))
+  const j = toJalali(tehran)
+  const date = `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.day).padStart(2, '0')}`
+  const time = `${String(tehran.getHours()).padStart(2, '0')}:${String(tehran.getMinutes()).padStart(2, '0')}`
+  return `${date} ${time}`
+}
+
 /**
  * LRFM metrics for customer panel:
  * L = days since first entry into the program
@@ -1026,6 +1038,17 @@ export const REFUND_KANBAN_STATUSES = [
   REFUND_STATUS.completed
 ]
 
+export const PRESET_REFUND_REASONS = [
+  'انصراف مشتری',
+  'واریز تکراری',
+  'مبلغ اشتباه',
+  'ثبت اشتباه فروش',
+  'عدم رضایت مشتری',
+  'تغییر محصول',
+  'عدم تحویل',
+  'سایر'
+]
+
 export const PAYMENT_STATUS = {
   pending: 'pending',
   approved: 'approved',
@@ -1197,6 +1220,7 @@ export function applyCompletedRefundToProduct(product, refund) {
     id,
     paymentId,
     amount,
+    reason: refund.reason || refund.refundReason || refund.refund_reason || '',
     completedAt: refund.completedAt || refund.completed_at || '',
     completedBy: refund.completedByPhone || refund.completed_by_phone || ''
   }
@@ -1231,13 +1255,13 @@ export function getCountablePaid(product) {
 
 export function getProductBalance(product) {
   const price = parseFloat(product?.price) || 0
-  return Math.max(0, price - getApprovedPaid(product))
+  return Math.max(0, price - getApprovedPaid(product) + getProductCompletedRefundTotal(product))
 }
 
 /** Remaining after approved + pending (excludes rejected) — for next deposit UX */
 export function getOperationalBalance(product) {
   const price = parseFloat(product?.price) || 0
-  return Math.max(0, price - getCountablePaid(product))
+  return Math.max(0, price - getCountablePaid(product) + getProductCompletedRefundTotal(product))
 }
 
 /** Amount / date / time / destination bank present (depositor optional) */
@@ -1299,7 +1323,8 @@ export function isInvoiceClosed(product) {
   if (price <= 0) return false
   const pays = getProductPayments(product)
   if (pays.length === 0) return false
-  if (getApprovedPaid(product) < price) return false
+  const netPaid = getApprovedPaid(product) - getProductCompletedRefundTotal(product)
+  if (netPaid < price - 0.5) return false
   return pays.every(p => getPaymentEntryStatus(p) === PAYMENT_STATUS.approved)
 }
 
@@ -1321,7 +1346,8 @@ export function syncProductStatus(product) {
   const price = parseFloat(product.price) || 0
   if (price > 0) product.priceLocked = true
   const approved = getApprovedPaid(product)
-  product.status = (price > 0 && approved >= price) ? 'تکمیل' : 'بیعانه'
+  const netPaid = Math.max(0, approved - getProductCompletedRefundTotal(product))
+  product.status = (price > 0 && netPaid >= price - 0.5) ? 'تکمیل' : 'بیعانه'
   product.invoiceClosed = isInvoiceClosed(product)
   // Keep legacy deposit mirror for exports/older code paths
   product.deposit = String(approved || '')

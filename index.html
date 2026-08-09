@@ -1436,6 +1436,12 @@
       </div>
       <div id="refundWizardStep3" hidden>
         <div id="refundWizardSummary" class="refund-wizard-summary"></div>
+        <div class="refund-wizard-section-title">دلیل عودت <span class="required">*</span></div>
+        <div class="form-group">
+          <div class="reject-reason-presets-label">دلایل از پیش تعریف‌شده</div>
+          <div id="refundWizardReasonPresets" class="reject-reason-presets" role="group" aria-label="دلایل عودت" onclick="app.onRefundWizardReasonClick(event)"></div>
+          <div class="form-hint" id="refundWizardReasonHint" hidden>برای گزینه «سایر»، توضیح را در یادداشت بنویسید.</div>
+        </div>
         <div class="refund-wizard-section-title">اطلاعات حساب مشتری</div>
         <div class="form-group">
           <label for="refundWizardHolder">نام صاحب حساب <span class="required">*</span></label>
