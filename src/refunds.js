@@ -37,10 +37,11 @@ function canManageRefunds() {
   return hasPermission('refunds_manage')
 }
 
-function resolveAdvisorName(phone) {
+function resolveAdvisorName(phone, users = []) {
   const p = normalizePhone(phone)
   if (!p) return '—'
-  const user = getUsersSafe().find(u => normalizePhone(u.phone) === p)
+  const list = Array.isArray(users) ? users : []
+  const user = list.find(u => normalizePhone(u.phone) === p)
   return user ? (userDisplayName(user) || p) : p
 }
 
@@ -95,7 +96,7 @@ function getVisibleRefunds() {
   })
 }
 
-function refundMatchesSearch(r, q) {
+function refundMatchesSearch(r, q, users = []) {
   if (!q) return true
   const customer = getData().customers.find(c => c.id === r.customerId)
   const phones = customer ? getCustomerPhones(customer).join(' ') : ''
@@ -106,7 +107,7 @@ function refundMatchesSearch(r, q) {
     r.note,
     r.rejectReason,
     phones,
-    resolveAdvisorName(r.advisorPhone),
+    resolveAdvisorName(r.advisorPhone, users),
     formatNumber(r.amount)
   ])
 }
@@ -124,11 +125,18 @@ export function setRefundsView(view) {
   renderRefunds()
 }
 
-export function renderRefunds() {
+export async function renderRefunds() {
   if (!hasPermission('refunds_view') && !hasPermission('refunds_manage')) return
 
+  let users = []
+  try {
+    users = await getUsersSafe()
+  } catch (_) {
+    users = []
+  }
+
   const search = toEnDigits(document.getElementById('searchRefunds')?.value || '').trim().toLowerCase()
-  const all = getVisibleRefunds().filter(r => refundMatchesSearch(r, search))
+  const all = getVisibleRefunds().filter(r => refundMatchesSearch(r, search, users))
   const canManage = canManageRefunds()
 
   const createBtn = document.getElementById('refundCreateBtn')
@@ -153,7 +161,7 @@ export function renderRefunds() {
   setStat('stat-refund-rejected', counts.rejected)
 
   if (refundsView === 'rejected') {
-    renderRejectedTable(all.filter(r => r.status === REFUND_STATUS.rejected))
+    renderRejectedTable(all.filter(r => r.status === REFUND_STATUS.rejected), users)
     return
   }
 
@@ -163,13 +171,18 @@ export function renderRefunds() {
     const items = all.filter(r => r.status === status)
     const countEl = document.getElementById(`refundColCount-${status}`)
     if (countEl) countEl.textContent = formatNumber(items.length)
-    col.innerHTML = items.length
-      ? items.map(r => renderRefundCard(r, canManage)).join('')
-      : `<div class="refund-col-empty">موردی نیست</div>`
+    try {
+      col.innerHTML = items.length
+        ? items.map(r => renderRefundCard(r, canManage, users)).join('')
+        : `<div class="refund-col-empty">موردی نیست</div>`
+    } catch (e) {
+      console.error('renderRefundCard error:', e)
+      col.innerHTML = `<div class="refund-col-empty">خطا در نمایش کارت‌ها</div>`
+    }
   })
 }
 
-function renderRefundCard(r, canManage) {
+function renderRefundCard(r, canManage, users = []) {
   const draggable = canManage && r.status !== REFUND_STATUS.completed
   const rejectBtn = canManage && (r.status === REFUND_STATUS.requested || r.status === REFUND_STATUS.awaiting)
     ? `<button type="button" class="btn btn-sm btn-reject" onclick="event.stopPropagation();app.openRejectRefundModal(${Number(r.id)})">رد</button>`
@@ -192,13 +205,13 @@ function renderRefundCard(r, canManage) {
       <div class="refund-card-title">${escapeHtml(r.customerName || r.customerId)}</div>
       <div class="refund-card-meta">${escapeHtml(r.productName || '—')}</div>
       <div class="refund-card-amount">${formatNumber(r.amount)} ریال</div>
-      <div class="refund-card-meta">کارشناس: ${escapeHtml(resolveAdvisorName(r.advisorPhone))}</div>
+      <div class="refund-card-meta">کارشناس: ${escapeHtml(resolveAdvisorName(r.advisorPhone, users))}</div>
       ${r.note ? `<div class="refund-card-note">${escapeHtml(r.note)}</div>` : ''}
       <div class="refund-card-actions">${statusSelect}${rejectBtn}</div>
     </div>`
 }
 
-function renderRejectedTable(items) {
+function renderRejectedTable(items, users = []) {
   const tbody = document.getElementById('refundsRejectedBody')
   if (!tbody) return
   if (!items.length) {
@@ -210,10 +223,10 @@ function renderRejectedTable(items) {
       <td>${escapeHtml(r.customerName || r.customerId)}</td>
       <td>${escapeHtml(r.productName || '—')}</td>
       <td style="direction:ltr;text-align:right;">${formatNumber(r.amount)} ریال</td>
-      <td>${escapeHtml(resolveAdvisorName(r.advisorPhone))}</td>
+      <td>${escapeHtml(resolveAdvisorName(r.advisorPhone, users))}</td>
       <td>${escapeHtml(r.rejectReason || '—')}</td>
-      <td>${escapeHtml(r.createdByName || resolveAdvisorName(r.createdByPhone))}</td>
-      <td style="font-size:12px;direction:ltr;">${escapeHtml(formatSoldAt24h(gregorianToJalaliStr(r.updatedAt) || '') || '—')}</td>
+      <td>${escapeHtml(r.createdByName || resolveAdvisorName(r.createdByPhone, users))}</td>
+      <td style="font-size:12px;direction:ltr;">${escapeHtml(gregorianToJalaliStr(r.updatedAt) || '—')}</td>
     </tr>
   `).join('')
 }
@@ -286,16 +299,16 @@ export async function onRefundDrop(event, status) {
 
 export async function onRefundStatusSelect(event, id) {
   if (!requirePermission('refunds_manage')) {
-    renderRefunds()
+    await renderRefunds()
     return
   }
   const status = event.target?.value
   if (!REFUND_KANBAN_STATUSES.includes(status)) {
-    renderRefunds()
+    await renderRefunds()
     return
   }
   const ok = await moveRefundStatus(id, status)
-  if (!ok) renderRefunds()
+  if (!ok) await renderRefunds()
 }
 
 async function moveRefundStatus(id, nextStatus, extra = {}) {
@@ -340,7 +353,7 @@ async function moveRefundStatus(id, nextStatus, extra = {}) {
       await undoCompletedRefundWriteback(refund)
     }
     showToast(nextStatus === REFUND_STATUS.rejected ? 'درخواست رد شد' : 'وضعیت به‌روز شد')
-    renderRefunds()
+    await renderRefunds()
     return true
   } catch (e) {
     console.error(e)
@@ -348,7 +361,7 @@ async function moveRefundStatus(id, nextStatus, extra = {}) {
       try { await undoCompletedRefundWriteback(refund) } catch (_) { /* ignore */ }
     }
     showToast(e.message || 'خطا در به‌روزرسانی')
-    renderRefunds()
+    await renderRefunds()
     return false
   } finally {
     movingRefundIds.delete(key)
@@ -715,7 +728,11 @@ async function submitRefundWizard() {
     })
     closeRefundWizard()
     showToast('درخواست عودت ثبت شد')
-    renderRefunds()
+    try {
+      await renderRefunds()
+    } catch (renderErr) {
+      console.error('renderRefunds after create:', renderErr)
+    }
   } catch (e) {
     console.error(e)
     showToast(e.message || 'خطا در ثبت درخواست')
