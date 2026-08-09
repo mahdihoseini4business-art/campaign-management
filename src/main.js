@@ -15,7 +15,7 @@ import {
   onRefundCardPointerDown, onRefundStatusSelect,
   onRefundShebaInput, onRefundCardInput, onRefundDigitFieldKeydown,
   openCompleteRefundModal, closeCompleteRefundModal, confirmCompleteRefund,
-  openRejectRefundModal, closeRejectRefundModal, confirmRejectRefund
+  openRejectRefundModal, closeRejectRefundModal, confirmRejectRefund, archiveRefund
 } from './refunds.js'
 import { renderDashboard, toggleDashSection, applyDashFilter, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareMetricChange, onProductChartMetricChange, onDashTargetsScopeChange, renderSalesTargetBand, onAovMaControlsChange } from './dashboard.js'
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners } from './import-export.js'
@@ -442,6 +442,7 @@ const app = {
   openRejectRefundModal,
   closeRejectRefundModal,
   confirmRejectRefund,
+  archiveRefund,
   goToPage,
   approvePayment,
   approveGiftSale,

@@ -1513,6 +1513,7 @@ export function mapRefundRow(row) {
     requestedAt: row.requested_at || row.created_at || null,
     awaitingAt: row.awaiting_at || null,
     completedAt: row.completed_at || null,
+    archivedAt: row.archived_at || null,
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null
   }
@@ -1602,6 +1603,9 @@ export async function updateRefundInDB(id, patch) {
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'completedAt')) {
     row.completed_at = patch.completedAt
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'archivedAt')) {
+    row.archived_at = patch.archivedAt
   }
   const { data: updated, error } = await supabase
     .from('refunds')

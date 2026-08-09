@@ -1205,6 +1205,47 @@ export function getProductRefundBadge(product) {
   return { kind: 'partial', label: 'عودت جزئی' }
 }
 
+/** Fully refunded paid deal → cancelled / locked. */
+export function isDealCancelled(product) {
+  if (!product || isGiftSale(product)) return false
+  return isProductFullyRefunded(product)
+}
+
+/** No further sale edits: closed paid invoice or fully refunded deal. */
+export function isProductSaleLocked(product) {
+  return isInvoiceClosed(product) || isDealCancelled(product)
+}
+
+/** Badge where «فاکتور بسته شده» appears (closed invoice or cancelled deal). */
+export function getProductClosureBadge(product) {
+  if (isDealCancelled(product)) {
+    return { kind: 'cancelled', label: 'معامله لغو شد' }
+  }
+  if (isInvoiceClosed(product)) {
+    if (isGiftSale(product)) return { kind: 'gift', label: 'هدیه تأیید شده' }
+    return { kind: 'closed', label: 'فاکتور بسته شده' }
+  }
+  return null
+}
+
+/** Active refund request (requested / awaiting) on this product's payments. */
+export function productHasActiveRefundRequest(product, customerId, refunds = []) {
+  if (!product || !customerId) return false
+  const paymentIds = new Set(getProductPayments(product).map(p => String(p.id)))
+  if (!paymentIds.size) return false
+  return (Array.isArray(refunds) ? refunds : []).some(r =>
+    String(r.customerId) === String(customerId) &&
+    paymentIds.has(String(r.paymentId)) &&
+    (r.status === REFUND_STATUS.requested || r.status === REFUND_STATUS.awaiting)
+  )
+}
+
+export function getProductPendingRefundLabel(product, customerId, refunds = []) {
+  if (isDealCancelled(product)) return null
+  if (!productHasActiveRefundRequest(product, customerId, refunds)) return null
+  return REFUND_STATUS_LABELS.awaiting
+}
+
 /**
  * Apply a completed refund onto product JSON (idempotent by refund id).
  * Also bumps payment.refundedAmount for quick display.

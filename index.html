@@ -1091,6 +1091,7 @@
       <div class="refunds-filters accounting-filters">
         <button type="button" class="btn refunds-view-btn accounting-filter-btn active" data-view="kanban" onclick="app.setRefundsView('kanban')">صف عودت</button>
         <button type="button" class="btn refunds-view-btn accounting-filter-btn" data-view="rejected" onclick="app.setRefundsView('rejected')">ردشده‌ها</button>
+        <button type="button" class="btn refunds-view-btn accounting-filter-btn" data-view="archived" onclick="app.setRefundsView('archived')">بایگانی</button>
       </div>
       <input type="text" class="search-box" placeholder="جستجو (مشتری، محصول، کارشناس)..." id="searchRefunds" oninput="app.renderRefunds()">
       <button type="button" class="btn btn-primary" id="refundCreateBtn" data-perm="refunds_request" onclick="app.openRefundWizard()">درخواست عودت</button>
@@ -1126,6 +1127,25 @@
             </tr>
           </thead>
           <tbody id="refundsRejectedBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="refundsArchivedWrap" hidden>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>مشتری</th>
+              <th>محصول</th>
+              <th>مبلغ</th>
+              <th>کارشناس</th>
+              <th>دلیل عودت</th>
+              <th>تاریخ عودت</th>
+              <th>تاریخ بایگانی</th>
+            </tr>
+          </thead>
+          <tbody id="refundsArchivedBody"></tbody>
         </table>
       </div>
     </div>

@@ -19,11 +19,13 @@ import {
   formatTeamFilterLabel,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getOperationalBalance,
   getProductPayments, getPaymentEntryStatus, getWorstPaymentStatus,
-  isPaymentFilled, isPaymentPristineDraft, areProductPaymentsFilled, isProductPriceLocked, isInvoiceClosed, PAYMENT_STATUS,
+  isPaymentFilled, isPaymentPristineDraft, areProductPaymentsFilled, isProductPriceLocked,
+  isDealCancelled, isProductSaleLocked, getProductClosureBadge, PAYMENT_STATUS,
   computeCustomerLrfm, isProductCountableInSales, soldAtTimePart, formatSoldAt24h, normalizeTimeTo24h,
   CUSTOMER_LEVELS, formatCustomerLevel, parseCustomerLevel, resolveCustomerLevel, syncCustomerLevel,
   applyProfitSnapshotToProduct, isGiftSale, getGiftAccountingStatus,
-  getPaymentRefundBadge, getProductRefundBadge, getProductRefundRecords, REFUND_STATUS
+  getPaymentRefundBadge, getProductRefundBadge, getProductRefundRecords, getProductPendingRefundLabel,
+  REFUND_STATUS
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
@@ -2353,23 +2355,30 @@ export async function renderProducts(customerId, users = null) {
     const balance = getOperationalBalance(p)
     const pays = getProductPayments(p)
     const worst = getWorstPaymentStatus(p)
-    const closed = isInvoiceClosed(p)
+    const cancelled = isDealCancelled(p)
+    const closed = isProductSaleLocked(p)
     const priceLocked = isProductPriceLocked(p)
-    const statusLabel = p.status || 'بیعانه'
+    const pendingRefundLabel = getProductPendingRefundLabel(p, customerId, getRefunds())
+    let statusLabel = p.status || 'بیعانه'
+    if (pendingRefundLabel) statusLabel = pendingRefundLabel
     const statusColor = isGift
       ? 'var(--primary, #2563eb)'
-      : (statusLabel === 'تکمیل' ? 'var(--success)' : 'var(--warning)')
+      : (cancelled
+        ? 'var(--danger)'
+        : (pendingRefundLabel
+          ? 'var(--secondary, #6366f1)'
+          : (statusLabel === 'تکمیل' ? 'var(--success)' : 'var(--warning)')))
     const blockClass = [
       'product-block',
       worst === 'rejected' ? 'is-rejected' : '',
       closed ? 'is-closed' : '',
       closed ? 'is-collapsed' : '',
+      cancelled ? 'is-cancelled' : '',
       isGift ? 'is-gift-sale' : ''
     ].filter(Boolean).join(' ')
-    const closedBadge = closed
-      ? (isGift
-        ? '<span class="invoice-closed-badge">هدیه تأیید شده</span>'
-        : '<span class="invoice-closed-badge">فاکتور بسته شده</span>')
+    const closure = getProductClosureBadge(p)
+    const closedBadge = closure
+      ? `<span class="invoice-closed-badge${closure.kind === 'cancelled' ? ' is-cancelled' : ''}">${escapeHtml(closure.label)}</span>`
       : ''
     const giftBadge = isGift ? '<span class="gift-badge">هدیه</span>' : ''
 
@@ -2577,7 +2586,7 @@ export async function renderProducts(customerId, users = null) {
         </div>`
       : ''
 
-    const productRefundBadge = getProductRefundBadge(p)
+    const productRefundBadge = cancelled ? null : getProductRefundBadge(p)
     const productRefundBadgeHtml = productRefundBadge
       ? `<span class="refund-badge${productRefundBadge.kind === 'partial' ? ' is-partial' : ''}">${escapeHtml(productRefundBadge.label)}</span>`
       : ''
@@ -2692,8 +2701,10 @@ export async function addProductPayment(customerId, productIndex) {
   ensureProductPayments(product)
   syncProductStatus(product)
 
-  if (isInvoiceClosed(product)) {
-    showToast('فاکتور این محصول بسته شده و امکان ثبت واریز جدید نیست')
+  if (isProductSaleLocked(product)) {
+    showToast(isDealCancelled(product)
+      ? 'معامله لغو شده و امکان ثبت واریز جدید نیست'
+      : 'فاکتور این محصول بسته شده و امکان ثبت واریز جدید نیست')
     return
   }
   if (!(parseFloat(product.price) || 0)) {
@@ -2923,8 +2934,10 @@ export async function commitGiftSale(customerId, productIndex) {
     showToast('این فروش قبلاً ثبت شده است')
     return
   }
-  if (isInvoiceClosed(product)) {
-    showToast('فاکتور بسته شده و قابل ویرایش نیست')
+  if (isProductSaleLocked(product)) {
+    showToast(isDealCancelled(product)
+      ? 'معامله لغو شده و قابل ویرایش نیست'
+      : 'فاکتور بسته شده و قابل ویرایش نیست')
     return
   }
 
@@ -3044,8 +3057,10 @@ export async function commitSaleProductDetails(customerId, productIndex) {
     showToast('جزئیات هدیه پس از ثبت قابل ویرایش نیست')
     return
   }
-  if (isInvoiceClosed(product)) {
-    showToast('فاکتور بسته شده و قابل ویرایش نیست')
+  if (isProductSaleLocked(product)) {
+    showToast(isDealCancelled(product)
+      ? 'معامله لغو شده و قابل ویرایش نیست'
+      : 'فاکتور بسته شده و قابل ویرایش نیست')
     return
   }
   if (getProductRefundRecords(product).length) {
@@ -3115,8 +3130,10 @@ export async function commitSalePayment(customerId, productIndex, paymentIndex) 
     showToast('واریز تأییدشده قابل ویرایش نیست')
     return
   }
-  if (isInvoiceClosed(product)) {
-    showToast('فاکتور بسته شده و قابل ویرایش نیست')
+  if (isProductSaleLocked(product)) {
+    showToast(isDealCancelled(product)
+      ? 'معامله لغو شده و قابل ویرایش نیست'
+      : 'فاکتور بسته شده و قابل ویرایش نیست')
     return
   }
 

@@ -16,12 +16,13 @@ import {
 import { getUsersSafe } from './auth.js'
 import { renderProducts } from './customers.js'
 
-let refundsView = 'kanban' // kanban | rejected
+let refundsView = 'kanban' // kanban | rejected | archived
 let rejectTargetId = null
 let completeTargetId = null
 let wizardBusy = false
 let rejectBusy = false
 let completeBusy = false
+let archiveBusyIds = new Set()
 const movingRefundIds = new Set()
 
 const REFUND_DRAG_THRESHOLD = 8
@@ -38,6 +39,11 @@ const wizard = {
 }
 
 const REFUND_REASON_OTHER = 'سایر'
+const REFUND_VIEWS = new Set(['kanban', 'rejected', 'archived'])
+
+function isRefundArchived(r) {
+  return !!(r && r.archivedAt)
+}
 
 function canManageRefunds() {
   return hasPermission('refunds_manage')
@@ -128,15 +134,17 @@ function refundMatchesSearch(r, q, users = []) {
 }
 
 export function setRefundsView(view) {
-  if (view !== 'kanban' && view !== 'rejected') return
+  if (!REFUND_VIEWS.has(view)) return
   refundsView = view
   document.querySelectorAll('.refunds-view-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === view)
   })
   const kanban = document.getElementById('refundsKanban')
   const rejected = document.getElementById('refundsRejectedWrap')
+  const archived = document.getElementById('refundsArchivedWrap')
   if (kanban) kanban.hidden = view !== 'kanban'
   if (rejected) rejected.hidden = view !== 'rejected'
+  if (archived) archived.hidden = view !== 'archived'
   renderRefunds()
 }
 
@@ -165,6 +173,7 @@ export async function renderRefunds() {
     rejected: 0
   }
   all.forEach(r => {
+    if (r.status === REFUND_STATUS.completed && isRefundArchived(r)) return
     if (counts[r.status] != null) counts[r.status]++
   })
   const setStat = (id, n) => {
@@ -181,10 +190,22 @@ export async function renderRefunds() {
     return
   }
 
+  if (refundsView === 'archived') {
+    renderArchivedTable(
+      all.filter(r => r.status === REFUND_STATUS.completed && isRefundArchived(r)),
+      users
+    )
+    return
+  }
+
   REFUND_KANBAN_STATUSES.forEach(status => {
     const col = document.getElementById(`refundCol-${status}`)
     if (!col) return
-    const items = all.filter(r => r.status === status)
+    const items = all.filter(r => {
+      if (r.status !== status) return false
+      if (status === REFUND_STATUS.completed && isRefundArchived(r)) return false
+      return true
+    })
     const countEl = document.getElementById(`refundColCount-${status}`)
     if (countEl) countEl.textContent = formatNumber(items.length)
     try {
@@ -202,6 +223,9 @@ function renderRefundCard(r, canManage, users = []) {
   const draggable = canManage && r.status !== REFUND_STATUS.completed
   const rejectBtn = canManage && (r.status === REFUND_STATUS.requested || r.status === REFUND_STATUS.awaiting)
     ? `<button type="button" class="btn btn-sm btn-reject" onclick="event.stopPropagation();app.openRejectRefundModal(${Number(r.id)})">رد</button>`
+    : ''
+  const archiveBtn = canManage && r.status === REFUND_STATUS.completed && !isRefundArchived(r)
+    ? `<button type="button" class="btn btn-sm" onclick="event.stopPropagation();app.archiveRefund(${Number(r.id)})">بایگانی</button>`
     : ''
   const statusSelect = canManage && r.status !== REFUND_STATUS.completed
     ? `<select class="refund-status-select" aria-label="تغییر وضعیت"
@@ -224,7 +248,7 @@ function renderRefundCard(r, canManage, users = []) {
       ${renderRefundStageTimes(r)}
       ${r.note ? `<div class="refund-card-note">${escapeHtml(r.note)}</div>` : ''}
       ${renderPayoutBlock(r)}
-      <div class="refund-card-actions">${statusSelect}${rejectBtn}</div>
+      <div class="refund-card-actions">${statusSelect}${rejectBtn}${archiveBtn}</div>
     </div>`
 }
 
@@ -445,6 +469,65 @@ function renderRejectedTable(items, users = []) {
   `).join('')
 }
 
+function renderArchivedTable(items, users = []) {
+  const tbody = document.getElementById('refundsArchivedBody')
+  if (!tbody) return
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted);">بایگانی خالی است</td></tr>`
+    return
+  }
+  tbody.innerHTML = items.map(r => `
+    <tr>
+      <td>${escapeHtml(r.customerName || r.customerId)}</td>
+      <td>${escapeHtml(r.productName || '—')}</td>
+      <td style="direction:ltr;text-align:right;">${formatNumber(r.amount)} ریال</td>
+      <td>${escapeHtml(resolveAdvisorName(r.advisorPhone, users))}</td>
+      <td>${escapeHtml(r.reason || '—')}</td>
+      <td style="font-size:12px;direction:ltr;">${escapeHtml(gregorianToJalaliStr(r.completedAt) || '—')}</td>
+      <td style="font-size:12px;direction:ltr;">${escapeHtml(gregorianToJalaliStr(r.archivedAt) || '—')}</td>
+    </tr>
+  `).join('')
+}
+
+export async function archiveRefund(id) {
+  if (!requirePermission('refunds_manage')) return
+  const key = String(id)
+  if (archiveBusyIds.has(key)) return
+  const refund = getRefunds().find(r => String(r.id) === key)
+  if (!refund) {
+    showToast('درخواست عودت پیدا نشد')
+    return
+  }
+  if (refund.status !== REFUND_STATUS.completed) {
+    showToast('فقط عودت‌های انجام‌شده قابل بایگانی هستند')
+    return
+  }
+  if (isRefundArchived(refund)) {
+    showToast('این عودت قبلاً بایگانی شده است')
+    return
+  }
+  archiveBusyIds.add(key)
+  try {
+    const user = getCurrentUser()
+    await updateRefundInDB(id, {
+      archivedAt: new Date().toISOString(),
+      updatedByPhone: normalizePhone(user?.phone || '')
+    })
+    showToast('عودت بایگانی شد')
+    await renderRefunds()
+  } catch (e) {
+    console.error(e)
+    const msg = e?.message || ''
+    if (/archived_at|column/i.test(msg)) {
+      showToast('ستون بایگانی در دیتابیس نیست؛ مایگریشن 020 را اجرا کنید')
+    } else {
+      showToast(msg || 'خطا در بایگانی')
+    }
+  } finally {
+    archiveBusyIds.delete(key)
+  }
+}
+
 function setKanbanDragging(on) {
   document.getElementById('refundsKanban')?.classList.toggle('is-dragging-refund', !!on)
   document.body.classList.toggle('is-refund-dragging', !!on)
@@ -639,6 +722,10 @@ async function moveRefundStatus(id, nextStatus, extra = {}) {
       await undoCompletedRefundWriteback(refund)
     }
     showToast(nextStatus === REFUND_STATUS.rejected ? 'درخواست رد شد' : 'وضعیت به‌روز شد')
+    const custId = refund.customerId
+    if (custId) {
+      try { renderProducts(custId) } catch (_) { /* ignore */ }
+    }
     await renderRefunds()
     return true
   } catch (e) {
@@ -1120,6 +1207,9 @@ async function submitRefundWizard() {
     })
     closeRefundWizard()
     showToast('درخواست عودت ثبت شد')
+    try {
+      renderProducts(customer.id)
+    } catch (_) { /* ignore */ }
     try {
       await renderRefunds()
     } catch (renderErr) {

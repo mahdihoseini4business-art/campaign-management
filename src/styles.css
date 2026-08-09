@@ -1739,6 +1739,12 @@
     padding: 4px 10px;
   }
 
+  .invoice-closed-badge.is-cancelled {
+    color: #9f1239;
+    background: #ffe4e6;
+    border-color: #fda4af;
+  }
+
   .product-row-rejected {
     background: #fef2f2;
     border-color: #fca5a5;
@@ -1909,6 +1915,18 @@
     color: #9a3412;
     background: #ffedd5;
     border-color: #fdba74;
+  }
+
+  .refund-badge.is-pending {
+    color: #1e40af;
+    background: #dbeafe;
+    border-color: #93c5fd;
+  }
+
+  .refund-kanban[hidden],
+  #refundsRejectedWrap[hidden],
+  #refundsArchivedWrap[hidden] {
+    display: none !important;
   }
 
   #sheet-refunds,
