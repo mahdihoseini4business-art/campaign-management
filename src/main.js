@@ -12,6 +12,7 @@ import {
   renderRefunds, setRefundsView, openRefundWizard, closeRefundWizard, refundWizardBack, refundWizardNext,
   onRefundWizardCustomerSearch, selectRefundWizardCustomer, selectRefundWizardPayment, setRefundWizardFullAmount,
   onRefundCardPointerDown, onRefundStatusSelect,
+  onRefundShebaInput, onRefundCardInput, onRefundDigitFieldKeydown,
   openCompleteRefundModal, closeCompleteRefundModal, confirmCompleteRefund,
   openRejectRefundModal, closeRejectRefundModal, confirmRejectRefund
 } from './refunds.js'
@@ -429,6 +430,9 @@ const app = {
   setRefundWizardFullAmount,
   onRefundCardPointerDown,
   onRefundStatusSelect,
+  onRefundShebaInput,
+  onRefundCardInput,
+  onRefundDigitFieldKeydown,
   openCompleteRefundModal,
   closeCompleteRefundModal,
   confirmCompleteRefund,

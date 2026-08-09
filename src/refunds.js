@@ -218,14 +218,65 @@ function renderRefundCard(r, canManage, users = []) {
     </div>`
 }
 
-function normalizeSheba(raw) {
+function onlyEnDigits(raw, max) {
+  return toEnDigits(String(raw || '')).replace(/\D/g, '').slice(0, max)
+}
+
+function shebaDigits(raw) {
   let s = toEnDigits(String(raw || '')).replace(/[\s-]/g, '').toUpperCase()
-  if (/^\d{24}$/.test(s)) s = 'IR' + s
-  return s
+  if (s.startsWith('IR')) s = s.slice(2)
+  return s.replace(/\D/g, '').slice(0, 24)
+}
+
+function normalizeSheba(raw) {
+  const digits = shebaDigits(raw)
+  return digits ? ('IR' + digits) : ''
 }
 
 function normalizeCardNumber(raw) {
-  return toEnDigits(String(raw || '')).replace(/\D+/g, '')
+  return onlyEnDigits(raw, 16)
+}
+
+function restoreDigitCaret(el, prevValue, prevStart) {
+  if (prevStart == null) return
+  const diff = String(prevValue || '').length - el.value.length
+  const next = Math.max(0, Math.min(el.value.length, prevStart - diff))
+  try { el.setSelectionRange(next, next) } catch (_) { /* ignore */ }
+}
+
+const REFUND_DIGIT_NAV_KEYS = new Set([
+  'Backspace', 'Delete', 'Tab', 'Enter', 'Escape',
+  'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'
+])
+
+export function onRefundDigitFieldKeydown(event, maxDigits) {
+  if (event.ctrlKey || event.metaKey || event.altKey) return
+  if (REFUND_DIGIT_NAV_KEYS.has(event.key)) return
+  if (!/^[0-9\u06F0-\u06F9\u0660-\u0669]$/.test(event.key)) {
+    event.preventDefault()
+    return
+  }
+  const el = event.target
+  if (!el) return
+  const selected = Math.max(0, (el.selectionEnd ?? 0) - (el.selectionStart ?? 0))
+  const digits = onlyEnDigits(el.value, maxDigits)
+  if (selected <= 0 && digits.length >= maxDigits) event.preventDefault()
+}
+
+export function onRefundShebaInput(el) {
+  if (!el) return
+  const start = el.selectionStart
+  const prev = el.value
+  el.value = shebaDigits(el.value)
+  restoreDigitCaret(el, prev, start)
+}
+
+export function onRefundCardInput(el) {
+  if (!el) return
+  const start = el.selectionStart
+  const prev = el.value
+  el.value = onlyEnDigits(el.value, 16)
+  restoreDigitCaret(el, prev, start)
 }
 
 function formatCardDisplay(raw) {
@@ -242,14 +293,22 @@ function isValidCardNumber(card) {
 }
 
 function hasCompletePayoutFields(fields) {
-  return !!(fields?.accountHolderName && fields?.sheba && fields?.cardNumber)
+  return !!(
+    fields?.accountHolderName &&
+    isValidSheba(fields?.sheba) &&
+    isValidCardNumber(fields?.cardNumber)
+  )
 }
 
 function readPayoutFieldsFromModal() {
+  const shebaEl = document.getElementById('completeRefundSheba')
+  const cardEl = document.getElementById('completeRefundCard')
+  if (shebaEl) onRefundShebaInput(shebaEl)
+  if (cardEl) onRefundCardInput(cardEl)
   return {
     accountHolderName: String(document.getElementById('completeRefundHolder')?.value || '').trim(),
-    sheba: normalizeSheba(document.getElementById('completeRefundSheba')?.value),
-    cardNumber: normalizeCardNumber(document.getElementById('completeRefundCard')?.value)
+    sheba: normalizeSheba(shebaEl?.value),
+    cardNumber: normalizeCardNumber(cardEl?.value)
   }
 }
 
@@ -552,8 +611,8 @@ export function openCompleteRefundModal(id) {
   const shebaEl = document.getElementById('completeRefundSheba')
   const cardEl = document.getElementById('completeRefundCard')
   if (holderEl) holderEl.value = refund.accountHolderName || ''
-  if (shebaEl) shebaEl.value = refund.sheba || ''
-  if (cardEl) cardEl.value = refund.cardNumber ? formatCardDisplay(refund.cardNumber) : ''
+  if (shebaEl) shebaEl.value = shebaDigits(refund.sheba)
+  if (cardEl) cardEl.value = normalizeCardNumber(refund.cardNumber)
   holderEl?.focus()
   document.getElementById('completeRefundModal')?.classList.add('active')
 }

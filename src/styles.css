@@ -1966,6 +1966,52 @@
     text-align: right;
   }
 
+  .refund-prefixed-input {
+    display: flex;
+    align-items: stretch;
+    direction: ltr;
+    border: 1.5px solid #D6D3D1;
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .refund-prefixed-input:hover {
+    border-color: #A8A29E;
+  }
+
+  .refund-prefixed-input:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37,184,139,0.15);
+  }
+
+  .refund-prefixed-input-affix {
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-weight: 700;
+    font-family: 'Vazirmatn', sans-serif;
+    color: var(--text-secondary);
+    background: var(--bg-soft, #f8f9fa);
+    border-inline-end: 1px solid #D6D3D1;
+    user-select: none;
+  }
+
+  .refund-prefixed-input .form-input {
+    border: none;
+    box-shadow: none;
+    height: 44px;
+    text-align: left;
+    direction: ltr;
+    border-radius: 0;
+  }
+
+  .refund-prefixed-input .form-input:hover,
+  .refund-prefixed-input .form-input:focus {
+    border: none;
+    box-shadow: none;
+  }
+
   .refund-card-actions {
     margin-top: 8px;
     display: flex;
