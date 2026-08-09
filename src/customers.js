@@ -1,4 +1,4 @@
-import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed } from './data.js'
+import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
@@ -712,20 +712,14 @@ async function applyCustomerEdit(editId, fields) {
 
   if (wasLD && nowHasPhone) {
     const newId = await generateId('CS')
-    await saveCustomerToDB({ ...oldCustomer, id: newId, ...baseFields })
-    await updateFollowupsCustomerId(oldCustomer.id, newId)
+    await rekeyCustomerId(oldCustomer.id, cloneCustomerRecord(oldCustomer, { id: newId, ...baseFields }))
     await saveSetting('convertedCount', (data.convertedCount || 0) + 1)
-    data.customers[idx] = { ...oldCustomer, id: newId, ...baseFields }
-    data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
     data.convertedCount = (data.convertedCount || 0) + 1
     resultId = newId
     toast = `شماره ثبت شد — ${oldCustomer.id} تبدیل شد به ${newId}`
   } else if (!wasLD && !nowHasPhone && oldCustomer.id.startsWith('CS')) {
     const newId = await generateId('LD')
-    await saveCustomerToDB({ ...oldCustomer, id: newId, ...baseFields })
-    await updateFollowupsCustomerId(oldCustomer.id, newId)
-    data.customers[idx] = { ...oldCustomer, id: newId, ...baseFields }
-    data.followups.forEach(f => { if (f.customerId === oldCustomer.id) f.customerId = newId })
+    await rekeyCustomerId(oldCustomer.id, cloneCustomerRecord(oldCustomer, { id: newId, ...baseFields }))
     resultId = newId
     toast = `شماره حذف شد — ${oldCustomer.id} تبدیل شد به ${newId}`
   } else if (!advisorChanged) {
@@ -1054,19 +1048,15 @@ async function mergeLdIntoPhoneOwner({ sourceId, survivorId, fields }) {
   if (survivor.id.startsWith('LD')) {
     const newId = await generateId('CS')
     const phones = normalizeCustomerPhones(survivor)
-    const converted = {
-      ...survivor,
+    const converted = cloneCustomerRecord(survivor, {
       id: newId,
       phones,
       phone: phones[0] || ''
-    }
-    await saveCustomerToDB(converted)
-    await updateFollowupsCustomerId(survivor.id, newId)
-    data.followups.forEach(f => { if (f.customerId === survivor.id) f.customerId = newId })
-    await deleteCustomerRowOnly(survivor.id)
-    data.customers[survivorIdx] = converted
+    })
+    await rekeyCustomerId(survivor.id, converted)
     survivor = converted
     finalSurvivorId = newId
+    survivorIdx = data.customers.findIndex(c => c.id === finalSurvivorId)
   }
 
   const mergedPhones = mergePhoneLists(
@@ -1374,11 +1364,8 @@ async function createCustomerFromDetail(fields, users) {
 
       if (wasLD) {
         const newId = await generateId('CS')
-        await saveCustomerToDB({ ...existById, ...updatedFields, id: newId })
-        await updateFollowupsCustomerId(existById.id, newId)
+        await rekeyCustomerId(existById.id, cloneCustomerRecord(existById, { ...updatedFields, id: newId }))
         await saveSetting('convertedCount', (data.convertedCount || 0) + 1)
-        data.customers[idx] = { ...existById, ...updatedFields, id: newId }
-        data.followups.forEach(f => { if (f.customerId === existById.id) f.customerId = newId })
         data.convertedCount = (data.convertedCount || 0) + 1
         await renderCustomers()
         await openCustomerDetail(newId)

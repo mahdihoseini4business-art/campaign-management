@@ -1105,7 +1105,7 @@ export function getData() {
 // Save customer to Supabase
 // ============================================
 
-export async function saveCustomerToDB(customer) {
+export async function saveCustomerToDB(customer, options = {}) {
   const phones = normalizeCustomerPhonesLocal(customer)
   const addresses = normalizeCustomerAddressesLocal(customer)
   const row = {
@@ -1126,6 +1126,8 @@ export async function saveCustomerToDB(customer) {
     customer_level_locked: !!customer.customerLevelLocked,
     referred_by_phone: customer.referredByPhone || ''
   }
+  // Only set on insert (e.g. LD↔CS rekey) so L/relationship start is preserved.
+  if (options.createdAt) row.created_at = options.createdAt
 
   let { error } = await supabase.from('customers').upsert(row, { onConflict: 'id' })
   // Graceful fallback before migration 007 / 015 is applied
@@ -1160,6 +1162,273 @@ export async function deleteCustomerRowOnly(id) {
   const { error } = await supabase.from('customers').delete().eq('id', id)
   if (error) throw new Error('خطا در حذف مشتری: ' + error.message)
   bumpLocalWrite()
+}
+
+function cloneJson(value, fallback) {
+  try {
+    return JSON.parse(JSON.stringify(value))
+  } catch {
+    return fallback
+  }
+}
+
+/** Deep-clone a customer for LD↔CS rekey so nested products/payments are not shared. */
+export function cloneCustomerRecord(customer, overrides = {}) {
+  const productsSrc = Array.isArray(overrides.products) ? overrides.products : (customer?.products || [])
+  const products = cloneJson(productsSrc, [])
+  const phones = Array.isArray(overrides.phones)
+    ? [...overrides.phones]
+    : (Array.isArray(customer?.phones) ? [...customer.phones] : [])
+  const addressesSrc = Array.isArray(overrides.addresses)
+    ? overrides.addresses
+    : (Array.isArray(customer?.addresses) ? customer.addresses : [])
+  const addresses = addressesSrc.map(a => (a && typeof a === 'object' ? { ...a } : a))
+  return {
+    ...customer,
+    ...overrides,
+    phones,
+    phone: phones[0] || overrides.phone || '',
+    addresses,
+    products,
+    createdAt: overrides.createdAt !== undefined ? overrides.createdAt : (customer?.createdAt || null)
+  }
+}
+
+function replaceCustomerInCache(oldId, nextCustomer) {
+  data.customers = data.customers.filter(c => c.id !== oldId && c.id !== nextCustomer.id)
+  data.customers.push(nextCustomer)
+}
+
+/**
+ * Insert customer under a new id, move followups, delete the old row.
+ * Used for LD↔CS conversion so the previous id does not linger as a duplicate sale.
+ */
+export async function rekeyCustomerId(oldId, newCustomer) {
+  if (!oldId || !newCustomer?.id || oldId === newCustomer.id) {
+    throw new Error('شناسه تبدیل نامعتبر است')
+  }
+  const createdAt = newCustomer.createdAt || data.customers.find(c => c.id === oldId)?.createdAt || null
+  const toSave = { ...newCustomer, createdAt: createdAt || newCustomer.createdAt || null }
+  await saveCustomerToDB(toSave, { createdAt: toSave.createdAt || undefined })
+  await updateFollowupsCustomerId(oldId, toSave.id)
+  data.followups.forEach(f => { if (f.customerId === oldId) f.customerId = toSave.id })
+  await deleteCustomerRowOnly(oldId)
+  replaceCustomerInCache(oldId, toSave)
+  return toSave
+}
+
+function paymentStatusRankLocal(status) {
+  if (status === 'approved') return 3
+  if (status === 'rejected') return 2
+  if (status === 'pending') return 1
+  return 0
+}
+
+function collectCustomerPaymentIds(customer) {
+  const ids = []
+  for (const line of customer?.products || []) {
+    if (!line || typeof line !== 'object') continue
+    for (const pay of line.payments || []) {
+      if (pay?.id) ids.push(String(pay.id))
+    }
+  }
+  return ids
+}
+
+function approvedPaidTotalLocal(customer) {
+  let sum = 0
+  for (const line of customer?.products || []) {
+    if (!line || typeof line !== 'object') continue
+    if (isGiftSaleLine(line)) {
+      if ((line.giftAccountingStatus || 'pending') === 'approved') sum += 0.01
+      continue
+    }
+    for (const pay of line.payments || []) {
+      const st = pay?.paymentStatus || 'approved'
+      if (st === 'approved') sum += parseFloat(pay.amount) || 0
+    }
+  }
+  return sum
+}
+
+function createdAtMsLocal(customer) {
+  const t = customer?.createdAt ? new Date(customer.createdAt).getTime() : 0
+  return Number.isFinite(t) ? t : 0
+}
+
+function pickConversionSurvivor(a, b, followups) {
+  const aPay = approvedPaidTotalLocal(a)
+  const bPay = approvedPaidTotalLocal(b)
+  if (aPay !== bPay) return aPay > bPay ? a : b
+  const aFu = followups.filter(f => f.customerId === a.id).length
+  const bFu = followups.filter(f => f.customerId === b.id).length
+  if (aFu !== bFu) return aFu > bFu ? a : b
+  const aT = createdAtMsLocal(a)
+  const bT = createdAtMsLocal(b)
+  if (aT !== bT) return aT > bT ? a : b
+  const aCS = String(a.id).startsWith('CS')
+  const bCS = String(b.id).startsWith('CS')
+  const aPhones = normalizeCustomerPhonesLocal(a).length
+  const bPhones = normalizeCustomerPhonesLocal(b).length
+  if (aCS && aPhones && !(bCS && bPhones)) return a
+  if (bCS && bPhones && !(aCS && aPhones)) return b
+  return aCS ? a : b
+}
+
+function betterPaymentLocal(a, b) {
+  if (!a) return b
+  if (!b) return a
+  return paymentStatusRankLocal(a.paymentStatus || 'pending') >= paymentStatusRankLocal(b.paymentStatus || 'pending')
+    ? a
+    : b
+}
+
+function productCloneKey(product) {
+  const name = coerceProductName(product?.name || '').toLowerCase()
+  const price = String(parseFloat(product?.price) || 0)
+  const gift = isGiftSaleLine(product) ? '1' : '0'
+  const soldAt = String(product?.soldAt || '').trim()
+  return `${gift}|${name}|${price}|${soldAt}`
+}
+
+function mergeOrphanProductsIntoSurvivor(survivor, orphan) {
+  const products = cloneJson(survivor.products || [], [])
+  for (const op of orphan.products || []) {
+    if (!op || typeof op !== 'object') continue
+    const opIds = new Set((op.payments || []).map(p => p?.id && String(p.id)).filter(Boolean))
+    let idx = -1
+    if (opIds.size) {
+      idx = products.findIndex(sp =>
+        (sp.payments || []).some(p => p?.id && opIds.has(String(p.id)))
+      )
+    }
+    if (idx < 0) {
+      const key = productCloneKey(op)
+      if (key !== '0||0|' && key !== '1||0|') {
+        idx = products.findIndex(sp => productCloneKey(sp) === key)
+      }
+    }
+    if (idx < 0) {
+      const hasPay = (op.payments || []).some(p => (parseFloat(p?.amount) || 0) > 0)
+      if (hasPay || isGiftSaleLine(op) || coerceProductName(op.name)) {
+        products.push(cloneJson(op, { ...op }))
+      }
+      continue
+    }
+    const sp = products[idx]
+    if (!Array.isArray(sp.payments)) sp.payments = []
+    const byId = new Map(sp.payments.map(p => [String(p?.id || ''), p]))
+    for (const pay of op.payments || []) {
+      if (!pay) continue
+      const id = String(pay.id || '')
+      if (!id) {
+        const dup = sp.payments.some(p =>
+          (parseFloat(p.amount) || 0) === (parseFloat(pay.amount) || 0) &&
+          String(p.soldAt || '') === String(pay.soldAt || '')
+        )
+        if (!dup && (parseFloat(pay.amount) || 0) > 0) sp.payments.push({ ...pay })
+        continue
+      }
+      if (!byId.has(id)) {
+        sp.payments.push({ ...pay })
+        byId.set(id, pay)
+      } else {
+        const keep = betterPaymentLocal(byId.get(id), pay)
+        const i = sp.payments.findIndex(p => String(p?.id) === id)
+        if (i >= 0) sp.payments[i] = { ...keep }
+        byId.set(id, keep)
+      }
+    }
+    if (isGiftSaleLine(op) || isGiftSaleLine(sp)) {
+      const a = sp.giftAccountingStatus || 'pending'
+      const b = op.giftAccountingStatus || 'pending'
+      sp.giftAccountingStatus = paymentStatusRankLocal(b) > paymentStatusRankLocal(a) ? b : a
+      if (op.giftRejectReason && !sp.giftRejectReason) sp.giftRejectReason = op.giftRejectReason
+    }
+  }
+  return products
+}
+
+function findConversionOrphanPairs(customers) {
+  const pairKeys = new Set()
+  const pairs = []
+  const addPair = (ld, cs) => {
+    if (!ld || !cs || ld.id === cs.id) return
+    const a = String(ld.id).startsWith('LD') ? ld : (String(cs.id).startsWith('LD') ? cs : null)
+    const b = String(cs.id).startsWith('CS') ? cs : (String(ld.id).startsWith('CS') ? ld : null)
+    if (!a || !b) return
+    const key = `${a.id}|${b.id}`
+    if (pairKeys.has(key)) return
+    pairKeys.add(key)
+    pairs.push([a, b])
+  }
+
+  const byPlatform = new Map()
+  for (const c of customers) {
+    const key = String(c.platformId || '').trim().toLowerCase()
+    if (!key) continue
+    if (!byPlatform.has(key)) byPlatform.set(key, [])
+    byPlatform.get(key).push(c)
+  }
+  for (const group of byPlatform.values()) {
+    if (group.length < 2) continue
+    const lds = group.filter(c => String(c.id).startsWith('LD'))
+    const css = group.filter(c => String(c.id).startsWith('CS'))
+    for (const ld of lds) {
+      for (const cs of css) addPair(ld, cs)
+    }
+  }
+
+  const payToCustomers = new Map()
+  for (const c of customers) {
+    for (const payId of collectCustomerPaymentIds(c)) {
+      if (!payToCustomers.has(payId)) payToCustomers.set(payId, new Set())
+      payToCustomers.get(payId).add(c.id)
+    }
+  }
+  const byId = new Map(customers.map(c => [c.id, c]))
+  for (const ids of payToCustomers.values()) {
+    if (ids.size < 2) continue
+    const group = [...ids].map(id => byId.get(id)).filter(Boolean)
+    const lds = group.filter(c => String(c.id).startsWith('LD'))
+    const css = group.filter(c => String(c.id).startsWith('CS'))
+    for (const ld of lds) {
+      for (const cs of css) addPair(ld, cs)
+    }
+  }
+
+  return pairs
+}
+
+/**
+ * Remove leftover LD/CS rows created by conversion that forgot to delete the old id.
+ * Same sale then appeared twice (approved on CS, still pending on orphan LD).
+ */
+export async function cleanupConversionOrphans() {
+  const pairs = findConversionOrphanPairs(data.customers)
+  if (!pairs.length) return { merged: 0 }
+
+  let merged = 0
+  for (const [ld, cs] of pairs) {
+    const survivorSrc = pickConversionSurvivor(ld, cs, data.followups)
+    const orphan = survivorSrc.id === ld.id ? cs : ld
+    const survivor = cloneCustomerRecord(survivorSrc, {
+      products: mergeOrphanProductsIntoSurvivor(survivorSrc, orphan)
+    })
+    try {
+      await saveCustomerToDB(survivor)
+      const idx = data.customers.findIndex(c => c.id === survivor.id)
+      if (idx >= 0) data.customers[idx] = survivor
+      await updateFollowupsCustomerId(orphan.id, survivor.id)
+      data.followups.forEach(f => { if (f.customerId === orphan.id) f.customerId = survivor.id })
+      await deleteCustomerRowOnly(orphan.id)
+      data.customers = data.customers.filter(c => c.id !== orphan.id)
+      merged++
+    } catch (e) {
+      console.error('cleanupConversionOrphans error', ld.id, cs.id, e)
+    }
+  }
+  return { merged }
 }
 
 function mapOwnershipTransferRow(t) {
