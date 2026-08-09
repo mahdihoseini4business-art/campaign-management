@@ -1,3 +1,4 @@
+import Chart from 'chart.js/auto'
 import { getData, getStatuses, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
@@ -541,7 +542,7 @@ function computeDashSalesMetrics(hasDateFilter, inDateRange) {
 
 function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
   const canvas = document.getElementById('chartSalesTimeline')
-  if (!canvas || typeof Chart === 'undefined') return
+  if (!canvas) return
   destroyDashChart('salesTimeline')
   destroyDashChart(canvas)
   if (!syncSalesChartTimeframeOptions()) return
@@ -728,7 +729,7 @@ function resolveAovDisplayDayRange(dateFromNum, dateToNum) {
 
 function renderAovMaChart(dateFromNum, dateToNum) {
   const canvas = document.getElementById('chartAovMa')
-  if (!canvas || typeof Chart === 'undefined') return
+  if (!canvas) return
   destroyDashChart('aovMa')
   destroyDashChart(canvas)
 
@@ -1121,13 +1122,17 @@ export async function renderDashboard() {
     : 0
   document.getElementById('dash-avg-sale').textContent = formatNumber(avgSale) + ' ریال'
 
-  const refundsTotal = sumCompletedRefundsForDash({
-    dateFromNum,
-    dateToNum,
-    advisorPhones: selectedAdvisorPhones
-  })
-  const refundsEl = document.getElementById('dash-refunds-total')
-  if (refundsEl) refundsEl.textContent = formatNumber(refundsTotal) + ' ریال'
+  try {
+    const refundsTotal = sumCompletedRefundsForDash({
+      dateFromNum,
+      dateToNum,
+      advisorPhones: selectedAdvisorPhones
+    })
+    const refundsEl = document.getElementById('dash-refunds-total')
+    if (refundsEl) refundsEl.textContent = formatNumber(refundsTotal) + ' ریال'
+  } catch (e) {
+    console.error('dash refunds total error:', e)
+  }
 
   try {
     renderTransferMetrics(dateFromNum, dateToNum)
@@ -1194,7 +1199,7 @@ function destroyDashChart(keyOrCanvas) {
       }
       return
     }
-    if (keyOrCanvas && typeof Chart !== 'undefined' && typeof Chart.getChart === 'function') {
+    if (keyOrCanvas && typeof Chart.getChart === 'function') {
       const bound = Chart.getChart(keyOrCanvas)
       if (bound) bound.destroy()
     }
@@ -1245,7 +1250,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
       custStatusCounts[label] = (custStatusCounts[label] || 0) + 1
     })
     const custCanvas = document.getElementById('chartCustomers')
-    if (custCanvas && typeof Chart !== 'undefined') {
+    if (custCanvas) {
       dashCharts.custStatus = new Chart(custCanvas, {
         type: 'doughnut',
         data: {
@@ -1291,7 +1296,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     )
 
     const salesCanvas = document.getElementById('chartSalesStatus')
-    if (salesCanvas && typeof Chart !== 'undefined') {
+    if (salesCanvas) {
       dashCharts.salesStatus = new Chart(salesCanvas, {
         type: 'pie',
         data: {
@@ -2098,7 +2103,7 @@ function renderProductSalesChart(productSales = null, productCounts = null) {
   const label = metric === 'count' ? 'تعداد فروش' : 'مبلغ فروش'
 
   const canvas = document.getElementById('chartProducts')
-  if (!canvas || typeof Chart === 'undefined') return
+  if (!canvas) return
 
   destroyDashChart('products')
   destroyDashChart(canvas)
@@ -2187,7 +2192,7 @@ function buildAdvisorCompareRows(dateFromNum, dateToNum, metric = 'net') {
 
 function renderAdvisorCompareChart(dateFromNum, dateToNum) {
   const canvas = document.getElementById('chartAdvisorCompare')
-  if (!canvas || typeof Chart === 'undefined') return
+  if (!canvas) return
 
   destroyDashChart('advisorCompare')
   destroyDashChart(canvas)
