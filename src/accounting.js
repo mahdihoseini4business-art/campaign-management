@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, coerceProductName, isGiftSaleLine, getDestinationBanks } from './data.js'
+import { getData, saveCustomerToDB, coerceProductName, isGiftSaleLine, getDestinationBanks, collapseDuplicateCustomersInCache } from './data.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
   requirePermission, getCurrentUser, normalizePhone, getNowJalaliDateTime,
@@ -30,9 +30,14 @@ export const PRESET_REJECT_REASONS = [
 ]
 
 export function getAllPayments() {
+  collapseDuplicateCustomersInCache()
   const data = getData()
   const payments = []
+  const seenIds = new Set()
   data.customers.forEach(c => {
+    const cid = String(c?.id || '').trim()
+    if (!cid || seenIds.has(cid)) return
+    seenIds.add(cid)
     ;(c.products || []).forEach((product, productIndex) => {
       if (isGiftSale(product) || isGiftSaleLine(product)) {
         syncProductStatus(product)

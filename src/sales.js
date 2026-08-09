@@ -1,4 +1,4 @@
-import { getData, getPlatforms, coerceProductName } from './data.js'
+import { getData, getPlatforms, coerceProductName, collapseDuplicateCustomersInCache } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import {
@@ -23,9 +23,14 @@ import { renderSalesTargetBand } from './dashboard.js'
 // ============================================
 
 export function getAllSales() {
+  collapseDuplicateCustomersInCache()
   const data = getData()
   const sales = []
+  const seenIds = new Set()
   data.customers.forEach(c => {
+    const cid = String(c?.id || '').trim()
+    if (!cid || seenIds.has(cid)) return
+    seenIds.add(cid)
     if (c.products) {
       c.products.forEach((p, productIndex) => {
         ensureProductPayments(p)

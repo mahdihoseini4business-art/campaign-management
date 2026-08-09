@@ -12,7 +12,8 @@ import {
   upsertFollowupInCache,
   removeFollowupFromCache,
   upsertRefundInCache,
-  removeRefundFromCache
+  removeRefundFromCache,
+  isDataLocalWriteSuppressed
 } from './data.js'
 import { refreshNotifications, updateNotificationBadge } from './notifications.js'
 import { renderCustomers, updateStats } from './customers.js'
@@ -48,7 +49,7 @@ export function noteLocalWrite(ms = LOCAL_WRITE_SUPPRESS_MS) {
 }
 
 function isLocalWriteSuppressed() {
-  return Date.now() < localWriteUntil
+  return Date.now() < localWriteUntil || isDataLocalWriteSuppressed()
 }
 
 function getActiveSheet() {

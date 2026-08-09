@@ -4,7 +4,20 @@
 
 import { supabase } from './supabase.js'
 
+const LOCAL_WRITE_SUPPRESS_MS = 2000
+let localWriteUntil = 0
+
+/** Immediate suppress so realtime echo cannot race the dynamic live-sync import. */
+export function noteLocalWriteNow(ms = LOCAL_WRITE_SUPPRESS_MS) {
+  localWriteUntil = Date.now() + Math.max(0, ms)
+}
+
+export function isDataLocalWriteSuppressed() {
+  return Date.now() < localWriteUntil
+}
+
 function bumpLocalWrite() {
+  noteLocalWriteNow()
   import('./live-sync.js').then(m => m.noteLocalWrite()).catch(() => {})
 }
 
@@ -214,9 +227,14 @@ export function coerceProductName(value) {
   return /^\[object\s+Object\]$/i.test(s) ? '' : s
 }
 
+export function normalizeCustomerId(id) {
+  return String(id || '').trim()
+}
+
 /** Map a customers DB row → in-memory customer object */
 export function mapCustomerFromDb(c) {
-  if (!c || !c.id) return null
+  const id = normalizeCustomerId(c?.id)
+  if (!c || !id) return null
   const phones = normalizeCustomerPhonesLocal({
     phones: c.phones,
     phone: c.phone || ''
@@ -225,7 +243,7 @@ export function mapCustomerFromDb(c) {
     addresses: c.addresses
   })
   return {
-    id: c.id,
+    id,
     platformId: c.platform_id || '',
     platform: c.platform || 'instagram',
     name: c.name || '',
@@ -271,20 +289,41 @@ export function mapFollowupFromDb(f) {
   }
 }
 
+/** Insert or replace a customer object in cache, collapsing any same-id copies. */
+export function putCustomerInCache(customer) {
+  if (!customer) return false
+  const id = normalizeCustomerId(customer.id)
+  if (!id) return false
+  customer.id = id
+  const next = []
+  let replaced = false
+  for (const c of data.customers) {
+    if (normalizeCustomerId(c.id) === id) {
+      if (!replaced) {
+        next.push(customer)
+        replaced = true
+      }
+    } else {
+      next.push(c)
+    }
+  }
+  if (!replaced) next.push(customer)
+  data.customers = next
+  return true
+}
+
 /** Insert or replace a customer in the in-memory cache. Returns false if row invalid. */
 export function upsertCustomerInCache(dbRow) {
   const mapped = mapCustomerFromDb(dbRow)
   if (!mapped) return false
-  const idx = data.customers.findIndex(c => c.id === mapped.id)
-  if (idx >= 0) data.customers[idx] = mapped
-  else data.customers.push(mapped)
-  return true
+  return putCustomerInCache(mapped)
 }
 
 export function removeCustomerFromCache(id) {
-  if (!id) return false
+  const nid = normalizeCustomerId(id)
+  if (!nid) return false
   const before = data.customers.length
-  data.customers = data.customers.filter(c => c.id !== id)
+  data.customers = data.customers.filter(c => normalizeCustomerId(c.id) !== nid)
   return data.customers.length !== before
 }
 
@@ -378,8 +417,8 @@ export async function loadData() {
     throw new Error('خطا در بارگذاری داده‌ها:\n' + errors.join('\n'))
   }
 
-  // Map DB rows to app format
-  data.customers = (customersRes.data || []).map(mapCustomerFromDb).filter(Boolean)
+  // Map DB rows to app format (collapse same-id copies from pagination/realtime races)
+  data.customers = dedupeCustomersById((customersRes.data || []).map(mapCustomerFromDb).filter(Boolean))
 
   data.followups = (followupsRes.data || []).map(mapFollowupFromDb).filter(Boolean)
 
@@ -1106,6 +1145,7 @@ export function getData() {
 // ============================================
 
 export async function saveCustomerToDB(customer, options = {}) {
+  bumpLocalWrite()
   const phones = normalizeCustomerPhonesLocal(customer)
   const addresses = normalizeCustomerAddressesLocal(customer)
   const row = {
@@ -1148,6 +1188,7 @@ export async function saveCustomerToDB(customer, options = {}) {
 // ============================================
 
 export async function deleteCustomerFromDB(id) {
+  bumpLocalWrite()
   // Delete followups first
   const { error: followupError } = await supabase.from('followups').delete().eq('customer_id', id)
   if (followupError) throw new Error('خطا در حذف پیگیری‌ها: ' + followupError.message)
@@ -1159,6 +1200,7 @@ export async function deleteCustomerFromDB(id) {
 
 /** Delete customer row only — followups must already be reassigned (e.g. after merge). */
 export async function deleteCustomerRowOnly(id) {
+  bumpLocalWrite()
   const { error } = await supabase.from('customers').delete().eq('id', id)
   if (error) throw new Error('خطا در حذف مشتری: ' + error.message)
   bumpLocalWrite()
@@ -1195,8 +1237,9 @@ export function cloneCustomerRecord(customer, overrides = {}) {
 }
 
 function replaceCustomerInCache(oldId, nextCustomer) {
-  data.customers = data.customers.filter(c => c.id !== oldId && c.id !== nextCustomer.id)
-  data.customers.push(nextCustomer)
+  const drop = new Set([normalizeCustomerId(oldId), normalizeCustomerId(nextCustomer?.id)])
+  data.customers = data.customers.filter(c => !drop.has(normalizeCustomerId(c.id)))
+  putCustomerInCache(nextCustomer)
 }
 
 /**
@@ -1347,6 +1390,65 @@ function mergeOrphanProductsIntoSurvivor(survivor, orphan) {
     }
   }
   return products
+}
+
+function customerSnapshotScore(customer) {
+  let approved = 0
+  let payments = 0
+  let pending = 0
+  for (const line of customer?.products || []) {
+    if (!line || typeof line !== 'object') continue
+    if (isGiftSaleLine(line)) {
+      const st = line.giftAccountingStatus || 'pending'
+      if (st === 'approved') approved += 1
+      else if (st === 'pending') pending += 1
+      payments += 1
+      continue
+    }
+    for (const pay of line.payments || []) {
+      payments += 1
+      const st = pay?.paymentStatus || 'approved'
+      const amt = parseFloat(pay?.amount) || 0
+      if (st === 'approved') approved += amt || 1
+      else if (st === 'pending') pending += amt || 1
+    }
+  }
+  return approved * 1e12 + payments * 1e6 + pending
+}
+
+/** Collapse same-id customer copies; keep the stronger payment snapshot. */
+export function dedupeCustomersById(customers) {
+  const byId = new Map()
+  for (const c of customers || []) {
+    if (!c) continue
+    const id = normalizeCustomerId(c.id)
+    if (!id) continue
+    c.id = id
+    const existing = byId.get(id)
+    if (!existing) {
+      byId.set(id, c)
+      continue
+    }
+    const keep = customerSnapshotScore(c) >= customerSnapshotScore(existing) ? c : existing
+    const drop = keep === c ? existing : c
+    keep.products = mergeOrphanProductsIntoSurvivor(keep, drop)
+    byId.set(id, keep)
+  }
+  return [...byId.values()]
+}
+
+export function collapseDuplicateCustomersInCache() {
+  const seen = new Set()
+  let hasDup = false
+  for (const c of data.customers) {
+    const id = normalizeCustomerId(c?.id)
+    if (!id) continue
+    if (seen.has(id)) { hasDup = true; break }
+    seen.add(id)
+  }
+  if (!hasDup) return false
+  data.customers = dedupeCustomersById(data.customers)
+  return true
 }
 
 function findConversionOrphanPairs(customers) {

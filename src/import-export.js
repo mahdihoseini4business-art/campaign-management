@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, generateId, getStatuses, saveFollowupToDB, getDestinationBanks, getSellableNames } from './data.js'
+import { getData, saveCustomerToDB, generateId, getStatuses, saveFollowupToDB, getDestinationBanks, getSellableNames, putCustomerInCache } from './data.js'
 import {
   toEnDigits, showToast, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
@@ -1068,7 +1068,7 @@ export async function doImport() {
         if (!newCustomer.customerLevelLocked) {
           syncCustomerLevel(newCustomer, data.customers, data.followups)
         }
-        data.customers.push(newCustomer)
+        putCustomerInCache(newCustomer)
         await saveCustomerToDB(newCustomer)
         created++
       }
@@ -1809,7 +1809,7 @@ export async function doSalesImport() {
         customerLevelLocked: false,
         referredByPhone: ''
       }
-      data.customers.push(customer)
+      putCustomerInCache(customer)
       created++
       touched.add(customer.id)
     }
