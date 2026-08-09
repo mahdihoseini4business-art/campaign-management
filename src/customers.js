@@ -2280,6 +2280,43 @@ function renderSaleRefundSummaries(customerId, product, remaining) {
   }).join('')
 }
 
+function renderClosedProductToggle({
+  displayName,
+  statusLabel,
+  statusColor,
+  closedBadge,
+  giftBadge = '',
+  refundBadgeHtml = '',
+  priceText = ''
+}) {
+  return `<button type="button" class="product-block-toggle" onclick="app.toggleClosedProductBlock(this)" aria-expanded="false">
+      <span class="product-block-toggle-chevron" aria-hidden="true">▼</span>
+      <span class="product-block-toggle-main">
+        <span class="product-block-toggle-name">${escapeHtml(displayName || '—')}</span>
+        ${giftBadge}
+        ${refundBadgeHtml}
+      </span>
+      <span class="product-block-toggle-meta">
+        <span class="product-status-label" style="color:${statusColor};">${escapeHtml(statusLabel)}</span>
+        ${priceText ? `<span class="product-meta" style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${escapeHtml(priceText)}</span>` : ''}
+        ${closedBadge}
+      </span>
+    </button>`
+}
+
+function wrapClosedProductContent(closed, toggleHtml, innerHtml) {
+  if (!closed) return innerHtml
+  return `${toggleHtml}<div class="product-block-body">${innerHtml}</div>`
+}
+
+export function toggleClosedProductBlock(el) {
+  const block = el?.closest?.('.product-block')
+  if (!block || !block.classList.contains('is-closed')) return
+  const collapsed = block.classList.toggle('is-collapsed')
+  const btn = block.querySelector('.product-block-toggle')
+  if (btn) btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true')
+}
+
 function saleFieldHtml(label, controlHtml, { required = false, optional = false, className = '', full = false } = {}) {
   const req = required ? ' <span class="sale-field-req" aria-hidden="true">*</span>' : ''
   const opt = optional ? ' <span class="sale-field-opt">اختیاری</span>' : ''
@@ -2326,6 +2363,7 @@ export async function renderProducts(customerId, users = null) {
       'product-block',
       worst === 'rejected' ? 'is-rejected' : '',
       closed ? 'is-closed' : '',
+      closed ? 'is-collapsed' : '',
       isGift ? 'is-gift-sale' : ''
     ].filter(Boolean).join(' ')
     const closedBadge = closed
@@ -2368,8 +2406,17 @@ export async function renderProducts(customerId, users = null) {
           ${p.shippingPostalCode ? saleFieldHtml('کد پستی', `<span class="sale-readonly-value">${escapeHtml(p.shippingPostalCode)}</span>`, { optional: true }) : ''}`
       }
 
-      return `
-      <div class="${blockClass}" data-product-index="${i}">
+      const toggleHtml = closed
+        ? renderClosedProductToggle({
+          displayName,
+          statusLabel,
+          statusColor,
+          closedBadge,
+          giftBadge,
+          priceText: '۰ ریال'
+        })
+        : ''
+      const inner = `
         <section class="sale-step sale-step-product">
           <h4 class="sale-step-title">۱. محصول ${giftBadge}${sellerHtml}</h4>
           <div class="sale-gift-banner" data-gift-banner>
@@ -2389,7 +2436,10 @@ export async function renderProducts(customerId, users = null) {
             ${editGiftReasonBtn}
             ${closedBadge}
           </div>
-        </section>
+        </section>`
+      return `
+      <div class="${blockClass}" data-product-index="${i}">
+        ${wrapClosedProductContent(closed, toggleHtml, inner)}
       </div>`
     }
 
@@ -2527,21 +2577,31 @@ export async function renderProducts(customerId, users = null) {
         </div>`
       : ''
 
+    const productRefundBadge = getProductRefundBadge(p)
+    const productRefundBadgeHtml = productRefundBadge
+      ? `<span class="refund-badge${productRefundBadge.kind === 'partial' ? ' is-partial' : ''}">${escapeHtml(productRefundBadge.label)}</span>`
+      : ''
     const summaryHtml = `
       <div class="sale-summary" aria-label="خلاصه مالی">
         <span class="product-status-label" style="color:${statusColor};">${escapeHtml(statusLabel)}</span>
-        ${(() => {
-          const rb = getProductRefundBadge(p)
-          return rb ? `<span class="refund-badge${rb.kind === 'partial' ? ' is-partial' : ''}">${escapeHtml(rb.label)}</span>` : ''
-        })()}
+        ${productRefundBadgeHtml}
         <span class="product-meta">پرداخت‌شده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${approved ? formatNumber(approved) : '۰'}</b></span>
         ${balance > 0 && !closed ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : `<span class="product-meta">مانده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">۰</b></span>`}
         ${closedBadge}
       </div>`
     const refundSummariesHtml = renderSaleRefundSummaries(customerId, p, balance)
-
-    return `
-      <div class="${blockClass}" data-product-index="${i}">
+    const toggleHtml = closed
+      ? renderClosedProductToggle({
+        displayName,
+        statusLabel,
+        statusColor,
+        closedBadge,
+        giftBadge,
+        refundBadgeHtml: productRefundBadgeHtml,
+        priceText: price ? `${formatNumber(price)} ریال` : ''
+      })
+      : ''
+    const inner = `
         <section class="sale-step sale-step-product">
           <h4 class="sale-step-title">۱. محصول</h4>
           <div class="sale-gift-banner" data-gift-banner hidden>
@@ -2564,7 +2624,11 @@ export async function renderProducts(customerId, users = null) {
           <h4 class="sale-step-title">۲. واریزها</h4>
           <div class="payment-list">${paymentsHtml || '<div class="payment-empty">هنوز واریزی ثبت نشده</div>'}</div>
           ${addPayBtn}
-        </section>
+        </section>`
+
+    return `
+      <div class="${blockClass}" data-product-index="${i}">
+        ${wrapClosedProductContent(closed, toggleHtml, inner)}
       </div>`
   }).join('')
 

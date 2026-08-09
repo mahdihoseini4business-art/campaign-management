@@ -1416,6 +1416,86 @@
     background: var(--success-light);
   }
 
+  .product-block.is-closed.is-collapsed .product-block-body {
+    display: none;
+  }
+
+  .product-block-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    margin: 0;
+    padding: 12px 16px;
+    border: 0;
+    background: var(--success-light);
+    color: inherit;
+    font: inherit;
+    text-align: right;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .product-block-toggle:hover {
+    background: #dcfce7;
+  }
+
+  .product-block-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  .product-block.is-closed:not(.is-collapsed) .product-block-toggle {
+    border-bottom: 1px solid #86efac;
+  }
+
+  .product-block-toggle-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 10px;
+    line-height: 1;
+    transition: transform 0.15s ease;
+  }
+
+  .product-block.is-closed:not(.is-collapsed) .product-block-toggle-chevron {
+    transform: rotate(180deg);
+  }
+
+  .product-block-toggle-main {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .product-block-toggle-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink, var(--text));
+  }
+
+  .product-block-toggle-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px 10px;
+    flex-shrink: 0;
+  }
+
+  .product-block.is-gift-sale.is-closed .product-block-toggle {
+    box-shadow: inset 3px 0 0 #2563eb;
+  }
+
+  .product-block.is-rejected.is-closed .product-block-toggle {
+    background: var(--danger-light);
+  }
+
   .sale-step {
     padding: 14px 16px;
   }
@@ -3494,6 +3574,16 @@
     }
     .sale-step {
       padding: 12px;
+    }
+    .product-block-toggle {
+      flex-wrap: wrap;
+      align-items: flex-start;
+      padding: 12px;
+    }
+    .product-block-toggle-meta {
+      width: calc(100% - 20px);
+      justify-content: flex-start;
+      margin-inline-start: 20px;
     }
     .sale-payment {
       padding: 10px 12px;
