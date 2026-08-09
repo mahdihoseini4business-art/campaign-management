@@ -4,7 +4,7 @@ import {
 } from './data.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
-  requirePermission, getCurrentUser, normalizePhone, userDisplayName,
+  hasAnyRefundPermission, requirePermission, getCurrentUser, normalizePhone, userDisplayName,
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
   PAYMENT_STATUS, getSaleRegistrantPhone, canViewScopedCustomer, matchesTabSearch,
   getCustomerPhones, getPrimaryPhone, jalaliDatePart, jalaliToNum,
@@ -41,6 +41,10 @@ const REFUND_REASON_OTHER = 'سایر'
 
 function canManageRefunds() {
   return hasPermission('refunds_manage')
+}
+
+function canRequestRefunds() {
+  return hasPermission('refunds_request')
 }
 
 function resolveAdvisorName(phone, users = []) {
@@ -137,7 +141,7 @@ export function setRefundsView(view) {
 }
 
 export async function renderRefunds() {
-  if (!hasPermission('refunds_view') && !hasPermission('refunds_manage')) return
+  if (!hasAnyRefundPermission()) return
   if (refundDrag?.active) return
 
   let users = []
@@ -152,7 +156,7 @@ export async function renderRefunds() {
   const canManage = canManageRefunds()
 
   const createBtn = document.getElementById('refundCreateBtn')
-  if (createBtn) createBtn.style.display = canManage ? '' : 'none'
+  if (createBtn) createBtn.style.display = canRequestRefunds() ? '' : 'none'
 
   const counts = {
     requested: 0,
@@ -770,7 +774,7 @@ export async function confirmRejectRefund() {
 // ============================================
 
 export function openRefundWizard() {
-  if (!requirePermission('refunds_manage')) return
+  if (!requirePermission('refunds_request')) return
   wizardBusy = false
   wizard.step = 1
   wizard.customerId = null
@@ -1022,6 +1026,7 @@ export function refundWizardBack() {
 
 export async function refundWizardNext() {
   if (wizardBusy) return
+  if (!requirePermission('refunds_request')) return
   if (wizard.step === 1) {
     if (!wizard.customerId) {
       showToast('مشتری را انتخاب کنید')
@@ -1064,7 +1069,7 @@ function setWizardBusyUi(busy) {
 }
 
 async function submitRefundWizard() {
-  if (!requirePermission('refunds_manage')) return
+  if (!requirePermission('refunds_request')) return
   const customer = getData().customers.find(c => c.id === wizard.customerId)
   const product = customer?.products?.[wizard.productIndex]
   const pay = product && getProductPayments(product).find(p => String(p.id) === String(wizard.paymentId))

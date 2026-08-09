@@ -1004,8 +1004,11 @@ export const ALL_PERMISSIONS = {
   accounting: 'تأیید واریزی‌ها (حسابداری)',
   shipments_manage: 'مدیریت ارسالی‌ها',
   refunds_view: 'مشاهده عودت وجه',
+  refunds_request: 'درخواست عودت وجه',
   refunds_manage: 'مدیریت عودت وجه'
 }
+
+export const REFUND_PERMISSION_KEYS = ['refunds_view', 'refunds_request', 'refunds_manage']
 
 export const PERMISSION_GROUPS = [
   { label: 'داشبورد', keys: ['dashboard'] },
@@ -1015,7 +1018,7 @@ export const PERMISSION_GROUPS = [
   { label: 'محصولات', keys: ['products_matrix'] },
   { label: 'حسابداری', keys: ['accounting'] },
   { label: 'ارسالی‌ها', keys: ['shipments_manage'] },
-  { label: 'عودت وجه', keys: ['refunds_view', 'refunds_manage'] }
+  { label: 'عودت وجه', keys: [...REFUND_PERMISSION_KEYS] }
 ]
 
 export const REFUND_STATUS = {
@@ -1514,6 +1517,7 @@ export function getDefaultPermissions() {
   p.accounting = false
   p.shipments_manage = false
   p.refunds_view = false
+  p.refunds_request = false
   p.refunds_manage = false
   return p
 }
@@ -1560,6 +1564,11 @@ export function hasPermission(key) {
   if (!user) return false
   if (user.role === 'admin') return true
   return user.permissions && user.permissions[key] === true
+}
+
+/** True if the user has at least one permission in the refunds group. */
+export function hasAnyRefundPermission() {
+  return REFUND_PERMISSION_KEYS.some(key => hasPermission(key))
 }
 
 /**
