@@ -2306,7 +2306,7 @@ function renderClosedProductToggle({
 
 function wrapClosedProductContent(closed, toggleHtml, innerHtml) {
   if (!closed) return innerHtml
-  return `${toggleHtml}<div class="product-block-body">${innerHtml}</div>`
+  return `${toggleHtml}<div class="product-block-body"><div class="product-block-body-inner">${innerHtml}</div></div>`
 }
 
 export function toggleClosedProductBlock(el) {
