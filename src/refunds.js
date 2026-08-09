@@ -292,6 +292,19 @@ function isValidCardNumber(card) {
   return /^\d{16}$/.test(card || '')
 }
 
+const PAYOUT_FIELD_IDS = {
+  wizard: {
+    holder: 'refundWizardHolder',
+    sheba: 'refundWizardSheba',
+    card: 'refundWizardCard'
+  },
+  complete: {
+    holder: 'completeRefundHolder',
+    sheba: 'completeRefundSheba',
+    card: 'completeRefundCard'
+  }
+}
+
 function hasCompletePayoutFields(fields) {
   return !!(
     fields?.accountHolderName &&
@@ -300,16 +313,58 @@ function hasCompletePayoutFields(fields) {
   )
 }
 
-function readPayoutFieldsFromModal() {
-  const shebaEl = document.getElementById('completeRefundSheba')
-  const cardEl = document.getElementById('completeRefundCard')
+function readPayoutFields(ids) {
+  const shebaEl = document.getElementById(ids.sheba)
+  const cardEl = document.getElementById(ids.card)
   if (shebaEl) onRefundShebaInput(shebaEl)
   if (cardEl) onRefundCardInput(cardEl)
   return {
-    accountHolderName: String(document.getElementById('completeRefundHolder')?.value || '').trim(),
+    accountHolderName: String(document.getElementById(ids.holder)?.value || '').trim(),
     sheba: normalizeSheba(shebaEl?.value),
     cardNumber: normalizeCardNumber(cardEl?.value)
   }
+}
+
+function clearPayoutFields(ids) {
+  const holderEl = document.getElementById(ids.holder)
+  const shebaEl = document.getElementById(ids.sheba)
+  const cardEl = document.getElementById(ids.card)
+  if (holderEl) holderEl.value = ''
+  if (shebaEl) shebaEl.value = ''
+  if (cardEl) cardEl.value = ''
+}
+
+function validatePayoutFields(payout, ids) {
+  if (!payout.accountHolderName) {
+    showToast('نام صاحب حساب را وارد کنید')
+    document.getElementById(ids.holder)?.focus()
+    return false
+  }
+  if (!payout.sheba) {
+    showToast('شماره شبا را وارد کنید')
+    document.getElementById(ids.sheba)?.focus()
+    return false
+  }
+  if (!isValidSheba(payout.sheba)) {
+    showToast('شماره شبا نامعتبر است')
+    document.getElementById(ids.sheba)?.focus()
+    return false
+  }
+  if (!payout.cardNumber) {
+    showToast('شماره کارت را وارد کنید')
+    document.getElementById(ids.card)?.focus()
+    return false
+  }
+  if (!isValidCardNumber(payout.cardNumber)) {
+    showToast('شماره کارت باید ۱۶ رقم باشد')
+    document.getElementById(ids.card)?.focus()
+    return false
+  }
+  return true
+}
+
+function composeAccountInfo(payout) {
+  return [payout?.accountHolderName, payout?.sheba, payout?.cardNumber].filter(Boolean).join(' | ')
 }
 
 function resolvePayoutFields(refund, extra = {}) {
@@ -516,7 +571,7 @@ async function moveRefundStatus(id, nextStatus, extra = {}) {
       openCompleteRefundModal(id)
       return false
     }
-    extra = { ...extra, ...payout }
+    extra = { ...extra, ...payout, accountInfo: extra.accountInfo || composeAccountInfo(payout) }
   }
 
   const user = getCurrentUser()
@@ -625,32 +680,8 @@ export function closeCompleteRefundModal() {
 export async function confirmCompleteRefund() {
   if (completeBusy) return
   if (!requirePermission('refunds_manage')) return
-  const payout = readPayoutFieldsFromModal()
-  if (!payout.accountHolderName) {
-    showToast('نام صاحب حساب را وارد کنید')
-    document.getElementById('completeRefundHolder')?.focus()
-    return
-  }
-  if (!payout.sheba) {
-    showToast('شماره شبا را وارد کنید')
-    document.getElementById('completeRefundSheba')?.focus()
-    return
-  }
-  if (!isValidSheba(payout.sheba)) {
-    showToast('شماره شبا نامعتبر است')
-    document.getElementById('completeRefundSheba')?.focus()
-    return
-  }
-  if (!payout.cardNumber) {
-    showToast('شماره کارت را وارد کنید')
-    document.getElementById('completeRefundCard')?.focus()
-    return
-  }
-  if (!isValidCardNumber(payout.cardNumber)) {
-    showToast('شماره کارت باید ۱۶ رقم باشد')
-    document.getElementById('completeRefundCard')?.focus()
-    return
-  }
+  const payout = readPayoutFields(PAYOUT_FIELD_IDS.complete)
+  if (!validatePayoutFields(payout, PAYOUT_FIELD_IDS.complete)) return
   const id = completeTargetId
   closeCompleteRefundModal()
   if (!id) return
@@ -658,7 +689,10 @@ export async function confirmCompleteRefund() {
   const confirmBtn = document.getElementById('completeRefundConfirmBtn')
   if (confirmBtn) confirmBtn.disabled = true
   try {
-    await moveRefundStatus(id, REFUND_STATUS.completed, payout)
+    await moveRefundStatus(id, REFUND_STATUS.completed, {
+      ...payout,
+      accountInfo: composeAccountInfo(payout)
+    })
   } finally {
     completeBusy = false
     if (confirmBtn) confirmBtn.disabled = false
@@ -717,6 +751,7 @@ export function openRefundWizard() {
   if (amountEl) amountEl.value = ''
   const noteEl = document.getElementById('refundWizardNote')
   if (noteEl) noteEl.value = ''
+  clearPayoutFields(PAYOUT_FIELD_IDS.wizard)
   const nextBtn = document.getElementById('refundWizardNextBtn')
   if (nextBtn) nextBtn.disabled = false
   document.getElementById('refundWizardModal')?.classList.add('active')
@@ -943,6 +978,7 @@ export async function refundWizardNext() {
     }
     wizard.step = 3
     renderRefundWizard()
+    document.getElementById('refundWizardHolder')?.focus()
     return
   }
 
@@ -967,6 +1003,8 @@ async function submitRefundWizard() {
   if (amountEl) wizard.amount = parseAmountInput(amountEl.value)
   const noteEl = document.getElementById('refundWizardNote')
   wizard.note = noteEl ? noteEl.value.trim() : (wizard.note || '')
+  const payout = readPayoutFields(PAYOUT_FIELD_IDS.wizard)
+  if (!validatePayoutFields(payout, PAYOUT_FIELD_IDS.wizard)) return
   const max = getPaymentRefundableRemaining(customer.id, product, pay)
   const amount = wizard.amount
   if (amount <= 0 || amount > max) {
@@ -989,6 +1027,10 @@ async function submitRefundWizard() {
       isFullPayment: (alreadyRefunded + amount) >= approved - 0.5,
       status: REFUND_STATUS.requested,
       note: wizard.note || '',
+      accountHolderName: payout.accountHolderName,
+      sheba: payout.sheba,
+      cardNumber: payout.cardNumber,
+      accountInfo: composeAccountInfo(payout),
       advisorPhone: getSaleRegistrantPhone(product, pay, customer),
       customerName: customer.name || customer.platformId || customer.id,
       createdByPhone: phone,

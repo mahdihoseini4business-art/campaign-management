@@ -2108,6 +2108,14 @@
     flex-direction: column;
     gap: 8px;
     font-size: 13px;
+    margin-bottom: 4px;
+  }
+
+  .refund-wizard-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 14px 0 10px;
   }
 
   @media (max-width: 900px) {
