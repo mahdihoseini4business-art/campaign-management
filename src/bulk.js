@@ -1,8 +1,8 @@
 import { getData, deleteCustomerFromDB, deleteFollowupFromDB, saveCustomerToDB, generateTransferBatchId } from './data.js'
-import { showToast, requirePermission, hasPermission, canTransferCustomer, normalizePhone, escapeHtml, escapeAttr, userDisplayName, resolveAdvisor } from './utils.js'
+import { showToast, requirePermission, hasPermission, canTransferCustomer, normalizePhone, escapeHtml, escapeAttr, userDisplayName, resolveAdvisor, syncCustomerLevel } from './utils.js'
 import { renderCustomers, reassignCustomerOwnership } from './customers.js'
 import { renderFollowups } from './followups.js'
-import { renderSales } from './sales.js'
+import { renderSales, parseSaleRowKey } from './sales.js'
 import { getUsersSafe } from './auth.js'
 import { updateTransferInboxBadge } from './transfers.js'
 
@@ -170,16 +170,33 @@ async function bulkDelete(tab, ids) {
       }
     }
   } else if (tab === 'sales') {
-    for (const id of ids) {
-      const customer = data.customers.find(c => c.id === id)
-      if (customer && customer.products) {
-        customer.products = []
-        try {
-          await saveCustomerToDB(customer)
-          deleted++
-        } catch (e) {
-          console.error('Bulk delete sales error:', e)
-        }
+    const indicesByCustomer = new Map()
+    for (const key of ids) {
+      const parsed = parseSaleRowKey(key)
+      if (!parsed) continue
+      if (!indicesByCustomer.has(parsed.customerId)) indicesByCustomer.set(parsed.customerId, new Set())
+      indicesByCustomer.get(parsed.customerId).add(parsed.productIndex)
+    }
+
+    for (const [customerId, indexSet] of indicesByCustomer) {
+      const customer = data.customers.find(c => c.id === customerId)
+      if (!customer || !Array.isArray(customer.products) || !customer.products.length) continue
+
+      const indices = [...indexSet]
+        .filter(i => i >= 0 && i < customer.products.length)
+        .sort((a, b) => b - a)
+      if (!indices.length) continue
+
+      const snapshot = customer.products.slice()
+      for (const i of indices) customer.products.splice(i, 1)
+      syncCustomerLevel(customer, data.customers, data.followups)
+      try {
+        await saveCustomerToDB(customer)
+        deleted += indices.length
+      } catch (e) {
+        console.error('Bulk delete sales error:', e)
+        customer.products = snapshot
+        syncCustomerLevel(customer, data.customers, data.followups)
       }
     }
   }

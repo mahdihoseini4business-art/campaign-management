@@ -22,6 +22,20 @@ import { renderSalesTargetBand } from './dashboard.js'
 // Sales Data
 // ============================================
 
+export function makeSaleRowKey(customerId, productIndex) {
+  return `${customerId}::${productIndex}`
+}
+
+export function parseSaleRowKey(key) {
+  const raw = String(key ?? '')
+  const sep = raw.lastIndexOf('::')
+  if (sep <= 0) return null
+  const customerId = raw.slice(0, sep).trim()
+  const productIndex = Number(raw.slice(sep + 2))
+  if (!customerId || !Number.isInteger(productIndex) || productIndex < 0) return null
+  return { customerId, productIndex }
+}
+
 export function getAllSales() {
   collapseDuplicateCustomersInCache()
   const data = getData()
@@ -242,8 +256,9 @@ function renderSalesRows(allSales) {
       ? 'var(--primary, #2563eb)'
       : (s.status === 'تکمیل' ? 'var(--success)' : 'var(--warning)')
     const balanceClass = s.balance > 0 ? 'color:var(--danger);' : ''
+    const saleKey = makeSaleRowKey(s.customerId, s.productIndex)
     const selectCell = showSelectCol
-      ? `<td><input type="checkbox" data-id="${escapeAttr(s.customerId)}" onchange="app.toggleRowSelect('sales', '${escapeAttr(s.customerId)}', this.checked)"></td>`
+      ? `<td><input type="checkbox" data-id="${escapeAttr(saleKey)}" onchange="app.toggleRowSelect('sales', '${escapeAttr(saleKey)}', this.checked)"></td>`
       : ''
 
     let settlementHtml = '—'
