@@ -2516,7 +2516,8 @@ export async function renderProducts(customerId, users = null) {
     }
 
     const hasEditablePay = canEdit && pays.some(pay => getPaymentEntryStatus(pay) !== PAYMENT_STATUS.approved)
-    const productDetailsBtn = (canEdit && !closed && !hasEditablePay)
+    const hasCompletedRefund = getProductRefundRecords(p).length > 0
+    const productDetailsBtn = (canEdit && !closed && !hasEditablePay && !hasCompletedRefund)
       ? `<button type="button" class="btn btn-sm sale-product-save-btn" onclick="app.commitSaleProductDetails('${escapeAttr(customerId)}', ${i})">ذخیره جزئیات محصول</button>`
       : ''
 
@@ -2981,6 +2982,10 @@ export async function commitSaleProductDetails(customerId, productIndex) {
   }
   if (isInvoiceClosed(product)) {
     showToast('فاکتور بسته شده و قابل ویرایش نیست')
+    return
+  }
+  if (getProductRefundRecords(product).length) {
+    showToast('پس از عودت، جزئیات محصول از این مسیر قابل ویرایش نیست')
     return
   }
 
