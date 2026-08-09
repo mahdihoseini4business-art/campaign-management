@@ -1237,7 +1237,11 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     const data = getData()
     const statusLabels = getStatusLabels()
     const statusColors = {}
-    for (const s of getStatuses()) statusColors[s.key] = s.bgColor
+    const statusOrder = {}
+    getStatuses().forEach((s, i) => {
+      statusColors[s.key] = s.bgColor
+      statusOrder[s.key] = s.order != null ? s.order : i
+    })
 
     const hasDateFilter = dateFromNum > 0 || dateToNum < 99999999
     const custStatusCounts = {}
@@ -1246,27 +1250,61 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
       if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
       if (!inUserScope(c)) return
       if (hasDateFilter && !inChartDateRange(gregorianToJalaliStr(c.createdAt))) return
-      const label = statusLabels[c.status] || c.status
-      custStatusCounts[label] = (custStatusCounts[label] || 0) + 1
+      const key = c.status || ''
+      custStatusCounts[key] = (custStatusCounts[key] || 0) + 1
     })
+
+    const totalCustomers = Object.values(custStatusCounts).reduce((s, n) => s + n, 0)
+    const topStatuses = Object.entries(custStatusCounts)
+      .map(([key, count]) => ({
+        key,
+        label: statusLabels[key] || key || '—',
+        count,
+        pct: totalCustomers > 0 ? Math.round((count / totalCustomers) * 100) : 0,
+        color: statusColors[key] || '#dee2e6',
+        order: statusOrder[key] != null ? statusOrder[key] : 999
+      }))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count
+        if (b.pct !== a.pct) return b.pct - a.pct
+        return a.order - b.order
+      })
+      .slice(0, 7)
+
     const custCanvas = document.getElementById('chartCustomers')
     if (custCanvas) {
       dashCharts.custStatus = new Chart(custCanvas, {
         type: 'doughnut',
         data: {
-          labels: Object.keys(custStatusCounts),
+          labels: topStatuses.map(s => `${s.label} ${formatNumber(s.pct)}٪`),
           datasets: [{
-            data: Object.values(custStatusCounts),
-            backgroundColor: Object.keys(custStatusCounts).map(k => {
-              const key = Object.keys(statusLabels).find(sk => statusLabels[sk] === k)
-              return statusColors[key] || '#dee2e6'
-            }),
-            borderWidth: 2, borderColor: '#fff'
+            data: topStatuses.map(s => s.count),
+            backgroundColor: topStatuses.map(s => s.color),
+            borderWidth: 2,
+            borderColor: '#fff'
           }]
         },
         options: {
           ...CHART_RESPONSIVE,
-          plugins: { legend: { position: 'bottom', labels: { font: CHART_FONT } } }
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                font: CHART_FONT,
+                boxWidth: 12,
+                padding: 10
+              }
+            },
+            tooltip: {
+              callbacks: {
+                label(ctx) {
+                  const item = topStatuses[ctx.dataIndex]
+                  if (!item) return ''
+                  return ` ${item.label}: ${formatNumber(item.count)} (${formatNumber(item.pct)}٪)`
+                }
+              }
+            }
+          }
         }
       })
     }
