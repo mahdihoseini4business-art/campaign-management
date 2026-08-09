@@ -928,15 +928,16 @@
   }
 
   .accounting-bank-balances-grid {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 12px;
   }
 
   .accounting-bank-card {
-    min-width: 160px;
-    flex: 1 1 160px;
-    max-width: 280px;
+    min-width: 0;
+    width: 100%;
+    max-width: none;
+    flex: none;
   }
 
   .accounting-bank-balances-empty {
@@ -3633,6 +3634,10 @@
       grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
+    .accounting-bank-balances-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
     .dashboard-stats {
       grid-template-columns: 1fr 1fr;
     }
@@ -3926,6 +3931,10 @@
     .stats {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .accounting-bank-balances-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
     }
     .dashboard-stats {
