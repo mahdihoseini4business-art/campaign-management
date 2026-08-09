@@ -1954,9 +1954,16 @@
     background: var(--accent-light, #e8f8f2);
     border: 1px solid #b7ebd8;
     color: var(--text);
-    white-space: pre-wrap;
     word-break: break-word;
-    line-height: 1.6;
+    line-height: 1.7;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .refund-card-account [dir="ltr"] {
+    font-family: 'Vazirmatn', sans-serif;
+    text-align: right;
   }
 
   .refund-card-actions {

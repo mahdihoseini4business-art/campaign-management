@@ -110,6 +110,9 @@ function refundMatchesSearch(r, q, users = []) {
     r.note,
     r.rejectReason,
     r.accountInfo,
+    r.accountHolderName,
+    r.sheba,
+    r.cardNumber,
     phones,
     resolveAdvisorName(r.advisorPhone, users),
     formatNumber(r.amount)
@@ -210,9 +213,72 @@ function renderRefundCard(r, canManage, users = []) {
       <div class="refund-card-amount">${formatNumber(r.amount)} ریال</div>
       <div class="refund-card-meta">کارشناس: ${escapeHtml(resolveAdvisorName(r.advisorPhone, users))}</div>
       ${r.note ? `<div class="refund-card-note">${escapeHtml(r.note)}</div>` : ''}
-      ${r.accountInfo ? `<div class="refund-card-account"><strong>حساب:</strong> ${escapeHtml(r.accountInfo)}</div>` : ''}
+      ${renderPayoutBlock(r)}
       <div class="refund-card-actions">${statusSelect}${rejectBtn}</div>
     </div>`
+}
+
+function normalizeSheba(raw) {
+  let s = toEnDigits(String(raw || '')).replace(/[\s-]/g, '').toUpperCase()
+  if (/^\d{24}$/.test(s)) s = 'IR' + s
+  return s
+}
+
+function normalizeCardNumber(raw) {
+  return toEnDigits(String(raw || '')).replace(/\D+/g, '')
+}
+
+function formatCardDisplay(raw) {
+  const digits = normalizeCardNumber(raw)
+  return digits.replace(/(\d{4})(?=\d)/g, '$1 ').trim() || String(raw || '')
+}
+
+function isValidSheba(sheba) {
+  return /^IR\d{24}$/i.test(sheba || '')
+}
+
+function isValidCardNumber(card) {
+  return /^\d{16}$/.test(card || '')
+}
+
+function hasCompletePayoutFields(fields) {
+  return !!(fields?.accountHolderName && fields?.sheba && fields?.cardNumber)
+}
+
+function readPayoutFieldsFromModal() {
+  return {
+    accountHolderName: String(document.getElementById('completeRefundHolder')?.value || '').trim(),
+    sheba: normalizeSheba(document.getElementById('completeRefundSheba')?.value),
+    cardNumber: normalizeCardNumber(document.getElementById('completeRefundCard')?.value)
+  }
+}
+
+function resolvePayoutFields(refund, extra = {}) {
+  return {
+    accountHolderName: extra.accountHolderName != null
+      ? String(extra.accountHolderName).trim()
+      : String(refund?.accountHolderName || '').trim(),
+    sheba: extra.sheba != null
+      ? normalizeSheba(extra.sheba)
+      : normalizeSheba(refund?.sheba || ''),
+    cardNumber: extra.cardNumber != null
+      ? normalizeCardNumber(extra.cardNumber)
+      : normalizeCardNumber(refund?.cardNumber || '')
+  }
+}
+
+function renderPayoutBlock(r) {
+  if (r.accountHolderName || r.sheba || r.cardNumber) {
+    return `<div class="refund-card-account">
+      ${r.accountHolderName ? `<div><strong>صاحب حساب:</strong> ${escapeHtml(r.accountHolderName)}</div>` : ''}
+      ${r.sheba ? `<div dir="ltr"><strong>شبا:</strong> ${escapeHtml(r.sheba)}</div>` : ''}
+      ${r.cardNumber ? `<div dir="ltr"><strong>کارت:</strong> ${escapeHtml(formatCardDisplay(r.cardNumber))}</div>` : ''}
+    </div>`
+  }
+  if (r.accountInfo) {
+    return `<div class="refund-card-account"><strong>حساب:</strong> ${escapeHtml(r.accountInfo)}</div>`
+  }
+  return ''
 }
 
 function renderRejectedTable(items, users = []) {
@@ -379,19 +445,19 @@ async function moveRefundStatus(id, nextStatus, extra = {}) {
     showToast('درخواست عودت پیدا نشد')
     return false
   }
-  if (refund.status === nextStatus && !extra.rejectReason && extra.accountInfo == null) return true
+  if (refund.status === nextStatus && !extra.rejectReason && extra.accountHolderName == null && extra.sheba == null && extra.cardNumber == null) return true
   if (refund.status === REFUND_STATUS.completed && nextStatus !== REFUND_STATUS.completed) {
     showToast('عودت انجام‌شده قابل جابجایی نیست')
     return false
   }
 
   if (nextStatus === REFUND_STATUS.completed && refund.status !== REFUND_STATUS.completed) {
-    const accountInfo = String(extra.accountInfo != null ? extra.accountInfo : (refund.accountInfo || '')).trim()
-    if (!accountInfo) {
+    const payout = resolvePayoutFields(refund, extra)
+    if (!hasCompletePayoutFields(payout)) {
       openCompleteRefundModal(id)
       return false
     }
-    extra = { ...extra, accountInfo }
+    extra = { ...extra, ...payout }
   }
 
   const user = getCurrentUser()
@@ -482,11 +548,13 @@ export function openCompleteRefundModal(id) {
       <div><strong>مبلغ عودت:</strong> <span dir="ltr">${formatNumber(refund.amount)} ریال</span></div>
     `
   }
-  const input = document.getElementById('completeRefundAccountInfo')
-  if (input) {
-    input.value = refund.accountInfo || ''
-    input.focus()
-  }
+  const holderEl = document.getElementById('completeRefundHolder')
+  const shebaEl = document.getElementById('completeRefundSheba')
+  const cardEl = document.getElementById('completeRefundCard')
+  if (holderEl) holderEl.value = refund.accountHolderName || ''
+  if (shebaEl) shebaEl.value = refund.sheba || ''
+  if (cardEl) cardEl.value = refund.cardNumber ? formatCardDisplay(refund.cardNumber) : ''
+  holderEl?.focus()
   document.getElementById('completeRefundModal')?.classList.add('active')
 }
 
@@ -498,10 +566,30 @@ export function closeCompleteRefundModal() {
 export async function confirmCompleteRefund() {
   if (completeBusy) return
   if (!requirePermission('refunds_manage')) return
-  const accountInfo = toEnDigits(document.getElementById('completeRefundAccountInfo')?.value || '').trim()
-  if (!accountInfo) {
-    showToast('اطلاعات حساب را وارد کنید')
-    document.getElementById('completeRefundAccountInfo')?.focus()
+  const payout = readPayoutFieldsFromModal()
+  if (!payout.accountHolderName) {
+    showToast('نام صاحب حساب را وارد کنید')
+    document.getElementById('completeRefundHolder')?.focus()
+    return
+  }
+  if (!payout.sheba) {
+    showToast('شماره شبا را وارد کنید')
+    document.getElementById('completeRefundSheba')?.focus()
+    return
+  }
+  if (!isValidSheba(payout.sheba)) {
+    showToast('شماره شبا نامعتبر است')
+    document.getElementById('completeRefundSheba')?.focus()
+    return
+  }
+  if (!payout.cardNumber) {
+    showToast('شماره کارت را وارد کنید')
+    document.getElementById('completeRefundCard')?.focus()
+    return
+  }
+  if (!isValidCardNumber(payout.cardNumber)) {
+    showToast('شماره کارت باید ۱۶ رقم باشد')
+    document.getElementById('completeRefundCard')?.focus()
     return
   }
   const id = completeTargetId
@@ -511,7 +599,7 @@ export async function confirmCompleteRefund() {
   const confirmBtn = document.getElementById('completeRefundConfirmBtn')
   if (confirmBtn) confirmBtn.disabled = true
   try {
-    await moveRefundStatus(id, REFUND_STATUS.completed, { accountInfo })
+    await moveRefundStatus(id, REFUND_STATUS.completed, payout)
   } finally {
     completeBusy = false
     if (confirmBtn) confirmBtn.disabled = false

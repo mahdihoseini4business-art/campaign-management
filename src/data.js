@@ -1499,6 +1499,9 @@ export function mapRefundRow(row) {
     status: row.status || 'requested',
     note: row.note || '',
     accountInfo: row.account_info || '',
+    accountHolderName: row.account_holder_name || '',
+    sheba: row.sheba || '',
+    cardNumber: row.card_number || '',
     rejectReason: row.reject_reason || '',
     advisorPhone: row.advisor_phone || '',
     customerName: row.customer_name || '',
@@ -1550,7 +1553,6 @@ export async function saveRefundToDB(refund) {
     is_full_payment: !!refund.isFullPayment,
     status: refund.status || 'requested',
     note: refund.note || '',
-    account_info: refund.accountInfo || '',
     reject_reason: refund.rejectReason || '',
     advisor_phone: refund.advisorPhone || null,
     customer_name: refund.customerName || '',
@@ -1575,6 +1577,9 @@ export async function updateRefundInDB(id, patch) {
   if (patch.status != null) row.status = patch.status
   if (patch.note != null) row.note = patch.note
   if (patch.accountInfo != null) row.account_info = patch.accountInfo
+  if (patch.accountHolderName != null) row.account_holder_name = patch.accountHolderName
+  if (patch.sheba != null) row.sheba = patch.sheba
+  if (patch.cardNumber != null) row.card_number = patch.cardNumber
   if (patch.rejectReason != null) row.reject_reason = patch.rejectReason
   if (patch.updatedByPhone != null) row.updated_by_phone = patch.updatedByPhone
   if (patch.completedByPhone != null) row.completed_by_phone = patch.completedByPhone

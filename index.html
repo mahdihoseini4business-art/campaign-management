@@ -1460,9 +1460,17 @@
     <div class="modal-body">
       <div id="completeRefundSummary" class="refund-wizard-summary" style="margin-bottom:16px;"></div>
       <div class="form-group">
-        <label for="completeRefundAccountInfo">اطلاعات حساب جهت واریز <span class="required">*</span></label>
-        <textarea class="form-textarea" id="completeRefundAccountInfo" placeholder="شماره شبا، شماره کارت و نام صاحب حساب..."></textarea>
-        <div class="form-hint">این مشخصات برای واریز مبلغ عودت استفاده می‌شود.</div>
+        <label for="completeRefundHolder">نام صاحب حساب <span class="required">*</span></label>
+        <input type="text" class="form-input" id="completeRefundHolder" placeholder="نام و نام خانوادگی صاحب حساب" autocomplete="name">
+      </div>
+      <div class="form-group">
+        <label for="completeRefundSheba">شماره شبا <span class="required">*</span></label>
+        <input type="text" class="form-input" id="completeRefundSheba" placeholder="IRxxxxxxxxxxxxxxxxxxxxxxxx" dir="ltr" inputmode="text" autocomplete="off" style="text-align:left;">
+      </div>
+      <div class="form-group">
+        <label for="completeRefundCard">شماره کارت <span class="required">*</span></label>
+        <input type="text" class="form-input" id="completeRefundCard" placeholder="۶۰۳۷ ۹۹۱۸ ۱۲۳۴ ۵۶۷۸" dir="ltr" inputmode="numeric" autocomplete="off" style="text-align:left;">
+        <div class="form-hint">شبا و کارت باید متعلق به همان صاحب حساب باشند.</div>
       </div>
     </div>
     <div class="modal-footer">
