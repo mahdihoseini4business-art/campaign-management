@@ -126,7 +126,7 @@ const DEFAULT_PLATFORMS = [
   { key: 'bale', label: 'بله', color: '#00A884', linkTemplate: 'https://ble.ir/{id}' },
   { key: 'eitaa', label: 'ایتا', color: '#F59E0B', linkTemplate: 'https://eitaa.com/{id}' },
   { key: 'goftino', label: 'گفتینو', color: '#6366F1', linkTemplate: '' },
-  { key: 'carno_leads', label: 'کارنو لیدز', color: '#0155d2', linkTemplate: '' },
+  { key: 'outbound_call', label: 'تماس خروجی', color: '#0155d2', linkTemplate: '' },
   { key: 'rubika', label: 'روبیکا', color: '#A855F7', linkTemplate: '' },
   { key: 'referral', label: 'ارجاعی', color: '#78716C', linkTemplate: '' },
 ]
