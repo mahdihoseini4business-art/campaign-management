@@ -852,20 +852,21 @@ export function findCustomerByAnyPhone(phone, customers, excludeId = null) {
 }
 
 /** Max shipping addresses stored per customer profile */
-export const MAX_CUSTOMER_ADDRESSES = 10
+export const MAX_CUSTOMER_ADDRESSES = 2
 
 function normalizeAddressEntry(raw) {
   if (raw == null) return null
   if (typeof raw === 'string') {
     const text = String(raw).trim().replace(/\s+/g, ' ')
     if (!text) return null
-    return { text, postalCode: '' }
+    return { text, postalCode: '', isPrimary: false }
   }
   if (typeof raw !== 'object') return null
   const text = String(raw.text || raw.address || '').trim().replace(/\s+/g, ' ')
   if (!text) return null
   const postalCode = toEnDigits(String(raw.postalCode || raw.postal || '').trim()).replace(/\s+/g, '')
-  return { text, postalCode }
+  const isPrimary = !!(raw.isPrimary || raw.primary)
+  return { text, postalCode, isPrimary }
 }
 
 function addressKey(entry) {
@@ -874,7 +875,8 @@ function addressKey(entry) {
 }
 
 /**
- * Normalize customer addresses into a unique array of { text, postalCode }.
+ * Normalize customer addresses into a unique array of { text, postalCode, isPrimary }.
+ * At most MAX_CUSTOMER_ADDRESSES entries; exactly one isPrimary when any exist.
  */
 export function normalizeCustomerAddresses(source) {
   let raw = []
@@ -895,11 +897,24 @@ export function normalizeCustomerAddresses(source) {
     out.push(entry)
     if (out.length >= MAX_CUSTOMER_ADDRESSES) break
   }
+
+  if (!out.length) return out
+
+  let primaryIdx = out.findIndex(a => a.isPrimary)
+  if (primaryIdx < 0) primaryIdx = 0
+  out.forEach((a, i) => { a.isPrimary = i === primaryIdx })
   return out
 }
 
 export function getCustomerAddresses(customer) {
   return normalizeCustomerAddresses(customer)
+}
+
+/** Primary shipping address for a customer, or null if none. */
+export function getPrimaryCustomerAddress(customer) {
+  const list = getCustomerAddresses(customer)
+  if (!list.length) return null
+  return list.find(a => a.isPrimary) || list[0]
 }
 
 /** Append address if text is non-empty and not already present. Mutates customer.addresses. */
@@ -917,8 +932,9 @@ export function appendCustomerAddressIfNew(customer, addressInput) {
     customer.addresses = list
     return false
   }
+  entry.isPrimary = list.length === 0
   list.push(entry)
-  customer.addresses = list
+  customer.addresses = normalizeCustomerAddresses(list)
   return true
 }
 

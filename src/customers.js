@@ -12,8 +12,7 @@ import {
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
   getCustomerPhones, normalizeCustomerPhones, getPrimaryPhone, formatPhonesDisplay,
   MAX_CUSTOMER_PHONES, MAX_CUSTOMER_ADDRESSES,
-  getCustomerAddresses, normalizeCustomerAddresses, appendCustomerAddressIfNew,
-  isPhysicalSaleLine,
+  getCustomerAddresses, normalizeCustomerAddresses,
   getStatusLabels, getStatusClass,
   getNowJalaliDateTime, PAYMENT_STATUS_LABELS, createPayment,
   formatTeamFilterLabel,
@@ -62,8 +61,8 @@ let pendingMerge = null
 let phoneSlots = ['']
 /** Which phone form is active: always the customer detail panel. */
 let phoneFormMode = 'detail'
-/** Address slots in customer detail ({ text, postalCode }). */
-let addressSlots = [{ text: '', postalCode: '' }]
+/** Address slots in customer detail ({ text, postalCode, isPrimary }). */
+let addressSlots = [{ text: '', postalCode: '', isPrimary: true }]
 
 function phoneForm() {
   return {
@@ -1238,11 +1237,14 @@ function syncAddressSlotsFromDom() {
   const container = document.getElementById('detailAddressesList')
   if (!container) return
   const rows = container.querySelectorAll('.address-field-row')
-  addressSlots = Array.from(rows).map(row => ({
+  const preferSecond = rows.length > 1 && !!rows[1]?.querySelector('.customer-address-primary')?.checked
+  addressSlots = Array.from(rows).map((row, i) => ({
     text: row.querySelector('.customer-address-text')?.value || '',
-    postalCode: row.querySelector('.customer-address-postal')?.value || ''
+    postalCode: row.querySelector('.customer-address-postal')?.value || '',
+    isPrimary: preferSecond ? i === 1 : i === 0
   }))
-  if (!addressSlots.length) addressSlots = [{ text: '', postalCode: '' }]
+  if (!addressSlots.length) addressSlots = [{ text: '', postalCode: '', isPrimary: true }]
+  if (addressSlots.length === 1) addressSlots[0].isPrimary = true
 }
 
 function getFormAddresses() {
@@ -1253,16 +1255,27 @@ function getFormAddresses() {
 function renderAddressFields() {
   const container = document.getElementById('detailAddressesList')
   if (!container) return
-  if (!addressSlots.length) addressSlots = [{ text: '', postalCode: '' }]
+  if (!addressSlots.length) addressSlots = [{ text: '', postalCode: '', isPrimary: true }]
+  const secondIsPrimary = addressSlots.length > 1 && !!addressSlots[1]?.isPrimary
   container.innerHTML = addressSlots.map((slot, i) => `
     <div class="address-field-row" data-index="${i}">
-      <input type="text" class="form-input customer-address-text" data-index="${i}"
-        placeholder="آدرس پستی" value="${escapeAttr(slot.text || '')}"
-        oninput="app.onCustomerAddressInput()">
-      <input type="text" class="form-input customer-address-postal" data-index="${i}"
-        inputmode="numeric" placeholder="کد پستی" value="${escapeAttr(slot.postalCode || '')}"
-        oninput="app.onCustomerAddressInput()" style="max-width:140px;">
-      <div class="address-field-actions"></div>
+      <div class="address-field-inputs">
+        <input type="text" class="form-input customer-address-text" data-index="${i}"
+          placeholder="آدرس پستی" value="${escapeAttr(slot.text || '')}"
+          oninput="app.onCustomerAddressInput()">
+        <input type="text" class="form-input customer-address-postal" data-index="${i}"
+          inputmode="numeric" placeholder="کد پستی" value="${escapeAttr(slot.postalCode || '')}"
+          oninput="app.onCustomerAddressInput()" style="max-width:140px;">
+        <div class="address-field-actions"></div>
+      </div>
+      ${i === 1 ? `
+        <label class="address-priority-toggle">
+          <input type="checkbox" class="customer-address-primary"
+            ${secondIsPrimary ? 'checked' : ''}
+            onchange="app.onCustomerAddressPriorityChange()">
+          <span>اولویت ارسال این آدرس</span>
+        </label>
+      ` : ''}
     </div>
   `).join('')
   refreshAddressFieldActions()
@@ -1290,6 +1303,10 @@ export function onCustomerAddressInput() {
   refreshAddressFieldActions()
 }
 
+export function onCustomerAddressPriorityChange() {
+  syncAddressSlotsFromDom()
+}
+
 export function addCustomerAddressSlot() {
   syncAddressSlotsFromDom()
   if (addressSlots.length >= MAX_CUSTOMER_ADDRESSES) return
@@ -1298,7 +1315,8 @@ export function addCustomerAddressSlot() {
     showToast('ابتدا آدرس فعلی را وارد کنید')
     return
   }
-  addressSlots.push({ text: '', postalCode: '' })
+  addressSlots.push({ text: '', postalCode: '', isPrimary: false })
+  addressSlots[0].isPrimary = true
   renderAddressFields()
 }
 
@@ -1306,6 +1324,7 @@ export function removeCustomerAddressSlot(index) {
   syncAddressSlotsFromDom()
   if (addressSlots.length <= 1) return
   addressSlots.splice(index, 1)
+  if (addressSlots.length) addressSlots[0].isPrimary = true
   renderAddressFields()
 }
 
@@ -1601,7 +1620,10 @@ export async function openCustomerDetail(id, options = {}) {
     if (!addrs.length) return '—'
     return addrs.map(a => {
       const postal = a.postalCode ? ` <span style="color:var(--text-muted);font-size:12px;">(${escapeHtml(a.postalCode)})</span>` : ''
-      return `<div>${escapeHtml(a.text)}${postal}</div>`
+      const badge = a.isPrimary
+        ? ' <span class="address-primary-badge">اولویت ارسال</span>'
+        : ''
+      return `<div>${escapeHtml(a.text)}${postal}${badge}</div>`
     }).join('')
   })()
 
@@ -1896,8 +1918,12 @@ export async function openCustomerDetail(id, options = {}) {
     phoneSlots = existingPhones.length ? [...existingPhones] : ['']
     const existingAddresses = isNew ? [] : getCustomerAddresses(c)
     addressSlots = existingAddresses.length
-      ? existingAddresses.map(a => ({ text: a.text || '', postalCode: a.postalCode || '' }))
-      : [{ text: '', postalCode: '' }]
+      ? existingAddresses.map(a => ({
+          text: a.text || '',
+          postalCode: a.postalCode || '',
+          isPrimary: !!a.isPrimary
+        }))
+      : [{ text: '', postalCode: '', isPrimary: true }]
     populatePlatformDropdown(document.getElementById('detailPlatform'))
     populateStatusDropdown(document.getElementById('detailStatus'))
     const platformEl = document.getElementById('detailPlatform')
@@ -2395,13 +2421,6 @@ export async function renderProducts(customerId, users = null) {
       const bundleHint = bundle
         ? `<span class="product-bundle-hint">شامل: ${escapeHtml((bundle.productNames || []).join('، '))}</span>`
         : ''
-      const isPhysical = !!displayName && isPhysicalSaleLine(p)
-      let shippingFields = ''
-      if (isPhysical && (p.shippingAddress || p.shippingPostalCode)) {
-        shippingFields = `
-          ${saleFieldHtml('آدرس گیرنده', `<span class="sale-readonly-value">${escapeHtml(p.shippingAddress || '—')}</span>`, { optional: true, full: true })}
-          ${p.shippingPostalCode ? saleFieldHtml('کد پستی', `<span class="sale-readonly-value">${escapeHtml(p.shippingPostalCode)}</span>`, { optional: true }) : ''}`
-      }
 
       const toggleHtml = closed
         ? renderClosedProductToggle({
@@ -2424,7 +2443,6 @@ export async function renderProducts(customerId, users = null) {
             ${saleFieldHtml('محصول', `<span class="sale-readonly-value" style="font-weight:600;">${escapeHtml(displayName || '—')}</span>${bundleHint}`, { required: true, full: true, className: 'sale-field--name' })}
             ${saleFieldHtml('قیمت کل (ریال)', `<span class="product-price-locked sale-readonly-value"><b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">۰</b> ریال</span>`, { required: true })}
           </div>
-          ${shippingFields}
           <div class="sale-summary" aria-label="خلاصه هدیه">
             <span class="product-status-label" style="color:${statusColor};">${escapeHtml(statusLabel)}</span>
             <span class="payment-badge payment-${giftStatus}">${escapeHtml(giftStatusLabel)}</span>
@@ -2549,19 +2567,6 @@ export async function renderProducts(customerId, users = null) {
           </select>${bundleHint}`
       : `<span class="sale-readonly-value" style="font-weight:600;">${escapeHtml(displayName || '—')}</span>${bundleHint}`
 
-    const isPhysical = !!displayName && isPhysicalSaleLine(p)
-    let shippingFields = ''
-    if (canEdit && !closed) {
-      shippingFields = `<div class="sale-shipping-fields sale-fields" data-shipping-fields ${isPhysical ? '' : 'hidden'}>
-          ${saleFieldHtml('آدرس گیرنده', `<input type="text" class="product-settlement product-shipping-address" data-sale-field="shippingAddress" placeholder="آدرس کامل" value="${escapeAttr(p.shippingAddress || '')}">`, { optional: true, full: true })}
-          ${saleFieldHtml('کد پستی', `<input type="text" class="product-settlement product-shipping-postal" data-sale-field="shippingPostalCode" inputmode="numeric" placeholder="۱۰ رقم" value="${escapeAttr(p.shippingPostalCode || '')}">`, { optional: true })}
-        </div>`
-    } else if (isPhysical && (p.shippingAddress || p.shippingPostalCode)) {
-      shippingFields = `
-          ${saleFieldHtml('آدرس گیرنده', `<span class="sale-readonly-value">${escapeHtml(p.shippingAddress || '—')}</span>`, { optional: true, full: true })}
-          ${p.shippingPostalCode ? saleFieldHtml('کد پستی', `<span class="sale-readonly-value">${escapeHtml(p.shippingPostalCode)}</span>`, { optional: true }) : ''}`
-    }
-
     const hasEditablePay = canEdit && pays.some(pay => getPaymentEntryStatus(pay) !== PAYMENT_STATUS.approved)
     const hasCompletedRefund = getProductRefundRecords(p).length > 0
     const productDetailsBtn = (canEdit && !closed && !hasEditablePay && !hasCompletedRefund)
@@ -2611,7 +2616,6 @@ export async function renderProducts(customerId, users = null) {
             ${saleFieldHtml('قیمت کل (ریال)', priceControl, { required: true })}
             ${saleFieldHtml('تاریخ تسویه', settlementControl, { optional: true, className: 'sale-field--settlement' })}
           </div>
-          ${shippingFields}
           ${summaryHtml}
           ${refundSummariesHtml}
           ${productDetailsBtn}
@@ -2767,14 +2771,10 @@ function readSaleProductDraft(blockEl) {
   const nameEl = blockEl.querySelector('[data-sale-field="name"]')
   const priceEl = blockEl.querySelector('[data-sale-field="price"]')
   const settlementEl = blockEl.querySelector('[data-sale-field="settlementDate"]')
-  const addressEl = blockEl.querySelector('[data-sale-field="shippingAddress"]')
-  const postalEl = blockEl.querySelector('[data-sale-field="shippingPostalCode"]')
   return {
     name: nameEl ? nameEl.value : null,
     price: priceEl ? unformatSaleNumber(priceEl) : null,
     settlementDate: settlementEl ? String(settlementEl.value || '').trim() : null,
-    shippingAddress: addressEl ? String(addressEl.value || '').trim().replace(/\s+/g, ' ') : null,
-    shippingPostalCode: postalEl ? toEnDigits(String(postalEl.value || '')).trim().replace(/\s+/g, '') : null,
     priceEl,
     nameEl
   }
@@ -2823,21 +2823,12 @@ function applySaleProductDraft(product, draft, { lockPrice = false } = {}) {
       }
     }
   }
-  if (isPhysicalSaleLine(product)) {
-    if (draft.shippingAddress != null) product.shippingAddress = draft.shippingAddress
-    if (draft.shippingPostalCode != null) product.shippingPostalCode = draft.shippingPostalCode
-  } else {
-    product.shippingAddress = ''
-    product.shippingPostalCode = ''
-  }
 }
 
 export function onSaleProductNameChange(selectEl) {
   const block = selectEl?.closest('.product-block')
   if (!block) return
   const name = selectEl.value
-  const shipping = block.querySelector('[data-shipping-fields]')
-  if (shipping) shipping.hidden = !(name && isPhysicalSaleLine({ name }))
   const hint = block.querySelector('[data-bundle-hint]')
   if (hint) {
     const bundle = getBundleByName(coerceProductName(name) || name)
@@ -2984,24 +2975,7 @@ export async function commitGiftSale(customerId, productIndex) {
     product.soldAt = dateTime
     product.depositorName = ''
 
-    if (draft.shippingAddress != null || draft.shippingPostalCode != null) {
-      applySaleProductDraft(product, {
-        name,
-        price: '0',
-        settlementDate: '',
-        shippingAddress: draft.shippingAddress,
-        shippingPostalCode: draft.shippingPostalCode
-      }, { lockPrice: false })
-    } else {
-      applyProfitSnapshotToProduct(product)
-    }
-
-    if (product.shippingAddress) {
-      appendCustomerAddressIfNew(customer, {
-        text: product.shippingAddress,
-        postalCode: product.shippingPostalCode || ''
-      })
-    }
+    applyProfitSnapshotToProduct(product)
 
     syncProductStatus(product)
     await setProducts(customerId, products)
@@ -3072,12 +3046,6 @@ export async function commitSaleProductDetails(customerId, productIndex) {
       return
     }
     applySaleProductDraft(product, draft, { lockPrice: false })
-    if (product.shippingAddress) {
-      appendCustomerAddressIfNew(customer, {
-        text: product.shippingAddress,
-        postalCode: product.shippingPostalCode || ''
-      })
-    }
     syncProductStatus(product)
     await setProducts(customerId, products)
     showToast('جزئیات محصول ذخیره شد')
@@ -3199,13 +3167,6 @@ export async function commitSalePayment(customerId, productIndex, paymentIndex) 
   try {
     const wasFilled = isPaymentFilled(pay)
     applySaleProductDraft(product, productDraft, { lockPrice: true })
-
-    if (product.shippingAddress) {
-      appendCustomerAddressIfNew(customer, {
-        text: product.shippingAddress,
-        postalCode: product.shippingPostalCode || ''
-      })
-    }
 
     pay.amount = String(amountNum)
     pay.soldAt = `${paymentDraft.soldAtDate} ${time24}`

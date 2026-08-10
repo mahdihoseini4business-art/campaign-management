@@ -64,19 +64,25 @@ function normalizeCustomerAddressesLocal(source) {
   for (const item of raw) {
     let text = ''
     let postalCode = ''
+    let isPrimary = false
     if (typeof item === 'string') {
       text = item.trim().replace(/\s+/g, ' ')
     } else if (item && typeof item === 'object') {
       text = String(item.text || item.address || '').trim().replace(/\s+/g, ' ')
       postalCode = toEnDigitsLocal(String(item.postalCode || item.postal || '').trim()).replace(/\s+/g, '')
+      isPrimary = !!(item.isPrimary || item.primary)
     }
     if (!text) continue
     const key = `${text.toLowerCase()}|${postalCode}`
     if (seen.has(key)) continue
     seen.add(key)
-    out.push({ text, postalCode })
-    if (out.length >= 10) break
+    out.push({ text, postalCode, isPrimary })
+    if (out.length >= 2) break
   }
+  if (!out.length) return out
+  let primaryIdx = out.findIndex(a => a.isPrimary)
+  if (primaryIdx < 0) primaryIdx = 0
+  out.forEach((a, i) => { a.isPrimary = i === primaryIdx })
   return out
 }
 

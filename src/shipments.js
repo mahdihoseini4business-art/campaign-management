@@ -8,7 +8,7 @@ import {
   getPaymentEntryStatus, PAYMENT_STATUS, getSaleRegistrantPhone,
   canViewScopedCustomer, userDisplayName,
   isPhysicalSaleLine, hasApprovedPayment, getShipmentStatus,
-  SHIPMENT_STATUS, renderCopyableCell
+  SHIPMENT_STATUS, renderCopyableCell, getPrimaryCustomerAddress
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderProducts } from './customers.js'
@@ -40,6 +40,7 @@ export function getAllShipments() {
       const pays = getProductPayments(product)
       const lastPay = pays[pays.length - 1]
       const soldByPhone = getSaleRegistrantPhone(product, lastPay, c)
+      const primaryAddress = getPrimaryCustomerAddress(c)
       rows.push({
         customerId: c.id,
         productIndex,
@@ -54,8 +55,8 @@ export function getAllShipments() {
         productStatus: product.status || '',
         price,
         approved,
-        shippingAddress: product.shippingAddress || '',
-        shippingPostalCode: product.shippingPostalCode || '',
+        shippingAddress: primaryAddress?.text || '',
+        shippingPostalCode: primaryAddress?.postalCode || '',
         shipmentStatus: getShipmentStatus(product),
         trackingCode: product.trackingCode || '',
         shippedAt: product.shippedAt || '',
