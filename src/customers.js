@@ -6,7 +6,7 @@ import { broadcastSaleToast, buildSaleToastPayload } from './sale-toasts.js'
 import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
   canViewCustomer, canManageCustomer, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
-  getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, toJalali, ownsCustomer, isAdmin, canViewOrgWideData,
+  getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, ownsCustomer, isAdmin, canViewOrgWideData,
   canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canScheduleFollowupOnCustomer, matchesTabSearch, getCustomerSearchExtras,
   resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
@@ -28,13 +28,19 @@ import {
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
-/** Newest Jalali date first; stable tie-break on id. */
+/** Newest Jalali datetime first; stable tie-break on id. */
 function sortFollowupsNewestFirst(list) {
   return [...list].sort((a, b) => {
-    const diff = jalaliToNum(b.date) - jalaliToNum(a.date)
+    const ka = formatSoldAt24h(a.doneAt || a.date) || a.date || ''
+    const kb = formatSoldAt24h(b.doneAt || b.date) || b.date || ''
+    const diff = String(kb).localeCompare(String(ka))
     if (diff !== 0) return diff
     return String(b.id || '').localeCompare(String(a.id || ''), undefined, { numeric: true })
   })
+}
+
+function formatFollowupHistoryAt(f) {
+  return formatSoldAt24h(f?.doneAt || f?.date) || f?.date || ''
 }
 
 function populatePlatformDropdown(select) {
@@ -236,7 +242,9 @@ export async function renderCustomers() {
     const customerFollowups = sortFollowupsNewestFirst(
       data.followups.filter(f => f.customerId === c.id)
     )
-    const lastDate = customerFollowups.length > 0 ? customerFollowups[0].date : '—'
+    const lastDate = customerFollowups.length > 0
+      ? (formatFollowupHistoryAt(customerFollowups[0]) || '—')
+      : '—'
     const lastNote = customerFollowups.length > 0 ? customerFollowups[0].notes : ''
 
     let nextFollowupHtml = '<span style="color:var(--text-muted)">—</span>'
@@ -282,7 +290,7 @@ export async function renderCustomers() {
       <td><span class="status-badge ${statusClass}">${escapeHtml(statusLabel)}</span></td>
       <td style="font-size:12px;">${escapeHtml(c.advisor) || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td style="text-align:center;"><span class="followup-count ${countClass}">${followupCount}</span></td>
-      <td style="font-size:13px;color:var(--text-muted);">${escapeHtml(lastDate)}</td>
+      <td style="font-size:13px;color:var(--text-muted);font-family:'Vazirmatn',sans-serif;direction:ltr;text-align:right;">${escapeHtml(lastDate)}</td>
       <td style="font-size:12px;">${nextFollowupHtml}</td>
       <td class="notes-cell" title="${escapeHtml(lastNote || c.notes)}">${escapeHtml(lastNote || c.notes) || '<span style="color:var(--text-muted)">—</span>'}</td>
     </tr>`
@@ -857,10 +865,10 @@ export async function reassignCustomerOwnership({
   }
 
   if (writeTimeline) {
-    const { date, time } = getNowJalaliDateTime()
+    const { date, time, dateTime } = getNowJalaliDateTime()
     const transferNote = {
       customerId: existing.id,
-      date,
+      date: dateTime,
       type: 'سیستمی',
       result: 'انتقال کارشناس',
       nextDate: '',
@@ -1795,7 +1803,7 @@ export async function openCustomerDetail(id, options = {}) {
         timelineHtml += `
           <div class="timeline-item${itemClass}">
             <div class="timeline-header">
-              <span class="timeline-date">${f.date}</span>
+              <span class="timeline-date">${escapeHtml(formatFollowupHistoryAt(f))}</span>
               <span class="timeline-type">${escapeHtml(f.type)}</span>
               ${overdueTag}
               ${authorHtml}
@@ -2075,10 +2083,10 @@ export async function setNextFollowup(customerId) {
   data.customers[idx].nextFollowupDate = date
   try {
     if (!isOwner) {
-      const today = getTodayJalaliStr()
+      const { dateTime } = getNowJalaliDateTime()
       const newFollowup = {
         customerId,
-        date: today,
+        date: dateTime,
         type: 'سیستمی',
         result: 'درخواست پیگیری',
         nextDate: date,
@@ -2138,11 +2146,9 @@ export async function addQuickNote(customerId) {
 
   if (!notes) { showToast('توضیحات را وارد کنید'); return }
 
-  const today = new Date()
-  const jalali = toJalali(today)
-  const dateStr = `${jalali.year}/${String(jalali.month).padStart(2, '0')}/${String(jalali.day).padStart(2, '0')}`
+  const { dateTime } = getNowJalaliDateTime()
 
-  const newFollowup = { customerId, date: dateStr, type, result, nextDate: '', notes, createdByPhone: normalizePhone(getCurrentUser()?.phone || '') }
+  const newFollowup = { customerId, date: dateTime, type, result, nextDate: '', notes, createdByPhone: normalizePhone(getCurrentUser()?.phone || '') }
   try {
     const id = await saveFollowupToDB(newFollowup)
     newFollowup.id = id

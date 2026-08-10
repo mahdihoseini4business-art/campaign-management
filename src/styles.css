@@ -1468,6 +1468,8 @@
     font-size: 12px;
     font-family: 'Vazirmatn', sans-serif;
     color: var(--text-muted);
+    direction: ltr;
+    unicode-bidi: isolate;
   }
 
   .timeline-type {

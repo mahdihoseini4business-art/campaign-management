@@ -1,6 +1,6 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB } from './data.js'
 import { getUsersSafe } from './auth.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, ownsCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, ownsCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone, formatSoldAt24h, soldAtTimePart, jalaliDatePart } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
 let followupFilter = 'today' // today | waiting | overdue | done
@@ -43,13 +43,29 @@ function followupNoteText(f) {
   return String(f.notes || f.doneNote || '').trim()
 }
 
-/** Newest Jalali date first; stable tie-break on id. */
+/** Newest Jalali datetime first; stable tie-break on id. */
 function sortFollowupsNewestFirst(list) {
   return [...list].sort((a, b) => {
-    const diff = jalaliToNum(b.date) - jalaliToNum(a.date)
+    const ka = formatSoldAt24h(a.doneAt || a.date) || a.date || ''
+    const kb = formatSoldAt24h(b.doneAt || b.date) || b.date || ''
+    const diff = String(kb).localeCompare(String(ka))
     if (diff !== 0) return diff
     return String(b.id || '').localeCompare(String(a.id || ''), undefined, { numeric: true })
   })
+}
+
+function formatFollowupHistoryAt(f) {
+  return formatSoldAt24h(f?.doneAt || f?.date) || f?.date || ''
+}
+
+/** Ensure history entries store "YYYY/MM/DD HH:MM"; keep prior time when editing date-only. */
+function ensureFollowupDateTime(dateStr, previousDateStr = '') {
+  const raw = toEnDigits(String(dateStr || '')).trim()
+  if (!raw) return ''
+  const date = jalaliDatePart(raw)
+  if (!date) return raw
+  const time = soldAtTimePart(raw) || soldAtTimePart(previousDateStr) || getNowJalaliDateTime().time
+  return `${date} ${time}`
 }
 
 /** Latest non-empty note an expert registered for this customer. */
@@ -362,7 +378,7 @@ function renderFollowupCard(item, { canEdit, nameByPhone }) {
   const dueMeta = followupDueMeta(item)
   const dueLabel = item.kind === 'pending'
     ? `موعد: ${escapeHtml(item.nextDate || '—')}${dueMeta ? ` (${escapeHtml(dueMeta)})` : ''}`
-    : `تاریخ: ${escapeHtml(item.date || '—')}`
+    : `تاریخ: ${escapeHtml(formatFollowupHistoryAt(item) || '—')}`
   const setterName = item.setByOther ? (nameByPhone(item.createdByPhone) || item.createdByPhone) : ''
   const setterBadge = setterName
     ? `<div class="followup-card-from">از: ${escapeHtml(setterName)}</div>`
@@ -483,7 +499,7 @@ export async function renderFollowups() {
         <td class="followup-name-cell">${escapeHtml(item.customerName)}${overdueBadge}</td>
         <td class="followup-phone-td">${phoneHtml}</td>
         <td style="font-size:12px;">${escapeHtml(item.advisor) || '—'}</td>
-        <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(item.date) || '—'}</td>
+        <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;direction:ltr;text-align:right;">${escapeHtml(formatFollowupHistoryAt(item)) || '—'}</td>
         <td>${escapeHtml(item.type)}</td>
         <td>${escapeHtml(item.result)}</td>
         <td style="font-size:13px;">${escapeHtml(item.nextDate) || '—'}</td>
@@ -730,13 +746,12 @@ export async function confirmFollowupDone() {
   const wasOverdue = cat === 'overdue'
   const { dateTime } = getNowJalaliDateTime()
   const doneByPhone = normalizePhone(getCurrentUser()?.phone || '')
-  const today = getTodayJalaliStr()
   const noteType = wasOverdue ? 'پیگیری معوقه انجام‌شده' : 'پیگیری انجام‌شده'
 
   try {
     const noteFollowup = {
       customerId,
-      date: today,
+      date: dateTime,
       type: noteType,
       result: 'انجام شد',
       nextDate: nextDate || '',
@@ -794,7 +809,7 @@ export function openFollowupModal(editFollowupId) {
     title.textContent = 'ویرایش یادداشت'
     document.getElementById('editFollowupIndex').value = editFollowupId
     select.value = f.customerId
-    document.getElementById('followupDate').value = f.date
+    document.getElementById('followupDate').value = formatFollowupHistoryAt(f) || f.date
     document.getElementById('followupNextDate').value = f.nextDate
     document.getElementById('followupType').value = f.type
     document.getElementById('followupResult').value = f.result
@@ -805,7 +820,7 @@ export function openFollowupModal(editFollowupId) {
     title.textContent = 'ثبت یادداشت'
     document.getElementById('editFollowupIndex').value = ''
     select.value = ''
-    document.getElementById('followupDate').value = ''
+    document.getElementById('followupDate').value = getNowJalaliDateTime().dateTime
     document.getElementById('followupNextDate').value = ''
     document.getElementById('followupType').value = 'دایرکت'
     document.getElementById('followupResult').value = 'پاسخ داد'
@@ -827,11 +842,11 @@ export async function saveFollowup() {
   const data = getData()
   const editFollowupId = document.getElementById('editFollowupIndex').value
   const customerId = document.getElementById('followupCustomer').value
-  const date = document.getElementById('followupDate').value.trim()
   const nextDate = document.getElementById('followupNextDate').value.trim()
   const type = document.getElementById('followupType').value
   const result = document.getElementById('followupResult').value
   const notes = document.getElementById('followupNotes').value.trim()
+  let date = toEnDigits(document.getElementById('followupDate').value.trim())
 
   if (!customerId) { showToast('مشتری را انتخاب کنید'); return }
   if (!date) { showToast('تاریخ تماس را وارد کنید'); return }
@@ -849,6 +864,7 @@ export async function saveFollowup() {
   if (editFollowupId) {
     const existing = data.followups.find(x => String(x.id) === String(editFollowupId) || `idx_${data.followups.indexOf(x)}` === editFollowupId)
     if (!existing) { showToast('پیگیری یافت نشد'); return }
+    date = ensureFollowupDateTime(date, existing.doneAt || existing.date)
     const updated = { ...existing, customerId, date, nextDate, type, result, notes }
     try {
       await updateFollowupInDB(updated)
@@ -860,6 +876,7 @@ export async function saveFollowup() {
       return
     }
   } else {
+    date = ensureFollowupDateTime(date)
     const newFollowup = { customerId, date, nextDate, type, result, notes, createdByPhone: normalizePhone(getCurrentUser()?.phone || ''), status: 'pending' }
     try {
       const id = await saveFollowupToDB(newFollowup)
