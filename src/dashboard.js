@@ -2994,7 +2994,7 @@ export async function exportDashboardForAi() {
     const payload = await buildDashboardExportPayload()
     const day = new Date().toISOString().slice(0, 10).replace(/-/g, '')
     downloadJsonFile(`dashboard-export-${day}.json`, payload)
-    showToast('خروجی JSON داشبورد برای تحلیل AI دانلود شد')
+    showToast('خروجی JSON داشبورد دانلود شد')
   } catch (e) {
     console.error('exportDashboardForAi error:', e)
     showToast('خطا در ساخت خروجی داشبورد')
@@ -3017,7 +3017,7 @@ export async function copyDashboardExport() {
       document.execCommand('copy')
       document.body.removeChild(ta)
     }
-    showToast('JSON داشبورد کپی شد — در چت AI بچسبانید')
+    showToast('JSON داشبورد کپی شد')
   } catch (e) {
     console.error('copyDashboardExport error:', e)
     showToast('خطا در کپی خروجی داشبورد')
