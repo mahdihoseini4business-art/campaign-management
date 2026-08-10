@@ -5137,6 +5137,15 @@
     z-index: 70;
   }
 
+  /* Invisible hover bridge across the 4px gap so the menu stays open */
+  .dash-ai-export-menu::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    bottom: 100%;
+    height: 8px;
+  }
+
   .dash-ai-export:hover .dash-ai-export-menu,
   .dash-ai-export:focus-within .dash-ai-export-menu {
     display: flex;
