@@ -581,8 +581,18 @@
       <div class="dash-filters-actions">
         <button type="button" class="btn btn-primary" onclick="app.applyDashFilter()">اعمال فیلتر</button>
         <button type="button" class="btn" id="dashClearFilterBtn" hidden onclick="app.clearDashFilter()">پاک کردن فیلتر</button>
-        <button type="button" class="btn" onclick="app.exportDashboardForAi()" title="دانلود JSON برای تحلیل با هوش مصنوعی">خروجی برای AI</button>
-        <button type="button" class="btn" onclick="app.copyDashboardExport()" title="کپی JSON در کلیپبورد">کپی JSON</button>
+        <div class="dash-ai-export" title="خروجی داشبورد برای AI">
+          <button type="button" class="btn dash-ai-export-btn" aria-label="خروجی داشبورد برای AI" aria-haspopup="true">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="-5 -10 110 135" aria-hidden="true" focusable="false">
+              <path d="m89 55c3.3125 0 6 2.6875 6 6v18c0 8.8359-7.1641 16-16 16h-58c-8.8359 0-16-7.1641-16-16v-18c0-3.3125 2.6875-6 6-6s6 2.6875 6 6v18c0 2.207 1.7891 4 4 4h58c2.2109 0 4-1.793 4-4v-18c0-3.3125 2.6875-6 6-6z"/>
+              <path d="m45.758 6.7266c2.3633-2.25 6.1289-2.3555 8.4844 0l20 20c2.3438 2.3438 2.3438 6.1406 0 8.4844s-6.1406 2.3438-8.4844 0l-9.7578-9.7578v41.516c0 3.3125-2.6875 6-6 6s-6-2.6875-6-6v-41.516l-9.7578 9.7578c-2.3633 2.2539-6.1289 2.3555-8.4844 0-2.3555-2.3555-2.25-6.1172 0-8.4844z"/>
+            </svg>
+          </button>
+          <div class="dash-ai-export-menu" role="menu">
+            <button type="button" class="dash-ai-export-item" role="menuitem" onclick="app.copyDashboardExport()">کپی</button>
+            <button type="button" class="dash-ai-export-item" role="menuitem" onclick="app.exportDashboardForAi()">دانلود</button>
+          </div>
+        </div>
       </div>
     </div>
 

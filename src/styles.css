@@ -5100,6 +5100,67 @@
     flex-wrap: wrap;
   }
 
+  .dash-ai-export {
+    position: relative;
+    z-index: 60;
+  }
+
+  .dash-ai-export-btn {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .dash-ai-export-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+    display: block;
+  }
+
+  .dash-ai-export-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    inset-inline-end: 0;
+    min-width: 120px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 6px;
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+    z-index: 70;
+  }
+
+  .dash-ai-export:hover .dash-ai-export-menu,
+  .dash-ai-export:focus-within .dash-ai-export-menu {
+    display: flex;
+  }
+
+  .dash-ai-export-item {
+    appearance: none;
+    border: none;
+    background: transparent;
+    text-align: right;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    width: 100%;
+  }
+
+  .dash-ai-export-item:hover {
+    background: var(--accent-light);
+    color: var(--accent);
+  }
+
   @media (min-width: 769px) {
     .toolbar-filter-grid {
       display: contents;
