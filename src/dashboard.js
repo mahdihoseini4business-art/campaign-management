@@ -560,6 +560,7 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
   const from = document.getElementById('salesChartFrom').value.trim()
   const to = document.getElementById('salesChartTo').value.trim()
   const timeframe = document.getElementById('salesChartTimeframe').value || 'day'
+  const metric = document.getElementById('salesChartMetric')?.value === 'count' ? 'count' : 'amount'
   const buckets = buildSalesBuckets(from, to, timeframe)
   const totals = buckets.map(() => 0)
   const chartFromNum = jalaliToNum(from)
@@ -577,16 +578,20 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
       if (!date || jalaliToNum(date) === 99999999) return
       const n = jalaliToNum(date)
       const idx = buckets.findIndex(b => n >= b.fromNum && n <= b.toNum)
-      if (idx !== -1) totals[idx] += amount
+      if (idx === -1) return
+      totals[idx] += metric === 'count' ? 1 : amount
     }
   )
+
+  const barLabel = metric === 'count' ? 'تعداد فروش' : 'مبلغ فروش'
+  const valueSuffix = metric === 'count' ? '' : ' ریال'
 
   // MA3: for day view = 3-day MA of daily bars; for week/month = MA of last 3 buckets
   const showMa3 = !!document.getElementById('salesChartShowMa3')?.checked
   const datasets = [
     {
       type: 'bar',
-      label: 'مبلغ فروش',
+      label: barLabel,
       data: totals,
       backgroundColor: '#0d6efd',
       borderRadius: 6,
@@ -634,7 +639,7 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
           callbacks: {
             label: (ctx) => {
               if (ctx.raw == null) return `${ctx.dataset.label}: —`
-              return `${ctx.dataset.label}: ${formatNumber(ctx.raw)} ریال`
+              return `${ctx.dataset.label}: ${formatNumber(ctx.raw)}${valueSuffix}`
             }
           }
         }
@@ -648,9 +653,10 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
           }
         },
         y: {
+          beginAtZero: true,
           ticks: {
             font: { family: 'Vazirmatn', size: 11 },
-            callback: v => formatNumber(v)
+            callback: v => (metric === 'count' && !Number.isInteger(v)) ? undefined : formatNumber(v)
           }
         }
       }

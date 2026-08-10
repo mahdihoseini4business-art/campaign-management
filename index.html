@@ -677,6 +677,10 @@
             <option value="week">هر میله = ۱ هفته</option>
             <option value="month">هر میله = ۱ ماه</option>
           </select>
+          <select class="form-select" id="salesChartMetric" style="width:150px;" onchange="app.applySalesChart()">
+            <option value="amount">بر اساس مبلغ</option>
+            <option value="count">بر اساس تعداد</option>
+          </select>
           <label class="sales-chart-ma-toggle" for="salesChartShowMa3">
             <input type="checkbox" id="salesChartShowMa3" checked onchange="app.applySalesChart()">
             <span>میانگین متحرک ۳روزه</span>
