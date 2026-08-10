@@ -1,12 +1,12 @@
 import Chart from 'chart.js/auto'
-import { getData, getStatuses, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName } from './data.js'
+import { getData, getStatuses, getPlatforms, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
 import {
   hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliNum,
   jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr,
   normalizePhone, userDisplayName, canViewOrgWideData, jalaliDiffDays, jalaliDatePart,
-  getVisibleAdvisorPhones, getStatusLabels, formatPhonesDisplay,
+  getVisibleAdvisorPhones, getStatusLabels, getPlatformLabels, formatPhonesDisplay,
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
   getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
   getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin,
@@ -1254,7 +1254,7 @@ function destroyDashChart(keyOrCanvas) {
 function destroyAllDashCharts() {
   Object.keys(dashCharts).forEach(key => destroyDashChart(key))
   dashCharts = {}
-  ;['chartCustomers', 'chartSalesStatus', 'chartProducts', 'chartAdvisorCompare', 'chartSalesTimeline', 'chartAovMa']
+  ;['chartCustomers', 'chartSalesStatus', 'chartPlatforms', 'chartProducts', 'chartAdvisorCompare', 'chartSalesTimeline', 'chartAovMa']
     .forEach(id => {
       const canvas = document.getElementById(id)
       if (canvas) destroyDashChart(canvas)
@@ -1288,15 +1288,24 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
       statusOrder[s.key] = s.order != null ? s.order : i
     })
 
+    const platformLabels = getPlatformLabels()
+    const platformColors = {}
+    getPlatforms().forEach(p => {
+      platformColors[p.key] = p.color
+    })
+
     const hasDateFilter = dateFromNum > 0 || dateToNum < 99999999
     const custStatusCounts = {}
+    const platformCounts = {}
     data.customers.forEach(c => {
       if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
       if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
       if (!inUserScope(c)) return
       if (hasDateFilter && !inChartDateRange(gregorianToJalaliStr(c.createdAt))) return
-      const key = c.status || ''
-      custStatusCounts[key] = (custStatusCounts[key] || 0) + 1
+      const statusKey = c.status || ''
+      custStatusCounts[statusKey] = (custStatusCounts[statusKey] || 0) + 1
+      const platformKey = c.platform || ''
+      platformCounts[platformKey] = (platformCounts[platformKey] || 0) + 1
     })
 
     const totalCustomers = Object.values(custStatusCounts).reduce((s, n) => s + n, 0)
@@ -1344,6 +1353,58 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
               callbacks: {
                 label(ctx) {
                   const item = topStatuses[ctx.dataIndex]
+                  if (!item) return ''
+                  return ` ${item.label}: ${formatNumber(item.count)} (${formatNumber(item.pct)}٪)`
+                }
+              }
+            }
+          }
+        }
+      })
+    }
+
+    const totalPlatformCustomers = Object.values(platformCounts).reduce((s, n) => s + n, 0)
+    const platformEntries = Object.entries(platformCounts)
+      .map(([key, count]) => ({
+        key,
+        label: platformLabels[key] || key || '—',
+        count,
+        pct: totalPlatformCustomers > 0 ? Math.round((count / totalPlatformCustomers) * 100) : 0,
+        color: platformColors[key] || '#dee2e6'
+      }))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count
+        return a.label.localeCompare(b.label, 'fa')
+      })
+
+    const platformCanvas = document.getElementById('chartPlatforms')
+    if (platformCanvas) {
+      dashCharts.platforms = new Chart(platformCanvas, {
+        type: 'doughnut',
+        data: {
+          labels: platformEntries.map(p => `${p.label} ${formatNumber(p.pct)}٪`),
+          datasets: [{
+            data: platformEntries.map(p => p.count),
+            backgroundColor: platformEntries.map(p => p.color),
+            borderWidth: 2,
+            borderColor: '#fff'
+          }]
+        },
+        options: {
+          ...CHART_RESPONSIVE,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                font: CHART_FONT,
+                boxWidth: 12,
+                padding: 10
+              }
+            },
+            tooltip: {
+              callbacks: {
+                label(ctx) {
+                  const item = platformEntries[ctx.dataIndex]
                   if (!item) return ''
                   return ` ${item.label}: ${formatNumber(item.count)} (${formatNumber(item.pct)}٪)`
                 }

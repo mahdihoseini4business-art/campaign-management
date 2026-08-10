@@ -4973,6 +4973,10 @@
     margin-bottom: 24px;
   }
 
+  .chart-grid-pies {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
   .chart-card {
     background: white;
     border: 1px solid var(--border);
@@ -5187,10 +5191,16 @@
     .chart-grid {
       grid-template-columns: 1fr 1fr;
     }
+    .chart-grid-pies {
+      grid-template-columns: 1fr 1fr;
+    }
   }
 
   @media (max-width: 600px) {
     .chart-grid {
+      grid-template-columns: 1fr;
+    }
+    .chart-grid-pies {
       grid-template-columns: 1fr;
     }
     .chart-card {
