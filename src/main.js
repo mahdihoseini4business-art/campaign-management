@@ -17,7 +17,7 @@ import {
   openCompleteRefundModal, closeCompleteRefundModal, confirmCompleteRefund,
   openRejectRefundModal, closeRejectRefundModal, confirmRejectRefund, archiveRefund
 } from './refunds.js'
-import { renderDashboard, toggleDashSection, applyDashFilter, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareMetricChange, onProductChartMetricChange, onDashTargetsScopeChange, renderSalesTargetBand, onAovMaControlsChange } from './dashboard.js'
+import { renderDashboard, toggleDashSection, applyDashFilter, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareMetricChange, onProductChartMetricChange, onDashTargetsScopeChange, renderSalesTargetBand, onAovMaControlsChange, exportDashboardForAi, copyDashboardExport } from './dashboard.js'
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners } from './import-export.js'
 import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection, openBulkTransferModal, closeBulkTransferModal, confirmBulkTransfer, refreshCustomerBulkOptions, updateBulkTransferPreview, filterBulkTransferOptions } from './bulk.js'
 import {
@@ -396,6 +396,8 @@ const app = {
   toggleDashSection,
   clearDashFilter,
   applyDashFilter,
+  exportDashboardForAi,
+  copyDashboardExport,
   toggleDashUserDropdown,
   toggleDashUser,
   toggleDashGroup,

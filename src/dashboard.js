@@ -4,7 +4,7 @@ import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
 import {
   hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliNum,
-  jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr,
+  jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr, showToast,
   normalizePhone, userDisplayName, canViewOrgWideData, jalaliDiffDays, jalaliDatePart,
   getVisibleAdvisorPhones, getStatusLabels, getPlatformLabels, formatPhonesDisplay,
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
@@ -2473,4 +2473,553 @@ function updateDashClearFilterBtn() {
   const btn = document.getElementById('dashClearFilterBtn')
   if (!btn) return
   btn.hidden = !(dashFilterApplied && hasActiveDashFilter())
+}
+
+// ============================================
+// Dashboard JSON export for AI analysis
+// ============================================
+
+const DASHBOARD_AI_HINT =
+  'این snapshot داشبورد کمپین است؛ فیلترها و کارت‌ها و سری نمودارها را تحلیل کن و روندها/ریسک‌ها را بگو.'
+
+function mapFollowupTableRows(list) {
+  return (list || []).map(c => {
+    const phones = formatPhonesDisplay(c)
+    return {
+      customerId: c.id || '',
+      name: c.name || c.platformId || '',
+      phone: phones.text || '',
+      advisor: advisorNameForCustomer(c),
+      nextFollowupDate: c.nextFollowupDate || '',
+      productCount: (c.products || []).length
+    }
+  })
+}
+
+function collectTransferMetricsForExport(dateFromNum, dateToNum) {
+  const data = getData()
+  const transfers = (data.ownershipTransfers || []).filter(t =>
+    transferInDateRange(t, dateFromNum, dateToNum) && transferTouchesSelected(t)
+  )
+  const batches = new Set(transfers.map(t => t.batchId).filter(Boolean))
+
+  const byCustomer = {}
+  for (const t of (data.ownershipTransfers || [])) {
+    if (!t.customerId || !t.createdAt) continue
+    if (!byCustomer[t.customerId]) byCustomer[t.customerId] = []
+    byCustomer[t.customerId].push(t)
+  }
+  const dwellDays = []
+  for (const list of Object.values(byCustomer)) {
+    list.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    for (let i = 1; i < list.length; i++) {
+      const prev = list[i - 1]
+      const curr = list[i]
+      if (!transfers.some(t => t.id === curr.id)) continue
+      const to = normalizePhone(prev.toAdvisorPhone)
+      if (selectedAdvisorPhones && to && !selectedAdvisorPhones.has(to)) continue
+      const ms = new Date(curr.createdAt) - new Date(prev.createdAt)
+      if (ms >= 0) dwellDays.push(ms / (1000 * 60 * 60 * 24))
+    }
+  }
+
+  let convEligible = 0
+  let convHit = 0
+  for (const t of transfers) {
+    const to = normalizePhone(t.toAdvisorPhone)
+    if (!to || !selectedAdvisorPhones?.has(to)) continue
+    const at = new Date(t.createdAt).getTime()
+    if (Number.isNaN(at)) continue
+    convEligible++
+    const customer = data.customers.find(c => c.id === t.customerId)
+    if (customerConvertedAfter(customer, at, TRANSFER_CONVERSION_DAYS)) convHit++
+  }
+
+  const stats = {}
+  function ensureRow(phone, name) {
+    const key = phone || name || '—'
+    if (!stats[key]) stats[key] = { phone: phone || '', name: name || phone || '—', in: 0, out: 0 }
+    return stats[key]
+  }
+  for (const t of transfers) {
+    const from = normalizePhone(t.fromAdvisorPhone)
+    const to = normalizePhone(t.toAdvisorPhone)
+    if (from && selectedAdvisorPhones?.has(from)) ensureRow(from, t.fromAdvisorName).out++
+    if (to && selectedAdvisorPhones?.has(to)) ensureRow(to, t.toAdvisorName).in++
+  }
+
+  return {
+    count: transfers.length,
+    batches: batches.size,
+    avgDwellDays: dwellDays.length
+      ? Math.round(dwellDays.reduce((a, b) => a + b, 0) / dwellDays.length)
+      : null,
+    conversion30d: {
+      pct: convEligible ? Math.round((convHit / convEligible) * 100) : null,
+      hits: convHit,
+      eligible: convEligible
+    },
+    byAdvisor: Object.values(stats)
+      .sort((a, b) => (b.in + b.out) - (a.in + a.out))
+      .map(r => ({
+        name: r.name || r.phone,
+        phone: r.phone,
+        in: r.in,
+        out: r.out,
+        net: r.in - r.out
+      }))
+  }
+}
+
+function collectSalesTargetsForExport(dateFromNum, dateToNum) {
+  const viewer = getCurrentUser()
+  const canSee = isMainAdmin(viewer) || !!(viewer?.isGroupManager && viewer?.groupId)
+  if (!canSee) {
+    return { visible: false, scope: null, rows: [] }
+  }
+  let targets = []
+  try {
+    targets = getSalesTargets()
+  } catch (_) {
+    return { visible: true, scope: null, rows: [], error: 'failed_to_load' }
+  }
+  if (!targets.length) return { visible: true, scope: null, rows: [] }
+
+  let blocks = []
+  try {
+    blocks = buildDashTargetBlocks(targets, viewer)
+  } catch (_) {
+    return { visible: true, scope: null, rows: [], error: 'failed_to_build' }
+  }
+  if (!blocks.length) return { visible: true, scope: null, rows: [] }
+
+  const options = buildDashTargetScopeOptions(blocks, viewer)
+  const scopeSel = document.getElementById('dashTargetsScope')
+  const selectedScope = (scopeSel?.value && options.some(o => o.value === scopeSel.value))
+    ? scopeSel.value
+    : (options.some(o => o.value === 'org') ? 'org' : (options[0]?.value || 'org'))
+
+  const rows = []
+  for (const block of blocks.filter(b => b.scope === selectedScope)) {
+    for (const { bar, goalOverride, phoneSet } of (block.bars || [])) {
+      const goal = goalOverride != null ? Number(goalOverride) : (Number(bar.value) || 0)
+      const current = computeSalesTargetCurrent(bar, dateFromNum, dateToNum, phoneSet || null)
+      const pct = goal > 0 ? Math.min(100, Math.round((current / goal) * 1000) / 10) : 0
+      rows.push({
+        groupTitle: block.title || '',
+        metric: bar.metric === 'count' ? 'count' : 'amount',
+        productNames: bar.productNames || [],
+        current,
+        goal,
+        pct,
+        startDate: bar.startDate || '',
+        endDate: bar.endDate || ''
+      })
+    }
+  }
+  return { visible: true, scope: selectedScope, rows }
+}
+
+function collectSalesTimelineForExport() {
+  ensureSalesChartDefaults()
+  if (!syncSalesChartTimeframeOptions()) {
+    return {
+      from: '',
+      to: '',
+      timeframe: 'day',
+      metric: 'amount',
+      ma3: false,
+      buckets: []
+    }
+  }
+  const from = document.getElementById('salesChartFrom')?.value.trim() || ''
+  const to = document.getElementById('salesChartTo')?.value.trim() || ''
+  const timeframe = document.getElementById('salesChartTimeframe')?.value || 'day'
+  const metric = document.getElementById('salesChartMetric')?.value === 'count' ? 'count' : 'amount'
+  const showMa3 = !!document.getElementById('salesChartShowMa3')?.checked
+  const buckets = buildSalesBuckets(from, to, timeframe)
+  const totals = buckets.map(() => 0)
+  const chartFromNum = jalaliToNum(from)
+  const chartToNum = jalaliToNum(to)
+
+  forEachDashSalePayment(
+    matchesSelectedSaleRegistrant,
+    true,
+    (dateStr) => {
+      if (!dateStr) return false
+      const n = jalaliToNum(dateStr)
+      return n >= chartFromNum && n <= chartToNum
+    },
+    ({ amount, date }) => {
+      if (!date || jalaliToNum(date) === 99999999) return
+      const n = jalaliToNum(date)
+      const idx = buckets.findIndex(b => n >= b.fromNum && n <= b.toNum)
+      if (idx === -1) return
+      totals[idx] += metric === 'count' ? 1 : amount
+    }
+  )
+  const ma = showMa3 ? movingAverageSeries(totals, 3) : null
+  return {
+    from,
+    to,
+    timeframe,
+    metric,
+    ma3: showMa3,
+    buckets: buckets.map((b, i) => ({
+      label: b.label,
+      from: jalaliNumToStr(b.fromNum) || '',
+      to: jalaliNumToStr(b.toNum) || '',
+      value: totals[i],
+      ma3: ma ? ma[i] : null
+    }))
+  }
+}
+
+function collectAovMaForExport(dateFromNum, dateToNum) {
+  const displayDays = getAovDisplayWindowDays()
+  const maDays = getAovMaWindowDays()
+  const { buckets } = resolveAovDisplayDayRange(dateFromNum, dateToNum)
+  const labels = buckets.map(b => b.label)
+  const dayNums = buckets.map(b => b.fromNum)
+  const allPoints = collectCompletedSalePointsForAov()
+  const byPhone = new Map()
+  for (const p of allPoints) {
+    if (!byPhone.has(p.phone)) byPhone.set(p.phone, [])
+    byPhone.get(p.phone).push(p)
+  }
+  const selectedPhones = [...(selectedAdvisorPhones || [])]
+    .filter(Boolean)
+    .map(p => normalizePhone(p))
+    .filter(Boolean)
+    .sort((a, b) => advisorLabelForPhone(a).localeCompare(advisorLabelForPhone(b), 'fa'))
+
+  const series = []
+  selectedPhones.forEach(phone => {
+    const advisorPoints = byPhone.get(phone) || []
+    const values = buildAovMaValues(advisorPoints, dayNums, maDays)
+    if (!values.some(v => v != null)) return
+    series.push({ id: phone, label: advisorLabelForPhone(phone), values })
+  })
+  series.push({
+    id: 'overall',
+    label: 'میانگین کل',
+    values: buildAovMaValues(allPoints, dayNums, maDays)
+  })
+
+  return { displayDays, maDays, labels, series }
+}
+
+/**
+ * Build a machine-readable snapshot of the current dashboard (same numbers as UI).
+ */
+export async function buildDashboardExportPayload() {
+  const data = getData()
+  await ensureUserFilterUI()
+  ensureSalesChartDefaults()
+  syncSalesChartTimeframeOptions()
+
+  const dateFrom = document.getElementById('dashDateFrom')?.value.trim() || ''
+  const dateTo = document.getElementById('dashDateTo')?.value.trim() || ''
+  const dateFromNum = dateFrom ? jalaliToNum(dateFrom) : 0
+  const dateToNum = dateTo ? jalaliToNum(dateTo) : 99999999
+  const todayNum = getTodayJalaliNum()
+  const in3DaysNum = jalaliAddDays(getTodayJalaliStr(), 3)
+  const hasDateFilter = !!(dateFrom || dateTo)
+
+  function inDateRange(dateStr) {
+    if (!dateFrom && !dateTo) return true
+    if (!dateStr) return false
+    const dNum = jalaliToNum(dateStr)
+    return dNum >= dateFromNum && dNum <= dateToNum
+  }
+
+  function inUserScope(c) {
+    return matchesSelectedUsers(c)
+  }
+
+  const scopedCustomers = data.customers.filter(c => {
+    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false
+    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false
+    return inUserScope(c)
+  })
+
+  function customerCreatedInRange(c) {
+    if (!hasDateFilter) return true
+    return inDateRange(gregorianToJalaliStr(c.createdAt))
+  }
+
+  const datedCustomers = scopedCustomers.filter(customerCreatedInRange)
+
+  const visibleFollowups = data.followups.filter(f => {
+    const customer = data.customers.find(c => c.id === f.customerId)
+    if (!customer || !inUserScope(customer)) return false
+    if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
+    if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
+    return true
+  })
+  const followupsCompleted = visibleFollowups.filter(f => {
+    const isDone = f.status === 'done' ||
+      f.type === 'پیگیری انجام‌شده' ||
+      f.type === 'پیگیری معوقه انجام‌شده'
+    return isDone && inDateRange(jalaliDatePart(f.doneAt || f.date))
+  }).length
+  const followupsUpcoming = scopedCustomers.filter(c => {
+    if (!c.nextFollowupDate) return false
+    const nextDate = jalaliDatePart(c.nextFollowupDate)
+    return jalaliToNum(nextDate) >= todayNum && inDateRange(nextDate)
+  }).length
+
+  let overdueList = []
+  let soonList = []
+  let setCount = 0
+  let noSetCount = 0
+  scopedCustomers.forEach(c => {
+    if (c.nextFollowupDate) {
+      const nextDate = jalaliDatePart(c.nextFollowupDate)
+      if (hasDateFilter && !inDateRange(nextDate)) return
+      const dNum = jalaliToNum(nextDate)
+      if (matchesFollowupMonitorScope(c)) {
+        if (dNum < todayNum) overdueList.push(c)
+        else if (dNum <= in3DaysNum) soonList.push(c)
+      }
+      setCount++
+    } else if (customerCreatedInRange(c)) {
+      noSetCount++
+    }
+  })
+
+  const salesMetrics = computeDashSalesMetrics(hasDateFilter, inDateRange)
+  const avgSale = salesMetrics.salesCount > 0
+    ? Math.round(salesMetrics.totalApproved / salesMetrics.salesCount)
+    : 0
+
+  let refundsCompleted = 0
+  try {
+    refundsCompleted = sumCompletedRefundsForDash({
+      dateFromNum,
+      dateToNum,
+      advisorPhones: selectedAdvisorPhones
+    })
+  } catch (_) { /* ignore */ }
+
+  const advisorList = [...(selectedAdvisorPhones || [])]
+    .map(phone => {
+      const p = normalizePhone(phone)
+      return { phone: p, name: advisorLabelForPhone(p) }
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'fa'))
+
+  const allAdvisorsSelected = !!(
+    dashUsersCache.length &&
+    selectedAdvisorPhones &&
+    selectedAdvisorPhones.size >= dashUsersCache.length
+  )
+
+  // Charts (same rules as renderDashCharts)
+  function inChartDateRange(dateStr) {
+    if (!dateFromNum && (!dateToNum || dateToNum === 99999999)) return true
+    if (!dateStr) return false
+    const dNum = jalaliToNum(dateStr)
+    return dNum >= (dateFromNum || 0) && dNum <= (dateToNum || 99999999)
+  }
+
+  const statusLabels = getStatusLabels()
+  const statusOrder = {}
+  getStatuses().forEach((s, i) => {
+    statusOrder[s.key] = s.order != null ? s.order : i
+  })
+  const platformLabels = getPlatformLabels()
+  const custStatusCounts = {}
+  const platformCounts = {}
+  data.customers.forEach(c => {
+    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
+    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
+    if (!inUserScope(c)) return
+    if (hasDateFilter && !inChartDateRange(gregorianToJalaliStr(c.createdAt))) return
+    const statusKey = c.status || ''
+    custStatusCounts[statusKey] = (custStatusCounts[statusKey] || 0) + 1
+    const platformKey = c.platform || ''
+    platformCounts[platformKey] = (platformCounts[platformKey] || 0) + 1
+  })
+  const totalCustomersForStatus = Object.values(custStatusCounts).reduce((s, n) => s + n, 0)
+  const customerStatus = Object.entries(custStatusCounts)
+    .map(([key, count]) => ({
+      key,
+      label: statusLabels[key] || key || '—',
+      count,
+      pct: totalCustomersForStatus > 0 ? Math.round((count / totalCustomersForStatus) * 100) : 0,
+      order: statusOrder[key] != null ? statusOrder[key] : 999
+    }))
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count
+      if (b.pct !== a.pct) return b.pct - a.pct
+      return a.order - b.order
+    })
+    .slice(0, 7)
+    .map(({ key, label, count, pct }) => ({ key, label, count, pct }))
+
+  const totalPlatformCustomers = Object.values(platformCounts).reduce((s, n) => s + n, 0)
+  const platforms = Object.entries(platformCounts)
+    .map(([key, count]) => {
+      const exactPct = totalPlatformCustomers > 0 ? (count / totalPlatformCustomers) * 100 : 0
+      return {
+        key,
+        label: platformLabels[key] || key || '—',
+        count,
+        exactPct,
+        pct: Math.round(exactPct)
+      }
+    })
+    .filter(p => p.exactPct >= 4)
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count
+      return a.label.localeCompare(b.label, 'fa')
+    })
+    .map(({ key, label, count, pct }) => ({ key, label, count, pct }))
+
+  const salesStatus = { 'تکمیل': 0, 'بیعانه': 0 }
+  const productSales = {}
+  const productCounts = {}
+  forEachDashSalePayment(
+    matchesSelectedSaleRegistrant,
+    hasDateFilter,
+    inChartDateRange,
+    () => {},
+    ({ product, paidInScope }) => {
+      const statusKey = product.status === 'تکمیل' ? 'تکمیل' : 'بیعانه'
+      salesStatus[statusKey] = (salesStatus[statusKey] || 0) + paidInScope
+      const name = coerceProductName(product.name) || '—'
+      productSales[name] = (productSales[name] || 0) + paidInScope
+      productCounts[name] = (productCounts[name] || 0) + 1
+    }
+  )
+  const salesStatusEntries = [
+    { label: 'تکمیل', amount: salesStatus['تکمیل'] || 0 },
+    { label: 'بیعانه', amount: salesStatus['بیعانه'] || 0 }
+  ]
+  const salesStatusTotal = salesStatusEntries.reduce((s, e) => s + e.amount, 0)
+  const salesStatusChart = salesStatusEntries.map(e => ({
+    label: e.label,
+    amount: e.amount,
+    pct: salesStatusTotal > 0 ? Math.round((e.amount / salesStatusTotal) * 100) : 0
+  }))
+
+  const productMetric = document.getElementById('productChartMetric')?.value === 'count' ? 'count' : 'amount'
+  const productSource = productMetric === 'count' ? productCounts : productSales
+  const productsChart = {
+    metric: productMetric,
+    rows: Object.keys(productSource || {})
+      .map(name => ({ name, value: productSource[name] || 0 }))
+      .sort((a, b) => b.value - a.value)
+  }
+
+  const advisorMetric = document.getElementById('advisorCompareMetric')?.value === 'gross' ? 'gross' : 'net'
+  const advisorCompare = {
+    metric: advisorMetric,
+    rows: buildAdvisorCompareRows(dateFromNum, dateToNum, advisorMetric).map(r => ({
+      phone: r.phone,
+      label: r.label,
+      value: Math.round(r.value)
+    }))
+  }
+
+  return {
+    meta: {
+      exportedAt: new Date().toISOString(),
+      currency: 'IRR',
+      calendar: 'jalali',
+      aiHint: DASHBOARD_AI_HINT
+    },
+    filters: {
+      dateFrom,
+      dateTo,
+      advisors: advisorList,
+      advisorSelection: allAdvisorsSelected ? 'all' : 'subset',
+      notes: {
+        customersScopedBy: 'customer.advisorPhone',
+        salesScopedBy: 'saleRegistrantPhone',
+        completedSalesDatedBy: 'completionPayment.soldAt'
+      }
+    },
+    cards: {
+      totalCustomers: datedCustomers.length,
+      setFollowup: setCount,
+      overdueFollowup: overdueList.length,
+      noFollowup: noSetCount,
+      soonFollowup: soonList.length,
+      activeCustomers: datedCustomers.filter(c => c.products && c.products.length > 0).length,
+      leads: datedCustomers.filter(c => c.id.startsWith('LD')).length,
+      customersWithPhone: datedCustomers.filter(c => c.id.startsWith('CS')).length,
+      followupsCompleted,
+      followupsUpcoming,
+      salesCountCompleted: salesMetrics.salesCount,
+      deposits: salesMetrics.totalDeposit,
+      balances: salesMetrics.totalBalance,
+      approvedSalesTotal: salesMetrics.totalApproved,
+      grossProfit: salesMetrics.completedGrossProfit,
+      pendingAccounting: salesMetrics.totalPending,
+      avgSale,
+      refundsCompleted
+    },
+    transfers: collectTransferMetricsForExport(dateFromNum, dateToNum),
+    charts: {
+      customerStatus,
+      salesStatus: salesStatusChart,
+      platforms,
+      products: productsChart,
+      advisorCompare,
+      salesTimeline: collectSalesTimelineForExport(),
+      aovMa: collectAovMaForExport(dateFromNum, dateToNum),
+      salesTargets: collectSalesTargetsForExport(dateFromNum, dateToNum)
+    },
+    tables: {
+      overdueFollowups: mapFollowupTableRows(overdueList),
+      soonFollowups: mapFollowupTableRows(soonList)
+    }
+  }
+}
+
+function downloadJsonFile(filename, obj) {
+  const json = JSON.stringify(obj, null, 2)
+  const blob = new Blob([json], { type: 'application/json;charset=utf-8;' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = filename
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(link.href), 2000)
+}
+
+export async function exportDashboardForAi() {
+  try {
+    const payload = await buildDashboardExportPayload()
+    const day = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    downloadJsonFile(`dashboard-export-${day}.json`, payload)
+    showToast('خروجی JSON داشبورد برای تحلیل AI دانلود شد')
+  } catch (e) {
+    console.error('exportDashboardForAi error:', e)
+    showToast('خطا در ساخت خروجی داشبورد')
+  }
+}
+
+export async function copyDashboardExport() {
+  try {
+    const payload = await buildDashboardExportPayload()
+    const text = JSON.stringify(payload, null, 2)
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.left = '-9999px'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    showToast('JSON داشبورد کپی شد — در چت AI بچسبانید')
+  } catch (e) {
+    console.error('copyDashboardExport error:', e)
+    showToast('خطا در کپی خروجی داشبورد')
+  }
 }
