@@ -1284,7 +1284,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     const statusColors = {}
     const statusOrder = {}
     getStatuses().forEach((s, i) => {
-      statusColors[s.key] = s.bgColor
+      statusColors[s.key] = s.textColor || s.bgColor
       statusOrder[s.key] = s.order != null ? s.order : i
     })
 
@@ -1365,13 +1365,18 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
 
     const totalPlatformCustomers = Object.values(platformCounts).reduce((s, n) => s + n, 0)
     const platformEntries = Object.entries(platformCounts)
-      .map(([key, count]) => ({
-        key,
-        label: platformLabels[key] || key || '—',
-        count,
-        pct: totalPlatformCustomers > 0 ? Math.round((count / totalPlatformCustomers) * 100) : 0,
-        color: platformColors[key] || '#dee2e6'
-      }))
+      .map(([key, count]) => {
+        const exactPct = totalPlatformCustomers > 0 ? (count / totalPlatformCustomers) * 100 : 0
+        return {
+          key,
+          label: platformLabels[key] || key || '—',
+          count,
+          exactPct,
+          pct: Math.round(exactPct),
+          color: platformColors[key] || '#dee2e6'
+        }
+      })
+      .filter(p => p.exactPct >= 4)
       .sort((a, b) => {
         if (b.count !== a.count) return b.count - a.count
         return a.label.localeCompare(b.label, 'fa')
