@@ -1268,4 +1268,26 @@ export function sumCompletedRefundsForDash({ dateFromNum = 0, dateToNum = 999999
   return Math.round(total)
 }
 
+/** Counts of requested/awaiting refunds for dashboard dual card (date + advisor filters). */
+export function countPendingRefundsForDash({ dateFromNum = 0, dateToNum = 99999999, advisorPhones = null } = {}) {
+  const customers = getData().customers
+  const counts = { requested: 0, awaiting: 0 }
+  const hasDateFilter = dateFromNum > 0 || dateToNum < 99999999
+  for (const r of getRefunds()) {
+    if (r.status !== REFUND_STATUS.requested && r.status !== REFUND_STATUS.awaiting) continue
+    if (!refundHasLiveOrder(r, customers)) continue
+    if (advisorPhones instanceof Set) {
+      const phone = normalizePhone(r.advisorPhone)
+      if (!phone || !advisorPhones.has(phone)) continue
+    }
+    const iso = r.requestedAt || null
+    const jalali = iso ? gregorianToJalaliStr(iso) : ''
+    const d = jalali ? jalaliToNum(jalaliDatePart(jalali)) : 0
+    if (d && (d < dateFromNum || d > dateToNum)) continue
+    if (!d && hasDateFilter) continue
+    counts[r.status]++
+  }
+  return counts
+}
+
 export { getProductRefundBadge }

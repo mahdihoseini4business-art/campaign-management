@@ -12,7 +12,7 @@ import {
   getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin,
   jalaliEndOfDayMs, getCompletedSaleEconomics, resolveProductCostConfig
 } from './utils.js'
-import { sumCompletedRefundsForDash } from './refunds.js'
+import { sumCompletedRefundsForDash, countPendingRefundsForDash } from './refunds.js'
 
 let dashCharts = {}
 /** @type {Set<string>|null} null = not initialized yet (treat as all) */
@@ -1181,6 +1181,16 @@ export async function renderDashboard() {
     })
     const refundsEl = document.getElementById('dash-refunds-total')
     if (refundsEl) refundsEl.textContent = formatNumber(refundsTotal) + ' ریال'
+
+    const pendingRefunds = countPendingRefundsForDash({
+      dateFromNum,
+      dateToNum,
+      advisorPhones: selectedAdvisorPhones
+    })
+    const requestedEl = document.getElementById('dash-refunds-requested')
+    const awaitingEl = document.getElementById('dash-refunds-awaiting')
+    if (requestedEl) requestedEl.textContent = pendingRefunds.requested
+    if (awaitingEl) awaitingEl.textContent = pendingRefunds.awaiting
   } catch (e) {
     console.error('dash refunds total error:', e)
   }
@@ -2794,12 +2804,21 @@ export async function buildDashboardExportPayload() {
     : 0
 
   let refundsCompleted = 0
+  let refundsRequested = 0
+  let refundsAwaiting = 0
   try {
     refundsCompleted = sumCompletedRefundsForDash({
       dateFromNum,
       dateToNum,
       advisorPhones: selectedAdvisorPhones
     })
+    const pendingRefunds = countPendingRefundsForDash({
+      dateFromNum,
+      dateToNum,
+      advisorPhones: selectedAdvisorPhones
+    })
+    refundsRequested = pendingRefunds.requested
+    refundsAwaiting = pendingRefunds.awaiting
   } catch (_) { /* ignore */ }
 
   const advisorList = [...(selectedAdvisorPhones || [])]
@@ -2959,6 +2978,8 @@ export async function buildDashboardExportPayload() {
       grossProfit: salesMetrics.completedGrossProfit,
       pendingAccounting: salesMetrics.totalPending,
       avgSale,
+      refundsRequested,
+      refundsAwaiting,
       refundsCompleted
     },
     transfers: collectTransferMetricsForExport(dateFromNum, dateToNum),
