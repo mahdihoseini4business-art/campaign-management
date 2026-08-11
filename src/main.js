@@ -101,6 +101,7 @@ function switchTab(tab, el) {
   }
 
   if (tab === 'dashboard') renderDashboard()
+  if (tab === 'customers') renderCustomers()
   if (tab === 'followups') renderFollowups()
   if (tab === 'sales') renderSales()
   if (tab === 'products') renderProductMatrix()
