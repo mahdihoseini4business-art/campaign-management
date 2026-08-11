@@ -824,6 +824,18 @@
   /* --- Stats --- */
   .stats { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
 
+  .customer-stats-hint {
+    margin: -16px 0 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .customer-filter-summary {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
   .accounting-bank-balances {
     margin: -8px 0 24px;
     background: transparent;

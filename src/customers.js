@@ -140,6 +140,30 @@ function syncClearCustomerFiltersBtn() {
   btn.style.display = getCustomerFilterState().hasAny ? '' : 'none'
 }
 
+function countScopedCustomers() {
+  const data = getData()
+  const currentUser = getCurrentUser()
+  return data.customers.filter(c => {
+    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false
+    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false
+    if (!canViewScopedCustomer(c, currentUser)) return false
+    return true
+  }).length
+}
+
+function syncCustomerFilterSummary(filteredCount) {
+  const el = document.getElementById('customerFilterSummary')
+  if (!el) return
+  if (!getCustomerFilterState().hasAny) {
+    el.hidden = true
+    el.textContent = ''
+    return
+  }
+  const scopedTotal = countScopedCustomers()
+  el.hidden = false
+  el.textContent = `نمایش ${filteredCount} از ${scopedTotal} مخاطب در اسکوپ (با فیلتر فعال)`
+}
+
 export function getFilteredCustomers() {
   const data = getData()
   const { search, advisor: advisorFilter, platform: platformFilter, status: statusFilter, level: levelFilter, transfer: transferFilter } = getCustomerFilterState()
@@ -243,6 +267,7 @@ export async function renderCustomers() {
 
   updateTransferInboxBadge()
   syncClearCustomerFiltersBtn()
+  syncCustomerFilterSummary(filtered.length)
 
   if (filtered.length === 0) {
     let title = 'مشتری‌ای یافت نشد'
