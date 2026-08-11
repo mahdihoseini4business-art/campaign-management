@@ -61,11 +61,22 @@ function updateSelectAllCheckbox(tab) {
   const selectAll = document.getElementById(selectAllId)
   if (!selectAll) return
   const tbody = getTabBody(tab)
-  const checkboxes = tbody ? tbody.querySelectorAll('input[type="checkbox"]') : []
+  const checkboxes = tbody ? [...tbody.querySelectorAll('input[type="checkbox"][data-id]')] : []
   const total = checkboxes.length
-  const checked = selectedIds[tab].size
-  selectAll.checked = total > 0 && checked === total
-  selectAll.indeterminate = checked > 0 && checked < total
+  const checkedOnPage = checkboxes.filter(cb => selectedIds[tab].has(cb.dataset.id)).length
+  selectAll.checked = total > 0 && checkedOnPage === total
+  selectAll.indeterminate = checkedOnPage > 0 && checkedOnPage < total
+}
+
+/** Re-apply checkbox state from selectedIds after a table re-render. */
+export function restoreSelection(tab) {
+  const tbody = getTabBody(tab)
+  if (!tbody) return
+  tbody.querySelectorAll('input[type="checkbox"][data-id]').forEach(cb => {
+    cb.checked = selectedIds[tab].has(cb.dataset.id)
+  })
+  updateSelectAllCheckbox(tab)
+  updateBulkUI(tab)
 }
 
 function updateBulkUI(tab) {

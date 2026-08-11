@@ -27,6 +27,7 @@ import {
   REFUND_STATUS
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
+import { restoreSelection } from './bulk.js'
 
 /** Newest Jalali datetime first; stable tie-break on id. */
 function sortFollowupsNewestFirst(list) {
@@ -205,6 +206,7 @@ export async function renderCustomers() {
         </div>
       </td></tr>`
     renderPaginationBar('customerPagination', 'customers', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
+    restoreSelection('customers')
     updateStats()
     // Still update advisor dropdown in background
     updateAdvisorDropdown()
@@ -300,6 +302,7 @@ export async function renderCustomers() {
   }).join('')
 
   renderPaginationBar('customerPagination', 'customers', page)
+  restoreSelection('customers')
   updateStats()
   // Update advisor dropdown in background (non-blocking)
   updateAdvisorDropdown()
