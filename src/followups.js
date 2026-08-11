@@ -1,9 +1,46 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB } from './data.js'
 import { getUsersSafe } from './auth.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone, formatSoldAt24h, soldAtTimePart, jalaliDatePart } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone, formatSoldAt24h, soldAtTimePart, jalaliDatePart, formatTeamFilterLabel } from './utils.js'
+import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 
 let followupFilter = 'today' // today | waiting | overdue | done
+
+function getFollowupAdvisorFilter() {
+  return document.getElementById('filterFollowupAdvisor')?.value || ''
+}
+
+function matchesAdvisorScope(customer, scopePhones) {
+  if (!scopePhones) return true
+  const phone = normalizePhone(customer?.advisorPhone)
+  return !!(phone && scopePhones.has(phone))
+}
+
+export async function updateFollowupAdvisorDropdown() {
+  const select = document.getElementById('filterFollowupAdvisor')
+  if (!select) return
+  const currentUser = getCurrentUser()
+  const isManager = !!(currentUser?.isGroupManager)
+  const isOrgWide = canViewOrgWideData(currentUser)
+  if (!isManager && !isOrgWide) {
+    select.style.display = 'none'
+    return
+  }
+  select.style.display = ''
+  const currentVal = select.value
+  const users = await getUsersSafe()
+  try { await loadGroupsData() } catch (_) {}
+  select.innerHTML = buildGroupedAdvisorSelectHtml({
+    users,
+    selectedValue: currentVal,
+    teamLabel: isManager ? formatTeamFilterLabel(currentUser) : null
+  })
+  if (![...select.options].some(o => o.value === currentVal)) {
+    select.value = ''
+  } else {
+    select.value = currentVal
+  }
+}
 
 // ============================================
 // Classification (based on customer.nextFollowupDate)
@@ -105,11 +142,14 @@ function getPendingItems(applySearch = true) {
   const search = applySearch
     ? toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
     : ''
+  const advisorFilter = applySearch ? getFollowupAdvisorFilter() : ''
+  const advisorScope = phonesMatchingAdvisorFilter(advisorFilter, currentUser)
 
   const items = []
   for (const c of data.customers) {
     if (!c.nextFollowupDate) continue
     if (!canSeeCustomer(c, currentUser)) continue
+    if (!matchesAdvisorScope(c, advisorScope)) continue
     const category = classifyDate(c.nextFollowupDate)
     if (!category) continue
 
@@ -169,12 +209,15 @@ function getDoneItems(applySearch = true) {
   const search = applySearch
     ? toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
     : ''
+  const advisorFilter = applySearch ? getFollowupAdvisorFilter() : ''
+  const advisorScope = phonesMatchingAdvisorFilter(advisorFilter, currentUser)
 
   const items = []
   for (const f of data.followups) {
     if (!isDoneFollowup(f)) continue
     const customer = data.customers.find(c => c.id === f.customerId)
     if (!canSeeCustomer(customer, currentUser)) continue
+    if (!matchesAdvisorScope(customer, advisorScope)) continue
 
     if (search) {
       const name = customer ? customer.name : ''
@@ -409,6 +452,7 @@ export async function renderFollowups() {
   if (!tbody) return
 
   try {
+    updateFollowupAdvisorDropdown()
     updateFollowupStats()
     updateFollowupBadge()
 

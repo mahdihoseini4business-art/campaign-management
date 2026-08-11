@@ -924,6 +924,9 @@
         <option value="delete">حذف انتخاب شده‌ها</option>
       </select>
       <span id="bulkCountFollowups" style="display:none;font-size:13px;color:var(--text-muted);"></span>
+      <select class="form-select" id="filterFollowupAdvisor" style="width:200px;min-width:160px;display:none;" onchange="app.renderFollowups()">
+        <option value="">همه کارشناسان</option>
+      </select>
       <input type="text" class="search-box" placeholder="جستجو (مشتری، کارشناس، محصول، واریزکننده)..." id="searchFollowups" oninput="app.renderFollowups()">
       <div class="toolbar-actions" id="followupsActionsMenu">
         <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
