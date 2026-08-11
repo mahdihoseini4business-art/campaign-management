@@ -2752,7 +2752,7 @@ export function closeDetailModal({ force = false } = {}) {
 }
 
 /** Abort an incomplete create: delete the draft customer and close the panel. */
-export async function cancelPendingCustomerCreate(customerId) {
+export function cancelPendingCustomerCreate(customerId) {
   if (!customerId || !isPendingCreateCompletion(customerId)) {
     showToast('این مشتری در حالت تکمیل ثبت نیست')
     return
@@ -2768,20 +2768,47 @@ export async function cancelPendingCustomerCreate(customerId) {
     closeDetailModal({ force: true })
     return
   }
-  if (!window.confirm('مشتری هنوز تکمیل نشده. حذف شود و پنل بسته شود؟')) return
-  try {
-    await deleteCustomerFromDB(customerId)
-    data.customers = data.customers.filter(c => c.id !== customerId)
-    data.followups = data.followups.filter(f => f.customerId !== customerId)
-    data.refunds = (data.refunds || []).filter(r => r.customerId !== customerId)
-    clearPendingCreateCompletion(customerId)
-    closeDetailModal({ force: true })
-    await renderCustomers()
-    showToast('ثبت ناقص لغو و مشتری حذف شد')
-  } catch (e) {
-    console.error('cancelPendingCustomerCreate error:', e)
-    showToast(e?.message || 'خطا در لغو ثبت مشتری')
+
+  const msg = document.getElementById('deleteMessage')
+  const btn = document.getElementById('deleteConfirmBtn')
+  const header = document.querySelector('#deleteModal .modal-header h2')
+  const modal = document.getElementById('deleteModal')
+  if (!msg || !btn || !modal) return
+
+  const prevLabel = btn.textContent
+  const prevHeader = header?.textContent
+  msg.textContent = 'مشتری هنوز تکمیل نشده. با تأیید، این مشتری حذف می‌شود و پنل بسته می‌شود.'
+  btn.textContent = 'حذف مشتری'
+  if (header) header.textContent = 'لغو ثبت مشتری'
+
+  const restore = () => {
+    btn.textContent = prevLabel
+    if (header && prevHeader) header.textContent = prevHeader
   }
+
+  btn.onclick = async () => {
+    try {
+      await deleteCustomerFromDB(customerId)
+      data.customers = data.customers.filter(c => c.id !== customerId)
+      data.followups = data.followups.filter(f => f.customerId !== customerId)
+      data.refunds = (data.refunds || []).filter(r => r.customerId !== customerId)
+      clearPendingCreateCompletion(customerId)
+      closeDetailModal({ force: true })
+      await renderCustomers()
+      closeDeleteModal()
+      restore()
+      showToast('ثبت ناقص لغو و مشتری حذف شد')
+    } catch (e) {
+      console.error('cancelPendingCustomerCreate error:', e)
+      showToast(e?.message || 'خطا در لغو ثبت مشتری')
+    }
+  }
+
+  const cancelBtn = document.querySelector('#deleteModal .modal-footer .btn:not(.btn-danger)')
+  const closeBtn = document.querySelector('#deleteModal .modal-close')
+  if (cancelBtn) cancelBtn.addEventListener('click', restore, { once: true })
+  if (closeBtn) closeBtn.addEventListener('click', restore, { once: true })
+  modal.classList.add('active')
 }
 
 // ============================================
