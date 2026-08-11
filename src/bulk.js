@@ -1,6 +1,6 @@
 import { getData, deleteCustomerFromDB, deleteFollowupFromDB, saveCustomerToDB, generateTransferBatchId } from './data.js'
 import { showToast, requirePermission, hasPermission, canTransferCustomer, normalizePhone, escapeHtml, escapeAttr, userDisplayName, resolveAdvisor, syncCustomerLevel } from './utils.js'
-import { renderCustomers, reassignCustomerOwnership } from './customers.js'
+import { renderCustomers, reassignCustomerOwnership, closeDeleteModal } from './customers.js'
 import { renderFollowups } from './followups.js'
 import { renderSales, parseSaleRowKey } from './sales.js'
 import { deleteOrphanedRefundsForCustomer } from './refunds.js'
@@ -161,9 +161,35 @@ function formatBulkDeleteToast(deleted, failed, failedLabels = []) {
   return `${deleted} حذف شد، ${failed} ناموفق${sample}`
 }
 
-async function bulkDelete(tab, ids) {
-  if (!confirm(`آیا از حذف ${ids.length} مورد مطمئن هستید؟`)) return
+function openBulkDeleteConfirm(tab, ids) {
+  const modal = document.getElementById('deleteModal')
+  const msg = document.getElementById('deleteMessage')
+  const btn = document.getElementById('deleteConfirmBtn')
+  if (!modal || !msg || !btn) return
 
+  const noun = tab === 'customers' ? 'مشتری' : tab === 'followups' ? 'پیگیری' : 'فروش'
+  msg.textContent = `آیا از حذف ${ids.length} ${noun} انتخاب‌شده مطمئن هستید؟ این عمل قابل بازگشت نیست.`
+  btn.disabled = false
+  btn.textContent = 'حذف'
+  btn.onclick = async () => {
+    btn.disabled = true
+    btn.textContent = 'در حال حذف...'
+    try {
+      await runBulkDelete(tab, ids)
+      closeDeleteModal()
+    } finally {
+      btn.disabled = false
+      btn.textContent = 'حذف'
+    }
+  }
+  modal.classList.add('active')
+}
+
+async function bulkDelete(tab, ids) {
+  openBulkDeleteConfirm(tab, ids)
+}
+
+async function runBulkDelete(tab, ids) {
   const data = getData()
   let deleted = 0
   let failed = 0
