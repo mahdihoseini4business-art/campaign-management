@@ -124,6 +124,20 @@ function openDefaultAccessibleTab() {
 
 let customerSortState = { field: null, asc: true }
 let followupSortState = { field: null, asc: true }
+
+function updateCustomerSortHeaders() {
+  document.querySelectorAll('#sheet-customers thead th.sort-th').forEach(th => {
+    const field = th.dataset.sortField
+    const active = customerSortState.field === field
+    th.classList.toggle('is-sorted', active)
+    th.classList.toggle('is-asc', active && customerSortState.asc)
+    th.classList.toggle('is-desc', active && !customerSortState.asc)
+    th.setAttribute('aria-sort', active
+      ? (customerSortState.asc ? 'ascending' : 'descending')
+      : 'none')
+  })
+}
+
 function sortCustomers(field) {
   if (customerSortState.field === field) customerSortState.asc = !customerSortState.asc
   else { customerSortState.field = field; customerSortState.asc = true }
@@ -169,6 +183,7 @@ function sortCustomers(field) {
     if (typeof va === 'number') return customerSortState.asc ? va - vb : vb - va
     return customerSortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa')
   })
+  updateCustomerSortHeaders()
   renderCustomers()
 }
 

@@ -1142,6 +1142,48 @@
 
   thead th:hover { background: #E7E5E4; }
 
+  thead th.sort-th {
+    padding: 0;
+  }
+
+  thead th:not(.sort-th):not(.customer-select-col) {
+    cursor: default;
+  }
+
+  .sort-th-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    margin: 0;
+    padding: 14px 16px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: right;
+    cursor: pointer;
+  }
+
+  .sort-th-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  .sort-th.is-sorted .sort-th-btn::after {
+    content: '▲';
+    font-size: 10px;
+    opacity: 0.75;
+  }
+
+  .sort-th.is-desc .sort-th-btn::after {
+    content: '▼';
+  }
+
   tbody tr { border-bottom: 1px solid #F5F5F4; transition: background 0.15s ease; }
   tbody tr:hover { background: var(--row-hover); }
   tbody tr.clickable-row { cursor: pointer; }
