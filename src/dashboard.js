@@ -481,15 +481,22 @@ function computeDashSalesMetrics(hasDateFilter, inDateRange) {
   let totalPending = 0
   let completedGrossProfit = 0
 
-  // An incomplete invoice stays in deposit/balance until its approved payments cover the price.
-  forEachDashSalePayment(matchesSelectedSaleRegistrant, hasDateFilter, inDateRange, null, ({ product, paidInScope, balance }) => {
-    if (product.status === 'تکمیل') return
-    totalDeposit += paidInScope
-    totalBalance += balance
-  })
+  // جمع فروش‌های تأییدشده = مجموع همهٔ واریزهای تأییدشدهٔ حسابداری (بیعانه + تکمیل)
+  forEachDashSalePayment(
+    matchesSelectedSaleRegistrant,
+    hasDateFilter,
+    inDateRange,
+    ({ amount }) => { totalApproved += amount },
+    ({ product, paidInScope, balance }) => {
+      salesCount++
+      // کارت بیعانه / مانده فقط برای فاکتورهای تکمیل‌نشده
+      if (product.status === 'تکمیل') return
+      totalDeposit += paidInScope
+      totalBalance += balance
+    }
+  )
 
-  // A completed invoice is attributed to the payment that completed it. This also makes
-  // dashboard date filters use the completion date rather than an earlier deposit date.
+  // سود ناخالص فقط برای فاکتورهای تکمیل‌شده؛ فیلتر تاریخ روی تاریخ تکمیل است
   const data = getData()
   data.customers.forEach(customer => {
     if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return
@@ -514,8 +521,6 @@ function computeDashSalesMetrics(hasDateFilter, inDateRange) {
       if (hasDateFilter && !inDateRange(jalaliDatePart(completionPayment.soldAt))) return
 
       const eco = getCompletedSaleEconomics(product)
-      salesCount++
-      totalApproved += eco.salesTotal
       completedGrossProfit += eco.grossProfit
     })
   })
