@@ -2878,6 +2878,55 @@
     padding: 8px 12px;
   }
 
+  .customer-cards-view {
+    display: none;
+  }
+
+  .customer-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    cursor: pointer;
+    box-shadow: var(--shadow-subtle);
+  }
+
+  .customer-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .customer-card-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.4;
+  }
+
+  .customer-card-phone {
+    direction: ltr;
+    text-align: right;
+    font-family: monospace;
+    font-size: 13px;
+  }
+
+  .customer-card-meta,
+  .customer-card-advisor {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  .customer-card-select {
+    display: flex;
+    justify-content: flex-end;
+  }
+
   /* Overdue tag in timeline */
   .overdue-tag {
     display: inline-block;
@@ -3966,6 +4015,16 @@
     }
 
     #sheet-followups .followup-cards-view {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    #sheet-customers .customers-table-view {
+      display: none;
+    }
+
+    #sheet-customers .customer-cards-view {
       display: flex;
       flex-direction: column;
       gap: 10px;

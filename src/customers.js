@@ -168,6 +168,28 @@ function buildCustomerEmptyHtml({ title, detail, actionsHtml }) {
     </div>`
 }
 
+function renderCustomerCard(c, {
+  statusClass,
+  statusLabel,
+  nameBadges,
+  nextFollowupHtml
+}) {
+  const phoneDisp = formatPhonesDisplay(c)
+  const phoneHtml = phoneDisp.text
+    ? `${escapeHtml(phoneDisp.text)}${phoneDisp.extra > 0 ? ` <span style="color:var(--text-muted);font-size:11px;">+${phoneDisp.extra}</span>` : ''}`
+    : '<span style="color:var(--text-muted)">—</span>'
+
+  return `<article class="customer-card" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
+    <div class="customer-card-header">
+      <div class="customer-card-name">${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}${nameBadges}</div>
+      <span class="status-badge ${statusClass}">${escapeHtml(statusLabel)}</span>
+    </div>
+    <div class="customer-card-phone">${phoneHtml}</div>
+    <div class="customer-card-meta">پیگیری بعدی: ${nextFollowupHtml}</div>
+    <div class="customer-card-advisor">کارشناس: ${escapeHtml(c.advisor) || '—'}</div>
+  </article>`
+}
+
 function syncClearCustomerFiltersBtn() {
   const btn = document.getElementById('clearCustomerFiltersBtn')
   if (!btn) return
@@ -284,6 +306,7 @@ function populateCustomerFilterDropdowns() {
 export async function renderCustomers() {
   const data = getData()
   const tbody = document.getElementById('customerBody')
+  const cards = document.getElementById('customerCards')
   if (!tbody) return
   const filters = getCustomerFilterState()
   const { search, advisor: advisorFilter, platform: platformFilter, status: statusFilter, level: levelFilter, transfer: transferFilter } = filters
@@ -319,7 +342,9 @@ export async function renderCustomers() {
       detail = 'مشتری جدید اضافه کنید'
       actionsHtml = `<button type="button" class="btn btn-sm btn-primary" onclick="app.openCustomerModal()">+ مشتری جدید</button>`
     }
-    tbody.innerHTML = `<tr><td colspan="${colCount}">${buildCustomerEmptyHtml({ title, detail, actionsHtml })}</td></tr>`
+    const emptyHtml = buildCustomerEmptyHtml({ title, detail, actionsHtml })
+    tbody.innerHTML = `<tr><td colspan="${colCount}">${emptyHtml}</td></tr>`
+    if (cards) cards.innerHTML = emptyHtml
     renderPaginationBar('customerPagination', 'customers', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
     restoreSelection('customers')
     updateStats()
@@ -332,7 +357,10 @@ export async function renderCustomers() {
   const page = paginateList('customers', filtered, filterSig)
   const followupsByCustomer = buildFollowupsByCustomerMap(data.followups)
 
-  tbody.innerHTML = page.items.map(c => {
+  const rowHtml = []
+  const cardHtml = []
+
+  for (const c of page.items) {
     const platformClass = getPlatformClass(c.platform)
     const platformLabel = getPlatformLabels()[c.platform] || c.platform
     const statusClass = getStatusClass(c.status)
@@ -406,7 +434,7 @@ export async function renderCustomers() {
       ? '<span style="color:var(--text-muted)">—</span>'
       : `<span class="customer-level-badge">${escapeHtml(levelLabel)}</span>`
 
-    return `<tr class="clickable-row ${nextFollowupClass}${isMine ? '' : ' row-other-owner'}${transferredIn ? ' row-transferred-in' : ''}${transferredOut ? ' row-transferred-out' : ''}" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
+    rowHtml.push(`<tr class="clickable-row ${nextFollowupClass}${isMine ? '' : ' row-other-owner'}${transferredIn ? ' row-transferred-in' : ''}${transferredOut ? ' row-transferred-out' : ''}" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
       ${selectCell}
       <td>${platformIdHtml}</td>
       <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>
@@ -426,8 +454,13 @@ export async function renderCustomers() {
       <td style="font-size:13px;color:var(--text-muted);font-family:'Vazirmatn',sans-serif;direction:ltr;text-align:right;">${escapeHtml(lastDate)}</td>
       <td style="font-size:12px;">${nextFollowupHtml}</td>
       <td class="notes-cell" title="${escapeAttr(noteSource ? `${noteSource}: ${noteText}` : '')}">${escapeHtml(noteText) || '<span style="color:var(--text-muted)">—</span>'}</td>
-    </tr>`
-  }).join('')
+    </tr>`)
+
+    cardHtml.push(renderCustomerCard(c, { statusClass, statusLabel, nameBadges, nextFollowupHtml }))
+  }
+
+  tbody.innerHTML = rowHtml.join('')
+  if (cards) cards.innerHTML = cardHtml.join('')
 
   renderPaginationBar('customerPagination', 'customers', page)
   restoreSelection('customers')
