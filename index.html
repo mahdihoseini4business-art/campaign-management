@@ -824,7 +824,7 @@
       </select>
       <span id="bulkCountCustomers" style="display:none;font-size:13px;color:var(--text-muted);"></span>
       <div class="toolbar-filter-grid">
-        <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchCustomers" oninput="app.onCustomerSearchInput()">
+        <input type="text" class="search-box" placeholder="جستجو (نام، شماره، ایدی، کارشناس، محصول…)" id="searchCustomers" oninput="app.onCustomerSearchInput()">
         <select class="form-select" id="filterAdvisor" style="width:200px;min-width:160px;" onchange="app.renderCustomers()">
           <option value="">همه کارشناسان</option>
         </select>
@@ -863,17 +863,17 @@
       <table>
         <thead>
           <tr>
-            <th class="customer-select-col" style="width:40px;"><input type="checkbox" id="selectAllCustomers" onchange="app.toggleSelectAll('customers', this.checked)"></th>
-            <th class="sort-th" data-sort-field="platformId" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortCustomersHeader('platformId')">ایدی پلتفرم</button></th>
-            <th class="sort-th" data-sort-field="platform" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortCustomersHeader('platform')">پلتفرم</button></th>
-            <th class="sort-th" data-sort-field="name" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortCustomersHeader('name')">نام</button></th>
+            <th class="customer-select-col" style="width:40px;"><input type="checkbox" id="selectAllCustomers" aria-label="انتخاب همه مشتریان این صفحه" onchange="app.toggleSelectAll('customers', this.checked)"></th>
+            <th class="sort-th" data-sort-field="platformId" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس ایدی پلتفرم" onclick="app.sortCustomersHeader('platformId')">ایدی پلتفرم</button></th>
+            <th class="sort-th" data-sort-field="platform" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس پلتفرم" onclick="app.sortCustomersHeader('platform')">پلتفرم</button></th>
+            <th class="sort-th" data-sort-field="name" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس نام" onclick="app.sortCustomersHeader('name')">نام</button></th>
             <th>سطح</th>
-            <th class="sort-th" data-sort-field="phone" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortCustomersHeader('phone')">شماره</button></th>
-            <th class="sort-th" data-sort-field="status" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortCustomersHeader('status')">وضعیت</button></th>
-            <th class="sort-th" data-sort-field="advisor" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortCustomersHeader('advisor')">کارشناس</button></th>
-            <th class="sort-th" data-sort-field="followupCount" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortCustomersHeader('followupCount')">پیگیری</button></th>
-            <th class="sort-th" data-sort-field="lastFollowup" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortCustomersHeader('lastFollowup')">آخرین پیگیری</button></th>
-            <th class="sort-th" data-sort-field="nextFollowupDate" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortCustomersHeader('nextFollowupDate')">پیگیری بعدی</button></th>
+            <th class="sort-th" data-sort-field="phone" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس شماره" onclick="app.sortCustomersHeader('phone')">شماره</button></th>
+            <th class="sort-th" data-sort-field="status" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس وضعیت" onclick="app.sortCustomersHeader('status')">وضعیت</button></th>
+            <th class="sort-th" data-sort-field="advisor" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس کارشناس" onclick="app.sortCustomersHeader('advisor')">کارشناس</button></th>
+            <th class="sort-th" data-sort-field="followupCount" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس تعداد پیگیری" onclick="app.sortCustomersHeader('followupCount')">پیگیری</button></th>
+            <th class="sort-th" data-sort-field="lastFollowup" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس آخرین پیگیری" onclick="app.sortCustomersHeader('lastFollowup')">آخرین پیگیری</button></th>
+            <th class="sort-th" data-sort-field="nextFollowupDate" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس پیگیری بعدی" onclick="app.sortCustomersHeader('nextFollowupDate')">پیگیری بعدی</button></th>
             <th>آخرین یادداشت</th>
           </tr>
         </thead>
