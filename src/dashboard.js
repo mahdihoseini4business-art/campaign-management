@@ -752,6 +752,49 @@ function colorForAdvisorPhone(phone) {
   return ADVISOR_CHART_COLORS[idx]
 }
 
+const AOV_OVERALL_LABEL = 'میانگین کل'
+const AOV_OVERALL_COLOR = '#212529'
+const AOV_DIM_OPACITY = 0.2
+
+function colorWithAlpha(color, alpha) {
+  if (!color || typeof color !== 'string') return color
+  const rgbaMatch = color.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*[\d.]+\s*)?\)$/i)
+  if (rgbaMatch) {
+    return `rgba(${rgbaMatch[1]}, ${rgbaMatch[2]}, ${rgbaMatch[3]}, ${alpha})`
+  }
+  let hex = color.replace('#', '')
+  if (hex.length === 3) hex = hex.split('').map(c => c + c).join('')
+  if (hex.length !== 6) return color
+  const r = parseInt(hex.slice(0, 2), 16)
+  const g = parseInt(hex.slice(2, 4), 16)
+  const b = parseInt(hex.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+function applyAovLegendHoverFocus(chart, hoveredDatasetIndex) {
+  if (!chart?.data?.datasets) return
+  chart.data.datasets.forEach((ds, i) => {
+    const base = ds._baseBorderColor || ds.borderColor || '#888'
+    const keepFull = i === hoveredDatasetIndex || ds.label === AOV_OVERALL_LABEL
+    const color = keepFull ? base : colorWithAlpha(base, AOV_DIM_OPACITY)
+    ds.borderColor = color
+    ds.pointBackgroundColor = color
+    ds.pointBorderColor = color
+  })
+  chart.update('none')
+}
+
+function clearAovLegendHoverFocus(chart) {
+  if (!chart?.data?.datasets) return
+  chart.data.datasets.forEach(ds => {
+    const base = ds._baseBorderColor || ds.borderColor || '#888'
+    ds.borderColor = base
+    ds.pointBackgroundColor = base
+    ds.pointBorderColor = base
+  })
+  chart.update('none')
+}
+
 /**
  * Rolling AOV (SMA-style): for each display day D, AOV of completed sales in
  * [D - (maDays-1) .. D] inclusive — same formula as the dashboard card, over a window.
@@ -834,35 +877,42 @@ function renderAovMaChart(dateFromNum, dateToNum) {
     const advisorPoints = byPhone.get(phone) || []
     const values = buildAovMaValues(advisorPoints, dayNums, maDays)
     if (!values.some(v => v != null)) return
+    const color = colorForAdvisorPhone(phone)
     datasets.push({
       label: advisorLabelForPhone(phone),
       data: values,
-      borderColor: colorForAdvisorPhone(phone),
+      borderColor: color,
       backgroundColor: 'transparent',
       borderWidth: 1.5,
       pointRadius: 2,
       pointHoverRadius: 4,
+      pointBackgroundColor: color,
+      pointBorderColor: color,
       tension: 0.25,
       spanGaps: true,
       fill: false,
-      order: 1
+      order: 1,
+      _baseBorderColor: color
     })
   })
 
   // Overall MA for currently filtered advisors — drawn on top, thicker
   const totalValues = buildAovMaValues(allPoints, dayNums, maDays)
   datasets.push({
-    label: 'میانگین کل',
+    label: AOV_OVERALL_LABEL,
     data: totalValues,
-    borderColor: '#212529',
+    borderColor: AOV_OVERALL_COLOR,
     backgroundColor: 'transparent',
     borderWidth: 3.5,
     pointRadius: 3,
     pointHoverRadius: 5,
+    pointBackgroundColor: AOV_OVERALL_COLOR,
+    pointBorderColor: AOV_OVERALL_COLOR,
     tension: 0.25,
     spanGaps: true,
     fill: false,
-    order: 10
+    order: 10,
+    _baseBorderColor: AOV_OVERALL_COLOR
   })
 
   dashCharts.aovMa = new Chart(canvas, {
@@ -875,7 +925,18 @@ function renderAovMaChart(dateFromNum, dateToNum) {
       plugins: {
         legend: {
           position: 'bottom',
-          labels: { font: { family: 'Vazirmatn', size: 11 }, boxWidth: 12 }
+          labels: { font: { family: 'Vazirmatn', size: 11 }, boxWidth: 12 },
+          onHover(evt, legendItem, legend) {
+            const native = evt?.native
+            if (native?.target) native.target.style.cursor = 'pointer'
+            if (legendItem?.datasetIndex == null) return
+            applyAovLegendHoverFocus(legend.chart, legendItem.datasetIndex)
+          },
+          onLeave(evt, _legendItem, legend) {
+            const native = evt?.native
+            if (native?.target) native.target.style.cursor = 'default'
+            clearAovLegendHoverFocus(legend.chart)
+          }
         },
         tooltip: {
           callbacks: {
