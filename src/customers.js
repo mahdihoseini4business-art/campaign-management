@@ -1,4 +1,4 @@
-import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache } from './data.js'
+import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
@@ -357,10 +357,40 @@ function populateCustomerFilterDropdowns() {
 }
 
 export async function renderCustomers() {
-  const data = getData()
   const tbody = document.getElementById('customerBody')
   const cards = document.getElementById('customerCards')
   if (!tbody) return
+
+  const loadState = getDataLoadState()
+  const showSelectColEarly = hasPermission('customers_delete') || hasPermission('customers_transfer')
+  const colCountEarly = showSelectColEarly ? 12 : 11
+
+  if (loadState.status === 'loading' || loadState.status === 'idle') {
+    const loadingHtml = buildCustomerEmptyHtml({
+      title: 'در حال بارگذاری…',
+      detail: 'لیست مشتریان در حال دریافت است',
+      actionsHtml: ''
+    })
+    tbody.innerHTML = `<tr><td colspan="${colCountEarly}">${loadingHtml}</td></tr>`
+    if (cards) cards.innerHTML = loadingHtml
+    renderPaginationBar('customerPagination', 'customers', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
+    return
+  }
+
+  if (loadState.status === 'error') {
+    const errorHtml = buildCustomerEmptyHtml({
+      title: 'خطا در بارگذاری مشتریان',
+      detail: escapeHtml(loadState.error || 'خطای ناشناخته'),
+      actionsHtml: `<button type="button" class="btn btn-sm btn-primary" onclick="location.reload()">تلاش مجدد</button>`
+    })
+    tbody.innerHTML = `<tr><td colspan="${colCountEarly}">${errorHtml}</td></tr>`
+    if (cards) cards.innerHTML = errorHtml
+    renderPaginationBar('customerPagination', 'customers', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
+    return
+  }
+
+  try {
+  const data = getData()
   const filters = getCustomerFilterState()
   const { search, advisor: advisorFilter, platform: platformFilter, status: statusFilter, level: levelFilter, transfer: transferFilter } = filters
 
@@ -521,6 +551,18 @@ export async function renderCustomers() {
   updateStats()
   // Update advisor dropdown in background (non-blocking)
   updateAdvisorDropdown()
+  } catch (e) {
+    console.error('renderCustomers error:', e)
+    const colCount = 12
+    const errorHtml = buildCustomerEmptyHtml({
+      title: 'خطا در نمایش مشتریان',
+      detail: escapeHtml(e?.message || 'خطای ناشناخته'),
+      actionsHtml: `<button type="button" class="btn btn-sm btn-primary" onclick="app.renderCustomers()">تلاش مجدد</button>`
+    })
+    tbody.innerHTML = `<tr><td colspan="${colCount}">${errorHtml}</td></tr>`
+    if (cards) cards.innerHTML = errorHtml
+    renderPaginationBar('customerPagination', 'customers', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
+  }
 }
 
 async function updateAdvisorDropdown() {

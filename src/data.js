@@ -393,6 +393,17 @@ async function fetchAllRows(table, opts = {}) {
 }
 
 export async function loadData() {
+  dataLoadState = { status: 'loading', error: null }
+  try {
+    await loadDataInner()
+    dataLoadState = { status: 'ready', error: null }
+  } catch (e) {
+    dataLoadState = { status: 'error', error: e?.message || String(e) }
+    throw e
+  }
+}
+
+async function loadDataInner() {
   const [customersRes, followupsRes, settingsRes, transfersRes, acksRes, refundsRes] = await Promise.all([
     fetchAllRows('customers', { orderCol: 'id' }),
     fetchAllRows('followups', { orderCol: 'id' }),
@@ -1137,6 +1148,13 @@ export async function saveDeadlineUrgency(config) {
 
 export function getData() {
   return data
+}
+
+/** idle | loading | ready | error */
+let dataLoadState = { status: 'idle', error: null }
+
+export function getDataLoadState() {
+  return { status: dataLoadState.status, error: dataLoadState.error }
 }
 
 // ============================================
