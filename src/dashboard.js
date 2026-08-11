@@ -754,7 +754,7 @@ function colorForAdvisorPhone(phone) {
 
 const AOV_OVERALL_LABEL = 'میانگین کل'
 const AOV_OVERALL_COLOR = '#212529'
-const AOV_DIM_OPACITY = 0.2
+const AOV_DIM_OPACITY = 0.1
 
 function colorWithAlpha(color, alpha) {
   if (!color || typeof color !== 'string') return color
@@ -771,28 +771,45 @@ function colorWithAlpha(color, alpha) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
+/** Apply color to line + points. Chart.js caches shared point options; update('none') won't refresh them. */
+function setAovDatasetDrawColor(chart, datasetIndex, color) {
+  const ds = chart.data.datasets[datasetIndex]
+  if (!ds) return
+  ds.borderColor = color
+  ds.pointBackgroundColor = color
+  ds.pointBorderColor = color
+  ds.pointHoverBackgroundColor = color
+  ds.pointHoverBorderColor = color
+
+  const meta = chart.getDatasetMeta(datasetIndex)
+  if (meta?.controller) meta.controller._sharedOptions = undefined
+  if (meta?.dataset?.options) {
+    meta.dataset.options.borderColor = color
+  }
+  for (const pt of meta?.data || []) {
+    if (!pt?.options) continue
+    pt.options.backgroundColor = color
+    pt.options.borderColor = color
+  }
+}
+
 function applyAovLegendHoverFocus(chart, hoveredDatasetIndex) {
   if (!chart?.data?.datasets) return
   chart.data.datasets.forEach((ds, i) => {
     const base = ds._baseBorderColor || ds.borderColor || '#888'
     const keepFull = i === hoveredDatasetIndex || ds.label === AOV_OVERALL_LABEL
-    const color = keepFull ? base : colorWithAlpha(base, AOV_DIM_OPACITY)
-    ds.borderColor = color
-    ds.pointBackgroundColor = color
-    ds.pointBorderColor = color
+    setAovDatasetDrawColor(chart, i, keepFull ? base : colorWithAlpha(base, AOV_DIM_OPACITY))
   })
-  chart.update('none')
+  chart.draw()
 }
 
 function clearAovLegendHoverFocus(chart) {
   if (!chart?.data?.datasets) return
-  chart.data.datasets.forEach(ds => {
+  chart.data.datasets.forEach((ds, i) => {
     const base = ds._baseBorderColor || ds.borderColor || '#888'
-    ds.borderColor = base
-    ds.pointBackgroundColor = base
-    ds.pointBorderColor = base
+    setAovDatasetDrawColor(chart, i, base)
   })
-  chart.update('none')
+  chart.draw()
 }
 
 /**
@@ -888,6 +905,8 @@ function renderAovMaChart(dateFromNum, dateToNum) {
       pointHoverRadius: 4,
       pointBackgroundColor: color,
       pointBorderColor: color,
+      pointHoverBackgroundColor: color,
+      pointHoverBorderColor: color,
       tension: 0.25,
       spanGaps: true,
       fill: false,
@@ -908,6 +927,8 @@ function renderAovMaChart(dateFromNum, dateToNum) {
     pointHoverRadius: 5,
     pointBackgroundColor: AOV_OVERALL_COLOR,
     pointBorderColor: AOV_OVERALL_COLOR,
+    pointHoverBackgroundColor: AOV_OVERALL_COLOR,
+    pointHoverBorderColor: AOV_OVERALL_COLOR,
     tension: 0.25,
     spanGaps: true,
     fill: false,
