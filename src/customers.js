@@ -307,6 +307,10 @@ export async function renderCustomers() {
       ? (formatFollowupHistoryAt(customerFollowups[0]) || '—')
       : '—'
     const lastNote = customerFollowups.length > 0 ? customerFollowups[0].notes : ''
+    const noteSource = lastNote
+      ? 'آخرین یادداشت پیگیری'
+      : (c.notes ? 'یادداشت ثابت مشتری' : '')
+    const noteText = lastNote || c.notes || ''
 
     let nextFollowupHtml = '<span style="color:var(--text-muted)">—</span>'
     let nextFollowupClass = ''
@@ -360,7 +364,7 @@ export async function renderCustomers() {
       <td style="text-align:center;"><span class="followup-count ${countClass}">${followupCount}</span></td>
       <td style="font-size:13px;color:var(--text-muted);font-family:'Vazirmatn',sans-serif;direction:ltr;text-align:right;">${escapeHtml(lastDate)}</td>
       <td style="font-size:12px;">${nextFollowupHtml}</td>
-      <td class="notes-cell" title="${escapeHtml(lastNote || c.notes)}">${escapeHtml(lastNote || c.notes) || '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td class="notes-cell" title="${escapeAttr(noteSource ? `${noteSource}: ${noteText}` : '')}">${escapeHtml(noteText) || '<span style="color:var(--text-muted)">—</span>'}</td>
     </tr>`
   }).join('')
 
