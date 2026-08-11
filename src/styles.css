@@ -1379,6 +1379,17 @@
     border-radius: 8px;
   }
 
+  .detail-create-pending-banner {
+    margin: 0 0 14px;
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #7a4d00;
+    background: #fff8e8;
+    border: 1px solid #f0d9a0;
+    border-radius: 8px;
+  }
+
   .detail-info {
     display: grid;
     grid-template-columns: 1fr 1fr;

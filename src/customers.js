@@ -1258,7 +1258,8 @@ export function deleteCustomer(id) {
       data.customers = data.customers.filter(c => c.id !== id)
       data.followups = data.followups.filter(f => f.customerId !== id)
       data.refunds = (data.refunds || []).filter(r => r.customerId !== id)
-      closeDetailModal()
+      clearPendingCreateCompletion(id)
+      closeDetailModal({ force: true })
       await renderCustomers()
       closeDeleteModal()
       showToast('مشتری حذف شد')
@@ -1488,6 +1489,73 @@ const DETAIL_TAB_LABELS = { info: 'اطلاعات', sales: 'فروش‌ها', fo
 /** @type {{ customerId: string|null, tab: 'info'|'sales'|'followups', canEdit?: boolean, canDelete?: boolean }} */
 let detailPanelState = { customerId: null, tab: 'info', canEdit: false, canDelete: false }
 
+/** Session-tracked creates that still need follow-up date OR a committed sale before the panel can close. */
+const PENDING_CREATE_STORAGE_KEY = 'cm_pending_create_completion_ids'
+/** @type {Set<string>} */
+let pendingCreateCompletionIds = new Set()
+
+function loadPendingCreateCompletionIds() {
+  try {
+    const raw = sessionStorage.getItem(PENDING_CREATE_STORAGE_KEY)
+    const arr = raw ? JSON.parse(raw) : []
+    pendingCreateCompletionIds = new Set(Array.isArray(arr) ? arr.map(String) : [])
+  } catch (_) {
+    pendingCreateCompletionIds = new Set()
+  }
+}
+
+function persistPendingCreateCompletionIds() {
+  try {
+    sessionStorage.setItem(PENDING_CREATE_STORAGE_KEY, JSON.stringify([...pendingCreateCompletionIds]))
+  } catch (_) { /* ignore quota / private mode */ }
+}
+
+function markPendingCreateCompletion(customerId) {
+  if (!customerId) return
+  pendingCreateCompletionIds.add(String(customerId))
+  persistPendingCreateCompletionIds()
+}
+
+function clearPendingCreateCompletion(customerId) {
+  if (!customerId) return
+  if (!pendingCreateCompletionIds.delete(String(customerId))) return
+  persistPendingCreateCompletionIds()
+}
+
+function isPendingCreateCompletion(customerId) {
+  return !!customerId && pendingCreateCompletionIds.has(String(customerId))
+}
+
+loadPendingCreateCompletionIds()
+
+/** True when customer has at least one submitted sale payment or committed gift. */
+export function customerHasCommittedSale(customer) {
+  const products = customer?.products || []
+  for (const p of products) {
+    if (isGiftSale(p) && isProductPriceLocked(p)) return true
+    ensureProductPayments(p)
+    if ((p.payments || []).some(isPaymentFilled)) return true
+  }
+  return false
+}
+
+/** Setting off → always ok. Setting on → need nextFollowupDate or a committed sale. */
+export function customerMeetsCreateCompletionRule(customer) {
+  if (!getRequireFollowupOnCreate()) return true
+  if (!customer) return false
+  if (String(customer.nextFollowupDate || '').trim()) return true
+  return customerHasCommittedSale(customer)
+}
+
+function maybeResolvePendingCreateCompletion(customerId, { toast = false } = {}) {
+  if (!isPendingCreateCompletion(customerId)) return false
+  const customer = getData().customers.find(c => c.id === customerId)
+  if (!customerMeetsCreateCompletionRule(customer)) return false
+  clearPendingCreateCompletion(customerId)
+  if (toast) showToast('ثبت مشتری تکمیل شد')
+  return true
+}
+
 function normalizeDetailTab(tab) {
   return DETAIL_TABS.includes(tab) ? tab : 'info'
 }
@@ -1571,13 +1639,17 @@ function renderDetailFooter({ isNew, canEdit, canDelete, customerId, tab = 'info
   }
   const id = escapeAttr(customerId)
   const onInfo = tab === 'info'
+  const pending = isPendingCreateCompletion(customerId)
+    && !customerMeetsCreateCompletionRule(getData().customers.find(c => c.id === customerId))
   footer.innerHTML = `
-    ${canDelete && onInfo
-      ? `<button type="button" class="btn btn-danger" onclick="app.deleteCustomer('${id}')">حذف مشتری</button>`
-      : '<span></span>'}
+    ${pending
+      ? `<button type="button" class="btn btn-danger" onclick="app.cancelPendingCustomerCreate('${id}')">انصراف و حذف مشتری</button>`
+      : (canDelete && onInfo
+        ? `<button type="button" class="btn btn-danger" onclick="app.deleteCustomer('${id}')">حذف مشتری</button>`
+        : '<span></span>')}
     <div class="detail-footer-actions">
       ${canEdit && onInfo ? `<button type="button" class="btn btn-primary" onclick="app.saveCustomerDetail('${id}')">ذخیره اطلاعات مشتری</button>` : ''}
-      <button type="button" class="btn" onclick="app.closeDetailModal()">بستن</button>
+      <button type="button" class="btn" onclick="app.closeDetailModal()">${pending ? 'تکمیل و بستن' : 'بستن'}</button>
     </div>
   `
 }
@@ -1596,9 +1668,9 @@ function readDetailFormFields(users, fallback = {}) {
 }
 
 /** @returns {{ ok: true, date: string } | { ok: false, message: string }} */
-function readRequiredCreateFollowupDate() {
+function readCreateFollowupDate() {
   const date = toEnDigits(document.getElementById('detailCreateFollowupDate')?.value.trim() || '')
-  if (!date) return { ok: false, message: 'برای ذخیره مشتری، تاریخ پیگیری بعدی الزامی است' }
+  if (!date) return { ok: true, date: '' }
   if (!/^\d{4}\/\d{2}\/\d{2}$/.test(date)) {
     return { ok: false, message: 'فرمت تاریخ پیگیری صحیح نیست (مثلاً 1405/05/01)' }
   }
@@ -1621,8 +1693,8 @@ export async function toggleRequireFollowupOnCreate(enabled) {
     syncRequireFollowupOnCreateUi()
     await broadcastAppSetting('require_followup_on_create', next)
     showToast(next
-      ? 'اجبار پیگیری هنگام ثبت مشتری فعال شد'
-      : 'اجبار پیگیری هنگام ثبت مشتری غیرفعال شد')
+      ? 'اجبار پیگیری یا فروش هنگام ثبت مشتری فعال شد'
+      : 'اجبار پیگیری یا فروش هنگام ثبت مشتری غیرفعال شد')
   } catch (e) {
     console.error('toggleRequireFollowupOnCreate error:', e)
     syncRequireFollowupOnCreateUi()
@@ -1804,12 +1876,6 @@ async function createCustomerFromDetail(fields) {
     return null
   }
 
-  if (getRequireFollowupOnCreate() && !nextFollowupDate) {
-    showToast('برای ذخیره مشتری، تاریخ پیگیری بعدی الزامی است')
-    document.getElementById('detailCreateFollowupDate')?.focus()
-    return null
-  }
-
   const type = phones.length ? 'CS' : 'LD'
   const id = await generateId(type)
   const newCustomer = {
@@ -1820,10 +1886,19 @@ async function createCustomerFromDetail(fields) {
   await saveCustomerToDB(newCustomer)
   putCustomerInCache(newCustomer)
   await renderCustomers()
-  await openCustomerDetail(id, { tab: nextFollowupDate ? 'followups' : 'sales' })
-  showToast(nextFollowupDate
-    ? 'مشتری جدید با تاریخ پیگیری ثبت شد'
-    : 'مشتری جدید اضافه شد — می‌توانید فروش ثبت کنید')
+
+  const needsCompletion = getRequireFollowupOnCreate() && !nextFollowupDate
+  if (needsCompletion) markPendingCreateCompletion(id)
+
+  if (needsCompletion) {
+    await openCustomerDetail(id, { tab: 'sales', startNewSale: canAddSaleOnCustomer(newCustomer) })
+    showToast('مشتری ذخیره شد — تاریخ پیگیری ست کنید یا یک فروش ثبت کنید')
+  } else {
+    await openCustomerDetail(id, { tab: nextFollowupDate ? 'followups' : 'sales' })
+    showToast(nextFollowupDate
+      ? 'مشتری جدید با تاریخ پیگیری ثبت شد'
+      : 'مشتری جدید اضافه شد — می‌توانید فروش ثبت کنید')
+  }
   return id
 }
 
@@ -1851,7 +1926,7 @@ export async function saveCustomerDetail(customerId) {
 
     if (isNew) {
       if (getRequireFollowupOnCreate()) {
-        const followup = readRequiredCreateFollowupDate()
+        const followup = readCreateFollowupDate()
         if (!followup.ok) {
           showToast(followup.message)
           document.getElementById('detailCreateFollowupDate')?.focus()
@@ -1913,6 +1988,10 @@ export async function openCustomerDetail(id, options = {}) {
       showToast('شما به این مشتری دسترسی ندارید')
       return
     }
+    // Stale pending flags (e.g. after refresh once rule already met)
+    if (isPendingCreateCompletion(id) && customerMeetsCreateCompletionRule(existing)) {
+      clearPendingCreateCompletion(id)
+    }
   }
 
   const activeTab = isNew ? 'info' : resolveDetailTab(isNew ? null : id, options)
@@ -1940,9 +2019,12 @@ export async function openCustomerDetail(id, options = {}) {
   const canAddSale = !isNew && canAddSaleOnCustomer(c)
   const canAddFollowup = !isNew && canAddNoteOnCustomer(c)
   const canScheduleFollowup = !isNew && canScheduleFollowupOnCustomer(c)
-  const canClearFollowupDate = canScheduleFollowup && canManageCustomer(c) && !getRequireFollowupOnCreate()
+  const canClearFollowupDate = canScheduleFollowup && canManageCustomer(c)
+    && (!getRequireFollowupOnCreate() || customerHasCommittedSale(c))
   const schedulingForOther = canScheduleFollowup && !canManageCustomer(c)
   const requireFollowupOnCreate = isNew && getRequireFollowupOnCreate()
+  const pendingCreateCompletion = !isNew && isPendingCreateCompletion(c.id)
+    && !customerMeetsCreateCompletionRule(c)
 
   const customerFollowups = isNew
     ? []
@@ -2087,9 +2169,9 @@ export async function openCustomerDetail(id, options = {}) {
       </div>
       ${requireFollowupOnCreate ? `
       <div class="detail-field">
-        <span class="detail-label">تاریخ پیگیری بعدی <span style="color:var(--danger);">*</span></span>
+        <span class="detail-label">تاریخ پیگیری بعدی</span>
         <input type="text" class="form-input" id="detailCreateFollowupDate" placeholder="مثلاً 1405/05/01" data-jdp style="font-family:'Vazirmatn',sans-serif;max-width:180px;">
-        <div class="form-hint" style="margin-top:6px;">تا وقتی تاریخ پیگیری ست نشود، مشتری ذخیره نمی‌شود.</div>
+        <div class="form-hint" style="margin-top:6px;">اگر مشتری را برای پیگیری ثبت می‌کنید تاریخ را بزنید. اگر فقط می‌خواهید خرید انجام‌شده را وارد کنید، خالی بگذارید و بعد از ایجاد یک فروش ثبت کنید.</div>
       </div>` : ''}
     `
     : `
@@ -2282,10 +2364,15 @@ export async function openCustomerDetail(id, options = {}) {
     html = `
       ${infoPanelHtml}
       <div class="detail-tab-empty" style="margin-top:8px;">${requireFollowupOnCreate
-        ? 'پس از وارد کردن اطلاعات و تاریخ پیگیری، مشتری ذخیره می‌شود؛ سپس تب‌های فروش و پیگیری در دسترس خواهند بود.'
+        ? 'پس از ایجاد، یا تاریخ پیگیری را ست کنید یا یک فروش ثبت کنید تا ثبت مشتری کامل شود.'
         : 'پس از ایجاد مشتری، تب‌های فروش و پیگیری در دسترس خواهند بود.'}</div>
     `
   } else {
+    const pendingBanner = pendingCreateCompletion
+      ? `<div class="detail-create-pending-banner" role="status">
+          برای تکمیل ثبت این مشتری، <strong>تاریخ پیگیری بعدی</strong> را ست کنید یا یک <strong>فروش</strong> ثبت کنید. تا قبل از آن پنل بسته نمی‌شود.
+        </div>`
+      : ''
     const tabBtn = (key, count) => {
       const active = activeTab === key
       const countHtml = count != null
@@ -2300,6 +2387,7 @@ export async function openCustomerDetail(id, options = {}) {
     }
 
     html = `
+      ${pendingBanner}
       <div class="detail-tabs" role="tablist" aria-label="بخش‌های پنل مشتری">
         ${tabBtn('info')}
         ${tabBtn('sales', salesCount)}
@@ -2509,8 +2597,11 @@ export async function setNextFollowup(customerId) {
     }
     await saveCustomerToDB(data.customers[idx])
     await renderCustomers()
+    const resolved = maybeResolvePendingCreateCompletion(customerId, { toast: true })
     openCustomerDetail(customerId)
-    showToast(isOwner ? 'تاریخ پیگیری تنظیم شد' : 'پیگیری برای کارشناس مسئول ثبت شد')
+    if (!resolved) {
+      showToast(isOwner ? 'تاریخ پیگیری تنظیم شد' : 'پیگیری برای کارشناس مسئول ثبت شد')
+    }
   } catch (e) {
     console.error('setNextFollowup error:', e)
     showToast('خطا در ذخیره تاریخ پیگیری')
@@ -2519,14 +2610,14 @@ export async function setNextFollowup(customerId) {
 
 export async function clearNextFollowup(customerId) {
   if (!requirePermission('customers_add')) return
-  if (getRequireFollowupOnCreate()) {
-    showToast('با توجه به تنظیمات، حذف تاریخ پیگیری مجاز نیست')
-    return
-  }
   const data = getData()
   const customer = data.customers.find(c => c.id === customerId)
   if (!canManageCustomer(customer)) {
     showToast('فقط کارشناس مسئول می‌تواند تاریخ پیگیری را حذف کند')
+    return
+  }
+  if (getRequireFollowupOnCreate() && !customerHasCommittedSale(customer)) {
+    showToast('بدون فروش ثبت‌شده، حذف تاریخ پیگیری مجاز نیست')
     return
   }
   const idx = data.customers.findIndex(c => c.id === customerId)
@@ -2643,11 +2734,54 @@ export async function updateCustomerLevel(customerId, levelValue) {
   }
 }
 
-export function closeDetailModal() {
+export function closeDetailModal({ force = false } = {}) {
+  const id = detailPanelState.customerId
+  if (!force && id && isPendingCreateCompletion(id)) {
+    const customer = getData().customers.find(c => c.id === id)
+    if (!customerMeetsCreateCompletionRule(customer)) {
+      showToast('برای بستن پنل، تاریخ پیگیری ست کنید یا یک فروش ثبت کنید — یا «انصراف و حذف مشتری» را بزنید')
+      return false
+    }
+    clearPendingCreateCompletion(id)
+  }
   hideCustomerPhoneSuggest()
-  document.getElementById('detailModal').classList.remove('active')
+  document.getElementById('detailModal')?.classList.remove('active')
   phoneFormMode = 'detail'
   detailPanelState = { customerId: null, tab: 'info', canEdit: false, canDelete: false }
+  return true
+}
+
+/** Abort an incomplete create: delete the draft customer and close the panel. */
+export async function cancelPendingCustomerCreate(customerId) {
+  if (!customerId || !isPendingCreateCompletion(customerId)) {
+    showToast('این مشتری در حالت تکمیل ثبت نیست')
+    return
+  }
+  const data = getData()
+  const customer = data.customers.find(c => c.id === customerId)
+  if (!customer || !canManageCustomer(customer)) {
+    showToast('فقط کارشناس مسئول می‌تواند این ثبت را لغو کند')
+    return
+  }
+  if (customerMeetsCreateCompletionRule(customer)) {
+    clearPendingCreateCompletion(customerId)
+    closeDetailModal({ force: true })
+    return
+  }
+  if (!window.confirm('مشتری هنوز تکمیل نشده. حذف شود و پنل بسته شود؟')) return
+  try {
+    await deleteCustomerFromDB(customerId)
+    data.customers = data.customers.filter(c => c.id !== customerId)
+    data.followups = data.followups.filter(f => f.customerId !== customerId)
+    data.refunds = (data.refunds || []).filter(r => r.customerId !== customerId)
+    clearPendingCreateCompletion(customerId)
+    closeDetailModal({ force: true })
+    await renderCustomers()
+    showToast('ثبت ناقص لغو و مشتری حذف شد')
+  } catch (e) {
+    console.error('cancelPendingCustomerCreate error:', e)
+    showToast(e?.message || 'خطا در لغو ثبت مشتری')
+  }
 }
 
 // ============================================
@@ -3399,7 +3533,12 @@ export async function commitGiftSale(customerId, productIndex) {
     syncProductStatus(product)
     await setProducts(customerId, products)
     showToast('هدیه ثبت شد و در انتظار تأیید حسابداری است.')
-    renderProducts(customerId)
+    const resolved = maybeResolvePendingCreateCompletion(customerId, { toast: true })
+    if (resolved) {
+      await openCustomerDetail(customerId, { tab: 'sales', preserveTab: true })
+    } else {
+      renderProducts(customerId)
+    }
   } catch (e) {
     console.error('commitGiftSale error:', e)
     showToast('خطا در ثبت هدیه')
@@ -3597,7 +3736,12 @@ export async function commitSalePayment(customerId, productIndex, paymentIndex) 
     await setProducts(customerId, products)
     showToast(`واریز ${paymentIndex + 1} ثبت شد — در انتظار تأیید حسابداری`)
     maybeBroadcastSaleToast(customer, product, pay, wasFilled)
-    renderProducts(customerId)
+    const resolved = maybeResolvePendingCreateCompletion(customerId, { toast: true })
+    if (resolved) {
+      await openCustomerDetail(customerId, { tab: 'sales', preserveTab: true })
+    } else {
+      renderProducts(customerId)
+    }
   } catch (e) {
     console.error('commitSalePayment error:', e)
     showToast('خطا در ثبت فروش')
