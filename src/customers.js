@@ -84,14 +84,59 @@ function phoneForm() {
 // Render Customers
 // ============================================
 
+export function getCustomerFilterState() {
+  const searchRaw = (document.getElementById('searchCustomers')?.value || '').trim()
+  const search = toEnDigits(searchRaw).toLowerCase()
+  const advisor = document.getElementById('filterAdvisor')?.value || ''
+  const platform = document.getElementById('filterPlatform')?.value || ''
+  const status = document.getElementById('filterStatus')?.value || ''
+  const level = document.getElementById('filterCustomerLevel')?.value || ''
+  const transfer = document.getElementById('filterTransferIn')?.value || ''
+  const hasSearch = !!search
+  const hasFilters = !!(advisor || platform || status || level || transfer)
+  return {
+    searchRaw,
+    search,
+    advisor,
+    platform,
+    status,
+    level,
+    transfer,
+    hasSearch,
+    hasFilters,
+    hasAny: hasSearch || hasFilters
+  }
+}
+
+export function clearCustomerSearch() {
+  const el = document.getElementById('searchCustomers')
+  if (el) el.value = ''
+  renderCustomers()
+}
+
+export function clearCustomerFilters() {
+  const search = document.getElementById('searchCustomers')
+  if (search) search.value = ''
+  for (const id of ['filterAdvisor', 'filterPlatform', 'filterStatus', 'filterCustomerLevel', 'filterTransferIn']) {
+    const el = document.getElementById(id)
+    if (el) el.value = ''
+  }
+  renderCustomers()
+}
+
+function buildCustomerEmptyHtml({ title, detail, actionsHtml }) {
+  return `
+    <div class="empty-state">
+      <div class="icon">👤</div>
+      <h3>${title}</h3>
+      ${detail ? `<p>${detail}</p>` : ''}
+      ${actionsHtml ? `<div class="empty-state-actions">${actionsHtml}</div>` : ''}
+    </div>`
+}
+
 export function getFilteredCustomers() {
   const data = getData()
-  const search = toEnDigits(document.getElementById('searchCustomers')?.value || '').toLowerCase()
-  const advisorFilter = document.getElementById('filterAdvisor')?.value || ''
-  const platformFilter = document.getElementById('filterPlatform')?.value || ''
-  const statusFilter = document.getElementById('filterStatus')?.value || ''
-  const levelFilter = document.getElementById('filterCustomerLevel')?.value || ''
-  const transferFilter = document.getElementById('filterTransferIn')?.value || ''
+  const { search, advisor: advisorFilter, platform: platformFilter, status: statusFilter, level: levelFilter, transfer: transferFilter } = getCustomerFilterState()
   const currentUser = getCurrentUser()
   const advisorScopePhones = phonesMatchingAdvisorFilter(advisorFilter, currentUser)
   const myPhone = normalizePhone(currentUser?.phone)
@@ -176,12 +221,8 @@ export async function renderCustomers() {
   const data = getData()
   const tbody = document.getElementById('customerBody')
   if (!tbody) return
-  const search = toEnDigits(document.getElementById('searchCustomers').value).toLowerCase()
-  const advisorFilter = document.getElementById('filterAdvisor').value
-  const platformFilter = document.getElementById('filterPlatform')?.value || ''
-  const statusFilter = document.getElementById('filterStatus')?.value || ''
-  const levelFilter = document.getElementById('filterCustomerLevel')?.value || ''
-  const transferFilter = document.getElementById('filterTransferIn')?.value || ''
+  const filters = getCustomerFilterState()
+  const { search, advisor: advisorFilter, platform: platformFilter, status: statusFilter, level: levelFilter, transfer: transferFilter } = filters
 
   populateCustomerFilterDropdowns()
 
@@ -197,14 +238,22 @@ export async function renderCustomers() {
   updateTransferInboxBadge()
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `
-      <tr><td colspan="${colCount}">
-        <div class="empty-state">
-          <div class="icon">👤</div>
-          <h3>مشتری‌ای یافت نشد</h3>
-          <p>مشتری جدید اضافه کنید</p>
-        </div>
-      </td></tr>`
+    let title = 'مشتری‌ای یافت نشد'
+    let detail = 'هنوز مشتری‌ای در اسکوپ شما ثبت نشده'
+    let actionsHtml = ''
+    if (filters.hasSearch) {
+      title = 'نتیجه‌ای یافت نشد'
+      detail = `نتیجه‌ای برای «${escapeHtml(filters.searchRaw)}» پیدا نشد`
+      actionsHtml = `<button type="button" class="btn btn-sm" onclick="app.clearCustomerSearch()">پاک کردن سرچ</button>`
+    } else if (filters.hasFilters) {
+      title = 'نتیجه‌ای با این فیلترها نیست'
+      detail = 'فیلترهای فعال هیچ مشتریی را نشان نمی‌دهند'
+      actionsHtml = `<button type="button" class="btn btn-sm" onclick="app.clearCustomerFilters()">پاک کردن فیلترها</button>`
+    } else if (hasPermission('customers_add')) {
+      detail = 'مشتری جدید اضافه کنید'
+      actionsHtml = `<button type="button" class="btn btn-sm btn-primary" onclick="app.openCustomerModal()">+ مشتری جدید</button>`
+    }
+    tbody.innerHTML = `<tr><td colspan="${colCount}">${buildCustomerEmptyHtml({ title, detail, actionsHtml })}</td></tr>`
     renderPaginationBar('customerPagination', 'customers', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
     restoreSelection('customers')
     updateStats()
