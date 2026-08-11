@@ -134,6 +134,12 @@ function buildCustomerEmptyHtml({ title, detail, actionsHtml }) {
     </div>`
 }
 
+function syncClearCustomerFiltersBtn() {
+  const btn = document.getElementById('clearCustomerFiltersBtn')
+  if (!btn) return
+  btn.style.display = getCustomerFilterState().hasAny ? '' : 'none'
+}
+
 export function getFilteredCustomers() {
   const data = getData()
   const { search, advisor: advisorFilter, platform: platformFilter, status: statusFilter, level: levelFilter, transfer: transferFilter } = getCustomerFilterState()
