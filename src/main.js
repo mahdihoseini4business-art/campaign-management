@@ -2,7 +2,7 @@ import './styles.css'
 import { toEnDigits, initDigitConversion, hasPermission, hasAnyRefundPermission, jalaliToNum, showToast, escapeAttr, getStatusOrder, toggleToolbarActions, closeAllToolbarActions, initToolbarActionsMenus, getPrimaryPhone, formatSoldAt24h, copyToClipboard } from './utils.js'
 import { getData, loadData, backfillAdvisorPhones, cleanupConversionOrphans } from './data.js'
 import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal as openSettingsModalBase, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, togglePermGroup, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, selectSettingsUser, filterSettingsUsers, backToUsersList, markPermissionsDirty, switchSettingsSection, filterSettingsNav, addDestinationBank, removeDestinationBank, startDestinationBankEdit, cancelDestinationBankEdit, saveDestinationBankEdit, addProductCatalogItem, removeProductCatalogItem, startProductCatalogEdit, cancelProductCatalogEdit, saveProductCatalogEdit, onNewProductKindChange, onEditProductKindChange, onNewProductProfitModeChange, onEditProductProfitModeChange, startProductBundleEdit, cancelProductBundleEdit, saveProductBundleForm, removeProductBundle, runCatalogToBundleMigration, filterViewUserOptions, changeUserGroupAssignment, createSettingsGroup, renameSettingsGroup, deleteSettingsGroup, selectSettingsGroup, backToGroupsList, addSettingsGroupMember, removeSettingsGroupMember, makeGroupManager, addPlatform, removePlatform, updatePlatformField, editPlatform, cancelPlatformEdit, savePlatformEdit, addStatus, removeStatus, updateStatusField, editStatus, cancelStatusEdit, saveStatusEdit, onStatusDragStart, onStatusDragOver, onStatusDrop, onSalesTargetMetricChange, onSalesTargetAllocationChange, onSalesTargetDeadlineChange, addDeadlineUrgencyStage, removeDeadlineUrgencyStage, saveDeadlineUrgencySettings, startSalesTargetEdit, cancelSalesTargetEdit, saveSalesTargetForm, removeSalesTarget, renderSalesTargetsSettings, addSalesTargetBarToDraft, removeSalesTargetBarFromDraft, saveSmsPanelSettings, resetSmsMessageTemplate } from './auth.js'
-import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, switchDetailTab, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, removeProduct, onCustomerPhoneInput, addCustomerPhoneSlot, removeCustomerPhoneSlot, onCustomerAddressInput, onCustomerAddressPriorityChange, addCustomerAddressSlot, removeCustomerAddressSlot, addProductPayment, removeProductPayment, onDestinationBankSelect, commitSalePayment, commitSaleProductDetails, commitGiftSale, onSaleProductNameChange, onSalePriceInput, markSalePaymentTouched, toggleClosedProductBlock, openStartSaleModal, closeStartSaleModal, confirmStartSale, filterStartSaleCustomers, closeMergeCustomerModal, confirmMergeCustomers, clearCustomerSearch, clearCustomerFilters, onCustomerSearchInput } from './customers.js'
+import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, switchDetailTab, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, removeProduct, onCustomerPhoneInput, addCustomerPhoneSlot, removeCustomerPhoneSlot, onCustomerAddressInput, onCustomerAddressPriorityChange, addCustomerAddressSlot, removeCustomerAddressSlot, addProductPayment, removeProductPayment, onDestinationBankSelect, commitSalePayment, commitSaleProductDetails, commitGiftSale, onSaleProductNameChange, onSalePriceInput, markSalePaymentTouched, toggleClosedProductBlock, openStartSaleModal, closeStartSaleModal, confirmStartSale, filterStartSaleCustomers, closeMergeCustomerModal, confirmMergeCustomers, clearCustomerSearch, clearCustomerFilters, onCustomerSearchInput, buildFollowupsByCustomerMap } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, clearFollowupSearch, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, openFollowupDonePicker, closeFollowupDonePicker, filterFollowupDonePick, confirmFollowupDonePick, setFollowupDoneNextShortcut, isFollowupDoneNoteDirty, updateFollowupBadge } from './followups.js'
 import { renderSales, sortSales } from './sales.js'
 import { renderProductMatrix, cycleProductMatrixFilter, clearProductMatrixFilters, toggleProductMatrixAdvisorDropdown, toggleProductMatrixAdvisor, toggleProductMatrixAdvisorsAll } from './product-matrix.js'
@@ -125,6 +125,16 @@ function openDefaultAccessibleTab() {
 let customerSortState = { field: null, asc: true }
 let followupSortState = { field: null, asc: true }
 
+function sortFollowupsForSortKey(list) {
+  return [...list].sort((x, y) => {
+    const kx = formatSoldAt24h(x.doneAt || x.date) || x.date || ''
+    const ky = formatSoldAt24h(y.doneAt || y.date) || y.date || ''
+    const diff = String(ky).localeCompare(String(kx))
+    if (diff !== 0) return diff
+    return String(y.id || '').localeCompare(String(x.id || ''), undefined, { numeric: true })
+  })
+}
+
 function updateCustomerSortHeaders() {
   document.querySelectorAll('#sheet-customers thead th.sort-th').forEach(th => {
     const field = th.dataset.sortField
@@ -143,14 +153,9 @@ function sortCustomers(field) {
   else { customerSortState.field = field; customerSortState.asc = true }
 
   const data = getData()
+  const followupsByCustomer = buildFollowupsByCustomerMap(data.followups)
   const latestFollowupKey = (customerId) => {
-    const sorted = [...data.followups.filter(f => f.customerId === customerId)].sort((x, y) => {
-      const kx = formatSoldAt24h(x.doneAt || x.date) || x.date || ''
-      const ky = formatSoldAt24h(y.doneAt || y.date) || y.date || ''
-      const diff = String(ky).localeCompare(String(kx))
-      if (diff !== 0) return diff
-      return String(y.id || '').localeCompare(String(x.id || ''), undefined, { numeric: true })
-    })
+    const sorted = sortFollowupsForSortKey(followupsByCustomer.get(customerId) || [])
     if (!sorted.length) return ''
     const latest = sorted[0]
     return formatSoldAt24h(latest.doneAt || latest.date) || latest.date || ''
@@ -158,8 +163,8 @@ function sortCustomers(field) {
   data.customers = [...data.customers].sort((a, b) => {
     let va = a[field], vb = b[field]
     if (field === 'followupCount') {
-      va = data.followups.filter(f => f.customerId === a.id).length
-      vb = data.followups.filter(f => f.customerId === b.id).length
+      va = (followupsByCustomer.get(a.id) || []).length
+      vb = (followupsByCustomer.get(b.id) || []).length
     }
     if (field === 'lastFollowup') {
       va = latestFollowupKey(a.id)

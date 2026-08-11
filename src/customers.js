@@ -40,6 +40,19 @@ function sortFollowupsNewestFirst(list) {
   })
 }
 
+/** One pass: Map<customerId, followup[]>. */
+export function buildFollowupsByCustomerMap(followups) {
+  const map = new Map()
+  for (const f of followups || []) {
+    const id = f.customerId
+    if (!id) continue
+    const list = map.get(id)
+    if (list) list.push(f)
+    else map.set(id, [f])
+  }
+  return map
+}
+
 function formatFollowupHistoryAt(f) {
   return formatSoldAt24h(f?.doneAt || f?.date) || f?.date || ''
 }
@@ -317,6 +330,7 @@ export async function renderCustomers() {
 
   const filterSig = `${search}|${advisorFilter}|${platformFilter}|${statusFilter}|${levelFilter}|${transferFilter}`
   const page = paginateList('customers', filtered, filterSig)
+  const followupsByCustomer = buildFollowupsByCustomerMap(data.followups)
 
   tbody.innerHTML = page.items.map(c => {
     const platformClass = getPlatformClass(c.platform)
@@ -343,15 +357,13 @@ export async function renderCustomers() {
       ? `<a href="${platformUrl}" target="_blank" rel="noopener" style="font-family:'Vazirmatn',sans-serif;font-size:13px;color:var(--accent);text-decoration:none;border-bottom:1px dashed var(--accent);">${escapeHtml(c.platformId)}</a>`
       : `<span style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(c.platformId)}</span>`
 
-    const followupCount = data.followups.filter(f => f.customerId === c.id).length
+    const customerFollowups = sortFollowupsNewestFirst(followupsByCustomer.get(c.id) || [])
+    const followupCount = customerFollowups.length
     let countClass = 'followup-none'
     if (followupCount >= 5) countClass = 'followup-high'
     else if (followupCount >= 3) countClass = 'followup-mid'
     else if (followupCount >= 1) countClass = 'followup-low'
 
-    const customerFollowups = sortFollowupsNewestFirst(
-      data.followups.filter(f => f.customerId === c.id)
-    )
     const lastDate = customerFollowups.length > 0
       ? (formatFollowupHistoryAt(customerFollowups[0]) || '—')
       : '—'
@@ -462,6 +474,7 @@ export function updateStats() {
   }
 
   const scoped = data.customers.filter(inScope)
+  const followupsByCustomer = buildFollowupsByCustomerMap(data.followups)
 
   // کل مخاطبین = همه ثبت‌شده‌ها در اسکوپ
   document.getElementById('stat-total').textContent = scoped.length
@@ -469,7 +482,7 @@ export function updateStats() {
   document.getElementById('stat-ld').textContent = scoped.filter(hasPurchase).length
   document.getElementById('stat-cs').textContent = scoped.filter(c => c.id.startsWith('CS')).length
   document.getElementById('stat-following').textContent = scoped.filter(c =>
-    data.followups.some(f => f.customerId === c.id)
+    (followupsByCustomer.get(c.id) || []).length > 0
   ).length
   // تبدیل LD→CS: شمارنده سازمانی برای دید کلی؛ برای بقیه تعداد CS در اسکوپ خودشان
   document.getElementById('stat-converted').textContent = canViewOrgWideData()
