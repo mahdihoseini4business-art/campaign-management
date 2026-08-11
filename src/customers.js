@@ -2274,7 +2274,7 @@ function syncDetailTabCount(tabKey, count) {
   if (btn) btn.textContent = formatNumber(count)
 }
 
-function renderSaleRefundSummaries(customerId, product, remaining) {
+function renderSaleRefundSummaries(customerId, product) {
   const paymentIds = new Set(getProductPayments(product).map(p => String(p.id)))
   const byId = new Map()
   getRefunds().forEach(r => {
@@ -2290,14 +2290,13 @@ function renderSaleRefundSummaries(customerId, product, remaining) {
   })
   const refunds = [...byId.values()]
   if (!refunds.length) return ''
-  const remain = Math.max(0, Math.round(remaining || 0))
   return refunds.map(r => {
     const amount = parseFloat(r.amount) || 0
     const reason = String(r.reason || '').trim() || '—'
     return `
       <div class="sale-summary sale-refund-summary" aria-label="خلاصه عودت">
-        <span class="product-status-label" style="color:var(--danger);">بیعانه</span>
-        <span class="product-meta">مبلغ <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${formatNumber(amount)}</b> ریال به دلیل ${escapeHtml(reason)} عودت داده شد. مانده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${formatNumber(remain)}</b></span>
+        <span class="product-status-label" style="color:var(--danger);">معامله لغو شد</span>
+        <span class="product-meta">مبلغ <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${formatNumber(amount)}</b> ریال به دلیل ${escapeHtml(reason)} عودت داده شد.</span>
       </div>`
   }).join('')
 }
@@ -2597,7 +2596,7 @@ export async function renderProducts(customerId, users = null) {
         ${balance > 0 && !closed ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : `<span class="product-meta">مانده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">۰</b></span>`}
         ${closedBadge}
       </div>`
-    const refundSummariesHtml = renderSaleRefundSummaries(customerId, p, balance)
+    const refundSummariesHtml = renderSaleRefundSummaries(customerId, p)
     const toggleHtml = closed
       ? renderClosedProductToggle({
         displayName,

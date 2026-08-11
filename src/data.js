@@ -752,23 +752,16 @@ function saleLineHasApprovedPayment(line) {
   })
 }
 
-/** Ownership from paid sale or accounting-approved gift (excludes fully refunded lines). */
+/** Ownership from paid sale or accounting-approved gift (excludes any refunded lines). */
 function saleLineGrantsOwnership(line) {
   if (isGiftSaleLine(line)) {
     return (line.giftAccountingStatus || 'pending') === 'approved'
   }
   if (!saleLineHasApprovedPayment(line)) return false
-  // Inline check to avoid circular import with utils.isProductFullyRefunded
+  // Inline check to avoid circular import with utils.isDealCancelled
   const refunds = Array.isArray(line.refunds) ? line.refunds : []
   const refunded = refunds.reduce((s, r) => s + (parseFloat(r?.amount) || 0), 0)
-  if (refunded <= 0) return true
-  const payments = Array.isArray(line.payments) ? line.payments : []
-  const approved = payments.reduce((s, p) => {
-    const st = p?.paymentStatus || 'approved'
-    if (st !== 'approved') return s
-    return s + (parseFloat(p.amount) || 0)
-  }, 0)
-  return refunded < approved - 0.5
+  return refunded <= 0
 }
 
 /**

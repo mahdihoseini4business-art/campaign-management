@@ -1247,13 +1247,13 @@ export function getProductRefundBadge(product) {
   return { kind: 'partial', label: 'عودت جزئی' }
 }
 
-/** Fully refunded paid deal → cancelled / locked. */
+/** Any completed refund (partial or full) closes/locks the deal. */
 export function isDealCancelled(product) {
   if (!product || isGiftSale(product)) return false
-  return isProductFullyRefunded(product)
+  return getProductCompletedRefundTotal(product) > 0
 }
 
-/** No further sale edits: closed paid invoice or fully refunded deal. */
+/** No further sale edits: closed paid invoice or refund-cancelled deal. */
 export function isProductSaleLocked(product) {
   return isInvoiceClosed(product) || isDealCancelled(product)
 }
@@ -1340,14 +1340,17 @@ export function getCountablePaid(product) {
 }
 
 export function getProductBalance(product) {
+  // Refunded deals are closed — refunded amount must not reopen as مانده حساب
+  if (isDealCancelled(product)) return 0
   const price = parseFloat(product?.price) || 0
-  return Math.max(0, price - getApprovedPaid(product) + getProductCompletedRefundTotal(product))
+  return Math.max(0, price - getApprovedPaid(product))
 }
 
 /** Remaining after approved + pending (excludes rejected) — for next deposit UX */
 export function getOperationalBalance(product) {
+  if (isDealCancelled(product)) return 0
   const price = parseFloat(product?.price) || 0
-  return Math.max(0, price - getCountablePaid(product) + getProductCompletedRefundTotal(product))
+  return Math.max(0, price - getCountablePaid(product))
 }
 
 /** Amount / date / time / destination bank present (depositor optional) */

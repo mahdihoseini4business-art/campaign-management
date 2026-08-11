@@ -13,7 +13,7 @@ import {
   productHasRejectedPayment, getProductPayments, getPaymentEntryStatus,
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
   normalizePhone, userDisplayName, formatTeamFilterLabel,
-  getCompletedSaleEconomics, isGiftSale, getProductRefundBadge
+  getCompletedSaleEconomics, isGiftSale, getProductRefundBadge, isDealCancelled
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSalesTargetBand } from './dashboard.js'
@@ -210,7 +210,9 @@ export function getFilteredSales() {
       const paidInRange = sumPayments(paysInRange)
       const lastInRange = paysInRange[paysInRange.length - 1]
       s.deposit = paidInRange
-      s.balance = Math.max(0, (parseFloat(product.price) || 0) - getApprovedPaid(product))
+      s.balance = isDealCancelled(product)
+        ? 0
+        : Math.max(0, (parseFloat(product.price) || 0) - getApprovedPaid(product))
       s.soldAt = lastInRange?.soldAt || ''
       s.depositorName = paysInRange.length > 1
         ? `${paysInRange.length} واریز`
@@ -433,12 +435,21 @@ export async function renderSales() {
   const countable = allSales.filter(s => s.countable)
   const dateFilter = getSalesDateFilter()
   const cashSales = countable.filter(s => s.status === 'تکمیل')
-  const depositSales = countable.filter(s => s.status === 'بیعانه')
   const data = getData()
 
+  function productForSale(s) {
+    return data.customers.find(c => c.id === s.customerId)?.products?.[s.productIndex]
+  }
+
+  // Open deposits only — refund-cancelled deals are locked and must not inflate بیعانه/مانده
+  const depositSales = countable.filter(s => {
+    if (s.status !== 'بیعانه') return false
+    const product = productForSale(s)
+    return !product || !isDealCancelled(product)
+  })
+
   function grossProfitForCompleted(s) {
-    const customer = data.customers.find(c => c.id === s.customerId)
-    const product = customer?.products?.[s.productIndex]
+    const product = productForSale(s)
     if (!product || product.status !== 'تکمیل') return 0
     if (dateFilter.hasDateFilter) {
       const pays = getApprovedPaymentsInRange(product, dateFilter)
@@ -448,8 +459,7 @@ export async function renderSales() {
   }
 
   function depositAmountForSale(s) {
-    const customer = data.customers.find(c => c.id === s.customerId)
-    const product = customer?.products?.[s.productIndex]
+    const product = productForSale(s)
     if (!product) return s.deposit || 0
     if (dateFilter.hasDateFilter) {
       return sumPayments(getApprovedPaymentsInRange(product, dateFilter))

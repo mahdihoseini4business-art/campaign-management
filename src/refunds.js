@@ -11,7 +11,7 @@ import {
   gregorianToJalaliStr, gregorianToJalaliDateTimeStr, formatSoldAt24h,
   REFUND_STATUS, REFUND_STATUS_LABELS, REFUND_KANBAN_STATUSES, PRESET_REFUND_REASONS,
   getPaymentRefundedAmount, applyCompletedRefundToProduct, removeCompletedRefundFromProduct,
-  getProductRefundBadge
+  getProductRefundBadge, getProductRefundRecords
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderProducts } from './customers.js'
@@ -105,6 +105,12 @@ export async function deleteOrphanedRefundsForCustomer(customerId) {
 /** Remaining refundable for a payment (approved − completed writeback − active requests). */
 export function getPaymentRefundableRemaining(customerId, product, payment, excludeRefundId = null) {
   if (!payment || getPaymentEntryStatus(payment) !== PAYMENT_STATUS.approved) return 0
+  // After any completed refund, the deal is locked — no further refunds on this sale
+  const hasOtherCompleted = getProductRefundRecords(product).some(r =>
+    (excludeRefundId == null || String(r.id) !== String(excludeRefundId)) &&
+    (parseFloat(r.amount) || 0) > 0
+  )
+  if (hasOtherCompleted) return 0
   const approved = parseFloat(payment.amount) || 0
   const completed = getPaymentRefundedAmount(product, payment.id)
   const active = getRefunds()

@@ -10,7 +10,7 @@ import {
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
   getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
   getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin,
-  jalaliEndOfDayMs, getCompletedSaleEconomics, resolveProductCostConfig
+  jalaliEndOfDayMs, getCompletedSaleEconomics, resolveProductCostConfig, isDealCancelled
 } from './utils.js'
 import { sumCompletedRefundsForDash, countPendingRefundsForDash } from './refunds.js'
 
@@ -489,8 +489,8 @@ function computeDashSalesMetrics(hasDateFilter, inDateRange) {
     ({ amount }) => { totalApproved += amount },
     ({ product, paidInScope, balance }) => {
       salesCount++
-      // کارت بیعانه / مانده فقط برای فاکتورهای تکمیل‌نشده
-      if (product.status === 'تکمیل') return
+      // کارت بیعانه / مانده فقط برای فاکتورهای باز (نه تکمیل، نه عودت‌شده)
+      if (product.status === 'تکمیل' || isDealCancelled(product)) return
       totalDeposit += paidInScope
       totalBalance += balance
     }
