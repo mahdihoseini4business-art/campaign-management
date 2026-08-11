@@ -192,8 +192,15 @@ function renderCustomerCard(c, {
 
 function syncClearCustomerFiltersBtn() {
   const btn = document.getElementById('clearCustomerFiltersBtn')
-  if (!btn) return
-  btn.style.display = getCustomerFilterState().hasAny ? '' : 'none'
+  if (btn) btn.style.display = getCustomerFilterState().hasAny ? '' : 'none'
+  const moreBtn = document.getElementById('customersMoreFiltersBtn')
+  if (moreBtn) {
+    const level = document.getElementById('filterCustomerLevel')?.value || ''
+    const transfer = document.getElementById('filterTransferIn')?.value || ''
+    const hasMore = !!(level || transfer)
+    moreBtn.classList.toggle('is-active-filters', hasMore)
+    moreBtn.textContent = hasMore ? 'فیلترهای بیشتر ●' : 'فیلترهای بیشتر ▾'
+  }
 }
 
 function countScopedCustomers() {
