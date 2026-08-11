@@ -151,14 +151,28 @@ export function executeBulkAction(tab) {
   actionEl.value = ''
 }
 
+function formatBulkDeleteToast(deleted, failed, failedLabels = []) {
+  if (failed === 0) return `${deleted} مورد حذف شد`
+  if (deleted === 0) {
+    const sample = failedLabels.length ? ` (${failedLabels.slice(0, 3).join('، ')})` : ''
+    return `حذف ناموفق: ${failed} مورد${sample}`
+  }
+  const sample = failedLabels.length ? ` — ${failedLabels.slice(0, 2).join('، ')}` : ''
+  return `${deleted} حذف شد، ${failed} ناموفق${sample}`
+}
+
 async function bulkDelete(tab, ids) {
   if (!confirm(`آیا از حذف ${ids.length} مورد مطمئن هستید؟`)) return
 
   const data = getData()
   let deleted = 0
+  let failed = 0
+  const failedLabels = []
 
   if (tab === 'customers') {
     for (const id of ids) {
+      const customer = data.customers.find(c => c.id === id)
+      const label = (customer?.name || id || '').trim() || String(id)
       try {
         await deleteCustomerFromDB(id)
         data.customers = data.customers.filter(c => c.id !== id)
@@ -167,37 +181,57 @@ async function bulkDelete(tab, ids) {
         deleted++
       } catch (e) {
         console.error('Bulk delete customer error:', e)
+        failed++
+        failedLabels.push(label)
       }
     }
   } else if (tab === 'followups') {
     for (const id of ids) {
       const f = data.followups.find(x => String(x.id) === String(id) || data.followups.indexOf(x) === parseInt(id))
-      if (f) {
-        try {
-          if (f.id) await deleteFollowupFromDB(f.id)
-          data.followups = data.followups.filter(x => x !== f)
-          deleted++
-        } catch (e) {
-          console.error('Bulk delete followup error:', e)
-        }
+      if (!f) {
+        failed++
+        failedLabels.push(String(id))
+        continue
+      }
+      try {
+        if (f.id) await deleteFollowupFromDB(f.id)
+        data.followups = data.followups.filter(x => x !== f)
+        deleted++
+      } catch (e) {
+        console.error('Bulk delete followup error:', e)
+        failed++
+        failedLabels.push(String(f.id || id))
       }
     }
   } else if (tab === 'sales') {
     const indicesByCustomer = new Map()
     for (const key of ids) {
       const parsed = parseSaleRowKey(key)
-      if (!parsed) continue
+      if (!parsed) {
+        failed++
+        failedLabels.push(String(key))
+        continue
+      }
       if (!indicesByCustomer.has(parsed.customerId)) indicesByCustomer.set(parsed.customerId, new Set())
       indicesByCustomer.get(parsed.customerId).add(parsed.productIndex)
     }
 
     for (const [customerId, indexSet] of indicesByCustomer) {
       const customer = data.customers.find(c => c.id === customerId)
-      if (!customer || !Array.isArray(customer.products) || !customer.products.length) continue
+      if (!customer || !Array.isArray(customer.products) || !customer.products.length) {
+        failed += indexSet.size
+        failedLabels.push(customerId)
+        continue
+      }
 
       const indices = [...indexSet]
         .filter(i => i >= 0 && i < customer.products.length)
         .sort((a, b) => b - a)
+      const invalid = indexSet.size - indices.length
+      if (invalid > 0) {
+        failed += invalid
+        failedLabels.push(customer?.name || customerId)
+      }
       if (!indices.length) continue
 
       const snapshot = customer.products.slice()
@@ -215,13 +249,15 @@ async function bulkDelete(tab, ids) {
         console.error('Bulk delete sales error:', e)
         customer.products = snapshot
         syncCustomerLevel(customer, data.customers, data.followups)
+        failed += indices.length
+        failedLabels.push(customer?.name || customerId)
       }
     }
   }
 
   selectedIds[tab].clear()
   updateBulkUI(tab)
-  showToast(`${deleted} مورد حذف شد`)
+  showToast(formatBulkDeleteToast(deleted, failed, failedLabels))
 
   if (tab === 'customers') await renderCustomers()
   else if (tab === 'followups') await renderFollowups()
