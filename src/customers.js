@@ -108,13 +108,34 @@ export function getCustomerFilterState() {
   }
 }
 
+let customerSearchDebounceTimer = null
+const CUSTOMER_SEARCH_DEBOUNCE_MS = 250
+
+function cancelCustomerSearchDebounce() {
+  if (customerSearchDebounceTimer) {
+    clearTimeout(customerSearchDebounceTimer)
+    customerSearchDebounceTimer = null
+  }
+}
+
+/** Debounced search so typing does not rebuild the whole table on every keystroke. */
+export function onCustomerSearchInput() {
+  cancelCustomerSearchDebounce()
+  customerSearchDebounceTimer = setTimeout(() => {
+    customerSearchDebounceTimer = null
+    renderCustomers()
+  }, CUSTOMER_SEARCH_DEBOUNCE_MS)
+}
+
 export function clearCustomerSearch() {
+  cancelCustomerSearchDebounce()
   const el = document.getElementById('searchCustomers')
   if (el) el.value = ''
   renderCustomers()
 }
 
 export function clearCustomerFilters() {
+  cancelCustomerSearchDebounce()
   const search = document.getElementById('searchCustomers')
   if (search) search.value = ''
   for (const id of ['filterAdvisor', 'filterPlatform', 'filterStatus', 'filterCustomerLevel', 'filterTransferIn']) {

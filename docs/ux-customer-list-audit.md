@@ -171,10 +171,11 @@
 - **فایل‌ها:** `bulk.js` (~144)، `index.html` delete modal
 
 ### C-17 — جستجو بدون debounce روی هر `input` کل جدول را rebuild می‌کند
-- **وضعیت:** باز
+- **وضعیت:** انجام شد
 - **مشکل:** `oninput="app.renderCustomers()"` + فیلتر سطح با `resolveCustomerLevel` روی هر مشتری می‌تواند روی دیتای بزرگ سنگین باشد؛ هنگام تایپ سریع UI می‌پرد.
 - **پیشنهاد فیکس:** debounce ~200–300ms برای سرچ؛ فیلترهای select همان `change` بمانند. ایندکس followup-per-customer برای رندر هم کمک می‌کند (الان per-row `filter` روی کل followups).
-- **فایل‌ها:** `index.html` (~825)، `customers.js` (~174–236)
+- **فیکس اعمال‌شده:** `onCustomerSearchInput` با debounce ۲۵۰ms؛ selectها همچنان فوری.
+- **فایل‌ها:** `index.html` (~825)، `customers.js`، `main.js`
 
 ### C-18 — Select-all وقتی بعضی ردیف‌ها checkbox ندارند گیج‌کننده است
 - **وضعیت:** باز

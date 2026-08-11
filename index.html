@@ -824,7 +824,7 @@
       </select>
       <span id="bulkCountCustomers" style="display:none;font-size:13px;color:var(--text-muted);"></span>
       <div class="toolbar-filter-grid">
-        <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchCustomers" oninput="app.renderCustomers()">
+        <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchCustomers" oninput="app.onCustomerSearchInput()">
         <select class="form-select" id="filterAdvisor" style="width:200px;min-width:160px;" onchange="app.renderCustomers()">
           <option value="">همه کارشناسان</option>
         </select>
