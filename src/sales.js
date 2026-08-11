@@ -13,7 +13,8 @@ import {
   productHasRejectedPayment, getProductPayments, getPaymentEntryStatus,
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
   normalizePhone, userDisplayName, formatTeamFilterLabel,
-  getCompletedSaleEconomics, isGiftSale, getProductRefundBadge, isDealCancelled
+  getCompletedSaleEconomics, isGiftSale, getProductRefundBadge, isDealCancelled,
+  getCurrentJalaliMonthDateRange
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSalesTargetBand } from './dashboard.js'
@@ -109,6 +110,21 @@ export function getSalesDateFilter() {
   }
 }
 
+/** Stats default to current Jalali month unless the user set a date filter. */
+export function getSalesStatsDateFilter() {
+  const filter = getSalesDateFilter()
+  if (filter.hasDateFilter) return filter
+  const month = getCurrentJalaliMonthDateRange()
+  return {
+    dateFrom: month.from,
+    dateTo: month.to,
+    hasDateFilter: true,
+    fromNum: month.fromNum,
+    toNum: month.toNum,
+    isDefaultMonth: true
+  }
+}
+
 function isPaymentInSalesDateRange(pay, dateFilter) {
   if (!dateFilter.hasDateFilter) return true
   const d = jalaliDatePart(pay.soldAt)
@@ -130,14 +146,14 @@ function sumPayments(pays) {
   return pays.reduce((sum, pay) => sum + (parseFloat(pay.amount) || 0), 0)
 }
 
-export function getFilteredSales() {
+export function getFilteredSales(dateFilterOverride = null) {
   const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
   const platformFilter = document.getElementById('filterSalesPlatform')?.value || ''
   const advisorFilter = document.getElementById('filterSalesAdvisor')?.value || ''
   const levelFilter = document.getElementById('filterSalesLevel')?.value || ''
   const statusFilter = document.getElementById('filterSalesStatus')?.value || ''
   const payStatusFilter = document.getElementById('filterSalesPaymentStatus')?.value || ''
-  const dateFilter = getSalesDateFilter()
+  const dateFilter = dateFilterOverride || getSalesDateFilter()
   let allSales = getAllSales()
 
   const currentUser = getCurrentUser()
@@ -432,8 +448,14 @@ export async function renderSales() {
     })
   }
 
-  const countable = allSales.filter(s => s.countable)
-  const dateFilter = getSalesDateFilter()
+  const userDateFilter = getSalesDateFilter()
+  const statsDateFilter = getSalesStatsDateFilter()
+  // Stats: current month by default; table stays unscoped until user sets a date filter
+  const statsSales = userDateFilter.hasDateFilter
+    ? allSales
+    : getFilteredSales(statsDateFilter)
+
+  const countable = statsSales.filter(s => s.countable)
   const cashSales = countable.filter(s => s.status === 'تکمیل')
   const data = getData()
 
@@ -451,8 +473,8 @@ export async function renderSales() {
   function grossProfitForCompleted(s) {
     const product = productForSale(s)
     if (!product || product.status !== 'تکمیل') return 0
-    if (dateFilter.hasDateFilter) {
-      const pays = getApprovedPaymentsInRange(product, dateFilter)
+    if (statsDateFilter.hasDateFilter) {
+      const pays = getApprovedPaymentsInRange(product, statsDateFilter)
       if (!pays.length) return 0
     }
     return getCompletedSaleEconomics(product).grossProfit
@@ -461,8 +483,8 @@ export async function renderSales() {
   function depositAmountForSale(s) {
     const product = productForSale(s)
     if (!product) return s.deposit || 0
-    if (dateFilter.hasDateFilter) {
-      return sumPayments(getApprovedPaymentsInRange(product, dateFilter))
+    if (statsDateFilter.hasDateFilter) {
+      return sumPayments(getApprovedPaymentsInRange(product, statsDateFilter))
     }
     return getApprovedPaid(product)
   }

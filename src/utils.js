@@ -393,6 +393,23 @@ export function getCurrentJalaliMonthInfo() {
   }
 }
 
+/** Inclusive from/to for the current Jalali month (Tehran). */
+export function getCurrentJalaliMonthDateRange() {
+  const month = getCurrentJalaliMonthInfo()
+  const daysInMonth = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, isJalaliLeap(month.year) ? 30 : 29]
+  const lastDay = daysInMonth[Math.max(0, (month.month || 1) - 1)] || 29
+  const from = `${month.prefix}/01`
+  const to = `${month.prefix}/${String(lastDay).padStart(2, '0')}`
+  return {
+    from,
+    to,
+    fromNum: jalaliToNum(from),
+    toNum: jalaliToNum(to),
+    prefix: month.prefix,
+    label: month.label
+  }
+}
+
 export function isInJalaliMonth(dateStr, monthPrefix) {
   if (!monthPrefix) return false
   const part = jalaliDatePart(dateStr)

@@ -10,7 +10,8 @@ import {
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
   getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
   getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin,
-  jalaliEndOfDayMs, getCompletedSaleEconomics, resolveProductCostConfig, isDealCancelled
+  jalaliEndOfDayMs, getCompletedSaleEconomics, resolveProductCostConfig, isDealCancelled,
+  getCurrentJalaliMonthInfo, isInJalaliMonth
 } from './utils.js'
 import { sumCompletedRefundsForDash, countPendingRefundsForDash } from './refunds.js'
 
@@ -542,6 +543,26 @@ function computeDashSalesMetrics(hasDateFilter, inDateRange) {
     totalApproved,
     totalPending,
     completedGrossProfit
+  }
+}
+
+/**
+ * تعداد / جمع تأییدشده / سود: بدون فیلتر کاربر → ماه جاری؛ با فیلتر → همان بازه.
+ * بیعانه / مانده / در انتظار: بدون فیلتر → همه؛ با فیلتر → همان بازه.
+ */
+function resolveDashSalesMetrics(hasUserDateFilter, inDateRange) {
+  const openMetrics = computeDashSalesMetrics(hasUserDateFilter, inDateRange)
+  if (hasUserDateFilter) return { ...openMetrics, periodMetrics: openMetrics }
+
+  const month = getCurrentJalaliMonthInfo()
+  const inMonth = (dateStr) => isInJalaliMonth(dateStr, month.prefix)
+  const periodMetrics = computeDashSalesMetrics(true, inMonth)
+  return {
+    ...openMetrics,
+    salesCount: periodMetrics.salesCount,
+    totalApproved: periodMetrics.totalApproved,
+    completedGrossProfit: periodMetrics.completedGrossProfit,
+    periodMetrics
   }
 }
 
@@ -1162,7 +1183,7 @@ export async function renderDashboard() {
   const activeCustomers = datedCustomers.filter(c => c.products && c.products.length > 0)
   document.getElementById('dash-active-customers').textContent = activeCustomers.length
 
-  const salesMetrics = computeDashSalesMetrics(hasDateFilter, inDateRange)
+  const salesMetrics = resolveDashSalesMetrics(hasDateFilter, inDateRange)
 
   document.getElementById('dash-sales-count').textContent = salesMetrics.salesCount
   document.getElementById('dash-sales-deposit').textContent = formatNumber(salesMetrics.totalDeposit) + ' ریال'
@@ -2803,7 +2824,7 @@ export async function buildDashboardExportPayload() {
     }
   })
 
-  const salesMetrics = computeDashSalesMetrics(hasDateFilter, inDateRange)
+  const salesMetrics = resolveDashSalesMetrics(hasDateFilter, inDateRange)
   const avgSale = salesMetrics.salesCount > 0
     ? Math.round(salesMetrics.totalApproved / salesMetrics.salesCount)
     : 0
