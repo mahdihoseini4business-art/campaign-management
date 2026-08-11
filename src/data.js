@@ -101,7 +101,7 @@ let data = {
   salesTargets: [],
   salesTargetDeadlineUrgency: null,
   saleToastEnabled: true,
-  requireFollowupOnCreate: false,
+  requireFollowupOnCreate: true,
   smsPanel: null
 }
 
@@ -464,7 +464,8 @@ async function loadDataInner() {
     ? [...settings.statuses].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [...DEFAULT_STATUSES]
   data.saleToastEnabled = settings.sale_toast_enabled !== false && settings.sale_toast_enabled !== 'false'
-  data.requireFollowupOnCreate = settings.require_followup_on_create === true || settings.require_followup_on_create === 'true'
+  // Unset → enabled (true). Only an explicit false/off disables the rule.
+  data.requireFollowupOnCreate = coerceAppSettingBool(settings.require_followup_on_create, true)
   try {
     data.smsPanel = normalizeSmsPanel(settings.sms_panel)
   } catch (e) {
@@ -2167,6 +2168,19 @@ export async function updateFollowupsCustomerId(oldId, newId) {
 // Save app setting
 // ============================================
 
+/** Coerce app_settings JSON/text booleans; `fallback` used when key is unset/unknown. */
+export function coerceAppSettingBool(raw, fallback = false) {
+  if (raw === true || raw === 1 || raw === '1') return true
+  if (raw === false || raw === 0 || raw === '0') return false
+  if (typeof raw === 'string') {
+    const s = raw.trim().toLowerCase()
+    if (s === 'true' || s === 'yes' || s === 'on') return true
+    if (s === 'false' || s === 'no' || s === 'off') return false
+  }
+  if (raw == null) return fallback
+  return fallback
+}
+
 export async function saveSetting(key, value) {
   const { error } = await supabase.from('app_settings').upsert({ key, value }, { onConflict: 'key' })
   if (error) throw new Error('خطا در ذخیره تنظیمات: ' + error.message)
@@ -2186,7 +2200,7 @@ export async function saveSaleToastEnabled(enabled) {
 }
 
 export function getRequireFollowupOnCreate() {
-  return data.requireFollowupOnCreate === true
+  return data.requireFollowupOnCreate !== false
 }
 
 export function setRequireFollowupOnCreateLocal(enabled) {
