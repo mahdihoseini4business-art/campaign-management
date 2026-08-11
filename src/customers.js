@@ -332,7 +332,10 @@ export async function renderCustomers() {
     const transferredUnread = transferredIn && isUnreadTransferredIn(c.id, myPhone, 7)
     const transferredOut = isRecentTransferredOut(c.id, myPhone, 7) && !transferredIn
     const selectCell = showSelectCol
-      ? `<td>${canSelect ? `<input type="checkbox" data-id="${escapeAttr(c.id)}" onchange="app.toggleRowSelect('customers', '${escapeAttr(c.id)}', this.checked)">` : ''}</td>`
+      ? `<td>${canSelect
+        ? `<input type="checkbox" data-id="${escapeAttr(c.id)}" aria-label="انتخاب ${escapeAttr(c.name || c.id)}" onchange="app.toggleRowSelect('customers', '${escapeAttr(c.id)}', this.checked)">`
+        : `<input type="checkbox" disabled title="بدون دسترسی حذف یا انتقال برای این مشتری" aria-label="غیرقابل انتخاب">`
+      }</td>`
       : ''
 
     const platformUrl = getPlatformUrl(c.platform, c.platformId, getPrimaryPhone(c))

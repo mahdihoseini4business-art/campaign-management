@@ -32,10 +32,12 @@ export function toggleSelectAll(tab, checked) {
   if (!canBulkSelect(tab)) return
   const tbody = getTabBody(tab)
   if (!tbody) return
-  const checkboxes = tbody.querySelectorAll('input[type="checkbox"]')
+  const checkboxes = tbody.querySelectorAll('input[type="checkbox"][data-id]')
   checkboxes.forEach(cb => {
+    if (cb.disabled) return
     cb.checked = checked
     const id = cb.dataset.id
+    if (!id) return
     if (checked) {
       selectedIds[tab].add(id)
     } else {
@@ -61,11 +63,21 @@ function updateSelectAllCheckbox(tab) {
   const selectAll = document.getElementById(selectAllId)
   if (!selectAll) return
   const tbody = getTabBody(tab)
-  const checkboxes = tbody ? [...tbody.querySelectorAll('input[type="checkbox"][data-id]')] : []
+  const checkboxes = tbody
+    ? [...tbody.querySelectorAll('input[type="checkbox"][data-id]:not(:disabled)')]
+    : []
   const total = checkboxes.length
   const checkedOnPage = checkboxes.filter(cb => selectedIds[tab].has(cb.dataset.id)).length
   selectAll.checked = total > 0 && checkedOnPage === total
   selectAll.indeterminate = checkedOnPage > 0 && checkedOnPage < total
+  if (tab === 'customers') {
+    const disabledCount = tbody
+      ? tbody.querySelectorAll('input[type="checkbox"]:disabled').length
+      : 0
+    selectAll.title = disabledCount > 0
+      ? `انتخاب همه قابل‌انتخاب‌های این صفحه (${total} از ${total + disabledCount})`
+      : 'انتخاب همه این صفحه'
+  }
 }
 
 /** Re-apply checkbox state from selectedIds after a table re-render. */
@@ -91,7 +103,20 @@ function updateBulkUI(tab) {
   }
   if (countEl) {
     countEl.style.display = count > 0 ? '' : 'none'
-    countEl.textContent = `${count} مورد انتخاب شده`
+    if (tab === 'customers') {
+      const tbody = getTabBody(tab)
+      const selectableOnPage = tbody
+        ? tbody.querySelectorAll('input[type="checkbox"][data-id]:not(:disabled)').length
+        : 0
+      const disabledOnPage = tbody
+        ? tbody.querySelectorAll('input[type="checkbox"]:disabled').length
+        : 0
+      countEl.textContent = disabledOnPage > 0
+        ? `${count} مورد انتخاب شده · ${selectableOnPage} قابل‌انتخاب در این صفحه`
+        : `${count} مورد انتخاب شده`
+    } else {
+      countEl.textContent = `${count} مورد انتخاب شده`
+    }
   }
 }
 
