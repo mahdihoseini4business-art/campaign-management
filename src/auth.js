@@ -380,6 +380,7 @@ const SETTINGS_SECTIONS = [
   { id: 'sales-targets', label: 'تارگت‌های فروش', group: 'داده‌های پایه', keywords: 'تارگت هدف فروش target goal quota' },
   { id: 'platforms', label: 'پلتفرم‌ها', group: 'داده‌های پایه', keywords: 'پلتفرم platform' },
   { id: 'statuses', label: 'وضعیت‌های مشتری', group: 'داده‌های پایه', keywords: 'وضعیت status' },
+  { id: 'customer-prefs', label: 'ترجیحات مشتری', group: 'داده‌های پایه', keywords: 'پیگیری اجبار followup مشتری ثبت' },
   { id: 'sms', label: 'پنل پیامک', group: 'ارتباطات', keywords: 'پیامک sms otp ملی پیامک melipayamak فرستنده api' },
   { id: 'notif-compose', label: 'ارسال اعلان', group: 'اعلان‌ها', keywords: 'اعلان notification ارسال' },
   { id: 'notif-prefs', label: 'ترجیحات اعلان', group: 'اعلان‌ها', keywords: 'toast فروش زنده ترجیح نوتیفیکیشن مرورگر browser notification' },

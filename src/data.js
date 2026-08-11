@@ -101,6 +101,7 @@ let data = {
   salesTargets: [],
   salesTargetDeadlineUrgency: null,
   saleToastEnabled: true,
+  requireFollowupOnCreate: false,
   smsPanel: null
 }
 
@@ -463,6 +464,7 @@ async function loadDataInner() {
     ? [...settings.statuses].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [...DEFAULT_STATUSES]
   data.saleToastEnabled = settings.sale_toast_enabled !== false && settings.sale_toast_enabled !== 'false'
+  data.requireFollowupOnCreate = settings.require_followup_on_create === true || settings.require_followup_on_create === 'true'
   try {
     data.smsPanel = normalizeSmsPanel(settings.sms_panel)
   } catch (e) {
@@ -2181,6 +2183,19 @@ export function setSaleToastEnabledLocal(enabled) {
 export async function saveSaleToastEnabled(enabled) {
   data.saleToastEnabled = !!enabled
   await saveSetting('sale_toast_enabled', !!enabled)
+}
+
+export function getRequireFollowupOnCreate() {
+  return data.requireFollowupOnCreate === true
+}
+
+export function setRequireFollowupOnCreateLocal(enabled) {
+  data.requireFollowupOnCreate = !!enabled
+}
+
+export async function saveRequireFollowupOnCreate(enabled) {
+  data.requireFollowupOnCreate = !!enabled
+  await saveSetting('require_followup_on_create', !!enabled)
 }
 
 export function getSmsPanel() {

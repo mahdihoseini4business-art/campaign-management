@@ -1,4 +1,4 @@
-import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB } from './data.js'
+import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB, getRequireFollowupOnCreate } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone, formatSoldAt24h, soldAtTimePart, jalaliDatePart, formatTeamFilterLabel } from './utils.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
@@ -671,6 +671,13 @@ export function openFollowupDoneModal(customerId) {
     }
   }
 
+  const nextLabel = document.querySelector('label[for="followupDoneNextDate"]')
+  if (nextLabel) {
+    nextLabel.innerHTML = getRequireFollowupOnCreate()
+      ? 'پیگیری بعدی <span class="required">*</span>'
+      : 'پیگیری بعدی <span class="settings-optional">(اختیاری)</span>'
+  }
+
   document.getElementById('followupDoneModal').classList.add('active')
   document.getElementById('followupDoneNote').focus()
 }
@@ -776,6 +783,11 @@ export async function confirmFollowupDone() {
   ).trim()
 
   if (!note) { showToast('یادداشت را وارد کنید'); return }
+  if (getRequireFollowupOnCreate() && !nextDate) {
+    showToast('با توجه به تنظیمات، تاریخ پیگیری بعدی الزامی است')
+    document.getElementById('followupDoneNextDate')?.focus()
+    return
+  }
   if (nextDate && !/^\d{4}\/\d{2}\/\d{2}$/.test(nextDate)) {
     showToast('فرمت تاریخ پیگیری بعدی صحیح نیست (1405/05/01)')
     return

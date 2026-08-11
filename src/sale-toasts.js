@@ -4,7 +4,10 @@
 // ============================================
 
 import { supabase } from './supabase.js'
-import { getSaleToastEnabled, setSaleToastEnabledLocal, saveSaleToastEnabled, coerceProductName } from './data.js'
+import {
+  getSaleToastEnabled, setSaleToastEnabledLocal, saveSaleToastEnabled, coerceProductName,
+  setRequireFollowupOnCreateLocal
+} from './data.js'
 import { escapeHtml, formatNumber, requireMainAdmin, userDisplayName, getCurrentUser, normalizePhone } from './utils.js'
 import { showBrowserNotificationFromHtml } from './browser-notifications.js'
 
@@ -230,7 +233,15 @@ async function ensureChannel() {
       showPaymentRejectToast(payload)
     })
     ch.on('broadcast', { event: 'setting' }, ({ payload }) => {
-      if (typeof payload?.enabled === 'boolean') {
+      if (!payload || typeof payload.enabled !== 'boolean') return
+      if (payload.key === 'require_followup_on_create') {
+        setRequireFollowupOnCreateLocal(payload.enabled)
+        const el = document.getElementById('requireFollowupOnCreate')
+        if (el) el.checked = payload.enabled
+        return
+      }
+      // sale_toast_enabled (legacy payloads without key still apply here)
+      if (!payload.key || payload.key === 'sale_toast_enabled') {
         setSaleToastEnabledLocal(payload.enabled)
         syncSaleToastToggleUi()
       }
@@ -315,12 +326,28 @@ export async function toggleSaleToastSetting(enabled) {
     syncSaleToastToggleUi()
     try {
       const ch = await ensureChannel()
-      await ch.send({ type: 'broadcast', event: 'setting', payload: { enabled: next } })
+      await ch.send({
+        type: 'broadcast',
+        event: 'setting',
+        payload: { key: 'sale_toast_enabled', enabled: next }
+      })
     } catch (_) { /* ignore realtime sync errors */ }
   } catch (e) {
     console.error('toggleSaleToastSetting error:', e)
     syncSaleToastToggleUi()
   }
+}
+
+/** Broadcast a boolean app_settings change to other clients on the sale toast channel. */
+export async function broadcastAppSetting(key, enabled) {
+  try {
+    const ch = await ensureChannel()
+    await ch.send({
+      type: 'broadcast',
+      event: 'setting',
+      payload: { key, enabled: !!enabled }
+    })
+  } catch (_) { /* ignore realtime sync errors */ }
 }
 
 /** Build payload from current user + sale context */

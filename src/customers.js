@@ -1,8 +1,8 @@
-import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState } from './data.js'
+import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
-import { broadcastSaleToast, buildSaleToastPayload } from './sale-toasts.js'
+import { broadcastSaleToast, buildSaleToastPayload, broadcastAppSetting } from './sale-toasts.js'
 import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
   canViewCustomer, canManageCustomer, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
@@ -24,7 +24,7 @@ import {
   CUSTOMER_LEVELS, formatCustomerLevel, parseCustomerLevel, resolveCustomerLevel, syncCustomerLevel,
   applyProfitSnapshotToProduct, isGiftSale, getGiftAccountingStatus,
   getPaymentRefundBadge, getProductRefundBadge, getProductRefundRecords, getProductPendingRefundLabel,
-  REFUND_STATUS
+  REFUND_STATUS, requireMainAdmin
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { restoreSelection } from './bulk.js'
@@ -1505,6 +1505,41 @@ function readDetailFormFields(users, fallback = {}) {
   return { platformId, platform, name, phones, addresses, status, notes, advisor, advisorPhone }
 }
 
+/** @returns {{ ok: true, date: string } | { ok: false, message: string }} */
+function readRequiredCreateFollowupDate() {
+  const date = toEnDigits(document.getElementById('detailCreateFollowupDate')?.value.trim() || '')
+  if (!date) return { ok: false, message: 'برای ذخیره مشتری، تاریخ پیگیری بعدی الزامی است' }
+  if (!/^\d{4}\/\d{2}\/\d{2}$/.test(date)) {
+    return { ok: false, message: 'فرمت تاریخ پیگیری صحیح نیست (مثلاً 1405/05/01)' }
+  }
+  return { ok: true, date }
+}
+
+export function syncRequireFollowupOnCreateUi() {
+  const el = document.getElementById('requireFollowupOnCreate')
+  if (el) el.checked = !!getRequireFollowupOnCreate()
+}
+
+export async function toggleRequireFollowupOnCreate(enabled) {
+  if (!requireMainAdmin()) {
+    syncRequireFollowupOnCreateUi()
+    return
+  }
+  const next = !!enabled
+  try {
+    await saveRequireFollowupOnCreate(next)
+    syncRequireFollowupOnCreateUi()
+    await broadcastAppSetting('require_followup_on_create', next)
+    showToast(next
+      ? 'اجبار پیگیری هنگام ثبت مشتری فعال شد'
+      : 'اجبار پیگیری هنگام ثبت مشتری غیرفعال شد')
+  } catch (e) {
+    console.error('toggleRequireFollowupOnCreate error:', e)
+    syncRequireFollowupOnCreateUi()
+    showToast('خطا در ذخیره تنظیمات')
+  }
+}
+
 function syncAddressSlotsFromDom() {
   const container = document.getElementById('detailAddressesList')
   if (!container) return
@@ -1629,6 +1664,7 @@ function validateDetailPhones() {
 async function createCustomerFromDetail(fields, users) {
   const data = getData()
   const { platformId, platform, name, phones, addresses, status, notes, advisor, advisorPhone } = fields
+  const nextFollowupDate = fields.nextFollowupDate || ''
   const phoneFields = { phone: phones[0] || '', phones }
   const addressFields = { addresses: normalizeCustomerAddresses(addresses || []) }
   const { listId } = phoneForm()
@@ -1685,18 +1721,26 @@ async function createCustomerFromDetail(fields, users) {
     return phoneFieldState.customer.id
   }
 
+  if (getRequireFollowupOnCreate() && !nextFollowupDate) {
+    showToast('برای ذخیره مشتری، تاریخ پیگیری بعدی الزامی است')
+    document.getElementById('detailCreateFollowupDate')?.focus()
+    return null
+  }
+
   const type = phones.length ? 'CS' : 'LD'
   const id = await generateId(type)
   const newCustomer = {
     id, platformId, platform, name, ...phoneFields, ...addressFields, status, notes, advisor, advisorPhone,
-    nextFollowupDate: '', products: [], createdAt: new Date().toISOString(),
+    nextFollowupDate, products: [], createdAt: new Date().toISOString(),
     customerLevel: '', customerLevelLocked: false, referredByPhone: ''
   }
   await saveCustomerToDB(newCustomer)
   putCustomerInCache(newCustomer)
   await renderCustomers()
-  await openCustomerDetail(id, { tab: 'sales' })
-  showToast('مشتری جدید اضافه شد — می‌توانید فروش ثبت کنید')
+  await openCustomerDetail(id, { tab: nextFollowupDate ? 'followups' : 'sales' })
+  showToast(nextFollowupDate
+    ? 'مشتری جدید با تاریخ پیگیری ثبت شد'
+    : 'مشتری جدید اضافه شد — می‌توانید فروش ثبت کنید')
   return id
 }
 
@@ -1723,6 +1767,15 @@ export async function saveCustomerDetail(customerId) {
     const { listId } = phoneForm()
 
     if (isNew) {
+      if (getRequireFollowupOnCreate()) {
+        const followup = readRequiredCreateFollowupDate()
+        if (!followup.ok) {
+          showToast(followup.message)
+          document.getElementById('detailCreateFollowupDate')?.focus()
+          return
+        }
+        fields.nextFollowupDate = followup.date
+      }
       await createCustomerFromDetail(fields, users)
       return
     }
@@ -1804,8 +1857,9 @@ export async function openCustomerDetail(id, options = {}) {
   const canAddSale = !isNew && canAddSaleOnCustomer(c)
   const canAddFollowup = !isNew && canAddNoteOnCustomer(c)
   const canScheduleFollowup = !isNew && canScheduleFollowupOnCustomer(c)
-  const canClearFollowupDate = canScheduleFollowup && canManageCustomer(c)
+  const canClearFollowupDate = canScheduleFollowup && canManageCustomer(c) && !getRequireFollowupOnCreate()
   const schedulingForOther = canScheduleFollowup && !canManageCustomer(c)
+  const requireFollowupOnCreate = isNew && getRequireFollowupOnCreate()
 
   const customerFollowups = isNew
     ? []
@@ -1948,6 +2002,12 @@ export async function openCustomerDetail(id, options = {}) {
         <span class="detail-label">ایدی پلتفرم</span>
         <input type="text" class="form-input" id="detailPlatformId" value="${escapeAttr(c.platformId || '')}" placeholder="اختیاری" style="font-family:'Vazirmatn',sans-serif;">
       </div>
+      ${requireFollowupOnCreate ? `
+      <div class="detail-field">
+        <span class="detail-label">تاریخ پیگیری بعدی <span style="color:var(--danger);">*</span></span>
+        <input type="text" class="form-input" id="detailCreateFollowupDate" placeholder="مثلاً 1405/05/01" data-jdp style="font-family:'Vazirmatn',sans-serif;max-width:180px;">
+        <div class="form-hint" style="margin-top:6px;">تا وقتی تاریخ پیگیری ست نشود، مشتری ذخیره نمی‌شود.</div>
+      </div>` : ''}
     `
     : `
       <div class="detail-field">
@@ -2138,7 +2198,9 @@ export async function openCustomerDetail(id, options = {}) {
   if (isNew) {
     html = `
       ${infoPanelHtml}
-      <div class="detail-tab-empty" style="margin-top:8px;">پس از ایجاد مشتری، تب‌های فروش و پیگیری در دسترس خواهند بود.</div>
+      <div class="detail-tab-empty" style="margin-top:8px;">${requireFollowupOnCreate
+        ? 'پس از وارد کردن اطلاعات و تاریخ پیگیری، مشتری ذخیره می‌شود؛ سپس تب‌های فروش و پیگیری در دسترس خواهند بود.'
+        : 'پس از ایجاد مشتری، تب‌های فروش و پیگیری در دسترس خواهند بود.'}</div>
     `
   } else {
     const tabBtn = (key, count) => {
@@ -2214,7 +2276,7 @@ export async function openCustomerDetail(id, options = {}) {
     focusNewSaleDraftFields()
   }
 
-  if ((activeTab === 'followups' || activeTab === 'sales') && window.jalaliDatepicker) {
+  if ((activeTab === 'followups' || activeTab === 'sales' || requireFollowupOnCreate) && window.jalaliDatepicker) {
     try { window.jalaliDatepicker.startWatch({ time: false, zIndex: 11000 }) } catch (_) { /* ignore */ }
   }
 }
@@ -2374,6 +2436,10 @@ export async function setNextFollowup(customerId) {
 
 export async function clearNextFollowup(customerId) {
   if (!requirePermission('customers_add')) return
+  if (getRequireFollowupOnCreate()) {
+    showToast('با توجه به تنظیمات، حذف تاریخ پیگیری مجاز نیست')
+    return
+  }
   const data = getData()
   const customer = data.customers.find(c => c.id === customerId)
   if (!canManageCustomer(customer)) {

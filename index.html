@@ -351,6 +351,21 @@
           <div id="settingsStatusesList" class="settings-config-list"></div>
         </section>
 
+        <!-- ترجیحات مشتری / پیگیری -->
+        <section class="settings-pane" data-settings-pane="customer-prefs" hidden>
+          <div class="settings-pane-header">
+            <h3>ترجیحات مشتری</h3>
+            <p class="settings-pane-desc">قوانین ثبت و پیگیری مشتریان برای همه کاربران.</p>
+          </div>
+          <label class="settings-pref-row">
+            <input type="checkbox" id="requireFollowupOnCreate" onchange="app.toggleRequireFollowupOnCreate(this.checked)">
+            <span>
+              <strong>اجبار پیگیری هنگام ثبت مشتری</strong>
+              <span class="settings-pane-desc">اگر فعال باشد، تا وقتی تاریخ پیگیری بعدی برای مشتری جدید ست نشود، اطلاعات مشتری ذخیره نمی‌شود.</span>
+            </span>
+          </label>
+        </section>
+
         <!-- پنل پیامک -->
         <section class="settings-pane" data-settings-pane="sms" hidden>
           <div class="settings-pane-header">
