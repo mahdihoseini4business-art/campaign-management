@@ -105,8 +105,9 @@ export function getCustomerFilterState() {
   const status = document.getElementById('filterStatus')?.value || ''
   const level = document.getElementById('filterCustomerLevel')?.value || ''
   const transfer = document.getElementById('filterTransferIn')?.value || ''
+  const quick = customerQuickFilter || ''
   const hasSearch = !!search
-  const hasFilters = !!(advisor || platform || status || level || transfer)
+  const hasFilters = !!(advisor || platform || status || level || transfer || quick)
   return {
     searchRaw,
     search,
@@ -115,10 +116,41 @@ export function getCustomerFilterState() {
     status,
     level,
     transfer,
+    quick,
     hasSearch,
     hasFilters,
     hasAny: hasSearch || hasFilters
   }
+}
+
+let customerQuickFilter = ''
+
+function customerHasPurchase(c) {
+  return (c.products || []).some(p => {
+    ensureProductPayments(p)
+    return isProductCountableInSales(p)
+  })
+}
+
+function syncCustomerStatCardsActive() {
+  document.querySelectorAll('#customerStats .stat-card-btn').forEach(btn => {
+    const key = btn.getAttribute('data-stat-filter') || ''
+    btn.classList.toggle('is-active', !!customerQuickFilter && key === customerQuickFilter)
+  })
+}
+
+/** Clickable stats → quick filter (toggle same card to clear). */
+export function applyCustomerStatFilter(key) {
+  const next = String(key || '').trim()
+  if (!next || next === 'all') {
+    customerQuickFilter = ''
+  } else if (customerQuickFilter === next) {
+    customerQuickFilter = ''
+  } else {
+    customerQuickFilter = next
+  }
+  syncCustomerStatCardsActive()
+  renderCustomers()
 }
 
 let customerSearchDebounceTimer = null
@@ -149,6 +181,8 @@ export function clearCustomerSearch() {
 
 export function clearCustomerFilters() {
   cancelCustomerSearchDebounce()
+  customerQuickFilter = ''
+  syncCustomerStatCardsActive()
   const search = document.getElementById('searchCustomers')
   if (search) search.value = ''
   for (const id of ['filterAdvisor', 'filterPlatform', 'filterStatus', 'filterCustomerLevel', 'filterTransferIn']) {
@@ -229,10 +263,13 @@ function syncCustomerFilterSummary(filteredCount) {
 
 export function getFilteredCustomers() {
   const data = getData()
-  const { search, advisor: advisorFilter, platform: platformFilter, status: statusFilter, level: levelFilter, transfer: transferFilter } = getCustomerFilterState()
+  const { search, advisor: advisorFilter, platform: platformFilter, status: statusFilter, level: levelFilter, transfer: transferFilter, quick: quickFilter } = getCustomerFilterState()
   const currentUser = getCurrentUser()
   const advisorScopePhones = phonesMatchingAdvisorFilter(advisorFilter, currentUser)
   const myPhone = normalizePhone(currentUser?.phone)
+  const followupsByCustomer = quickFilter === 'following'
+    ? buildFollowupsByCustomerMap(data.followups)
+    : null
 
   return data.customers.filter(c => {
     const extras = getCustomerSearchExtras(c)
@@ -282,6 +319,15 @@ export function getFilteredCustomers() {
       if (resolved !== levelFilter) return false
     }
     if (transferFilter && !matchesTransferFilter) return false
+
+    if (quickFilter === 'buyers' && !customerHasPurchase(c)) return false
+    if (quickFilter === 'cs' && !isCS) return false
+    if (quickFilter === 'following') {
+      const list = followupsByCustomer?.get(c.id) || []
+      if (!list.length) return false
+    }
+    if (quickFilter === 'converted' && !isCS) return false
+
     return true
   })
 }
@@ -331,6 +377,7 @@ export async function renderCustomers() {
 
   updateTransferInboxBadge()
   syncClearCustomerFiltersBtn()
+  syncCustomerStatCardsActive()
   syncCustomerFilterSummary(filtered.length)
 
   if (filtered.length === 0) {
@@ -360,7 +407,7 @@ export async function renderCustomers() {
     return
   }
 
-  const filterSig = `${search}|${advisorFilter}|${platformFilter}|${statusFilter}|${levelFilter}|${transferFilter}`
+  const filterSig = `${search}|${advisorFilter}|${platformFilter}|${statusFilter}|${levelFilter}|${transferFilter}|${filters.quick}`
   const page = paginateList('customers', filtered, filterSig)
   const followupsByCustomer = buildFollowupsByCustomerMap(data.followups)
 
@@ -507,10 +554,7 @@ export function updateStats() {
   }
 
   function hasPurchase(c) {
-    return (c.products || []).some(p => {
-      ensureProductPayments(p)
-      return isProductCountableInSales(p)
-    })
+    return customerHasPurchase(c)
   }
 
   const scoped = data.customers.filter(inScope)

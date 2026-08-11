@@ -808,12 +808,24 @@
   <!-- شیت مشتریان -->
   <div class="sheet" id="sheet-customers" role="tabpanel" aria-labelledby="tab-customers" hidden>
     <div class="stats" id="customerStats">
-      <div class="stat-card"><div class="label">کل مخاطبین</div><div class="value" id="stat-total">0</div></div>
-      <div class="stat-card"><div class="label">خریداران</div><div class="value" style="color: var(--tag-ld)" id="stat-ld">0</div></div>
-      <div class="stat-card"><div class="label">کاربران با شماره (CS)</div><div class="value" style="color: var(--tag-cs)" id="stat-cs">0</div></div>
-      <div class="stat-card"><div class="label">در حال پیگیری</div><div class="value" style="color: var(--warning)" id="stat-following">0</div></div>
-      <div class="stat-card"><div class="label">تبدیل شده (LD→CS)</div><div class="value" style="color: var(--success)" id="stat-converted">0</div></div>
-      <div class="stat-card"><div class="label">جمع پرداختی مشتریان</div><div class="value" style="color: var(--accent)" id="stat-revenue">۰</div></div>
+      <button type="button" class="stat-card stat-card-btn" data-stat-filter="all" onclick="app.applyCustomerStatFilter('all')" title="نمایش همه مخاطبین اسکوپ">
+        <div class="label">کل مخاطبین</div><div class="value" id="stat-total">0</div>
+      </button>
+      <button type="button" class="stat-card stat-card-btn" data-stat-filter="buyers" onclick="app.applyCustomerStatFilter('buyers')" title="فیلتر خریداران">
+        <div class="label">خریداران</div><div class="value" style="color: var(--tag-ld)" id="stat-ld">0</div>
+      </button>
+      <button type="button" class="stat-card stat-card-btn" data-stat-filter="cs" onclick="app.applyCustomerStatFilter('cs')" title="فیلتر کاربران CS">
+        <div class="label">کاربران با شماره (CS)</div><div class="value" style="color: var(--tag-cs)" id="stat-cs">0</div>
+      </button>
+      <button type="button" class="stat-card stat-card-btn" data-stat-filter="following" onclick="app.applyCustomerStatFilter('following')" title="فیلتر در حال پیگیری">
+        <div class="label">در حال پیگیری</div><div class="value" style="color: var(--warning)" id="stat-following">0</div>
+      </button>
+      <button type="button" class="stat-card stat-card-btn" data-stat-filter="converted" onclick="app.applyCustomerStatFilter('converted')" title="فیلتر تبدیل‌شده / CS">
+        <div class="label">تبدیل شده (LD→CS)</div><div class="value" style="color: var(--success)" id="stat-converted">0</div>
+      </button>
+      <button type="button" class="stat-card stat-card-btn" data-stat-filter="buyers" onclick="app.applyCustomerStatFilter('buyers')" title="فیلتر مشتریان دارای پرداخت">
+        <div class="label">جمع پرداختی مشتریان</div><div class="value" style="color: var(--accent)" id="stat-revenue">۰</div>
+      </button>
     </div>
     <p class="customer-stats-hint" id="customerStatsHint">آمار بر اساس اسکوپ شما (بدون فیلتر جدول)</p>
     <p class="customer-filter-summary" id="customerFilterSummary" hidden></p>

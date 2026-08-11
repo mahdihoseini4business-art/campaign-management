@@ -1003,6 +1003,21 @@
     border-right: 3px solid var(--secondary);
   }
 
+  button.stat-card-btn {
+    appearance: none;
+    font: inherit;
+    text-align: right;
+    cursor: pointer;
+    color: inherit;
+    width: auto;
+  }
+
+  button.stat-card-btn.is-active {
+    background: var(--accent-light);
+    border-right-color: var(--accent);
+    box-shadow: var(--shadow);
+  }
+
   .stat-card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
 
   .stat-card.highlight {
