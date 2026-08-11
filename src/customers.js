@@ -237,11 +237,12 @@ export async function renderCustomers() {
   const filtered = getFilteredCustomers()
 
   const showSelectCol = hasPermission('customers_delete') || hasPermission('customers_transfer')
-  const colCount = showSelectCol ? 11 : 10
+  const colCount = showSelectCol ? 12 : 11
   const selectTh = document.querySelector('#sheet-customers thead th.customer-select-col')
   if (selectTh) selectTh.style.display = showSelectCol ? '' : 'none'
 
   updateTransferInboxBadge()
+  syncClearCustomerFiltersBtn()
 
   if (filtered.length === 0) {
     let title = 'مشتری‌ای یافت نشد'
@@ -334,11 +335,18 @@ export async function renderCustomers() {
         : ''
     ].join('')
 
+    const levelKey = resolveCustomerLevel(c, data.customers, data.followups)
+    const levelLabel = formatCustomerLevel(levelKey)
+    const levelCell = levelLabel === '—'
+      ? '<span style="color:var(--text-muted)">—</span>'
+      : `<span class="customer-level-badge">${escapeHtml(levelLabel)}</span>`
+
     return `<tr class="clickable-row ${nextFollowupClass}${isMine ? '' : ' row-other-owner'}${transferredIn ? ' row-transferred-in' : ''}${transferredOut ? ' row-transferred-out' : ''}" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
       ${selectCell}
       <td>${platformIdHtml}</td>
       <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>
       <td>${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}${nameBadges}</td>
+      <td>${levelCell}</td>
       <td style="font-family: monospace; direction: ltr; text-align: right;">${(() => {
         const disp = formatPhonesDisplay(c)
         if (!disp.text) return '<span style="color:var(--text-muted)">—</span>'
