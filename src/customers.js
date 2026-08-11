@@ -177,6 +177,9 @@ export async function renderCustomers() {
   if (!tbody) return
   const search = toEnDigits(document.getElementById('searchCustomers').value).toLowerCase()
   const advisorFilter = document.getElementById('filterAdvisor').value
+  const platformFilter = document.getElementById('filterPlatform')?.value || ''
+  const statusFilter = document.getElementById('filterStatus')?.value || ''
+  const levelFilter = document.getElementById('filterCustomerLevel')?.value || ''
   const transferFilter = document.getElementById('filterTransferIn')?.value || ''
 
   populateCustomerFilterDropdowns()
@@ -208,7 +211,7 @@ export async function renderCustomers() {
     return
   }
 
-  const filterSig = `${search}|${advisorFilter}|${transferFilter}`
+  const filterSig = `${search}|${advisorFilter}|${platformFilter}|${statusFilter}|${levelFilter}|${transferFilter}`
   const page = paginateList('customers', filtered, filterSig)
 
   tbody.innerHTML = page.items.map(c => {
@@ -343,13 +346,16 @@ export function updateStats() {
 
   // کل مخاطبین = همه ثبت‌شده‌ها در اسکوپ
   document.getElementById('stat-total').textContent = scoped.length
-  // کل مشتریان = کسانی که فروش/خرید ثبت‌شده دارند
+  // خریداران = کسانی که فروش/خرید ثبت‌شده دارند
   document.getElementById('stat-ld').textContent = scoped.filter(hasPurchase).length
   document.getElementById('stat-cs').textContent = scoped.filter(c => c.id.startsWith('CS')).length
   document.getElementById('stat-following').textContent = scoped.filter(c =>
     data.followups.some(f => f.customerId === c.id)
   ).length
-  document.getElementById('stat-converted').textContent = canViewOrgWideData() ? (data.convertedCount || 0) : 0
+  // تبدیل LD→CS: شمارنده سازمانی برای دید کلی؛ برای بقیه تعداد CS در اسکوپ خودشان
+  document.getElementById('stat-converted').textContent = canViewOrgWideData()
+    ? (data.convertedCount || 0)
+    : scoped.filter(c => c.id.startsWith('CS')).length
 
   let totalPaid = 0
   scoped.forEach(c => {
