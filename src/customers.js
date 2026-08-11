@@ -10,6 +10,7 @@ import {
   canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canScheduleFollowupOnCustomer, matchesTabSearch, getCustomerSearchExtras,
   resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
+  findCustomersByPhonePrefix,
   getCustomerPhones, normalizeCustomerPhones, getPrimaryPhone, formatPhonesDisplay,
   MAX_CUSTOMER_PHONES, MAX_CUSTOMER_ADDRESSES,
   getCustomerAddresses, normalizeCustomerAddresses,
@@ -663,14 +664,102 @@ function renderPhoneFields() {
 
   container.innerHTML = phoneSlots.map((val, i) => `
       <div class="phone-field-row" data-index="${i}">
-        <input type="tel" inputmode="numeric" class="form-input customer-phone-input" data-index="${i}"
-          placeholder="09123456789" dir="ltr" style="text-align:left;" autocomplete="tel" maxlength="11"
-          value="${escapeAttr(val || '')}"
-          oninput="app.onCustomerPhoneInput(${i})">
+        <div class="phone-field-input-wrap">
+          <input type="tel" inputmode="numeric" class="form-input customer-phone-input" data-index="${i}"
+            placeholder="09123456789" dir="ltr" style="text-align:left;" autocomplete="tel" maxlength="11"
+            value="${escapeAttr(val || '')}"
+            oninput="app.onCustomerPhoneInput(${i})"
+            onkeydown="app.onCustomerPhoneKeydown(event, ${i})"
+            onblur="app.onCustomerPhoneSuggestBlur()">
+          <div class="customer-phone-suggest" id="customerPhoneSuggest-${i}" hidden role="listbox"></div>
+        </div>
         <div class="phone-field-actions"></div>
       </div>
     `).join('')
   updatePhoneFieldActions()
+}
+
+function hideCustomerPhoneSuggest() {
+  document.querySelectorAll('.customer-phone-suggest').forEach(el => {
+    el.hidden = true
+    el.innerHTML = ''
+  })
+}
+
+function isCreatePhoneForm() {
+  return !phoneForm().getEditId()
+}
+
+/** Open an existing customer inside the already-open detail modal (no overlay flash). */
+let openingFromPhoneMatch = false
+async function openExistingCustomerFromPhone(customer, { toast = true } = {}) {
+  if (!customer?.id || openingFromPhoneMatch) return
+  const modalOpen = document.getElementById('detailModal')?.classList.contains('active')
+  if (modalOpen && detailPanelState.customerId === customer.id) return
+
+  openingFromPhoneMatch = true
+  hideCustomerPhoneSuggest()
+  try {
+    await openCustomerDetail(customer.id)
+    if (toast) showToast(`پنل مشتری موجود (${customer.id}) باز شد`)
+  } finally {
+    openingFromPhoneMatch = false
+  }
+}
+
+function renderCustomerPhoneSuggest(index, rawDigits) {
+  hideCustomerPhoneSuggest()
+  if (!isCreatePhoneForm()) return
+
+  let q = toEnDigits(String(rawDigits || '')).replace(/\D/g, '')
+  if (q.startsWith('9') && !q.startsWith('09')) q = '0' + q
+  if (q.length < 3) return
+
+  // Full exact match is handled by auto-open — no dropdown needed
+  if (/^09\d{9}$/.test(q)) {
+    const exact = findCustomerByPhone(q, getData().customers)
+    if (exact) return
+  }
+
+  const matches = findCustomersByPhonePrefix(q, getData().customers, { limit: 8 })
+    .filter(m => canViewCustomer(m.customer))
+  if (!matches.length) return
+
+  const box = document.getElementById(`customerPhoneSuggest-${index}`)
+  if (!box) return
+  box.hidden = false
+  box.innerHTML = matches.map(({ customer: c, matchedPhone }) => `
+      <button type="button" class="customer-phone-suggest-item" role="option"
+      onmousedown="event.preventDefault(); app.selectCustomerPhoneSuggest('${escapeAttr(c.id)}')">
+      <span class="customer-phone-suggest-main">
+        <strong>${escapeHtml(c.name || c.platformId || c.id)}</strong>
+        <span class="customer-phone-suggest-id">${escapeHtml(c.id)}</span>
+      </span>
+      <span class="customer-phone-suggest-meta" dir="ltr">${escapeHtml(matchedPhone)}</span>
+      <span class="customer-phone-suggest-advisor">${escapeHtml(c.advisor || '—')}</span>
+    </button>
+  `).join('')
+}
+
+export function selectCustomerPhoneSuggest(customerId) {
+  const c = getData().customers.find(x => x.id === customerId)
+  if (!c) return
+  if (!canViewCustomer(c)) {
+    showToast('شما به این مشتری دسترسی ندارید')
+    return
+  }
+  openExistingCustomerFromPhone(c)
+}
+
+export function onCustomerPhoneSuggestBlur() {
+  setTimeout(() => hideCustomerPhoneSuggest(), 180)
+}
+
+export function onCustomerPhoneKeydown(event, index = 0) {
+  if (event?.key === 'Escape') {
+    hideCustomerPhoneSuggest()
+    return
+  }
 }
 
 /** Keep only digits; if starts with 9 prepend 0; cap at 11. */
@@ -806,12 +895,26 @@ export function onCustomerPhoneInput(index = 0) {
 
   updatePhoneFieldActions()
   validateCustomerPhones()
+
+  const typed = phoneSlots[index] || ''
+  if (isCreatePhoneForm()) {
+    const normalized = normalizePhone(typed)
+    if (/^09\d{9}$/.test(normalized)) {
+      const existing = findCustomerByPhone(normalized, getData().customers)
+      if (existing) {
+        hideCustomerPhoneSuggest()
+        return
+      }
+    }
+    renderCustomerPhoneSuggest(index, typed)
+  } else {
+    hideCustomerPhoneSuggest()
+  }
 }
 
 /** Live validation for create/edit phone fields (no DOM rebuild / no focus steal). */
 function validateCustomerPhones() {
   const data = getData()
-  const currentUser = getCurrentUser()
   const editId = phoneForm().getEditId()
 
   clearPhoneFieldMessages()
@@ -877,35 +980,22 @@ function validateCustomerPhones() {
       return
     }
 
-    if (ownsCustomer(existing, currentUser)) {
-      phoneFieldState.status = 'own'
+    // Create mode: switch in-place to the existing customer's panel
+    if (!canViewCustomer(existing)) {
+      phoneFieldState.status = 'taken'
       setPhoneFieldError(
-        `مشتری با این شماره از قبل متعلق به شماست (${existing.id})` +
-        (lastActivity ? `. آخرین فعالیت: ${formatActivityLabel(lastActivity)}` : ''),
+        `مشتری با این شماره وجود دارد ولی به آن دسترسی ندارید (${existing.id})`,
         i
       )
       updatePreviewId()
       return
     }
 
-    const recentOther = hasRecentActivityByOther(existing, data.followups, currentUser?.phone, 30)
-    if (recentOther) {
-      phoneFieldState.status = 'blocked'
-      setPhoneFieldError(
-        `مشتری با این شماره از قبل وجود دارد و در ۳۰ روز اخیر توسط کارشناس دیگری روی آن فعالیت ثبت شده؛ امکان ثبت/انتقال نیست. آخرین فعالیت: ${formatActivityLabel(lastActivity)}`,
-        i
-      )
-      updatePreviewId()
-      return
-    }
-
-    phoneFieldState.status = 'transferable'
-    setPhoneFieldHint(
-      `مشتری با این شماره از قبل وجود دارد (کارشناس فعلی: ${existing.advisor || '—'}، ${existing.id}). ` +
-      `آخرین فعالیت: ${formatActivityLabel(lastActivity)}. با ذخیره، مشتری و تمام گزارش‌ها به کارشناس انتخاب‌شده منتقل می‌شود.`,
-      'warning'
-    )
+    phoneFieldState.status = 'own'
+    phoneFieldState.customer = existing
+    hideCustomerPhoneSuggest()
     updatePreviewId()
+    openExistingCustomerFromPhone(existing)
     return
   }
 
@@ -1661,7 +1751,7 @@ function validateDetailPhones() {
  * Create customer from detail panel fields (incl. transfer / platformId merge).
  * @returns {Promise<string|null>} final customer id, or null if aborted/redirected
  */
-async function createCustomerFromDetail(fields, users) {
+async function createCustomerFromDetail(fields) {
   const data = getData()
   const { platformId, platform, name, phones, addresses, status, notes, advisor, advisorPhone } = fields
   const nextFollowupDate = fields.nextFollowupDate || ''
@@ -1676,9 +1766,9 @@ async function createCustomerFromDetail(fields, users) {
     focusPhoneIndex(phoneFieldState.index)
     return null
   }
+  // Safety: phone match should already have switched the panel while typing
   if (phoneFieldState.status === 'own' && phoneFieldState.customer) {
-    await openCustomerDetail(phoneFieldState.customer.id)
-    showToast(`این مشتری از قبل متعلق به شماست — پنل ${phoneFieldState.customer.id} باز شد`)
+    await openExistingCustomerFromPhone(phoneFieldState.customer)
     return null
   }
 
@@ -1712,13 +1802,6 @@ async function createCustomerFromDetail(fields, users) {
     await openCustomerDetail(existById.id)
     showToast(`این ایدی قبلاً ثبت شده — پنل مشتری ${existById.id} باز شد`)
     return null
-  }
-
-  if (phoneFieldState.status === 'transferable' && phoneFieldState.customer) {
-    await transferCustomerOwnership(phoneFieldState.customer, {
-      platformId, platform, name, ...phoneFields, ...addressFields, status, notes, advisor, advisorPhone
-    }, users)
-    return phoneFieldState.customer.id
   }
 
   if (getRequireFollowupOnCreate() && !nextFollowupDate) {
@@ -1776,7 +1859,7 @@ export async function saveCustomerDetail(customerId) {
         }
         fields.nextFollowupDate = followup.date
       }
-      await createCustomerFromDetail(fields, users)
+      await createCustomerFromDetail(fields)
       return
     }
 
@@ -2561,6 +2644,7 @@ export async function updateCustomerLevel(customerId, levelValue) {
 }
 
 export function closeDetailModal() {
+  hideCustomerPhoneSuggest()
   document.getElementById('detailModal').classList.remove('active')
   phoneFormMode = 'detail'
   detailPanelState = { customerId: null, tab: 'info', canEdit: false, canDelete: false }

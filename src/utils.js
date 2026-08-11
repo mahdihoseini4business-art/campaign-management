@@ -868,6 +868,44 @@ export function findCustomerByAnyPhone(phone, customers, excludeId = null) {
   return findCustomerByPhone(phone, customers, excludeId)
 }
 
+/**
+ * Prefix search over customer phones (create-form typeahead).
+ * Returns customers whose any phone includes the digit prefix.
+ * Exact full-number matches are sorted first. Default limit: 8.
+ */
+export function findCustomersByPhonePrefix(prefix, customers, { excludeId = null, limit = 8 } = {}) {
+  const digits = toEnDigits(String(prefix || '')).replace(/\D/g, '')
+  let q = digits
+  if (q.startsWith('9') && !q.startsWith('09')) q = '0' + q
+  if (q.length < 3) return []
+
+  const exactFull = /^09\d{9}$/.test(q)
+  const scored = []
+  for (const c of customers || []) {
+    if (excludeId && c.id === excludeId) continue
+    const phones = getCustomerPhones(c)
+    let bestPhone = ''
+    let exact = false
+    for (const p of phones) {
+      if (!p.includes(q)) continue
+      if (exactFull && p === q) {
+        bestPhone = p
+        exact = true
+        break
+      }
+      if (!bestPhone) bestPhone = p
+    }
+    if (!bestPhone) continue
+    scored.push({ customer: c, matchedPhone: bestPhone, exact })
+  }
+
+  scored.sort((a, b) => {
+    if (a.exact !== b.exact) return a.exact ? -1 : 1
+    return String(a.matchedPhone).localeCompare(String(b.matchedPhone))
+  })
+  return scored.slice(0, Math.max(0, limit))
+}
+
 /** Max shipping addresses stored per customer profile */
 export const MAX_CUSTOMER_ADDRESSES = 2
 
