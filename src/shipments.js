@@ -12,6 +12,7 @@ import {
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderProducts } from './customers.js'
+import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 
 let shipmentsFilter = 'pending' // pending | shipped
 let shipConfirmTarget = null // { customerId, productIndex }
@@ -136,6 +137,10 @@ function phonesCell(row) {
     ? ` <span style="color:var(--text-muted);font-size:11px;" title="${escapeAttr(phones.slice(1).join('، '))}">+${phones.length - 1}</span>`
     : ''
   return `${escapeHtml(phones[0])}${extra}`
+}
+
+export function onShipmentsSearchInput() {
+  return runWithSearchOverlay(SEARCH_HOST.shipments, () => renderShipments())
 }
 
 export async function renderShipments() {

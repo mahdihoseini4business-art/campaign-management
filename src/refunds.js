@@ -15,6 +15,7 @@ import {
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderProducts } from './customers.js'
+import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 
 let refundsView = 'kanban' // kanban | rejected | archived
 let rejectTargetId = null
@@ -176,6 +177,10 @@ export function setRefundsView(view) {
   if (rejected) rejected.hidden = view !== 'rejected'
   if (archived) archived.hidden = view !== 'archived'
   renderRefunds()
+}
+
+export function onRefundsSearchInput() {
+  return runWithSearchOverlay(SEARCH_HOST.refunds, () => renderRefunds())
 }
 
 export async function renderRefunds() {

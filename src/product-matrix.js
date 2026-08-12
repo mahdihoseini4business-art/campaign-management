@@ -20,6 +20,7 @@ import {
   userDisplayName
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
+import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 
 const MARK_YES = '✅'
 const NONE_KEY = '__none__'
@@ -267,6 +268,10 @@ function markCell(has, { gift = false } = {}) {
   const title = gift ? ' title="از طریق هدیه"' : ''
   const giftMark = gift ? ' <span class="gift-badge" style="font-size:9px;padding:0 4px;">هدیه</span>' : ''
   return `<td class="product-matrix-mark product-matrix-yes"${title}>${MARK_YES}${giftMark}</td>`
+}
+
+export function onProductMatrixSearchInput() {
+  return runWithSearchOverlay(SEARCH_HOST.products, () => renderProductMatrix())
 }
 
 export async function renderProductMatrix() {

@@ -18,6 +18,7 @@ import {
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSalesTargetBand } from './dashboard.js'
+import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 
 // ============================================
 // Sales Data
@@ -406,6 +407,10 @@ async function updateSalesAdvisorFilter() {
   })
   if (![...sel.options].some(o => o.value === currentVal)) sel.value = ''
   else sel.value = currentVal
+}
+
+export function onSalesSearchInput() {
+  return runWithSearchOverlay(SEARCH_HOST.sales, () => renderSales())
 }
 
 export async function renderSales() {

@@ -12,6 +12,7 @@ import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSales } from './sales.js'
 import { renderProducts } from './customers.js'
 import { broadcastPaymentRejectToast } from './sale-toasts.js'
+import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 
 let accountingFilter = 'pending' // pending | approved | rejected | gifts
 let rejectTarget = null // { customerId, productIndex, paymentIndex, isGift, mode }
@@ -172,6 +173,10 @@ export function toggleAccountingBankBalances() {
   wrap.classList.toggle('is-collapsed', !bankBalancesExpanded)
   const btn = wrap.querySelector('.accounting-bank-balances-toggle')
   if (btn) btn.setAttribute('aria-expanded', bankBalancesExpanded ? 'true' : 'false')
+}
+
+export function onAccountingSearchInput() {
+  return runWithSearchOverlay(SEARCH_HOST.accounting, () => renderAccounting())
 }
 
 export function renderAccounting() {

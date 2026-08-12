@@ -3,6 +3,7 @@ import { getUsersSafe } from './auth.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone, formatSoldAt24h, soldAtTimePart, jalaliDatePart, formatTeamFilterLabel, isPaymentFilled, isGiftSale, isProductPriceLocked, ensureProductPayments } from './utils.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
+import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 
 let followupFilter = 'today' // today | waiting | overdue | done
 
@@ -351,7 +352,11 @@ export function setFollowupFilter(filter) {
 export function clearFollowupSearch() {
   const el = document.getElementById('searchFollowups')
   if (el) el.value = ''
-  renderFollowups()
+  return runWithSearchOverlay(SEARCH_HOST.followups, () => renderFollowups())
+}
+
+export function onFollowupSearchInput() {
+  return runWithSearchOverlay(SEARCH_HOST.followups, () => renderFollowups())
 }
 
 // ============================================

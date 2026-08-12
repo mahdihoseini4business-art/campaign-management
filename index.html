@@ -893,28 +893,30 @@
       <button class="btn btn-primary" data-perm="customers_add" onclick="app.openCustomerModal()">+ مشتری جدید</button>
     </div>
 
-    <div class="table-wrapper customers-table-view">
-      <table>
-        <thead>
-          <tr>
-            <th class="customer-select-col" style="width:40px;"><input type="checkbox" id="selectAllCustomers" aria-label="انتخاب همه مشتریان این صفحه" onchange="app.toggleSelectAll('customers', this.checked)"></th>
-            <th class="sort-th" data-sort-field="platformId" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس ایدی پلتفرم" onclick="app.sortCustomersHeader('platformId')">ایدی پلتفرم</button></th>
-            <th class="sort-th" data-sort-field="platform" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس پلتفرم" onclick="app.sortCustomersHeader('platform')">پلتفرم</button></th>
-            <th class="sort-th" data-sort-field="name" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس نام" onclick="app.sortCustomersHeader('name')">نام</button></th>
-            <th>سطح</th>
-            <th class="sort-th" data-sort-field="phone" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس شماره" onclick="app.sortCustomersHeader('phone')">شماره</button></th>
-            <th class="sort-th" data-sort-field="status" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس وضعیت" onclick="app.sortCustomersHeader('status')">وضعیت</button></th>
-            <th class="sort-th" data-sort-field="advisor" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس کارشناس" onclick="app.sortCustomersHeader('advisor')">کارشناس</button></th>
-            <th class="sort-th" data-sort-field="followupCount" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس تعداد پیگیری" onclick="app.sortCustomersHeader('followupCount')">پیگیری</button></th>
-            <th class="sort-th" data-sort-field="lastFollowup" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس آخرین پیگیری" onclick="app.sortCustomersHeader('lastFollowup')">آخرین پیگیری</button></th>
-            <th class="sort-th" data-sort-field="nextFollowupDate" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس پیگیری بعدی" onclick="app.sortCustomersHeader('nextFollowupDate')">پیگیری بعدی</button></th>
-            <th>آخرین یادداشت</th>
-          </tr>
-        </thead>
-        <tbody id="customerBody"></tbody>
-      </table>
+    <div class="list-search-host" id="customersSearchHost">
+      <div class="table-wrapper customers-table-view">
+        <table>
+          <thead>
+            <tr>
+              <th class="customer-select-col" style="width:40px;"><input type="checkbox" id="selectAllCustomers" aria-label="انتخاب همه مشتریان این صفحه" onchange="app.toggleSelectAll('customers', this.checked)"></th>
+              <th class="sort-th" data-sort-field="platformId" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس ایدی پلتفرم" onclick="app.sortCustomersHeader('platformId')">ایدی پلتفرم</button></th>
+              <th class="sort-th" data-sort-field="platform" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس پلتفرم" onclick="app.sortCustomersHeader('platform')">پلتفرم</button></th>
+              <th class="sort-th" data-sort-field="name" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس نام" onclick="app.sortCustomersHeader('name')">نام</button></th>
+              <th>سطح</th>
+              <th class="sort-th" data-sort-field="phone" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس شماره" onclick="app.sortCustomersHeader('phone')">شماره</button></th>
+              <th class="sort-th" data-sort-field="status" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس وضعیت" onclick="app.sortCustomersHeader('status')">وضعیت</button></th>
+              <th class="sort-th" data-sort-field="advisor" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس کارشناس" onclick="app.sortCustomersHeader('advisor')">کارشناس</button></th>
+              <th class="sort-th" data-sort-field="followupCount" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس تعداد پیگیری" onclick="app.sortCustomersHeader('followupCount')">پیگیری</button></th>
+              <th class="sort-th" data-sort-field="lastFollowup" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس آخرین پیگیری" onclick="app.sortCustomersHeader('lastFollowup')">آخرین پیگیری</button></th>
+              <th class="sort-th" data-sort-field="nextFollowupDate" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس پیگیری بعدی" onclick="app.sortCustomersHeader('nextFollowupDate')">پیگیری بعدی</button></th>
+              <th>آخرین یادداشت</th>
+            </tr>
+          </thead>
+          <tbody id="customerBody"></tbody>
+        </table>
+      </div>
+      <div id="customerCards" class="customer-cards-view" aria-live="polite"></div>
     </div>
-    <div id="customerCards" class="customer-cards-view" aria-live="polite"></div>
     <div class="pagination" id="customerPagination"></div>
   </div>
 
@@ -942,7 +944,7 @@
       <select class="form-select" id="filterFollowupAdvisor" style="width:200px;min-width:160px;display:none;" onchange="app.renderFollowups()">
         <option value="">همه کارشناسان</option>
       </select>
-      <input type="text" class="search-box" placeholder="جستجو (مشتری، کارشناس، محصول، واریزکننده)..." id="searchFollowups" oninput="app.renderFollowups()">
+      <input type="text" class="search-box" placeholder="جستجو (مشتری، کارشناس، محصول، واریزکننده)..." id="searchFollowups" oninput="app.onFollowupSearchInput()">
       <div class="toolbar-actions" id="followupsActionsMenu">
         <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
         <div class="toolbar-actions-dropdown" hidden>
@@ -955,26 +957,28 @@
       <button type="button" class="btn btn-primary" data-perm="followups_add" onclick="app.openFollowupModal()">+ ثبت یادداشت</button>
     </div>
 
-    <div class="table-wrapper followups-table-view">
-      <table>
-        <thead>
-          <tr>
-            <th style="width:40px;" data-perm="followups_delete"><input type="checkbox" id="selectAllFollowups" onchange="app.toggleSelectAll('followups', this.checked)"></th>
-            <th onclick="app.sortFollowupsHeader('customerName')">نام</th>
-            <th onclick="app.sortFollowupsHeader('customerPhone')">شماره مشتری</th>
-            <th onclick="app.sortFollowupsHeader('advisor')">کارشناس</th>
-            <th onclick="app.sortFollowupsHeader('date')">تاریخ</th>
-            <th onclick="app.sortFollowupsHeader('type')">نوع</th>
-            <th onclick="app.sortFollowupsHeader('result')">نتیجه</th>
-            <th onclick="app.sortFollowupsHeader('nextDate')">پیگیری بعدی</th>
-            <th>توضیحات</th>
-            <th style="width: 100px;">عملیات</th>
-          </tr>
-        </thead>
-        <tbody id="followupBody"></tbody>
-      </table>
+    <div class="list-search-host" id="followupsSearchHost">
+      <div class="table-wrapper followups-table-view">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:40px;" data-perm="followups_delete"><input type="checkbox" id="selectAllFollowups" onchange="app.toggleSelectAll('followups', this.checked)"></th>
+              <th onclick="app.sortFollowupsHeader('customerName')">نام</th>
+              <th onclick="app.sortFollowupsHeader('customerPhone')">شماره مشتری</th>
+              <th onclick="app.sortFollowupsHeader('advisor')">کارشناس</th>
+              <th onclick="app.sortFollowupsHeader('date')">تاریخ</th>
+              <th onclick="app.sortFollowupsHeader('type')">نوع</th>
+              <th onclick="app.sortFollowupsHeader('result')">نتیجه</th>
+              <th onclick="app.sortFollowupsHeader('nextDate')">پیگیری بعدی</th>
+              <th>توضیحات</th>
+              <th style="width: 100px;">عملیات</th>
+            </tr>
+          </thead>
+          <tbody id="followupBody"></tbody>
+        </table>
+      </div>
+      <div id="followupCards" class="followup-cards-view" aria-live="polite"></div>
     </div>
-    <div id="followupCards" class="followup-cards-view" aria-live="polite"></div>
     <div class="pagination" id="followupPagination"></div>
   </div>
 
@@ -996,7 +1000,7 @@
         <option value="delete">حذف انتخاب شده‌ها</option>
       </select>
       <span id="bulkCountSales" style="display:none;font-size:13px;color:var(--text-muted);"></span>
-      <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchSales" oninput="app.renderSales()">
+      <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchSales" oninput="app.onSalesSearchInput()">
       <div class="toolbar-filter-grid">
         <input type="text" class="form-input" id="filterSalesDateFrom" placeholder="از تاریخ واریز" data-jdp style="width:140px;" onchange="app.renderSales()">
         <input type="text" class="form-input" id="filterSalesDateTo" placeholder="تا تاریخ واریز" data-jdp style="width:140px;" onchange="app.renderSales()">
@@ -1030,28 +1034,30 @@
       <button type="button" class="btn btn-primary" id="startSaleBtn" onclick="app.openStartSaleModal()">+ ثبت فروش</button>
     </div>
 
-    <div class="table-wrapper">
-      <table>
-        <thead>
-          <tr>
-            <th style="width:40px;" data-perm="customers_add"><input type="checkbox" id="selectAllSales" onchange="app.toggleSelectAll('sales', this.checked)"></th>
-            <th onclick="app.sortSalesHeader('customerName')">نام مشتری</th>
-            <th onclick="app.sortSalesHeader('customerPhone')">شماره موبایل</th>
-            <th onclick="app.sortSalesHeader('advisor')">ثبت‌کننده فروش</th>
-            <th onclick="app.sortSalesHeader('platform')">پلتفرم</th>
-            <th onclick="app.sortSalesHeader('productName')">محصول</th>
-            <th onclick="app.sortSalesHeader('status')">وضعیت</th>
-            <th onclick="app.sortSalesHeader('price')">مبلغ کل (ریال)</th>
-            <th onclick="app.sortSalesHeader('deposit')">پرداخت‌شده (ریال)</th>
-            <th onclick="app.sortSalesHeader('balance')">مانده (ریال)</th>
-            <th onclick="app.sortSalesHeader('settlementDate')">تاریخ تسویه</th>
-            <th>تاریخ واریز</th>
-            <th>نام واریزکننده</th>
-            <th>وضعیت واریزی</th>
-          </tr>
-        </thead>
-        <tbody id="salesBody"></tbody>
-      </table>
+    <div class="list-search-host" id="salesSearchHost">
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:40px;" data-perm="customers_add"><input type="checkbox" id="selectAllSales" onchange="app.toggleSelectAll('sales', this.checked)"></th>
+              <th onclick="app.sortSalesHeader('customerName')">نام مشتری</th>
+              <th onclick="app.sortSalesHeader('customerPhone')">شماره موبایل</th>
+              <th onclick="app.sortSalesHeader('advisor')">ثبت‌کننده فروش</th>
+              <th onclick="app.sortSalesHeader('platform')">پلتفرم</th>
+              <th onclick="app.sortSalesHeader('productName')">محصول</th>
+              <th onclick="app.sortSalesHeader('status')">وضعیت</th>
+              <th onclick="app.sortSalesHeader('price')">مبلغ کل (ریال)</th>
+              <th onclick="app.sortSalesHeader('deposit')">پرداخت‌شده (ریال)</th>
+              <th onclick="app.sortSalesHeader('balance')">مانده (ریال)</th>
+              <th onclick="app.sortSalesHeader('settlementDate')">تاریخ تسویه</th>
+              <th>تاریخ واریز</th>
+              <th>نام واریزکننده</th>
+              <th>وضعیت واریزی</th>
+            </tr>
+          </thead>
+          <tbody id="salesBody"></tbody>
+        </table>
+      </div>
     </div>
     <div class="pagination" id="salesPagination"></div>
   </div>
@@ -1059,7 +1065,7 @@
   <!-- شیت ماتریس محصولات -->
   <div class="sheet" id="sheet-products" role="tabpanel" aria-labelledby="tab-products" hidden>
     <div class="toolbar">
-      <input type="text" class="search-box" placeholder="جستجو (نام، شماره، کارشناس)..." id="searchProductMatrix" oninput="app.renderProductMatrix()">
+      <input type="text" class="search-box" placeholder="جستجو (نام، شماره، کارشناس)..." id="searchProductMatrix" oninput="app.onProductMatrixSearchInput()">
       <button type="button" class="btn" id="clearProductMatrixFiltersBtn" hidden onclick="app.clearProductMatrixFilters()">پاک کردن فیلترها</button>
       <div class="toolbar-actions" id="productsActionsMenu">
         <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی ▾</button>
@@ -1069,11 +1075,13 @@
         </div>
       </div>
     </div>
-    <div class="table-wrapper product-matrix-wrapper">
-      <table class="product-matrix-table">
-        <thead id="productMatrixHead"></thead>
-        <tbody id="productMatrixBody"></tbody>
-      </table>
+    <div class="list-search-host" id="productsSearchHost">
+      <div class="table-wrapper product-matrix-wrapper">
+        <table class="product-matrix-table">
+          <thead id="productMatrixHead"></thead>
+          <tbody id="productMatrixBody"></tbody>
+        </table>
+      </div>
     </div>
     <div class="pagination" id="productMatrixPagination"></div>
   </div>
@@ -1096,27 +1104,29 @@
         <button type="button" class="btn accounting-filter-btn" data-filter="rejected" onclick="app.setAccountingFilter('rejected')">رد شده‌ها</button>
         <button type="button" class="btn accounting-filter-btn" data-filter="gifts" onclick="app.setAccountingFilter('gifts')">هدایا</button>
       </div>
-      <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchAccounting" oninput="app.renderAccounting()">
+      <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchAccounting" oninput="app.onAccountingSearchInput()">
     </div>
 
-    <div class="table-wrapper">
-      <table>
-        <thead>
-          <tr>
-            <th>مشتری</th>
-            <th>شماره</th>
-            <th>کارشناس</th>
-            <th>محصول</th>
-            <th>نوع پرداخت</th>
-            <th>مبلغ (ریال)</th>
-            <th>تاریخ و ساعت</th>
-            <th>بانک مقصد</th>
-            <th>نام واریزکننده</th>
-            <th>وضعیت / عملیات</th>
-          </tr>
-        </thead>
-        <tbody id="accountingBody"></tbody>
-      </table>
+    <div class="list-search-host" id="accountingSearchHost">
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>مشتری</th>
+              <th>شماره</th>
+              <th>کارشناس</th>
+              <th>محصول</th>
+              <th>نوع پرداخت</th>
+              <th>مبلغ (ریال)</th>
+              <th>تاریخ و ساعت</th>
+              <th>بانک مقصد</th>
+              <th>نام واریزکننده</th>
+              <th>وضعیت / عملیات</th>
+            </tr>
+          </thead>
+          <tbody id="accountingBody"></tbody>
+        </table>
+      </div>
     </div>
     <div class="pagination" id="accountingPagination"></div>
   </div>
@@ -1133,26 +1143,28 @@
         <button type="button" class="btn shipments-filter-btn accounting-filter-btn active" data-filter="pending" onclick="app.setShipmentsFilter('pending')">در انتظار ارسال</button>
         <button type="button" class="btn shipments-filter-btn accounting-filter-btn" data-filter="shipped" onclick="app.setShipmentsFilter('shipped')">ارسال‌شده‌ها</button>
       </div>
-      <input type="text" class="search-box" placeholder="جستجو (مشتری، محصول، آدرس، کد رهگیری)..." id="searchShipments" oninput="app.renderShipments()">
+      <input type="text" class="search-box" placeholder="جستجو (مشتری، محصول، آدرس، کد رهگیری)..." id="searchShipments" oninput="app.onShipmentsSearchInput()">
     </div>
 
-    <div class="table-wrapper">
-      <table>
-        <thead id="shipmentsHead">
-          <tr>
-            <th>مشتری</th>
-            <th>شماره</th>
-            <th>کارشناس</th>
-            <th>محصول</th>
-            <th>وضعیت فروش</th>
-            <th>مبلغ تأییدشده / قیمت کل</th>
-            <th>تاریخ آخرین واریز تأییدشده</th>
-            <th>آدرس گیرنده</th>
-            <th>کد پستی گیرنده</th>
-          </tr>
-        </thead>
-        <tbody id="shipmentsBody"></tbody>
-      </table>
+    <div class="list-search-host" id="shipmentsSearchHost">
+      <div class="table-wrapper">
+        <table>
+          <thead id="shipmentsHead">
+            <tr>
+              <th>مشتری</th>
+              <th>شماره</th>
+              <th>کارشناس</th>
+              <th>محصول</th>
+              <th>وضعیت فروش</th>
+              <th>مبلغ تأییدشده / قیمت کل</th>
+              <th>تاریخ آخرین واریز تأییدشده</th>
+              <th>آدرس گیرنده</th>
+              <th>کد پستی گیرنده</th>
+            </tr>
+          </thead>
+          <tbody id="shipmentsBody"></tbody>
+        </table>
+      </div>
     </div>
     <div class="pagination" id="shipmentsPagination"></div>
   </div>
@@ -1172,10 +1184,11 @@
         <button type="button" class="btn refunds-view-btn accounting-filter-btn" data-view="rejected" onclick="app.setRefundsView('rejected')">ردشده‌ها</button>
         <button type="button" class="btn refunds-view-btn accounting-filter-btn" data-view="archived" onclick="app.setRefundsView('archived')">بایگانی</button>
       </div>
-      <input type="text" class="search-box" placeholder="جستجو (مشتری، محصول، کارشناس)..." id="searchRefunds" oninput="app.renderRefunds()">
+      <input type="text" class="search-box" placeholder="جستجو (مشتری، محصول، کارشناس)..." id="searchRefunds" oninput="app.onRefundsSearchInput()">
       <button type="button" class="btn btn-primary" id="refundCreateBtn" data-perm="refunds_request" onclick="app.openRefundWizard()">درخواست عودت</button>
     </div>
 
+    <div class="list-search-host" id="refundsSearchHost">
     <div id="refundsKanban" class="refund-kanban">
       <div class="refund-col-wrap">
         <div class="refund-col-head">درخواست عودت <span id="refundColCount-requested">0</span></div>
@@ -1227,6 +1240,7 @@
           <tbody id="refundsArchivedBody"></tbody>
         </table>
       </div>
+    </div>
     </div>
   </div>
 </div>

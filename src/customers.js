@@ -30,6 +30,7 @@ import {
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { restoreSelection } from './bulk.js'
+import { showSearchOverlay, hideSearchOverlay, runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 
 /** Newest Jalali datetime first; stable tie-break on id. */
 function sortFollowupsNewestFirst(list) {
@@ -168,9 +169,14 @@ function cancelCustomerSearchDebounce() {
 /** Debounced search so typing does not rebuild the whole table on every keystroke. */
 export function onCustomerSearchInput() {
   cancelCustomerSearchDebounce()
-  customerSearchDebounceTimer = setTimeout(() => {
+  const gen = showSearchOverlay(SEARCH_HOST.customers)
+  customerSearchDebounceTimer = setTimeout(async () => {
     customerSearchDebounceTimer = null
-    renderCustomers()
+    try {
+      await renderCustomers()
+    } finally {
+      hideSearchOverlay(SEARCH_HOST.customers, gen)
+    }
   }, CUSTOMER_SEARCH_DEBOUNCE_MS)
 }
 
@@ -178,7 +184,7 @@ export function clearCustomerSearch() {
   cancelCustomerSearchDebounce()
   const el = document.getElementById('searchCustomers')
   if (el) el.value = ''
-  renderCustomers()
+  return runWithSearchOverlay(SEARCH_HOST.customers, () => renderCustomers())
 }
 
 export function clearCustomerFilters() {
@@ -191,7 +197,7 @@ export function clearCustomerFilters() {
     const el = document.getElementById(id)
     if (el) el.value = ''
   }
-  renderCustomers()
+  return runWithSearchOverlay(SEARCH_HOST.customers, () => renderCustomers())
 }
 
 function buildCustomerEmptyHtml({ title, detail, actionsHtml }) {
