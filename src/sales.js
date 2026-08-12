@@ -14,7 +14,7 @@ import {
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
   normalizePhone, userDisplayName, formatTeamFilterLabel,
   getCompletedSaleEconomics, isGiftSale, getProductRefundBadge, isDealCancelled,
-  getCurrentJalaliMonthDateRange
+  getCurrentJalaliMonthDateRange, isEmptySaleProductDraft
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { renderSalesTargetBand } from './dashboard.js'
@@ -50,6 +50,7 @@ export function getAllSales() {
       c.products.forEach((p, productIndex) => {
         ensureProductPayments(p)
         syncProductStatus(p)
+        if (isEmptySaleProductDraft(p)) return
         const price = parseFloat(p.price) || 0
         const deposit = getApprovedPaid(p)
         const balance = getProductBalance(p)

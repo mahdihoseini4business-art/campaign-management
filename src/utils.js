@@ -749,6 +749,7 @@ export function getCustomerActivities(customer, followups = []) {
 
   ;(customer.products || []).forEach(p => {
     ensureProductPayments(p)
+    if (isEmptySaleProductDraft(p)) return
     const pays = Array.isArray(p.payments) ? p.payments : []
     if (pays.length === 0 && p.soldAt) {
       const dateNum = activityDateNum(p.soldAt)
@@ -763,7 +764,7 @@ export function getCustomerActivities(customer, followups = []) {
       return
     }
     pays.forEach(pay => {
-      if (!pay.soldAt) return
+      if (!pay.soldAt || isPaymentPristineDraft(pay)) return
       const dateNum = activityDateNum(pay.soldAt)
       if (dateNum === 99999999) return
       acts.push({
@@ -1437,6 +1438,21 @@ export function isPaymentPristineDraft(payment) {
   if (String(payment.destinationBank || '').trim()) return false
   if (String(payment.depositorName || '').trim()) return false
   return true
+}
+
+/**
+ * Abandoned sale shell: no product/price/gift, only empty draft payments (date/time prefilled).
+ * These should not appear in sales lists or activity timelines.
+ */
+export function isEmptySaleProductDraft(product) {
+  if (!product || isGiftSale(product)) return false
+  if (String(product.name || '').trim()) return false
+  if ((parseFloat(product.price) || 0) > 0) return false
+  if (isProductPriceLocked(product)) return false
+  ensureProductPayments(product)
+  const pays = getProductPayments(product)
+  if (!pays.length) return true
+  return pays.every(isPaymentPristineDraft)
 }
 
 export function areProductPaymentsFilled(product) {

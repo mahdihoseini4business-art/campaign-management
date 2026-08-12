@@ -23,6 +23,7 @@ import {
   isDealCancelled, isProductSaleLocked, getProductClosureBadge, PAYMENT_STATUS,
   computeCustomerLrfm, isProductCountableInSales, soldAtTimePart, formatSoldAt24h, normalizeTimeTo24h,
   CUSTOMER_LEVELS, formatCustomerLevel, parseCustomerLevel, resolveCustomerLevel, syncCustomerLevel,
+  isEmptySaleProductDraft,
   applyProfitSnapshotToProduct, isGiftSale, getGiftAccountingStatus,
   getPaymentRefundBadge, getProductRefundBadge, getProductRefundRecords, getProductPendingRefundLabel,
   REFUND_STATUS, requireMainAdmin
@@ -1556,6 +1557,24 @@ function maybeResolvePendingCreateCompletion(customerId, { toast = false } = {})
   return true
 }
 
+/** Remove abandoned empty product/payment shells left over from auto-drafts. */
+async function pruneEmptySaleDrafts(customerId) {
+  const data = getData()
+  const customer = data.customers.find(c => c.id === customerId)
+  if (!customer?.products?.length) return false
+  const next = customer.products.filter(p => !isEmptySaleProductDraft(p))
+  if (next.length === customer.products.length) return false
+  customer.products = next
+  syncCustomerLevel(customer, data.customers, data.followups)
+  try {
+    await saveCustomerToDB(customer)
+    return true
+  } catch (e) {
+    console.error('pruneEmptySaleDrafts error:', e)
+    return false
+  }
+}
+
 function normalizeDetailTab(tab) {
   return DETAIL_TABS.includes(tab) ? tab : 'info'
 }
@@ -1891,7 +1910,9 @@ async function createCustomerFromDetail(fields) {
   if (needsCompletion) markPendingCreateCompletion(id)
 
   if (needsCompletion) {
-    await openCustomerDetail(id, { tab: 'sales', startNewSale: canAddSaleOnCustomer(newCustomer) })
+    // Open sales tab for guidance, but do NOT auto-create an empty product/payment row
+    // (that was polluting the sales list with blank drafts).
+    await openCustomerDetail(id, { tab: 'sales' })
     showToast('مشتری ذخیره شد — تاریخ پیگیری ست کنید یا یک فروش ثبت کنید')
   } else {
     await openCustomerDetail(id, { tab: nextFollowupDate ? 'followups' : 'sales' })
@@ -2440,7 +2461,10 @@ export async function openCustomerDetail(id, options = {}) {
     if (activeTab === 'info') document.getElementById('detailPlatformId')?.focus()
   }
 
-  if (!isNew) renderProducts(c.id, detailUsers)
+  if (!isNew) {
+    await pruneEmptySaleDrafts(c.id)
+    renderProducts(c.id, detailUsers)
+  }
 
   if (options.startNewSale && canAddSale) {
     await addProductRow(c.id)
