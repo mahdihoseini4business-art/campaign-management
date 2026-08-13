@@ -238,6 +238,39 @@ export function normalizeCustomerId(id) {
   return String(id || '').trim()
 }
 
+/** List load omits heavy `notes` (fetched on detail open). */
+export const CUSTOMER_LIST_SELECT = [
+  'id', 'platform_id', 'platform', 'name', 'phone', 'phones', 'addresses',
+  'status', 'advisor', 'advisor_phone', 'next_followup_date', 'products',
+  'created_at', 'updated_at', 'customer_level', 'customer_level_locked', 'referred_by_phone'
+].join(',')
+
+/** Full customer row including notes for detail panel / realtime. */
+export const CUSTOMER_DETAIL_SELECT = CUSTOMER_LIST_SELECT + ',notes'
+
+export const FOLLOWUP_SELECT = [
+  'id', 'customer_id', 'date', 'type', 'result', 'next_date', 'notes',
+  'created_by_phone', 'status', 'done_at', 'done_by_phone', 'done_note',
+  'was_overdue', 'updated_at'
+].join(',')
+
+export const REFUND_SELECT = [
+  'id', 'customer_id', 'product_index', 'product_name', 'payment_id', 'amount',
+  'is_full_payment', 'status', 'note', 'refund_reason', 'account_info',
+  'account_holder_name', 'sheba', 'card_number', 'reject_reason', 'advisor_phone',
+  'customer_name', 'created_by_phone', 'created_by_name', 'updated_by_phone',
+  'completed_by_phone', 'requested_at', 'awaiting_at', 'completed_at', 'archived_at',
+  'created_at', 'updated_at'
+].join(',')
+
+export const OWNERSHIP_TRANSFER_SELECT = [
+  'id', 'customer_id', 'customer_phone', 'from_advisor_phone', 'from_advisor_name',
+  'to_advisor_phone', 'to_advisor_name', 'acted_by_phone', 'batch_id', 'reason',
+  'customer_status_at_transfer', 'created_at', 'updated_at'
+].join(',')
+
+export const OWNERSHIP_ACK_SELECT = 'id,user_phone,batch_id,seen_at,updated_at'
+
 /** Map a customers DB row → in-memory customer object */
 export function mapCustomerFromDb(c) {
   const id = normalizeCustomerId(c?.id)
@@ -249,6 +282,7 @@ export function mapCustomerFromDb(c) {
   const addresses = normalizeCustomerAddressesLocal({
     addresses: c.addresses
   })
+  const hasNotes = Object.prototype.hasOwnProperty.call(c, 'notes')
   return {
     id,
     platformId: c.platform_id || '',
@@ -258,7 +292,7 @@ export function mapCustomerFromDb(c) {
     phone: phones[0] || '',
     addresses,
     status: c.status || 'new',
-    notes: c.notes || '',
+    notes: hasNotes ? (c.notes || '') : '',
     advisor: c.advisor || '',
     advisorPhone: c.advisor_phone || '',
     nextFollowupDate: c.next_followup_date || '',
@@ -270,9 +304,11 @@ export function mapCustomerFromDb(c) {
       })
       : [],
     createdAt: c.created_at || null,
+    updatedAt: c.updated_at || null,
     customerLevel: c.customer_level || '',
     customerLevelLocked: !!c.customer_level_locked,
-    referredByPhone: c.referred_by_phone || ''
+    referredByPhone: c.referred_by_phone || '',
+    _detailsLoaded: hasNotes
   }
 }
 
@@ -302,6 +338,8 @@ export function putCustomerInCache(customer) {
   const id = normalizeCustomerId(customer.id)
   if (!id) return false
   customer.id = id
+  // Local app writes always carry the notes field; treat as fully loaded.
+  if (customer._detailsLoaded == null) customer._detailsLoaded = true
   const next = []
   let replaced = false
   for (const c of data.customers) {
@@ -323,6 +361,14 @@ export function putCustomerInCache(customer) {
 export function upsertCustomerInCache(dbRow) {
   const mapped = mapCustomerFromDb(dbRow)
   if (!mapped) return false
+  const hasNotes = dbRow && Object.prototype.hasOwnProperty.call(dbRow, 'notes')
+  if (!hasNotes) {
+    const existing = data.customers.find(c => normalizeCustomerId(c.id) === mapped.id)
+    if (existing) {
+      mapped.notes = existing.notes || ''
+      mapped._detailsLoaded = !!existing._detailsLoaded
+    }
+  }
   return putCustomerInCache(mapped)
 }
 
@@ -354,11 +400,72 @@ export function removeFollowupFromCache(id) {
 }
 
 // ============================================
-// Load all data from Supabase
+// Load / sync data from Supabase (egress-aware)
 // ============================================
 
 /** PostgREST/Supabase silently caps each response at 1000 rows by default. */
 const SUPABASE_PAGE_SIZE = 1000
+
+/** Watermarks for incremental sync (ISO strings). */
+let syncMeta = {
+  customersAt: null,
+  followupsAt: null,
+  refundsAt: null,
+  transfersAt: null,
+  acksAt: null,
+  supportsUpdatedAt: null // null unknown | true | false
+}
+
+function maxIsoTimestamp(...values) {
+  let max = null
+  for (const v of values) {
+    if (!v) continue
+    const s = typeof v === 'string' ? v : (v instanceof Date ? v.toISOString() : String(v))
+    if (!s) continue
+    if (!max || s > max) max = s
+  }
+  return max
+}
+
+function maxUpdatedAtFromRows(rows, ...keys) {
+  let max = null
+  for (const row of rows || []) {
+    for (const key of keys) {
+      max = maxIsoTimestamp(max, row?.[key])
+    }
+  }
+  return max
+}
+
+function isMissingUpdatedAtError(error) {
+  const msg = error?.message || ''
+  return /updated_at/i.test(msg) && (/column|does not exist|schema cache/i.test(msg))
+}
+
+function bumpWatermark(key, iso) {
+  if (!iso) return
+  syncMeta[key] = maxIsoTimestamp(syncMeta[key], iso)
+}
+
+function captureWatermarksFromFullLoad(raw) {
+  const cAt = maxUpdatedAtFromRows(raw.customers, 'updated_at', 'created_at')
+  const fAt = maxUpdatedAtFromRows(raw.followups, 'updated_at')
+  const rAt = maxUpdatedAtFromRows(raw.refunds, 'updated_at', 'created_at')
+  const tAt = maxUpdatedAtFromRows(raw.transfers, 'updated_at', 'created_at')
+  const aAt = maxUpdatedAtFromRows(raw.acks, 'updated_at', 'seen_at')
+  if (cAt) syncMeta.customersAt = cAt
+  if (fAt) syncMeta.followupsAt = fAt
+  if (rAt) syncMeta.refundsAt = rAt
+  if (tAt) syncMeta.transfersAt = tAt
+  if (aAt) syncMeta.acksAt = aAt
+  // If migration applied, customers/followups should have updated_at on rows
+  if (raw.customers?.length && raw.customers.some(r => r.updated_at)) {
+    syncMeta.supportsUpdatedAt = true
+  } else if (raw.customers?.length) {
+    // No updated_at in payload — either omitted from select or missing column
+    syncMeta.supportsUpdatedAt = syncMeta.supportsUpdatedAt === true ? true : null
+  }
+}
 
 /**
  * Fetch every row from a table by paging past the 1000-row default limit.
@@ -393,68 +500,22 @@ async function fetchAllRows(table, opts = {}) {
   }
 }
 
-export async function loadData() {
-  dataLoadState = { status: 'loading', error: null }
-  try {
-    await loadDataInner()
-    dataLoadState = { status: 'ready', error: null }
-  } catch (e) {
-    dataLoadState = { status: 'error', error: e?.message || String(e) }
-    throw e
+async function fetchRowsSince(table, opts = {}) {
+  const { select, orderCol = 'updated_at', since, sinceCol = 'updated_at', ascending = true } = opts
+  if (!since) {
+    return fetchAllRows(table, { select, orderCol, ascending })
   }
+  return fetchAllRows(table, {
+    select,
+    orderCol,
+    ascending,
+    apply: q => q.gte(sinceCol, since)
+  })
 }
 
-async function loadDataInner() {
-  const [customersRes, followupsRes, settingsRes, transfersRes, acksRes, refundsRes] = await Promise.all([
-    fetchAllRows('customers', { orderCol: 'id' }),
-    fetchAllRows('followups', { orderCol: 'id' }),
-    supabase.from('app_settings').select('*'),
-    fetchAllRows('ownership_transfers', { orderCol: 'id', ascending: true }),
-    fetchAllRows('ownership_transfer_acks', { orderCol: 'id' }),
-    fetchAllRows('refunds', { orderCol: 'id', ascending: false })
-  ])
-
-  const errors = []
-  if (customersRes.error) errors.push('مشتریان: ' + customersRes.error.message)
-  if (followupsRes.error) errors.push('پیگیری‌ها: ' + followupsRes.error.message)
-  if (settingsRes.error) errors.push('تنظیمات: ' + settingsRes.error.message)
-  // ownership_transfers may be missing before migration 008 — treat as empty
-  if (transfersRes.error && !/ownership_transfers|does not exist|relation/i.test(transfersRes.error.message || '')) {
-    errors.push('انتقال‌ها: ' + transfersRes.error.message)
-  }
-  // ownership_transfer_acks may be missing before migration 009 — treat as empty
-  if (acksRes.error && !/ownership_transfer_acks|does not exist|relation/i.test(acksRes.error.message || '')) {
-    errors.push('تأیید انتقال‌ها: ' + acksRes.error.message)
-  }
-  // refunds may be missing before migration 016 — treat as empty
-  if (refundsRes.error && !/refunds|does not exist|relation/i.test(refundsRes.error.message || '')) {
-    errors.push('عودت‌ها: ' + refundsRes.error.message)
-  }
-
-  if (errors.length > 0) {
-    throw new Error('خطا در بارگذاری داده‌ها:\n' + errors.join('\n'))
-  }
-
-  // Map DB rows to app format (collapse same-id copies from pagination/realtime races)
-  data.customers = dedupeCustomersById((customersRes.data || []).map(mapCustomerFromDb).filter(Boolean))
-
-  data.followups = (followupsRes.data || []).map(mapFollowupFromDb).filter(Boolean)
-
-  data.ownershipTransfers = (transfersRes.error || !transfersRes.data)
-    ? []
-    : transfersRes.data.map(mapOwnershipTransferRow)
-
-  data.ownershipTransferAcks = (acksRes.error || !acksRes.data)
-    ? []
-    : acksRes.data.map(mapOwnershipTransferAckRow)
-
-  data.refunds = (refundsRes.error || !refundsRes.data)
-    ? []
-    : refundsRes.data.map(mapRefundRow)
-
-  // Load settings (convertedCount, destination banks, …)
+function applySettingsRows(rows) {
   const settings = {}
-  ;(settingsRes.data || []).forEach(s => { settings[s.key] = s.value })
+  ;(rows || []).forEach(s => { settings[s.key] = s.value })
   data.convertedCount = settings.convertedCount || 0
   data.destinationBanks = normalizeDestinationBanks(settings.destination_banks)
   data.productCatalog = normalizeProductCatalog(settings.product_catalog)
@@ -464,7 +525,6 @@ async function loadDataInner() {
     ? [...settings.statuses].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [...DEFAULT_STATUSES]
   data.saleToastEnabled = settings.sale_toast_enabled !== false && settings.sale_toast_enabled !== 'false'
-  // Unset → enabled (true). Only an explicit false/off disables the rule.
   data.requireFollowupOnCreate = coerceAppSettingBool(settings.require_followup_on_create, true)
   try {
     data.smsPanel = normalizeSmsPanel(settings.sms_panel)
@@ -484,10 +544,327 @@ async function loadDataInner() {
     console.error('normalizeDeadlineUrgency error:', e)
     data.salesTargetDeadlineUrgency = normalizeDeadlineUrgency(null)
   }
-
   injectDynamicStyles()
+}
+
+export async function loadData() {
+  dataLoadState = { status: 'loading', error: null }
+  try {
+    await loadDataInner()
+    dataLoadState = { status: 'ready', error: null }
+  } catch (e) {
+    dataLoadState = { status: 'error', error: e?.message || String(e) }
+    throw e
+  }
+}
+
+async function loadDataInner() {
+  const listSelectCustomers = CUSTOMER_LIST_SELECT
+  const listSelectFollowups = FOLLOWUP_SELECT
+
+  let [customersRes, followupsRes, settingsRes, transfersRes, acksRes, refundsRes] = await Promise.all([
+    fetchAllRows('customers', { select: listSelectCustomers, orderCol: 'id' }),
+    fetchAllRows('followups', { select: listSelectFollowups, orderCol: 'id' }),
+    supabase.from('app_settings').select('key,value'),
+    fetchAllRows('ownership_transfers', { select: OWNERSHIP_TRANSFER_SELECT, orderCol: 'id', ascending: true }),
+    fetchAllRows('ownership_transfer_acks', { select: OWNERSHIP_ACK_SELECT, orderCol: 'id' }),
+    fetchAllRows('refunds', { select: REFUND_SELECT, orderCol: 'id', ascending: false })
+  ])
+
+  // Fallback if updated_at not migrated yet
+  if (customersRes.error && isMissingUpdatedAtError(customersRes.error)) {
+    syncMeta.supportsUpdatedAt = false
+    customersRes = await fetchAllRows('customers', {
+      select: CUSTOMER_LIST_SELECT.replace(/,?updated_at/, ''),
+      orderCol: 'id'
+    })
+  }
+  if (followupsRes.error && isMissingUpdatedAtError(followupsRes.error)) {
+    syncMeta.supportsUpdatedAt = false
+    followupsRes = await fetchAllRows('followups', {
+      select: FOLLOWUP_SELECT.replace(/,?updated_at/, ''),
+      orderCol: 'id'
+    })
+  }
+
+  let transfersData = transfersRes
+  if (transfersRes.error && isMissingUpdatedAtError(transfersRes.error)) {
+    transfersData = await fetchAllRows('ownership_transfers', {
+      select: OWNERSHIP_TRANSFER_SELECT.replace(/,?updated_at/, ''),
+      orderCol: 'id',
+      ascending: true
+    })
+  } else if (transfersRes.error && /column|schema cache/i.test(transfersRes.error.message || '')) {
+    transfersData = await fetchAllRows('ownership_transfers', { orderCol: 'id', ascending: true })
+  }
+
+  let acksData = acksRes
+  if (acksRes.error && isMissingUpdatedAtError(acksRes.error)) {
+    acksData = await fetchAllRows('ownership_transfer_acks', {
+      select: 'id,user_phone,batch_id,seen_at',
+      orderCol: 'id'
+    })
+  }
+
+  let refundsData = refundsRes
+  if (refundsRes.error && /column|does not exist|schema cache/i.test(refundsRes.error.message || '')) {
+    refundsData = await fetchAllRows('refunds', { orderCol: 'id', ascending: false })
+  }
+
+  const errors = []
+  if (customersRes.error) errors.push('مشتریان: ' + customersRes.error.message)
+  if (followupsRes.error) errors.push('پیگیری‌ها: ' + followupsRes.error.message)
+  if (settingsRes.error) errors.push('تنظیمات: ' + settingsRes.error.message)
+  if (transfersData.error && !/ownership_transfers|does not exist|relation/i.test(transfersData.error.message || '')) {
+    errors.push('انتقال‌ها: ' + transfersData.error.message)
+  }
+  if (acksData.error && !/ownership_transfer_acks|does not exist|relation/i.test(acksData.error.message || '')) {
+    errors.push('تأیید انتقال‌ها: ' + acksData.error.message)
+  }
+  if (refundsData.error && !/refunds|does not exist|relation/i.test(refundsData.error.message || '')) {
+    errors.push('عودت‌ها: ' + refundsData.error.message)
+  }
+
+  if (errors.length > 0) {
+    throw new Error('خطا در بارگذاری داده‌ها:\n' + errors.join('\n'))
+  }
+
+  data.customers = dedupeCustomersById((customersRes.data || []).map(mapCustomerFromDb).filter(Boolean))
+  data.followups = (followupsRes.data || []).map(mapFollowupFromDb).filter(Boolean)
+
+  data.ownershipTransfers = (transfersData.error || !transfersData.data)
+    ? []
+    : transfersData.data.map(mapOwnershipTransferRow)
+
+  data.ownershipTransferAcks = (acksData.error || !acksData.data)
+    ? []
+    : acksData.data.map(mapOwnershipTransferAckRow)
+
+  data.refunds = (refundsData.error || !refundsData.data)
+    ? []
+    : refundsData.data.map(mapRefundRow)
+
+  applySettingsRows(settingsRes.data)
+
+  captureWatermarksFromFullLoad({
+    customers: customersRes.data,
+    followups: followupsRes.data,
+    refunds: refundsData.data,
+    transfers: transfersData.data,
+    acks: acksData.data
+  })
 
   return data
+}
+
+/**
+ * Fetch customer notes (and refresh row) when opening detail panel.
+ * List loads omit notes to cut egress.
+ */
+export async function ensureCustomerDetailsLoaded(id) {
+  const nid = normalizeCustomerId(id)
+  if (!nid) return null
+  const existing = data.customers.find(c => normalizeCustomerId(c.id) === nid)
+  if (!existing) return null
+  if (existing._detailsLoaded) return existing
+
+  let select = CUSTOMER_DETAIL_SELECT
+  let { data: row, error } = await supabase
+    .from('customers')
+    .select(select)
+    .eq('id', nid)
+    .maybeSingle()
+
+  if (error && isMissingUpdatedAtError(error)) {
+    select = CUSTOMER_DETAIL_SELECT.replace(/,?updated_at/, '')
+    ;({ data: row, error } = await supabase.from('customers').select(select).eq('id', nid).maybeSingle())
+  }
+  if (error) throw new Error('خطا در بارگذاری جزئیات مشتری: ' + error.message)
+  if (!row) return existing
+  upsertCustomerInCache(row)
+  return data.customers.find(c => normalizeCustomerId(c.id) === nid) || existing
+}
+
+/**
+ * Apply incremental changes since last watermarks. Falls back by throwing
+ * missing-column errors for the caller to do a full load.
+ */
+export async function syncDataIncremental() {
+  if (syncMeta.supportsUpdatedAt === false) {
+    await loadData()
+    return { mode: 'full', reason: 'no-updated-at' }
+  }
+
+  const sinceCustomers = syncMeta.customersAt
+  const sinceFollowups = syncMeta.followupsAt
+  const sinceRefunds = syncMeta.refundsAt
+  const sinceTransfers = syncMeta.transfersAt
+  const sinceAcks = syncMeta.acksAt
+
+  // Without watermarks we cannot safely incremental-sync
+  if (!sinceCustomers && !sinceFollowups) {
+    await loadData()
+    return { mode: 'full', reason: 'no-watermark' }
+  }
+
+  const [customersRes, followupsRes, settingsRes, transfersRes, acksRes, refundsRes] = await Promise.all([
+    sinceCustomers
+      ? fetchRowsSince('customers', { select: CUSTOMER_LIST_SELECT, since: sinceCustomers, orderCol: 'updated_at' })
+      : Promise.resolve({ data: [], error: null }),
+    sinceFollowups
+      ? fetchRowsSince('followups', { select: FOLLOWUP_SELECT, since: sinceFollowups, orderCol: 'updated_at' })
+      : Promise.resolve({ data: [], error: null }),
+    supabase.from('app_settings').select('key,value'),
+    sinceTransfers
+      ? fetchRowsSince('ownership_transfers', {
+        select: OWNERSHIP_TRANSFER_SELECT,
+        since: sinceTransfers,
+        sinceCol: 'updated_at',
+        orderCol: 'updated_at'
+      })
+      : fetchAllRows('ownership_transfers', { select: OWNERSHIP_TRANSFER_SELECT, orderCol: 'id', ascending: true }),
+    sinceAcks
+      ? fetchRowsSince('ownership_transfer_acks', {
+        select: OWNERSHIP_ACK_SELECT,
+        since: sinceAcks,
+        sinceCol: 'updated_at',
+        orderCol: 'updated_at'
+      })
+      : fetchAllRows('ownership_transfer_acks', { select: OWNERSHIP_ACK_SELECT, orderCol: 'id' }),
+    sinceRefunds
+      ? fetchRowsSince('refunds', { select: REFUND_SELECT, since: sinceRefunds, orderCol: 'updated_at' })
+      : Promise.resolve({ data: [], error: null })
+  ])
+
+  const maybeMissing = [customersRes, followupsRes, transfersRes, acksRes, refundsRes]
+    .map(r => r.error)
+    .filter(Boolean)
+  if (maybeMissing.some(isMissingUpdatedAtError)) {
+    syncMeta.supportsUpdatedAt = false
+    await loadData()
+    return { mode: 'full', reason: 'updated-at-missing' }
+  }
+
+  if (customersRes.error) throw new Error('مشتریان: ' + customersRes.error.message)
+  if (followupsRes.error) throw new Error('پیگیری‌ها: ' + followupsRes.error.message)
+  if (settingsRes.error) throw new Error('تنظیمات: ' + settingsRes.error.message)
+  if (transfersRes.error && !/ownership_transfers|does not exist|relation/i.test(transfersRes.error.message || '')) {
+    throw new Error('انتقال‌ها: ' + transfersRes.error.message)
+  }
+  if (acksRes.error && !/ownership_transfer_acks|does not exist|relation/i.test(acksRes.error.message || '')) {
+    throw new Error('تأیید انتقال‌ها: ' + acksRes.error.message)
+  }
+  if (refundsRes.error && !/refunds|does not exist|relation/i.test(refundsRes.error.message || '')) {
+    throw new Error('عودت‌ها: ' + refundsRes.error.message)
+  }
+
+  for (const row of customersRes.data || []) upsertCustomerInCache(row)
+  for (const row of followupsRes.data || []) upsertFollowupInCache(row)
+  for (const row of refundsRes.data || []) upsertRefundInCache(row)
+
+  if (!transfersRes.error && transfersRes.data) {
+    if (!sinceTransfers) {
+      data.ownershipTransfers = transfersRes.data.map(mapOwnershipTransferRow)
+    } else {
+      for (const row of transfersRes.data) {
+        const mapped = mapOwnershipTransferRow(row)
+        const idx = data.ownershipTransfers.findIndex(t => Number(t.id) === Number(mapped.id))
+        if (idx >= 0) data.ownershipTransfers[idx] = mapped
+        else data.ownershipTransfers.push(mapped)
+      }
+    }
+  }
+
+  if (!acksRes.error && acksRes.data) {
+    if (!sinceAcks) {
+      data.ownershipTransferAcks = acksRes.data.map(mapOwnershipTransferAckRow)
+    } else {
+      for (const row of acksRes.data) {
+        const mapped = mapOwnershipTransferAckRow(row)
+        const idx = data.ownershipTransferAcks.findIndex(a => Number(a.id) === Number(mapped.id))
+        if (idx >= 0) data.ownershipTransferAcks[idx] = mapped
+        else data.ownershipTransferAcks.push(mapped)
+      }
+    }
+  }
+
+  applySettingsRows(settingsRes.data)
+
+  bumpWatermark('customersAt', maxUpdatedAtFromRows(customersRes.data, 'updated_at', 'created_at'))
+  bumpWatermark('followupsAt', maxUpdatedAtFromRows(followupsRes.data, 'updated_at'))
+  bumpWatermark('refundsAt', maxUpdatedAtFromRows(refundsRes.data, 'updated_at', 'created_at'))
+  bumpWatermark('transfersAt', maxUpdatedAtFromRows(transfersRes.data, 'updated_at', 'created_at'))
+  bumpWatermark('acksAt', maxUpdatedAtFromRows(acksRes.data, 'updated_at', 'seen_at'))
+  syncMeta.supportsUpdatedAt = true
+
+  return {
+    mode: 'incremental',
+    counts: {
+      customers: (customersRes.data || []).length,
+      followups: (followupsRes.data || []).length,
+      refunds: (refundsRes.data || []).length,
+      transfers: (transfersRes.data || []).length,
+      acks: (acksRes.data || []).length
+    }
+  }
+}
+
+/**
+ * Lightweight delete reconciliation — only fetches id columns.
+ */
+export async function reconcileDeletedRows() {
+  const [customersRes, followupsRes, refundsRes] = await Promise.all([
+    fetchAllRows('customers', { select: 'id', orderCol: 'id' }),
+    fetchAllRows('followups', { select: 'id', orderCol: 'id' }),
+    fetchAllRows('refunds', { select: 'id', orderCol: 'id' })
+  ])
+
+  if (!customersRes.error && customersRes.data) {
+    const ids = new Set(customersRes.data.map(r => normalizeCustomerId(r.id)))
+    data.customers = data.customers.filter(c => ids.has(normalizeCustomerId(c.id)))
+  }
+  if (!followupsRes.error && followupsRes.data) {
+    const ids = new Set(followupsRes.data.map(r => Number(r.id)))
+    data.followups = data.followups.filter(f => ids.has(Number(f.id)))
+  }
+  if (!refundsRes.error && refundsRes.data) {
+    const ids = new Set(refundsRes.data.map(r => String(r.id)))
+    data.refunds = (data.refunds || []).filter(r => ids.has(String(r.id)))
+  } else if (refundsRes.error && /refunds|does not exist|relation/i.test(refundsRes.error.message || '')) {
+    // ignore missing table
+  }
+}
+
+/**
+ * Preferred sync entry for live-sync / visibility.
+ * @param {{ mode?: 'auto'|'full'|'incremental', reconcile?: boolean }} [opts]
+ */
+export async function syncCoreData(opts = {}) {
+  const mode = opts.mode || 'auto'
+  const reconcile = !!opts.reconcile
+
+  if (mode === 'full') {
+    await loadData()
+    if (reconcile) await reconcileDeletedRows()
+    return { mode: 'full' }
+  }
+
+  if (mode === 'incremental' || (mode === 'auto' && syncMeta.customersAt && syncMeta.supportsUpdatedAt !== false)) {
+    try {
+      const result = await syncDataIncremental()
+      if (reconcile) await reconcileDeletedRows()
+      return result
+    } catch (e) {
+      console.warn('incremental sync failed, falling back to full load:', e)
+      await loadData()
+      if (reconcile) await reconcileDeletedRows()
+      return { mode: 'full', reason: 'incremental-error' }
+    }
+  }
+
+  await loadData()
+  if (reconcile) await reconcileDeletedRows()
+  return { mode: 'full' }
 }
 
 function normalizeDestinationBanks(raw) {
@@ -2053,7 +2430,10 @@ export async function updateRefundInDB(id, patch) {
 }
 
 export async function refreshRefundsFromDB() {
-  const res = await fetchAllRows('refunds', { orderCol: 'id', ascending: false })
+  let res = await fetchAllRows('refunds', { select: REFUND_SELECT, orderCol: 'id', ascending: false })
+  if (res.error && /column|does not exist|schema cache/i.test(res.error.message || '')) {
+    res = await fetchAllRows('refunds', { orderCol: 'id', ascending: false })
+  }
   if (res.error) {
     if (/refunds|does not exist|relation/i.test(res.error.message || '')) {
       data.refunds = []

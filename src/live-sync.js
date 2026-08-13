@@ -1,12 +1,13 @@
 // ============================================
-// Hybrid live sync: Realtime patch + polling backup
-// Customers/followups/refunds: single-row patch on postgres_changes
-// Polling/visibility: full loadData()
+// Hybrid live sync: Realtime first, rare incremental backup
+// - postgres_changes: single-row cache patches
+// - visibility / slow poll: incremental sync (not full table dump)
+// - full load only on init (main.js) or hard fallback
 // ============================================
 
 import { supabase } from './supabase.js'
 import {
-  loadData,
+  syncCoreData,
   upsertCustomerInCache,
   removeCustomerFromCache,
   upsertFollowupInCache,
@@ -27,7 +28,10 @@ import { renderDashboard } from './dashboard.js'
 import { updateTransferInboxBadge } from './transfers.js'
 
 const CHANNEL_NAME = 'live-data-sync'
-const POLL_MS = 90_000
+/** Backup poll while Realtime is healthy — rare on purpose (egress). */
+const POLL_MS_HEALTHY = 20 * 60_000
+/** Faster poll only while Realtime is down. */
+const POLL_MS_DEGRADED = 90_000
 const VISIBILITY_MIN_GAP_MS = 30_000
 const UI_DEBOUNCE_MS = 350
 const LOCAL_WRITE_SUPPRESS_MS = 2000
@@ -42,6 +46,8 @@ let lastSyncAt = 0
 let localWriteUntil = 0
 let started = false
 let visibilityHandler = null
+let realtimeOk = false
+let pollGeneration = 0
 
 /** Call after a successful local DB write to ignore echo events briefly. */
 export function noteLocalWrite(ms = LOCAL_WRITE_SUPPRESS_MS) {
@@ -116,11 +122,13 @@ function scheduleUiRefresh() {
   }, UI_DEBOUNCE_MS)
 }
 
-async function refreshCoreData(reason = 'sync') {
+async function refreshCoreData(reason = 'sync', opts = {}) {
   if (refreshingCore) return
   refreshingCore = true
   try {
-    await loadData()
+    const reconcile = !!opts.reconcile
+    const mode = opts.mode || 'auto'
+    await syncCoreData({ mode, reconcile })
     lastSyncAt = Date.now()
     scheduleUiRefresh()
   } catch (e) {
@@ -151,15 +159,15 @@ function scheduleNotifRefresh(reason) {
   }, UI_DEBOUNCE_MS)
 }
 
-async function refreshAll(reason) {
+async function refreshAll(reason, opts = {}) {
   await Promise.all([
-    refreshCoreData(reason),
+    refreshCoreData(reason, opts),
     refreshNotifData(reason)
   ])
 }
 
 function fallbackFullCore(reason) {
-  refreshCoreData(reason || 'realtime-fallback')
+  refreshCoreData(reason || 'realtime-fallback', { mode: 'incremental' })
 }
 
 function onCustomerChange(payload) {
@@ -248,6 +256,12 @@ function onRefundChange(payload) {
   }
 }
 
+function setRealtimeOk(ok) {
+  const prev = realtimeOk
+  realtimeOk = !!ok
+  if (prev !== realtimeOk) startPolling()
+}
+
 async function ensureRealtimeChannel() {
   if (channel) return channel
 
@@ -261,10 +275,12 @@ async function ensureRealtimeChannel() {
 
   await new Promise(resolve => {
     channel.subscribe(status => {
-      if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        if (status !== 'SUBSCRIBED') {
-          console.warn('live-sync realtime status:', status)
-        }
+      if (status === 'SUBSCRIBED') {
+        setRealtimeOk(true)
+        resolve(status)
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        console.warn('live-sync realtime status:', status)
+        setRealtimeOk(false)
         resolve(status)
       }
     })
@@ -273,18 +289,29 @@ async function ensureRealtimeChannel() {
   return channel
 }
 
+function currentPollMs() {
+  return realtimeOk ? POLL_MS_HEALTHY : POLL_MS_DEGRADED
+}
+
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer)
+  const gen = ++pollGeneration
+  const ms = currentPollMs()
   pollTimer = setInterval(() => {
+    if (gen !== pollGeneration) return
     if (document.visibilityState === 'hidden') return
-    refreshAll('poll')
-  }, POLL_MS)
+    // Healthy realtime: incremental + id reconcile. Degraded: incremental only (faster).
+    refreshAll('poll', {
+      mode: 'auto',
+      reconcile: realtimeOk
+    })
+  }, ms)
 }
 
 function onVisibilityChange() {
   if (document.visibilityState !== 'visible') return
   if (Date.now() - lastSyncAt < VISIBILITY_MIN_GAP_MS) return
-  refreshAll('visibility')
+  refreshAll('visibility', { mode: 'auto', reconcile: false })
 }
 
 export async function initLiveSync() {
@@ -296,6 +323,7 @@ export async function initLiveSync() {
     await ensureRealtimeChannel()
   } catch (e) {
     console.error('initLiveSync realtime error:', e)
+    setRealtimeOk(false)
   }
 
   startPolling()
@@ -325,9 +353,10 @@ export function disposeLiveSync() {
     try { supabase.removeChannel(channel) } catch (_) { /* ignore */ }
     channel = null
   }
+  realtimeOk = false
 }
 
-/** Force a full refresh (optional external use). */
+/** Force a refresh (optional external use). */
 export async function refreshFromServer(reason = 'manual') {
-  await refreshAll(reason)
+  await refreshAll(reason, { mode: 'auto', reconcile: true })
 }
