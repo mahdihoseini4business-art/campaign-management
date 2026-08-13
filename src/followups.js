@@ -252,6 +252,7 @@ function getDoneItems(applySearch = true) {
       result: f.result,
       nextDate: f.nextDate || '',
       notes: f.notes || f.doneNote || '',
+      createdByPhone: f.createdByPhone || '',
       wasOverdue: !!f.wasOverdue || f.type === 'پیگیری معوقه انجام‌شده',
       category: 'done'
     })
@@ -286,25 +287,26 @@ export function getFilteredFollowups() {
   })
 }
 
-/** All in-scope followups for export (ignores search box so backup is complete). */
+/** Same rows as the follow-ups table (category + search + advisor). */
+export function getVisibleFollowupItems() {
+  const pending = getPendingItems(true)
+  const done = getDoneItems(true)
+  return followupFilter === 'done'
+    ? done
+    : pending.filter(i => i.category === followupFilter)
+}
+
+export function hasActiveFollowupExportFilter() {
+  return !!(
+    document.getElementById('searchFollowups')?.value?.trim()
+    || getFollowupAdvisorFilter()
+    || followupFilter
+  )
+}
+
+/** Visible follow-up rows for CSV/Excel — matches current tab filters. */
 export function getFollowupsForExport() {
-  const data = getData()
-  const currentUser = getCurrentUser()
-  return data.followups
-    .filter(f => {
-      const customer = data.customers.find(c => c.id === f.customerId)
-      if (customer) return canSeeCustomer(customer, currentUser)
-      // Orphan notes: include for org-wide roles only
-      return canViewOrgWideData(currentUser)
-    })
-    .slice()
-    .sort((a, b) => {
-      const idCmp = String(a.customerId || '').localeCompare(String(b.customerId || ''))
-      if (idCmp) return idCmp
-      const dCmp = String(a.date || '').localeCompare(String(b.date || ''))
-      if (dCmp) return dCmp
-      return String(a.id || '').localeCompare(String(b.id || ''))
-    })
+  return getVisibleFollowupItems()
 }
 
 // ============================================
@@ -461,11 +463,7 @@ export async function renderFollowups() {
     updateFollowupStats()
     updateFollowupBadge()
 
-    const pending = getPendingItems(true)
-    const done = getDoneItems(true)
-    const filtered = followupFilter === 'done'
-      ? done
-      : pending.filter(i => i.category === followupFilter)
+    const filtered = getVisibleFollowupItems()
 
     const showSelectCol = hasPermission('followups_delete') && followupFilter === 'done'
     const colCount = (hasPermission('followups_delete') ? 1 : 0) + 9

@@ -11,7 +11,7 @@ import {
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
-import { getFollowupsForExport, renderFollowups } from './followups.js'
+import { getFollowupsForExport, hasActiveFollowupExportFilter, renderFollowups } from './followups.js'
 import { renderSales, getFilteredSales, getSalesDateFilter } from './sales.js'
 import { getProductMatrixExportAoa, hasActiveProductMatrixFilter } from './product-matrix.js'
 
@@ -97,8 +97,7 @@ function hasActiveExportScopeFilter(tab) {
     )
   }
   if (tab === 'followups') {
-    // getFollowupsForExport ignores search box — no partial-filter warning
-    return false
+    return hasActiveFollowupExportFilter()
   }
   if (tab === 'sales') {
     const dateFilter = getSalesDateFilter()
@@ -343,24 +342,18 @@ const EXPORT_CONFIG = {
     label: 'پیگیری‌ها',
     headers: FOLLOWUP_EXPORT_HEADERS,
     getRows: () => {
-      const data = getData()
-      const followups = getFollowupsForExport()
-      return followups.map(f => {
-        const c = data.customers.find(x => x.id === f.customerId)
-        const phoneStr = c ? (getCustomerPhones(c)[0] || '') : ''
-        return [
-          f.customerId || '',
-          c ? (c.name || c.platformId || '') : '',
-          phoneStr,
-          c?.advisor || '',
-          f.date || '',
-          f.type || '',
-          f.result || '',
-          f.nextDate || '',
-          f.notes || f.doneNote || '',
-          f.createdByPhone || ''
-        ]
-      })
+      return getFollowupsForExport().map(f => [
+        f.customerId || '',
+        f.customerName || '',
+        f.customerPhone || '',
+        f.advisor || '',
+        f.date || '',
+        f.type || '',
+        f.result || '',
+        f.nextDate || '',
+        f.notes || '',
+        f.createdByPhone || ''
+      ])
     }
   },
   sales: {
