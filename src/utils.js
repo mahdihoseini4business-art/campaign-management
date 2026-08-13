@@ -1540,7 +1540,11 @@ export function isProductCountableInSales(product) {
 
 export function getWorstPaymentStatus(product) {
   if (isGiftSale(product)) return getGiftAccountingStatus(product)
-  const payments = getProductPayments(product)
+  // Ignore empty draft slots (amount 0) so they don't force "pending" on otherwise clean sales
+  const payments = getProductPayments(product).filter(p => {
+    if (getPaymentEntryStatus(p) === PAYMENT_STATUS.rejected) return true
+    return (parseFloat(p.amount) || 0) > 0
+  })
   if (payments.some(p => getPaymentEntryStatus(p) === PAYMENT_STATUS.rejected)) return PAYMENT_STATUS.rejected
   if (payments.some(p => getPaymentEntryStatus(p) === PAYMENT_STATUS.pending)) return PAYMENT_STATUS.pending
   if (payments.length === 0) return PAYMENT_STATUS.pending

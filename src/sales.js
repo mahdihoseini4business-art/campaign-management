@@ -135,13 +135,18 @@ function isPaymentInSalesDateRange(pay, dateFilter) {
   return n >= dateFilter.fromNum && n <= dateFilter.toNum
 }
 
-function getApprovedPaymentsInRange(product, dateFilter) {
+function getPaymentsInSalesDateRange(product, dateFilter) {
   return getProductPayments(product).filter(pay => {
     const amount = parseFloat(pay.amount) || 0
     if (amount <= 0) return false
-    if (getPaymentEntryStatus(pay) !== PAYMENT_STATUS.approved) return false
     return isPaymentInSalesDateRange(pay, dateFilter)
   })
+}
+
+function getApprovedPaymentsInRange(product, dateFilter) {
+  return getPaymentsInSalesDateRange(product, dateFilter).filter(pay =>
+    getPaymentEntryStatus(pay) === PAYMENT_STATUS.approved
+  )
 }
 
 function sumPayments(pays) {
@@ -191,9 +196,13 @@ export function getFilteredSales(dateFilterOverride = null) {
     if (!canViewScopedCustomer(customer, currentUser) && !registeredByMe) return false
     if (platformFilter && s.platform !== platformFilter) return false
     if (statusFilter && s.status !== statusFilter) return false
+    // Without a date scope, match product-level worst payment status.
+    // With a date scope, status is applied to payments inside the range (below).
     if (payStatusFilter === 'gift') {
       if (!s.isGift) return false
-    } else if (payStatusFilter && s.paymentStatus !== payStatusFilter) return false
+    } else if (payStatusFilter && !dateFilter.hasDateFilter && s.paymentStatus !== payStatusFilter) {
+      return false
+    }
     if (levelFilter && customer) {
       const resolved = resolveCustomerLevel(customer, data.customers, data.followups)
       if (resolved !== levelFilter) return false
@@ -214,15 +223,24 @@ export function getFilteredSales(dateFilterOverride = null) {
         const n = jalaliToNum(d)
         if (n < dateFilter.fromNum || n > dateFilter.toNum) return false
         if (advisorScopePhones && !matchesAdvisorPhone(s.soldByPhone)) return false
+        if (payStatusFilter && payStatusFilter !== 'gift' && s.paymentStatus !== payStatusFilter) {
+          return false
+        }
         s.dateFiltered = true
         return true
       }
       ensureProductPayments(product)
-      let paysInRange = getApprovedPaymentsInRange(product, dateFilter)
+      let paysInRange = getPaymentsInSalesDateRange(product, dateFilter)
       if (advisorScopePhones) {
         paysInRange = paysInRange.filter(pay =>
           matchesAdvisorPhone(getSaleRegistrantPhone(product, pay, customer))
         )
+      }
+      if (payStatusFilter && payStatusFilter !== 'gift') {
+        paysInRange = paysInRange.filter(pay => getPaymentEntryStatus(pay) === payStatusFilter)
+      } else {
+        // Default date view = revenue: only approved deposits in range
+        paysInRange = paysInRange.filter(pay => getPaymentEntryStatus(pay) === PAYMENT_STATUS.approved)
       }
       if (!paysInRange.length) return false
       const paidInRange = sumPayments(paysInRange)
