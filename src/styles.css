@@ -1968,7 +1968,18 @@
   }
 
   .sale-product-save-btn {
+    margin-top: 0;
+  }
+
+  .sale-product-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
     margin-top: 12px;
+  }
+
+  .sale-admin-price-btn {
+    margin-top: 0;
   }
 
   .sale-shipping-fields {

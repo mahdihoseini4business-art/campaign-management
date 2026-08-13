@@ -3157,9 +3157,12 @@ export async function renderProducts(customerId, users = null) {
       addPayBtn = `<button type="button" class="btn btn-sm sale-add-pay-btn" ${disabled ? 'disabled' : ''} title="${escapeAttr(title)}" onclick="app.addProductPayment('${escapeAttr(customerId)}', ${i})">+ افزودن واریز${balance > 0 ? ` (مانده: ${formatNumber(balance)})` : ''}</button>`
     }
 
-    const priceControl = (!canEdit || priceLocked)
-      ? `<span class="product-price-locked sale-readonly-value" title="قیمت کل قفل شده"><b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${price ? formatNumber(price) : '—'}</b> ریال</span>`
-      : `<input type="text" inputmode="numeric" class="product-price num-input" data-sale-field="price" placeholder="مثلاً ۱۰٬۰۰۰٬۰۰۰" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this);app.onSalePriceInput(this)" title="واحد: ریال — برای هدیه ۰ وارد کنید">`
+    const canAdminEditPrice = isAdmin() && priceLocked && !cancelled
+    const priceControl = canAdminEditPrice
+      ? `<input type="text" inputmode="numeric" class="product-price num-input" data-sale-field="price" data-admin-price-edit="1" placeholder="مثلاً ۱۰٬۰۰۰٬۰۰۰" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this)" title="اصلاح قیمت کل — فقط مدیر سیستم">`
+      : ((!canEdit || priceLocked)
+        ? `<span class="product-price-locked sale-readonly-value" title="قیمت کل قفل شده"><b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${price ? formatNumber(price) : '—'}</b> ریال</span>`
+        : `<input type="text" inputmode="numeric" class="product-price num-input" data-sale-field="price" placeholder="مثلاً ۱۰٬۰۰۰٬۰۰۰" value="${p.price ? formatNumber(p.price) : ''}" oninput="app.formatInput(this);app.onSalePriceInput(this)" title="واحد: ریال — برای هدیه ۰ وارد کنید">`)
 
     const settlementControl = canEdit && !closed
       ? `<input type="text" class="product-settlement" data-sale-field="settlementDate" placeholder="انتخاب تاریخ" data-jdp value="${p.settlementDate || ''}">`
@@ -3186,6 +3189,9 @@ export async function renderProducts(customerId, users = null) {
     const hasCompletedRefund = getProductRefundRecords(p).length > 0
     const productDetailsBtn = (canEdit && !closed && !hasEditablePay && !hasCompletedRefund)
       ? `<button type="button" class="btn btn-sm sale-product-save-btn" onclick="app.commitSaleProductDetails('${escapeAttr(customerId)}', ${i})">ذخیره جزئیات محصول</button>`
+      : ''
+    const adminPriceBtn = canAdminEditPrice
+      ? `<button type="button" class="btn btn-sm btn-primary sale-admin-price-btn" onclick="app.updateSaleTotalPrice('${escapeAttr(customerId)}', ${i})">ذخیره قیمت کل</button>`
       : ''
 
     const giftSubmitBtn = (canEdit && !closed && !priceLocked)
@@ -3233,7 +3239,7 @@ export async function renderProducts(customerId, users = null) {
           </div>
           ${summaryHtml}
           ${refundSummariesHtml}
-          ${productDetailsBtn}
+          ${(productDetailsBtn || adminPriceBtn) ? `<div class="sale-product-actions">${productDetailsBtn}${adminPriceBtn}</div>` : ''}
           ${giftSubmitBtn}
         </section>
         <section class="sale-step sale-step-payments" data-sale-payments>
@@ -3471,6 +3477,8 @@ export function updateSaleGiftMode(blockEl) {
   if (!blockEl || blockEl.classList.contains('is-gift-sale')) return
   const priceEl = blockEl.querySelector('[data-sale-field="price"]')
   if (!priceEl) return
+  // Admin correction of a locked total must not flip the form into gift-draft mode.
+  if (priceEl.getAttribute('data-admin-price-edit') === '1') return
 
   const nameEl = blockEl.querySelector('[data-sale-field="name"]')
   const name = coerceProductName(nameEl?.value || '')
@@ -3621,6 +3629,85 @@ export function markSalePaymentTouched(el) {
   if (badge) {
     badge.className = 'payment-badge payment-pending'
     badge.textContent = PAYMENT_STATUS_LABELS.pending || 'در انتظار تأیید'
+  }
+}
+
+/** Admin-only: correct locked total price without deleting/recreating the customer. */
+export async function updateSaleTotalPrice(customerId, productIndex) {
+  if (!isAdmin()) {
+    showToast('فقط مدیر سیستم می‌تواند قیمت کل را اصلاح کند')
+    return
+  }
+  const customer = getData().customers.find(c => c.id === customerId)
+  if (!customer || !canViewCustomer(customer)) {
+    showToast('دسترسی به این مشتری ندارید')
+    return
+  }
+
+  const block = document.querySelector(`#detailProductsList .product-block[data-product-index="${productIndex}"]`)
+  if (!block) return
+  const products = getProducts(customerId)
+  const product = products[productIndex]
+  if (!product) return
+  if (isGiftSale(product)) {
+    showToast('قیمت فروش هدیه قابل تغییر نیست')
+    return
+  }
+  if (isDealCancelled(product)) {
+    showToast('معامله لغو شده و قیمت قابل تغییر نیست')
+    return
+  }
+  if (!isProductPriceLocked(product)) {
+    showToast('ابتدا فروش را ثبت کنید')
+    return
+  }
+
+  const priceEl = block.querySelector('[data-sale-field="price"]')
+  clearSaleBlockInvalid(block)
+  const priceRaw = unformatSaleNumber(priceEl)
+  const newPrice = parseFloat(priceRaw) || 0
+  if (!priceRaw || newPrice <= 0) {
+    markSaleFieldInvalid(priceEl, true)
+    showToast('قیمت کل باید بزرگ‌تر از صفر باشد')
+    return
+  }
+
+  const approved = getApprovedPaid(product)
+  if (newPrice + 0.5 < approved) {
+    markSaleFieldInvalid(priceEl, true)
+    showToast(`قیمت کل نمی‌تواند کمتر از مبلغ تأییدشده (${formatNumber(approved)} ریال) باشد`)
+    return
+  }
+
+  const prev = parseFloat(product.price) || 0
+  if (Math.abs(prev - newPrice) < 0.5) {
+    showToast('قیمت کل تغییری نکرده است')
+    return
+  }
+
+  const btn = block.querySelector('.sale-admin-price-btn')
+  const prevLabel = btn?.textContent
+  if (btn) {
+    btn.disabled = true
+    btn.textContent = 'در حال ذخیره…'
+  }
+
+  try {
+    product.price = String(newPrice)
+    product.priceLocked = true
+    applyProfitSnapshotToProduct(product)
+    syncProductStatus(product)
+    await setProducts(customerId, products)
+    showToast('قیمت کل اصلاح شد')
+    renderProducts(customerId)
+  } catch (e) {
+    console.error('updateSaleTotalPrice error:', e)
+    showToast('خطا در اصلاح قیمت کل')
+  } finally {
+    if (btn) {
+      btn.disabled = false
+      if (prevLabel) btn.textContent = prevLabel
+    }
   }
 }
 
