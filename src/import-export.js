@@ -23,12 +23,15 @@ import { getProductMatrixExportAoa, hasActiveProductMatrixFilter } from './produ
 /** Columns that are informational / legacy and never map to import fields */
 const INFO_ONLY_HEADERS = new Set([
   'تعداد پیگیری', 'آخرین پیگیری', 'مانده', 'همه یادداشت‌ها',
+  // Follow-up export extra (lives on customer, not the follow-up row)
+  'شماره مشتری',
   // Accounting approval is never imported — accountants review deposits manually
   'وضعیت واریزی', 'وضعیت واریز'
 ])
 
 const FOLLOWUP_EXPORT_HEADERS = [
-  'شناسه مشتری', 'نام مشتری', 'تاریخ', 'نوع', 'نتیجه', 'پیگیری بعدی', 'توضیحات', 'ثبت‌کننده'
+  'شناسه مشتری', 'نام مشتری', 'شماره مشتری', 'کارشناس',
+  'تاریخ', 'نوع', 'نتیجه', 'پیگیری بعدی', 'توضیحات', 'ثبت‌کننده'
 ]
 
 function followupsForCustomer(customerId, followups) {
@@ -55,9 +58,12 @@ function formatAllFollowupNotes(customerId, followups) {
 function buildFollowupExportAoa(followups, customers) {
   const rows = followups.map(f => {
     const c = customers.find(x => x.id === f.customerId)
+    const phoneStr = c ? (getCustomerPhones(c)[0] || '') : ''
     return [
       f.customerId || '',
       c ? (c.name || c.platformId || '') : '',
+      phoneStr,
+      c?.advisor || '',
       f.date || '',
       f.type || '',
       f.result || '',
@@ -341,9 +347,12 @@ const EXPORT_CONFIG = {
       const followups = getFollowupsForExport()
       return followups.map(f => {
         const c = data.customers.find(x => x.id === f.customerId)
+        const phoneStr = c ? (getCustomerPhones(c)[0] || '') : ''
         return [
           f.customerId || '',
           c ? (c.name || c.platformId || '') : '',
+          phoneStr,
+          c?.advisor || '',
           f.date || '',
           f.type || '',
           f.result || '',
@@ -487,7 +496,7 @@ export function exportTabXLSX(tab) {
   if (tab === 'customers') {
     forceSheetTextColumns(ws, rows.length, [0, 1, 4, 5, 6, 9]) // شناسه، ایدی، شماره‌ها، معرف
   } else if (tab === 'followups') {
-    forceSheetTextColumns(ws, rows.length, [0, 7]) // شناسه مشتری، ثبت‌کننده
+    forceSheetTextColumns(ws, rows.length, [0, 2, 9]) // شناسه مشتری، شماره مشتری، ثبت‌کننده
   } else if (tab === 'sales') {
     forceSheetTextColumns(ws, rows.length, [0, 2]) // شناسه مشتری، شماره موبایل
   } else if (tab === 'products') {
@@ -516,7 +525,7 @@ export function exportTabXLSX(tab) {
     const fAoa = buildFollowupExportAoa(followups, data.customers)
     const fuRows = fAoa.slice(1)
     const wsFollowups = sheetFromAoa(fAoa[0], fuRows)
-    forceSheetTextColumns(wsFollowups, fuRows.length, [0, 7])
+    forceSheetTextColumns(wsFollowups, fuRows.length, [0, 2, 9]) // شناسه، شماره مشتری، ثبت‌کننده
     XLSX.utils.book_append_sheet(wb, wsFollowups, 'پیگیری‌ها')
   }
 
