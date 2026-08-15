@@ -1693,12 +1693,13 @@ export function getSaleRegistrantPhone(product, payment = null, customer = null)
 }
 
 /**
- * Delete a payment only if the current user registered it.
+ * Delete a payment if the current user registered it, or is an admin.
  * Customer advisor alone is not enough; no advisorPhone fallback.
  */
 export function canDeleteSalePayment(product, payment, user = getCurrentUser()) {
   if (!product || !payment) return false
   if (getPaymentEntryStatus(payment) === PAYMENT_STATUS.approved) return false
+  if (user?.role === 'admin') return true
   const myPhone = normalizePhone(user?.phone)
   if (!myPhone) return false
   const registrant = normalizePhone(payment.soldByPhone) || normalizePhone(product.soldByPhone)
