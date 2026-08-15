@@ -42,6 +42,9 @@ export function getAllShipments() {
       const lastPay = pays[pays.length - 1]
       const soldByPhone = getSaleRegistrantPhone(product, lastPay, c)
       const primaryAddress = getPrimaryCustomerAddress(c)
+      const shippingAddress = String(product.shippingAddress || '').trim() || primaryAddress?.text || ''
+      const shippingPostalCode = String(product.shippingPostalCode || '').trim()
+        || (String(product.shippingAddress || '').trim() ? '' : (primaryAddress?.postalCode || ''))
       rows.push({
         customerId: c.id,
         productIndex,
@@ -56,8 +59,8 @@ export function getAllShipments() {
         productStatus: product.status || '',
         price,
         approved,
-        shippingAddress: primaryAddress?.text || '',
-        shippingPostalCode: primaryAddress?.postalCode || '',
+        shippingAddress,
+        shippingPostalCode,
         shipmentStatus: getShipmentStatus(product),
         trackingCode: product.trackingCode || '',
         shippedAt: product.shippedAt || '',

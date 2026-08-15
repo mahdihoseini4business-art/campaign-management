@@ -13,7 +13,8 @@ import {
   findCustomersByPhonePrefix,
   getCustomerPhones, normalizeCustomerPhones, getPrimaryPhone, formatPhonesDisplay,
   MAX_CUSTOMER_PHONES, MAX_CUSTOMER_ADDRESSES,
-  getCustomerAddresses, normalizeCustomerAddresses,
+  getCustomerAddresses, normalizeCustomerAddresses, appendCustomerAddressIfNew,
+  isPhysicalSaleLine,
   getStatusLabels, getStatusClass,
   getNowJalaliDateTime, PAYMENT_STATUS_LABELS, createPayment,
   formatTeamFilterLabel,
@@ -3036,6 +3037,13 @@ export async function renderProducts(customerId, users = null) {
       const bundleHint = bundle
         ? `<span class="product-bundle-hint">شامل: ${escapeHtml((bundle.productNames || []).join('، '))}</span>`
         : ''
+      const isPhysical = !!displayName && isPhysicalSaleLine(p)
+      let shippingFields = ''
+      if (isPhysical && (p.shippingAddress || p.shippingPostalCode)) {
+        shippingFields = `
+          ${saleFieldHtml('آدرس گیرنده', `<span class="sale-readonly-value">${escapeHtml(p.shippingAddress || '—')}</span>`, { optional: true, full: true })}
+          ${p.shippingPostalCode ? saleFieldHtml('کد پستی', `<span class="sale-readonly-value">${escapeHtml(p.shippingPostalCode)}</span>`, { optional: true }) : ''}`
+      }
 
       const toggleHtml = closed
         ? renderClosedProductToggle({
@@ -3058,6 +3066,7 @@ export async function renderProducts(customerId, users = null) {
             ${saleFieldHtml('محصول', `<span class="sale-readonly-value" style="font-weight:600;">${escapeHtml(displayName || '—')}</span>${bundleHint}`, { required: true, full: true, className: 'sale-field--name' })}
             ${saleFieldHtml('قیمت کل (ریال)', `<span class="product-price-locked sale-readonly-value"><b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">۰</b> ریال</span>`, { required: true })}
           </div>
+          ${shippingFields}
           <div class="sale-summary" aria-label="خلاصه هدیه">
             <span class="product-status-label" style="color:${statusColor};">${escapeHtml(statusLabel)}</span>
             <span class="payment-badge payment-${giftStatus}">${escapeHtml(giftStatusLabel)}</span>
@@ -3185,6 +3194,19 @@ export async function renderProducts(customerId, users = null) {
           </select>${bundleHint}`
       : `<span class="sale-readonly-value" style="font-weight:600;">${escapeHtml(displayName || '—')}</span>${bundleHint}`
 
+    const isPhysical = !!displayName && isPhysicalSaleLine(p)
+    let shippingFields = ''
+    if (canEdit && !closed) {
+      shippingFields = `<div class="sale-shipping-fields sale-fields" data-shipping-fields ${isPhysical ? '' : 'hidden'}>
+          ${saleFieldHtml('آدرس گیرنده', `<input type="text" class="product-settlement product-shipping-address" data-sale-field="shippingAddress" placeholder="آدرس کامل" value="${escapeAttr(p.shippingAddress || '')}">`, { optional: true, full: true })}
+          ${saleFieldHtml('کد پستی', `<input type="text" class="product-settlement product-shipping-postal" data-sale-field="shippingPostalCode" inputmode="numeric" placeholder="۱۰ رقم" value="${escapeAttr(p.shippingPostalCode || '')}">`, { optional: true })}
+        </div>`
+    } else if (isPhysical && (p.shippingAddress || p.shippingPostalCode)) {
+      shippingFields = `
+          ${saleFieldHtml('آدرس گیرنده', `<span class="sale-readonly-value">${escapeHtml(p.shippingAddress || '—')}</span>`, { optional: true, full: true })}
+          ${p.shippingPostalCode ? saleFieldHtml('کد پستی', `<span class="sale-readonly-value">${escapeHtml(p.shippingPostalCode)}</span>`, { optional: true }) : ''}`
+    }
+
     const hasEditablePay = canEdit && pays.some(pay => getPaymentEntryStatus(pay) !== PAYMENT_STATUS.approved)
     const hasCompletedRefund = getProductRefundRecords(p).length > 0
     const productDetailsBtn = (canEdit && !closed && !hasEditablePay && !hasCompletedRefund)
@@ -3237,6 +3259,7 @@ export async function renderProducts(customerId, users = null) {
             ${saleFieldHtml('قیمت کل (ریال)', priceControl, { required: true })}
             ${saleFieldHtml('تاریخ تسویه', settlementControl, { optional: true, className: 'sale-field--settlement' })}
           </div>
+          ${shippingFields}
           ${summaryHtml}
           ${refundSummariesHtml}
           ${(productDetailsBtn || adminPriceBtn) ? `<div class="sale-product-actions">${productDetailsBtn}${adminPriceBtn}</div>` : ''}
@@ -3391,10 +3414,14 @@ function readSaleProductDraft(blockEl) {
   const nameEl = blockEl.querySelector('[data-sale-field="name"]')
   const priceEl = blockEl.querySelector('[data-sale-field="price"]')
   const settlementEl = blockEl.querySelector('[data-sale-field="settlementDate"]')
+  const addressEl = blockEl.querySelector('[data-sale-field="shippingAddress"]')
+  const postalEl = blockEl.querySelector('[data-sale-field="shippingPostalCode"]')
   return {
     name: nameEl ? nameEl.value : null,
     price: priceEl ? unformatSaleNumber(priceEl) : null,
     settlementDate: settlementEl ? String(settlementEl.value || '').trim() : null,
+    shippingAddress: addressEl ? String(addressEl.value || '').trim().replace(/\s+/g, ' ') : null,
+    shippingPostalCode: postalEl ? toEnDigits(String(postalEl.value || '')).trim().replace(/\s+/g, '') : null,
     priceEl,
     nameEl
   }
@@ -3443,12 +3470,29 @@ function applySaleProductDraft(product, draft, { lockPrice = false } = {}) {
       }
     }
   }
+  if (isPhysicalSaleLine(product)) {
+    if (draft.shippingAddress != null) product.shippingAddress = draft.shippingAddress
+    if (draft.shippingPostalCode != null) product.shippingPostalCode = draft.shippingPostalCode
+  } else {
+    product.shippingAddress = ''
+    product.shippingPostalCode = ''
+  }
+}
+
+function syncSaleShippingToCustomer(customer, product) {
+  if (!customer || !product?.shippingAddress) return
+  appendCustomerAddressIfNew(customer, {
+    text: product.shippingAddress,
+    postalCode: product.shippingPostalCode || ''
+  })
 }
 
 export function onSaleProductNameChange(selectEl) {
   const block = selectEl?.closest('.product-block')
   if (!block) return
   const name = selectEl.value
+  const shipping = block.querySelector('[data-shipping-fields]')
+  if (shipping) shipping.hidden = !(name && isPhysicalSaleLine({ name }))
   const hint = block.querySelector('[data-bundle-hint]')
   if (hint) {
     const bundle = getBundleByName(coerceProductName(name) || name)
@@ -3597,7 +3641,19 @@ export async function commitGiftSale(customerId, productIndex) {
     product.soldAt = dateTime
     product.depositorName = ''
 
-    applyProfitSnapshotToProduct(product)
+    if (draft.shippingAddress != null || draft.shippingPostalCode != null) {
+      applySaleProductDraft(product, {
+        name,
+        price: '0',
+        settlementDate: '',
+        shippingAddress: draft.shippingAddress,
+        shippingPostalCode: draft.shippingPostalCode
+      }, { lockPrice: false })
+    } else {
+      applyProfitSnapshotToProduct(product)
+    }
+
+    syncSaleShippingToCustomer(customer, product)
 
     syncProductStatus(product)
     await setProducts(customerId, products)
@@ -3752,6 +3808,7 @@ export async function commitSaleProductDetails(customerId, productIndex) {
       return
     }
     applySaleProductDraft(product, draft, { lockPrice: false })
+    syncSaleShippingToCustomer(customer, product)
     syncProductStatus(product)
     await setProducts(customerId, products)
     showToast('جزئیات محصول ذخیره شد')
@@ -3873,6 +3930,7 @@ export async function commitSalePayment(customerId, productIndex, paymentIndex) 
   try {
     const wasFilled = isPaymentFilled(pay)
     applySaleProductDraft(product, productDraft, { lockPrice: true })
+    syncSaleShippingToCustomer(customer, product)
 
     pay.amount = String(amountNum)
     pay.soldAt = `${paymentDraft.soldAtDate} ${time24}`
