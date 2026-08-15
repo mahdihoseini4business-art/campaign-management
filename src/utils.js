@@ -1692,6 +1692,19 @@ export function getSaleRegistrantPhone(product, payment = null, customer = null)
   return normalizePhone(customer?.advisorPhone)
 }
 
+/**
+ * Delete a payment only if the current user registered it.
+ * Customer advisor alone is not enough; no advisorPhone fallback.
+ */
+export function canDeleteSalePayment(product, payment, user = getCurrentUser()) {
+  if (!product || !payment) return false
+  if (getPaymentEntryStatus(payment) === PAYMENT_STATUS.approved) return false
+  const myPhone = normalizePhone(user?.phone)
+  if (!myPhone) return false
+  const registrant = normalizePhone(payment.soldByPhone) || normalizePhone(product.soldByPhone)
+  return !!registrant && registrant === myPhone
+}
+
 /** Register/edit sales on a customer (owner with customers_add, or sales_add_others). */
 export function canAddSaleOnCustomer(customer, user = getCurrentUser()) {
   if (!customer || !canViewCustomer(customer, user)) return false

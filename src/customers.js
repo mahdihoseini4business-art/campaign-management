@@ -7,7 +7,7 @@ import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
   canViewCustomer, canManageCustomer, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
   getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, ownsCustomer, isAdmin, canViewOrgWideData,
-  canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canScheduleFollowupOnCustomer, matchesTabSearch, getCustomerSearchExtras,
+  canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canScheduleFollowupOnCustomer, canDeleteSalePayment, matchesTabSearch, getCustomerSearchExtras,
   resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
   findCustomersByPhonePrefix,
@@ -3079,7 +3079,7 @@ export async function renderProducts(customerId, users = null) {
       const rejectHint = (payStatus === 'rejected' && pay.paymentRejectReason)
         ? `<span class="payment-reject-reason" title="${escapeAttr(pay.paymentRejectReason)}">${escapeHtml(pay.paymentRejectReason)}</span>`
         : ''
-      const canDeletePay = canEdit && payStatus !== PAYMENT_STATUS.approved
+      const canDeletePay = canDeleteSalePayment(p, pay)
       const canUnapprovePay = hasPermission('accounting') && payStatus === PAYMENT_STATUS.approved
       const canEditPayReason = hasPermission('accounting') && payStatus === PAYMENT_STATUS.rejected
       const payEditable = canEdit && payStatus !== PAYMENT_STATUS.approved
@@ -3343,11 +3343,6 @@ export async function addProductPayment(customerId, productIndex) {
 }
 
 export async function removeProductPayment(customerId, productIndex, paymentIndex) {
-  const _cust = getData().customers.find(c => c.id === customerId)
-  if (!canAddSaleOnCustomer(_cust)) {
-    showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
-    return
-  }
   const products = getProducts(customerId)
   const product = products[productIndex]
   if (!product) return
@@ -3356,6 +3351,10 @@ export async function removeProductPayment(customerId, productIndex, paymentInde
   if (!pay) return
   if (getPaymentEntryStatus(pay) === PAYMENT_STATUS.approved) {
     showToast('واریز تأییدشده قابل حذف نیست')
+    return
+  }
+  if (!canDeleteSalePayment(product, pay)) {
+    showToast('فقط ثبت‌کننده این واریز می‌تواند آن را حذف کند')
     return
   }
   if (!window.confirm('این واریز حذف شود؟')) return
