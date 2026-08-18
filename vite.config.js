@@ -3,10 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 function versionPlugin() {
-  const buildId =
-    process.env.VERCEL_GIT_COMMIT_SHA ||
-    process.env.CF_PAGES_COMMIT_SHA ||
-    String(Date.now())
+  const buildId = String(Date.now())
 
   return {
     name: 'emit-version-json',
