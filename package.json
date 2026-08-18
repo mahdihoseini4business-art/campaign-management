@@ -11,7 +11,8 @@
     "@supabase/supabase-js": "^2.45.0",
     "chart.js": "^4.5.1",
     "dompurify": "^3.4.13",
-    "marked": "^18.0.9"
+    "marked": "^18.0.9",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/dompurify": "^3.0.5",

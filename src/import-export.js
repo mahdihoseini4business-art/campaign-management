@@ -1,3 +1,4 @@
+import * as XLSX from 'xlsx'
 import { getData, saveCustomerToDB, generateId, getStatuses, saveFollowupToDB, getDestinationBanks, getSellableNames, putCustomerInCache } from './data.js'
 import {
   toEnDigits, showToast, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
