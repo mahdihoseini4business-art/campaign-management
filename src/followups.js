@@ -1,4 +1,4 @@
-import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB, getRequireFollowupOnCreate } from './data.js'
+import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone, formatSoldAt24h, soldAtTimePart, jalaliDatePart, formatTeamFilterLabel, isPaymentFilled, isGiftSale, isProductPriceLocked, ensureProductPayments } from './utils.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
@@ -676,14 +676,9 @@ export function openFollowupDoneModal(customerId) {
 
   const nextLabel = document.querySelector('label[for="followupDoneNextDate"]')
   if (nextLabel) {
-    const hasSale = (customer.products || []).some(p => {
-      if (isGiftSale(p) && isProductPriceLocked(p)) return true
-      ensureProductPayments(p)
-      return (p.payments || []).some(isPaymentFilled)
-    })
-    nextLabel.innerHTML = (getRequireFollowupOnCreate() && !hasSale)
-      ? 'پیگیری بعدی <span class="required">*</span>'
-      : 'پیگیری بعدی <span class="settings-optional">(اختیاری)</span>'
+    // For "done" we should never force scheduling a next follow-up forever.
+    // User can mark completion and optionally schedule the next date.
+    nextLabel.innerHTML = 'پیگیری بعدی <span class="settings-optional">(اختیاری)</span>'
   }
 
   document.getElementById('followupDoneModal').classList.add('active')
@@ -791,19 +786,8 @@ export async function confirmFollowupDone() {
   ).trim()
 
   if (!note) { showToast('یادداشت را وارد کنید'); return }
-  if (getRequireFollowupOnCreate() && !nextDate) {
-    const pendingCustomer = data.customers.find(c => c.id === customerId)
-    const hasSale = (pendingCustomer?.products || []).some(p => {
-      if (isGiftSale(p) && isProductPriceLocked(p)) return true
-      ensureProductPayments(p)
-      return (p.payments || []).some(isPaymentFilled)
-    })
-    if (!hasSale) {
-      showToast('با توجه به تنظیمات، تاریخ پیگیری بعدی الزامی است (مگر اینکه فروش ثبت شده باشد)')
-      document.getElementById('followupDoneNextDate')?.focus()
-      return
-    }
-  }
+  // Do not require "next follow-up date" here.
+  // Clearing `nextFollowupDate` is the correct way to stop further follow-ups.
   if (nextDate && !/^\d{4}\/\d{2}\/\d{2}$/.test(nextDate)) {
     showToast('فرمت تاریخ پیگیری بعدی صحیح نیست (1405/05/01)')
     return

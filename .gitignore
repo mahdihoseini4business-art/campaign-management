@@ -25,3 +25,4 @@ supabase/.env.*
 supabase/**/.env
 supabase/**/node_modules/
 supabase/**/.deno/
+!.npmrc
