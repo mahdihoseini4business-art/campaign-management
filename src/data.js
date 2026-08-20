@@ -1359,18 +1359,83 @@ export async function migrateCatalogNameToBundle(oldCatalogName, bundleId) {
 // Sales targets
 // ============================================
 
+function normalizeSalesTargetShares(raw, barIds) {
+  const idSet = new Set(barIds || [])
+  return (Array.isArray(raw) ? raw : [])
+    .map(share => {
+      if (!share || typeof share !== 'object') return null
+      const barId = String(share.barId || '').trim()
+      const value = Number(share.value)
+      if (!barId || !idSet.has(barId) || !Number.isFinite(value) || value <= 0) return null
+      return { barId, value }
+    })
+    .filter(Boolean)
+}
+
+/** Cumulative ascending stages; last stage aligned with bar.value. Empty → single-goal bar. */
+function normalizeSalesTargetStages(raw, finalValue) {
+  const final = Number(finalValue)
+  if (!Number.isFinite(final) || final <= 0) return []
+
+  const seen = new Set()
+  const stages = (Array.isArray(raw) ? raw : [])
+    .map(stage => {
+      if (!stage || typeof stage !== 'object') return null
+      const value = Number(stage.value)
+      if (!Number.isFinite(value) || value <= 0) return null
+      const key = String(value)
+      if (seen.has(key)) return null
+      seen.add(key)
+      const label = String(stage.label || '').trim()
+      return {
+        id: String(stage.id || '').trim() || `stg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        value,
+        ...(label ? { label } : {})
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.value - b.value)
+
+  if (!stages.length) return []
+
+  const last = stages[stages.length - 1]
+  if (last.value !== final) {
+    if (last.value < final) {
+      stages.push({
+        id: `stg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        value: final
+      })
+    } else {
+      last.value = final
+    }
+  }
+
+  // Drop any stage that somehow exceeds final after alignment
+  return stages.filter(s => s.value <= final)
+}
+
 function normalizeSalesTargetBar(item) {
   if (!item || typeof item !== 'object') return null
   const metric = item.metric === 'count' ? 'count' : 'amount'
-  const value = Number(item.value)
+  let value = Number(item.value)
+  if (!Number.isFinite(value) || value <= 0) {
+    // Allow stages-only input: take max stage as final value
+    const stageVals = (Array.isArray(item.stages) ? item.stages : [])
+      .map(s => Number(s?.value))
+      .filter(v => Number.isFinite(v) && v > 0)
+    value = stageVals.length ? Math.max(...stageVals) : NaN
+  }
   if (!Number.isFinite(value) || value <= 0) return null
   const productNames = Array.isArray(item.productNames)
     ? [...new Set(item.productNames.map(p => String(p || '').trim()).filter(Boolean))]
     : []
+  const stages = normalizeSalesTargetStages(item.stages, value)
+  if (stages.length) value = stages[stages.length - 1].value
   return {
     id: String(item.id || '').trim() || `tgt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     metric,
     value,
+    stages,
     productNames,
     startDate: String(item.startDate || '').trim(),
     endDate: String(item.endDate || '').trim(),
@@ -1378,24 +1443,30 @@ function normalizeSalesTargetBar(item) {
   }
 }
 
+function normalizeAllocationMembers(raw, barIds) {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set()
+  return raw.map(member => {
+    if (!member || typeof member !== 'object') return null
+    const userPhone = normalizePhoneLocal(member.userPhone || member.user_phone || '')
+    if (!userPhone || seen.has(userPhone)) return null
+    const shares = normalizeSalesTargetShares(member.shares, barIds)
+    if (!shares.length) return null
+    seen.add(userPhone)
+    return { userPhone, shares }
+  }).filter(Boolean)
+}
+
 function normalizeSalesTargetAllocations(raw, barIds) {
   if (!Array.isArray(raw)) return []
-  const idSet = new Set(barIds || [])
   return raw.map(alloc => {
     if (!alloc || typeof alloc !== 'object') return null
     const userGroupId = String(alloc.userGroupId || '').trim()
     if (!userGroupId) return null
-    const shares = (Array.isArray(alloc.shares) ? alloc.shares : [])
-      .map(share => {
-        if (!share || typeof share !== 'object') return null
-        const barId = String(share.barId || '').trim()
-        const value = Number(share.value)
-        if (!barId || !idSet.has(barId) || !Number.isFinite(value) || value <= 0) return null
-        return { barId, value }
-      })
-      .filter(Boolean)
+    const shares = normalizeSalesTargetShares(alloc.shares, barIds)
     if (!shares.length) return null
-    return { userGroupId, shares }
+    const members = normalizeAllocationMembers(alloc.members, barIds)
+    return { userGroupId, shares, members }
   }).filter(Boolean)
 }
 
@@ -1440,10 +1511,18 @@ function normalizeSalesTargets(raw) {
 function cloneSalesTargetGroup(group) {
   return {
     ...group,
-    items: (group.items || []).map(bar => ({ ...bar, productNames: [...(bar.productNames || [])] })),
+    items: (group.items || []).map(bar => ({
+      ...bar,
+      productNames: [...(bar.productNames || [])],
+      stages: (bar.stages || []).map(stage => ({ ...stage }))
+    })),
     allocations: (group.allocations || []).map(alloc => ({
       userGroupId: alloc.userGroupId,
-      shares: (alloc.shares || []).map(share => ({ ...share }))
+      shares: (alloc.shares || []).map(share => ({ ...share })),
+      members: (alloc.members || []).map(member => ({
+        userPhone: member.userPhone,
+        shares: (member.shares || []).map(share => ({ ...share }))
+      }))
     }))
   }
 }

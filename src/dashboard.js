@@ -1820,6 +1820,60 @@ function memberPhoneSetForUserGroup(userGroupId) {
   return phones
 }
 
+/** Resolve cumulative stage markers for a progress bar relative to goal (final or override). */
+function resolveSalesTargetStageMarkers(bar, current, goal) {
+  const barFinal = Number(bar.value) || 0
+  const goalNum = Number(goal) || 0
+  if (!(barFinal > 0) || !(goalNum > 0)) return []
+
+  let stages = Array.isArray(bar.stages) ? bar.stages.filter(s => Number(s?.value) > 0) : []
+  if (!stages.length) {
+    stages = [{ id: 'final', value: barFinal }]
+  }
+
+  const markers = stages.map((stage, index) => {
+    const stageValue = Number(stage.value)
+    const ratio = stageValue / barFinal
+    const threshold = goalNum * ratio
+    const pct = Math.min(100, Math.max(0, ratio * 100))
+    const hit = current >= threshold
+    const label = String(stage.label || '').trim() || `تارگت ${formatNumber(index + 1)}`
+    const shortLabel = String(index + 1)
+    return {
+      id: stage.id || `stg_${index}`,
+      value: stageValue,
+      threshold,
+      pct,
+      hit,
+      isNext: false,
+      label,
+      shortLabel,
+      valueLabel: formatNumber(Math.round(threshold))
+    }
+  })
+
+  const nextIdx = markers.findIndex(m => !m.hit)
+  if (nextIdx >= 0) markers[nextIdx].isNext = true
+  return markers
+}
+
+function renderTargetStageMarkersHtml(markers, variant = 'sales') {
+  if (!markers || markers.length < 2) return ''
+  const prefix = variant === 'dash' ? 'dash-target' : 'sales-target'
+  return `
+    <div class="${prefix}-markers" aria-hidden="true">
+      ${markers.map(m => `
+        <div class="${prefix}-marker${m.hit ? ' is-hit' : ''}${m.isNext ? ' is-next' : ''}"
+          style="inset-inline-start:${m.pct}%;"
+          title="${escapeAttr(`${m.label}: ${m.valueLabel}`)}">
+          <span class="${prefix}-marker-dot">${m.hit ? '✓' : ''}</span>
+          <span class="${prefix}-marker-label">${escapeHtml(m.shortLabel)}</span>
+        </div>
+      `).join('')}
+    </div>
+  `
+}
+
 function renderDashTargetBar(bar, dateFromNum, dateToNum, groupTitle, options = {}) {
   const goal = options.goalOverride != null ? Number(options.goalOverride) : (Number(bar.value) || 0)
   const current = computeSalesTargetCurrent(bar, dateFromNum, dateToNum, options.phoneSet || null)
@@ -1838,7 +1892,9 @@ function renderDashTargetBar(bar, dateFromNum, dateToNum, groupTitle, options = 
     ? bar.productNames.join('، ')
     : 'همه محصولات'
   const metricHint = bar.metric === 'count' ? 'تعداد' : 'مبلغ تأییدشده'
-  const ariaLabel = `${groupTitle} — ${metricHint} · ${productsHint}`
+  const memberHint = options.memberLabel ? ` · ${options.memberLabel}` : ''
+  const ariaLabel = `${groupTitle}${memberHint} — ${metricHint} · ${productsHint}`
+  const markers = resolveSalesTargetStageMarkers(bar, current, goal)
 
   return `
     <div class="dash-target-row">
@@ -1846,12 +1902,21 @@ function renderDashTargetBar(bar, dateFromNum, dateToNum, groupTitle, options = 
         <span>${currentLabel} / ${goalLabel}</span>
         <span class="dash-target-pct">${formatNumber(pct)}٪</span>
       </div>
-      <div class="dash-target-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}" aria-label="${escapeAttr(ariaLabel)}">
-        <div class="dash-target-bar-fill ${fillClass}" style="width:${pct}%;"></div>
+      <div class="dash-target-bar-wrap">
+        <div class="dash-target-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}" aria-label="${escapeAttr(ariaLabel)}">
+          <div class="dash-target-bar-fill ${fillClass}" style="width:${pct}%;"></div>
+        </div>
+        ${renderTargetStageMarkersHtml(markers, 'dash')}
       </div>
       ${deadline ? `<div class="dash-target-deadline ${deadline.className}">${escapeHtml(deadline.text)}${bar.endDate ? ` · تا ${escapeHtml(bar.endDate)}` : ''}</div>` : ''}
     </div>
   `
+}
+
+function dashMemberLabel(phone) {
+  const p = normalizePhone(phone)
+  const user = dashUsersCache.find(u => normalizePhone(u.phone) === p)
+  return user ? (userDisplayName(user) || user.username || p) : p
 }
 
 function buildDashTargetBlocks(targets, viewer) {
@@ -1869,6 +1934,7 @@ function buildDashTargetBlocks(targets, viewer) {
         key: `${target.id}-org`,
         scope: 'org',
         userGroupId: null,
+        memberPhone: null,
         groupName: null,
         title,
         className: 'is-org',
@@ -1894,11 +1960,45 @@ function buildDashTargetBlocks(targets, viewer) {
         key: `${target.id}-${alloc.userGroupId}`,
         scope: `group:${alloc.userGroupId}`,
         userGroupId: alloc.userGroupId,
+        memberPhone: null,
         groupName,
         title,
         className: 'is-group-alloc',
         bars
       })
+
+      const activeMembers = new Set(
+        (getMembersOfGroup(alloc.userGroupId) || []).map(m => normalizePhone(m.user_phone || '')).filter(Boolean)
+      )
+      for (const member of alloc.members || []) {
+        const phone = normalizePhone(member.userPhone || '')
+        if (!phone || !activeMembers.has(phone)) continue
+        const mShareMap = new Map((member.shares || []).map(s => [s.barId, Number(s.value)]))
+        const mBars = items
+          .map(bar => {
+            const shareVal = mShareMap.get(bar.id)
+            if (!(shareVal > 0)) return null
+            return {
+              bar,
+              goalOverride: shareVal,
+              phoneSet: new Set([phone]),
+              memberLabel: dashMemberLabel(phone)
+            }
+          })
+          .filter(Boolean)
+        if (!mBars.length) continue
+        blocks.push({
+          key: `${target.id}-${alloc.userGroupId}-${phone}`,
+          scope: `member:${phone}`,
+          userGroupId: alloc.userGroupId,
+          memberPhone: phone,
+          groupName,
+          memberLabel: dashMemberLabel(phone),
+          title: `${title} — ${dashMemberLabel(phone)}`,
+          className: 'is-member-alloc',
+          bars: mBars
+        })
+      }
     }
   }
 
@@ -1911,13 +2011,24 @@ function buildDashTargetScopeOptions(blocks, viewer) {
   if (admin && blocks.some(b => b.scope === 'org')) {
     options.push({ value: 'org', label: 'تارگت کلی' })
   }
-  const seen = new Set()
+  const seenGroups = new Set()
+  const seenMembers = new Set()
   for (const block of blocks) {
-    if (!block.userGroupId || seen.has(block.userGroupId)) continue
-    seen.add(block.userGroupId)
+    if (block.userGroupId && !block.memberPhone && !seenGroups.has(block.userGroupId)) {
+      seenGroups.add(block.userGroupId)
+      options.push({
+        value: `group:${block.userGroupId}`,
+        label: block.groupName || 'گروه'
+      })
+    }
+  }
+  for (const block of blocks) {
+    if (!block.memberPhone || seenMembers.has(block.memberPhone)) continue
+    seenMembers.add(block.memberPhone)
+    const groupPrefix = block.groupName ? `${block.groupName} · ` : ''
     options.push({
-      value: `group:${block.userGroupId}`,
-      label: block.groupName || 'گروه'
+      value: `member:${block.memberPhone}`,
+      label: `${groupPrefix}${block.memberLabel || block.memberPhone}`
     })
   }
   return options
@@ -2023,11 +2134,12 @@ function renderDashTargetsProgress(dateFromNum, dateToNum) {
 
   el.innerHTML = visibleBlocks.map(block => {
     try {
-      const barsHtml = (block.bars || []).map(({ bar, goalOverride, phoneSet }) => {
+      const barsHtml = (block.bars || []).map(({ bar, goalOverride, phoneSet, memberLabel }) => {
         try {
           return renderDashTargetBar(bar, dateFromNum, dateToNum, block.title || '', {
             goalOverride,
-            phoneSet
+            phoneSet,
+            memberLabel: memberLabel || block.memberLabel || ''
           })
         } catch (e) {
           console.error('renderDashTargetBar error:', e, bar)
@@ -2054,28 +2166,49 @@ export function onDashTargetsScopeChange() {
 function buildMemberTargetBlocks(targets, groupId) {
   if (!groupId) return []
   const blocks = []
-  const phoneSet = memberPhoneSetForUserGroup(groupId)
+  const teamPhoneSet = memberPhoneSetForUserGroup(groupId)
   const ug = getGroupById(groupId)
   const groupName = ug?.name || 'گروه شما'
+  const viewer = getCurrentUser()
+  const viewerPhone = normalizePhone(viewer?.phone || '')
 
   for (const target of targets || []) {
     const items = target.items || []
     if (!items.length) continue
     const alloc = (target.allocations || []).find(a => a.userGroupId === groupId)
     if (!alloc) continue
-    const shareMap = new Map((alloc.shares || []).map(s => [s.barId, Number(s.value)]))
+
+    const teamShareMap = new Map((alloc.shares || []).map(s => [s.barId, Number(s.value)]))
+    const memberAlloc = viewerPhone
+      ? (alloc.members || []).find(m => normalizePhone(m.userPhone || '') === viewerPhone)
+      : null
+    const memberShareMap = memberAlloc
+      ? new Map((memberAlloc.shares || []).map(s => [s.barId, Number(s.value)]))
+      : null
+    const usePersonal = !!(memberShareMap && [...memberShareMap.values()].some(v => v > 0))
+
     const bars = items
       .map(bar => {
-        const shareVal = shareMap.get(bar.id)
+        if (usePersonal) {
+          const personal = memberShareMap.get(bar.id)
+          if (!(personal > 0)) return null
+          return {
+            bar,
+            goalOverride: personal,
+            phoneSet: new Set([viewerPhone])
+          }
+        }
+        const shareVal = teamShareMap.get(bar.id)
         if (!(shareVal > 0)) return null
-        return { bar, goalOverride: shareVal, phoneSet }
+        return { bar, goalOverride: shareVal, phoneSet: teamPhoneSet }
       })
       .filter(Boolean)
     if (!bars.length) continue
     blocks.push({
-      key: `${target.id}-${groupId}`,
+      key: `${target.id}-${groupId}${usePersonal ? `-${viewerPhone}` : ''}`,
       title: target.title || 'تارگت فروش',
       groupName,
+      personal: usePersonal,
       bars
     })
   }
@@ -2148,6 +2281,7 @@ function computeSalesTargetBarProgress(bar, goalOverride, phoneSet) {
   const complete = goal > 0 && current >= goal
   const deadline = targetDeadlineInfo(bar.endDate)
   const unit = bar.metric === 'count' ? 'فروش' : 'ریال'
+  const stages = resolveSalesTargetStageMarkers(bar, current, goal)
   return {
     goal,
     current,
@@ -2155,6 +2289,7 @@ function computeSalesTargetBarProgress(bar, goalOverride, phoneSet) {
     complete,
     deadline,
     unit,
+    stages,
     remainingLabel: formatSalesTargetRemaining(bar, current, goal),
     currentLabel: `${formatNumber(current)} ${unit}`,
     goalLabel: `${formatNumber(goal)} ${unit}`
@@ -2385,8 +2520,11 @@ function renderSalesTargetCampaignHtml(block) {
         <span>${escapeHtml(p.currentLabel)} / ${escapeHtml(p.goalLabel)}</span>
         <span class="pct">${formatNumber(p.pct)}٪</span>
       </div>
-      <div class="sales-target-bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(p.pct)}" aria-label="${escapeAttr(block.title || 'تارگت')}">
-        <div class="sales-target-bar-fill" style="width:${p.pct}%;"></div>
+      <div class="sales-target-bar-wrap">
+        <div class="sales-target-bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(p.pct)}" aria-label="${escapeAttr(block.title || 'تارگت')}">
+          <div class="sales-target-bar-fill" style="width:${p.pct}%;"></div>
+        </div>
+        ${renderTargetStageMarkersHtml(p.stages, 'sales')}
       </div>
     </div>
   `).join('')
@@ -2398,7 +2536,7 @@ function renderSalesTargetCampaignHtml(block) {
         <div class="sales-target-band-body">
           <div class="sales-target-band-head">
             <div>
-              <div class="sales-target-eyebrow">تارگت ${escapeHtml(block.groupName || 'گروه')}</div>
+              <div class="sales-target-eyebrow">${block.personal ? 'تارگت شخصی' : `تارگت ${escapeHtml(block.groupName || 'گروه')}`}</div>
               <h3 class="sales-target-title">${escapeHtml(block.title || 'تارگت فروش')}</h3>
             </div>
             ${deadlineChip}

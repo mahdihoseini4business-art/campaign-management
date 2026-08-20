@@ -256,9 +256,15 @@
                     </select>
                   </div>
                   <div class="form-group" style="flex:0.7;">
-                    <label for="salesTargetValue" id="salesTargetValueLabel">مقدار هدف (ریال)</label>
+                    <label for="salesTargetValue" id="salesTargetValueLabel">تارگت آخر (ریال)</label>
                     <input type="text" class="form-input" id="salesTargetValue" placeholder="مثلاً ۱۰۰۰۰۰۰۰۰" dir="ltr" style="text-align:left;" oninput="app.formatInput(this)">
                   </div>
+                </div>
+                <div class="form-group">
+                  <label>مراحل میانی <span class="settings-optional">(اختیاری)</span></label>
+                  <p class="settings-pane-desc" style="margin:0 0 8px;">مقادیر تجمعی کمتر از تارگت آخر. خالی بگذارید برای تارگت تک‌مرحله‌ای.</p>
+                  <div id="salesTargetFormStages" class="settings-target-stages"></div>
+                  <button type="button" class="btn btn-sm" style="margin-top:6px;" onclick="app.addSalesTargetFormStage()">افزودن مرحله میانی</button>
                 </div>
                 <div class="form-row">
                   <div class="form-group" style="flex:1;margin-bottom:0;">
@@ -297,8 +303,8 @@
               </div>
             </div>
             <div class="settings-target-alloc-block">
-              <div class="settings-target-bars-heading">سهمیه‌بندی بین گروه‌ها</div>
-              <p class="settings-pane-desc" style="margin:0 0 10px;">برای هر گروه کاربری سهم مطلق از هر نوار تعیین کنید. جمع سهم‌ها نباید از مقدار هدف نوار بیشتر شود.</p>
+              <div class="settings-target-bars-heading">سهمیه‌بندی بین گروه‌ها و اعضا</div>
+              <p class="settings-pane-desc" style="margin:0 0 10px;">برای هر گروه سهم مطلق از هر نوار تعیین کنید. زیر هر گروه می‌توانید برای اعضا هم تارگت جدا بگذارید. جمع سهم اعضا نباید از سهم گروه، و جمع سهم گروه‌ها نباید از هدف نوار بیشتر شود.</p>
               <div id="salesTargetAllocations" class="settings-target-allocations"></div>
               <div id="salesTargetAllocSums" class="settings-target-alloc-sums"></div>
             </div>
