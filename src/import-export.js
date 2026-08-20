@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import { getData, saveCustomerToDB, generateId, getStatuses, saveFollowupToDB, getDestinationBanks, getSellableNames, putCustomerInCache } from './data.js'
+import { getData, saveCustomerToDB, generateId, getStatuses, getCustomerCodes, saveFollowupToDB, getDestinationBanks, getSellableNames, putCustomerInCache } from './data.js'
 import {
   toEnDigits, showToast, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
@@ -107,6 +107,7 @@ function hasActiveExportScopeFilter(tab) {
       || document.getElementById('filterSalesAdvisor')?.value
       || document.getElementById('filterSalesPlatform')?.value
       || document.getElementById('filterSalesLevel')?.value
+      || document.getElementById('filterSalesCustomerCode')?.value
       || document.getElementById('filterSalesStatus')?.value
       || document.getElementById('filterSalesPaymentStatus')?.value
       || dateFilter?.hasDateFilter
@@ -213,6 +214,18 @@ function buildStatusImportMap() {
   return map
 }
 
+/** Resolve Excel value to customer_code key (accepts key or label). */
+function resolveCustomerCodeKey(raw) {
+  const v = String(raw || '').trim()
+  if (!v) return ''
+  const codes = getCustomerCodes()
+  const byKey = codes.find(c => c.key === v || c.key === v.toLowerCase())
+  if (byKey) return byKey.key
+  const byLabel = codes.find(c => c.label === v || String(c.label).toLowerCase() === v.toLowerCase())
+  if (byLabel) return byLabel.key
+  return v
+}
+
 function renderFieldMappingRows({ fields, headers, mapping, autoMapping = {}, onChangeFn }) {
   const mappedCount = Object.keys(mapping).length
   const autoCount = Object.keys(autoMapping).length
@@ -310,16 +323,18 @@ const EXPORT_CONFIG = {
     // Core columns stay in sync with IMPORT_FIELDS; «همه یادداشت‌ها» is export-only
     headers: [
       'شناسه', 'ایدی پلتفرم', 'پلتفرم', 'نام', 'شماره', 'شماره ۲', 'شماره ۳',
-      'وضعیت', 'سطح مشتری', 'شماره معرف', 'توضیحات', 'کارشناس', 'پیگیری بعدی',
+      'وضعیت', 'سطح مشتری', 'کد مشتری', 'شماره معرف', 'توضیحات', 'کارشناس', 'پیگیری بعدی',
       'همه یادداشت‌ها'
     ],
     getRows: () => {
       const data = getData()
+      const codeLabels = Object.fromEntries(getCustomerCodes().map(c => [c.key, c.label]))
       return getFilteredCustomers().map(c => {
         const level = c.customerLevelLocked
           ? (c.customerLevel || '')
           : syncCustomerLevel(c, data.customers, data.followups)
         const phones = getCustomerPhones(c)
+        const codeKey = c.customerCode || ''
         return [
           c.id,
           c.platformId || '',
@@ -330,6 +345,7 @@ const EXPORT_CONFIG = {
           phones[2] || '',
           getStatusLabels()[c.status] || c.status || '',
           formatCustomerLevel(level) === '—' ? '' : formatCustomerLevel(level),
+          codeLabels[codeKey] || codeKey || '',
           c.referredByPhone || '',
           c.notes || '',
           c.advisor || '',
@@ -360,20 +376,24 @@ const EXPORT_CONFIG = {
   sales: {
     label: 'فروش‌ها',
     headers: [
-      'شناسه مشتری', 'نام مشتری', 'شماره موبایل', 'پلتفرم', 'محصول', 'وضعیت',
+      'شناسه مشتری', 'نام مشتری', 'شماره موبایل', 'پلتفرم', 'کد مشتری', 'محصول', 'وضعیت',
       'مبلغ کل', 'پرداخت‌شده', 'مانده', 'تاریخ تسویه', 'کارشناس',
       'مبلغ واریز', 'تاریخ واریز', 'نام واریزکننده', 'بانک مقصد', 'وضعیت واریزی'
     ],
     getRows: () => {
       const data = getData()
+      const codeLabels = Object.fromEntries(getCustomerCodes().map(c => [c.key, c.label]))
       const rows = []
       getFilteredSales().forEach(s => {
         const c = data.customers.find(x => x.id === s.customerId)
         const p = c?.products?.[s.productIndex]
+        const codeKey = c?.customerCode || s.customerCode || ''
+        const codeLabel = codeLabels[codeKey] || codeKey || ''
         if (!c || !p) {
           rows.push([
             s.customerId, s.customerName, s.customerPhone,
             getPlatformLabels()[s.platform] || s.platform || '',
+            codeLabel,
             s.productName, s.status, s.price || '', s.deposit || '', s.balance || '',
             s.settlementDate || '', s.advisor || '',
             '', formatSoldAt24h(s.soldAt) || s.soldAt || '', s.depositorName || '', '', ''
@@ -403,6 +423,7 @@ const EXPORT_CONFIG = {
             c.name || c.platformId || '',
             phoneStr,
             platformLabel,
+            codeLabel,
             p.name || '',
             p.status || '',
             price || '',
@@ -428,6 +449,7 @@ const EXPORT_CONFIG = {
             c.name || c.platformId || '',
             phoneStr,
             platformLabel,
+            codeLabel,
             p.name || '',
             p.status || '',
             price || '',
@@ -488,7 +510,7 @@ export function exportTabXLSX(tab) {
 
   // Keep phone / id columns as text so Excel doesn't drop leading zeros
   if (tab === 'customers') {
-    forceSheetTextColumns(ws, rows.length, [0, 1, 4, 5, 6, 9]) // شناسه، ایدی، شماره‌ها، معرف
+    forceSheetTextColumns(ws, rows.length, [0, 1, 4, 5, 6, 10]) // شناسه، ایدی، شماره‌ها، معرف
   } else if (tab === 'followups') {
     forceSheetTextColumns(ws, rows.length, [0, 2, 9]) // شناسه مشتری، شماره مشتری، ثبت‌کننده
   } else if (tab === 'sales') {
@@ -546,6 +568,7 @@ const IMPORT_FIELDS = [
   { key: 'phone3', label: 'شماره ۳', aliases: ['شماره تماس ۳', 'شماره 3', 'موبایل ۳'] },
   { key: 'status', label: 'وضعیت' },
   { key: 'customerLevel', label: 'سطح مشتری', aliases: ['سطح'] },
+  { key: 'customerCode', label: 'کد مشتری', aliases: ['کد'] },
   { key: 'referredByPhone', label: 'شماره معرف', aliases: ['معرف'] },
   { key: 'notes', label: 'توضیحات' },
   { key: 'advisor', label: 'کارشناس' },
@@ -941,6 +964,13 @@ function applyMappedCustomerFields(customer, { mapping, getValue, users, phones,
     customer.customerLevel = ''
     customer.customerLevelLocked = false
   }
+  if (isFieldMapped(mapping, 'customerCode')) {
+    if (isCreate || hasVal('customerCode')) {
+      customer.customerCode = resolveCustomerCodeKey(getValue('customerCode'))
+    }
+  } else if (isCreate) {
+    customer.customerCode = ''
+  }
 }
 
 export async function doImport() {
@@ -1126,6 +1156,7 @@ const SALES_IMPORT_FIELDS = [
   { key: 'phone', label: 'شماره موبایل', aliases: ['شماره', 'شماره تماس'], required: true },
   { key: 'customerName', label: 'نام مشتری', aliases: ['نام'] },
   { key: 'platform', label: 'پلتفرم' },
+  { key: 'customerCode', label: 'کد مشتری', aliases: ['کد'] },
   { key: 'productName', label: 'محصول', required: true },
   { key: 'status', label: 'وضعیت' },
   // «مبلغ» (site) = paid amount; «مبلغ کل» = invoice total (esp. بیعانه)
@@ -1810,11 +1841,18 @@ export async function doSalesImport() {
         createdAt: new Date().toISOString(),
         customerLevel: '',
         customerLevelLocked: false,
-        referredByPhone: ''
+        referredByPhone: '',
+        customerCode: resolveCustomerCodeKey(getValue('customerCode'))
       }
       putCustomerInCache(customer)
       created++
       touched.add(customer.id)
+    } else if (isFieldMapped(salesImportData.mapping, 'customerCode') && getValue('customerCode')) {
+      const nextCode = resolveCustomerCodeKey(getValue('customerCode'))
+      if (nextCode && customer.customerCode !== nextCode) {
+        customer.customerCode = nextCode
+        touched.add(customer.id)
+      }
     }
 
     let price = parseImportMoney(getValue('price'))

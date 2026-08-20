@@ -98,6 +98,7 @@ let data = {
   productBundles: [],
   platforms: [],
   statuses: [],
+  customerCodes: [],
   salesTargets: [],
   salesTargetDeadlineUrgency: null,
   saleToastEnabled: true,
@@ -149,6 +150,9 @@ const DEFAULT_STATUSES = [
   { key: 'purchased', label: 'خرید کرد', bgColor: '#d1e7dd', textColor: '#0f5132', order: 7 },
   { key: 'cancelled', label: 'منصرف شده', bgColor: '#e9ecef', textColor: '#495057', order: 8 },
 ]
+
+/** Admin-defined customer codes (کد مشتری); empty until configured in settings */
+const DEFAULT_CUSTOMER_CODES = []
 
 /** Default product names seeded into settings until admin customizes */
 export const DEFAULT_PRODUCT_CATALOG = [
@@ -242,7 +246,8 @@ export function normalizeCustomerId(id) {
 export const CUSTOMER_LIST_SELECT = [
   'id', 'platform_id', 'platform', 'name', 'phone', 'phones', 'addresses',
   'status', 'advisor', 'advisor_phone', 'next_followup_date', 'products',
-  'created_at', 'updated_at', 'customer_level', 'customer_level_locked', 'referred_by_phone'
+  'created_at', 'updated_at', 'customer_level', 'customer_level_locked', 'referred_by_phone',
+  'customer_code'
 ].join(',')
 
 /** Full customer row including notes for detail panel / realtime. */
@@ -308,6 +313,7 @@ export function mapCustomerFromDb(c) {
     customerLevel: c.customer_level || '',
     customerLevelLocked: !!c.customer_level_locked,
     referredByPhone: c.referred_by_phone || '',
+    customerCode: c.customer_code || '',
     _detailsLoaded: hasNotes
   }
 }
@@ -524,6 +530,9 @@ function applySettingsRows(rows) {
   data.statuses = Array.isArray(settings.statuses) && settings.statuses.length > 0
     ? [...settings.statuses].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [...DEFAULT_STATUSES]
+  data.customerCodes = Array.isArray(settings.customer_codes) && settings.customer_codes.length > 0
+    ? [...settings.customer_codes].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    : [...DEFAULT_CUSTOMER_CODES]
   data.saleToastEnabled = settings.sale_toast_enabled !== false && settings.sale_toast_enabled !== 'false'
   data.requireFollowupOnCreate = coerceAppSettingBool(settings.require_followup_on_create, true)
   try {
@@ -576,6 +585,13 @@ async function loadDataInner() {
     syncMeta.supportsUpdatedAt = false
     customersRes = await fetchAllRows('customers', {
       select: CUSTOMER_LIST_SELECT.replace(/,?updated_at/, ''),
+      orderCol: 'id'
+    })
+  }
+  // Fallback before migration 024 (customer_code)
+  if (customersRes.error && /customer_code/i.test(customersRes.error.message || '')) {
+    customersRes = await fetchAllRows('customers', {
+      select: CUSTOMER_LIST_SELECT.replace(/,?customer_code/, ''),
       orderCol: 'id'
     })
   }
@@ -927,6 +943,15 @@ export async function saveStatuses(statuses) {
   data.statuses = statuses.map((s, i) => ({ ...s, order: i }))
   await saveSetting('statuses', data.statuses)
   injectDynamicStyles()
+}
+
+export function getCustomerCodes() {
+  return Array.isArray(data.customerCodes) ? data.customerCodes : [...DEFAULT_CUSTOMER_CODES]
+}
+
+export async function saveCustomerCodes(codes) {
+  data.customerCodes = codes.map((c, i) => ({ ...c, order: i }))
+  await saveSetting('customer_codes', data.customerCodes)
 }
 
 function injectDynamicStyles() {
@@ -1561,13 +1586,18 @@ export async function saveCustomerToDB(customer, options = {}) {
     products: customer.products || [],
     customer_level: customer.customerLevel || '',
     customer_level_locked: !!customer.customerLevelLocked,
-    referred_by_phone: customer.referredByPhone || ''
+    referred_by_phone: customer.referredByPhone || '',
+    customer_code: customer.customerCode || ''
   }
   // Only set on insert (e.g. LD↔CS rekey) so L/relationship start is preserved.
   if (options.createdAt) row.created_at = options.createdAt
 
   let { error } = await supabase.from('customers').upsert(row, { onConflict: 'id' })
-  // Graceful fallback before migration 007 / 015 is applied
+  // Graceful fallback before migration 007 / 015 / 024 is applied
+  if (error && /customer_code/i.test(error.message || '')) {
+    const { customer_code: _omitCode, ...withoutCode } = row
+    ;({ error } = await supabase.from('customers').upsert(withoutCode, { onConflict: 'id' }))
+  }
   if (error && /addresses/i.test(error.message || '')) {
     const { addresses: _omitAddr, ...withoutAddresses } = row
     ;({ error } = await supabase.from('customers').upsert(withoutAddresses, { onConflict: 'id' }))

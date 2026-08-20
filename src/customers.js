@@ -1,4 +1,4 @@
-import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded } from './data.js'
+import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
@@ -75,7 +75,22 @@ function populateStatusDropdown(select) {
   if (val) select.value = val
 }
 
-export { populatePlatformDropdown, populateStatusDropdown }
+function populateCustomerCodeDropdown(select, selectedKey = '') {
+  if (!select) return
+  const codes = getCustomerCodes()
+  const opts = ['<option value="">— بدون کد —</option>']
+    .concat(codes.map(c => `<option value="${escapeAttr(c.key)}">${escapeHtml(c.label)}</option>`))
+  select.innerHTML = opts.join('')
+  select.value = selectedKey || ''
+}
+
+function customerCodeLabel(key) {
+  if (!key) return '—'
+  const found = getCustomerCodes().find(c => c.key === key)
+  return found ? found.label : key
+}
+
+export { populatePlatformDropdown, populateStatusDropdown, populateCustomerCodeDropdown }
 
 /** Phone-field check while creating/editing: ok | incomplete | own | blocked | transferable | taken | mergeable | duplicate */
 let phoneFieldState = { status: 'ok', customer: null, lastActivity: null, index: 0 }
@@ -1038,7 +1053,7 @@ export async function saveCustomer() {
  * @returns {{ id: string, toast: string }}
  */
 async function applyCustomerEdit(editId, fields) {
-  const { platformId, platform, name, phones, addresses, status, notes, advisor, advisorPhone } = fields
+  const { platformId, platform, name, phones, addresses, status, notes, advisor, advisorPhone, customerCode } = fields
   const phoneFields = { phone: phones[0] || '', phones }
   const addressFields = { addresses: normalizeCustomerAddresses(addresses || []) }
   const advisorFields = { advisor, advisorPhone }
@@ -1073,8 +1088,8 @@ async function applyCustomerEdit(editId, fields) {
   const advisorChanged = normalizePhone(oldCustomer.advisorPhone) !== normalizePhone(advisorPhone)
   // Keep previous owner until after conversion; reassign logs the handoff separately
   const baseFields = advisorChanged
-    ? { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, advisor: oldCustomer.advisor, advisorPhone: oldCustomer.advisorPhone }
-    : { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, ...advisorFields }
+    ? { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, customerCode: customerCode || '', advisor: oldCustomer.advisor, advisorPhone: oldCustomer.advisorPhone }
+    : { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, customerCode: customerCode || '', ...advisorFields }
 
   let resultId = editId
   let toast = 'اطلاعات مشتری ذخیره شد'
@@ -1687,10 +1702,11 @@ function readDetailFormFields(users, fallback = {}) {
   const phones = getFormPhones()
   const addresses = getFormAddresses()
   const status = document.getElementById('detailStatus')?.value || fallback.status || 'new'
+  const customerCode = document.getElementById('detailCustomerCode')?.value || fallback.customerCode || ''
   const notes = fallback.notes || ''
   const advisorSelectValue = document.getElementById('detailAdvisor')?.value || fallback.advisorPhone || ''
   const { advisor, advisorPhone } = resolveAdvisor(advisorSelectValue, users)
-  return { platformId, platform, name, phones, addresses, status, notes, advisor, advisorPhone }
+  return { platformId, platform, name, phones, addresses, status, customerCode, notes, advisor, advisorPhone }
 }
 
 /** @returns {{ ok: true, date: string } | { ok: false, message: string }} */
@@ -1851,7 +1867,7 @@ function validateDetailPhones() {
  */
 async function createCustomerFromDetail(fields) {
   const data = getData()
-  const { platformId, platform, name, phones, addresses, status, notes, advisor, advisorPhone } = fields
+  const { platformId, platform, name, phones, addresses, status, notes, advisor, advisorPhone, customerCode } = fields
   const nextFollowupDate = fields.nextFollowupDate || ''
   const phoneFields = { phone: phones[0] || '', phones }
   const addressFields = { addresses: normalizeCustomerAddresses(addresses || []) }
@@ -1876,7 +1892,7 @@ async function createCustomerFromDetail(fields) {
       const idx = data.customers.findIndex(c => c.id === existById.id)
       if (idx === -1) return null
       const wasLD = existById.id.startsWith('LD')
-      const updatedFields = { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, advisor, advisorPhone }
+      const updatedFields = { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, customerCode: customerCode || '', advisor, advisorPhone }
 
       if (wasLD) {
         const newId = await generateId('CS')
@@ -1907,7 +1923,8 @@ async function createCustomerFromDetail(fields) {
   const newCustomer = {
     id, platformId, platform, name, ...phoneFields, ...addressFields, status, notes, advisor, advisorPhone,
     nextFollowupDate, products: [], createdAt: new Date().toISOString(),
-    customerLevel: '', customerLevelLocked: false, referredByPhone: ''
+    customerLevel: '', customerLevelLocked: false, referredByPhone: '',
+    customerCode: customerCode || ''
   }
   await saveCustomerToDB(newCustomer)
   putCustomerInCache(newCustomer)
@@ -2042,7 +2059,8 @@ export async function openCustomerDetail(id, options = {}) {
         nextFollowupDate: '',
         products: [],
         customerLevel: '',
-        customerLevelLocked: false
+        customerLevelLocked: false,
+        customerCode: ''
       }
     : data.customers.find(x => x.id === id)
 
@@ -2179,6 +2197,10 @@ export async function openCustomerDetail(id, options = {}) {
         <select class="form-select" id="detailStatus"></select>
       </div>
       <div class="detail-field">
+        <span class="detail-label">کد مشتری</span>
+        <select class="form-select" id="detailCustomerCode"></select>
+      </div>
+      <div class="detail-field">
         <span class="detail-label">شماره تماس</span>
         <div id="detailPhonesList" class="phone-fields"></div>
         <div class="form-error" id="detailPhoneError" hidden></div>
@@ -2217,6 +2239,10 @@ export async function openCustomerDetail(id, options = {}) {
       <div class="detail-field">
         <span class="detail-label">وضعیت</span>
         <span class="detail-value"><span class="status-badge ${statusClass}">${escapeHtml(statusLabel)}</span></span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">کد مشتری</span>
+        <span class="detail-value">${escapeHtml(customerCodeLabel(c.customerCode))}</span>
       </div>
       <div class="detail-field">
         <span class="detail-label">شماره تماس</span>
@@ -2464,6 +2490,7 @@ export async function openCustomerDetail(id, options = {}) {
       : [{ text: '', postalCode: '', isPrimary: true }]
     populatePlatformDropdown(document.getElementById('detailPlatform'))
     populateStatusDropdown(document.getElementById('detailStatus'))
+    populateCustomerCodeDropdown(document.getElementById('detailCustomerCode'), c.customerCode || '')
     const platformEl = document.getElementById('detailPlatform')
     const statusEl = document.getElementById('detailStatus')
     if (platformEl) platformEl.value = c.platform || 'instagram'

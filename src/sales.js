@@ -1,4 +1,4 @@
-import { getData, getPlatforms, coerceProductName, collapseDuplicateCustomersInCache } from './data.js'
+import { getData, getPlatforms, getCustomerCodes, coerceProductName, collapseDuplicateCustomersInCache } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import {
@@ -88,7 +88,8 @@ export function getAllSales() {
           hasRejected: productHasRejectedPayment(p),
           countable: isProductCountableInSales(p),
           isGift: isGiftSale(p),
-          refundBadge: getProductRefundBadge(p)
+          refundBadge: getProductRefundBadge(p),
+          customerCode: c.customerCode || ''
         })
       })
     }
@@ -158,6 +159,7 @@ export function getFilteredSales(dateFilterOverride = null) {
   const platformFilter = document.getElementById('filterSalesPlatform')?.value || ''
   const advisorFilter = document.getElementById('filterSalesAdvisor')?.value || ''
   const levelFilter = document.getElementById('filterSalesLevel')?.value || ''
+  const codeFilter = document.getElementById('filterSalesCustomerCode')?.value || ''
   const statusFilter = document.getElementById('filterSalesStatus')?.value || ''
   const payStatusFilter = document.getElementById('filterSalesPaymentStatus')?.value || ''
   const dateFilter = dateFilterOverride || getSalesDateFilter()
@@ -206,6 +208,10 @@ export function getFilteredSales(dateFilterOverride = null) {
     if (levelFilter && customer) {
       const resolved = resolveCustomerLevel(customer, data.customers, data.followups)
       if (resolved !== levelFilter) return false
+    }
+    if (codeFilter) {
+      const code = (customer?.customerCode || s.customerCode || '')
+      if (code !== codeFilter) return false
     }
 
     const advisorScopePhones = phonesMatchingAdvisorFilter(advisorFilter, currentUser)
@@ -377,6 +383,13 @@ function populateSalesFilterDropdowns() {
     lSel.innerHTML = '<option value="">همه سطوح</option>' +
       Object.values(CUSTOMER_LEVELS).map(l => `<option value="${escapeAttr(l.key)}">${l.emoji} ${escapeHtml(l.label)}</option>`).join('')
     lSel.value = val
+  }
+  const codeSel = document.getElementById('filterSalesCustomerCode')
+  if (codeSel) {
+    const val = codeSel.value
+    codeSel.innerHTML = '<option value="">همه کدها</option>' +
+      getCustomerCodes().map(c => `<option value="${escapeAttr(c.key)}">${escapeHtml(c.label)}</option>`).join('')
+    codeSel.value = val
   }
   const statusSel = document.getElementById('filterSalesStatus')
   if (statusSel) {

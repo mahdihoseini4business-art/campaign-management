@@ -1,5 +1,5 @@
 import Chart from 'chart.js/auto'
-import { getData, getStatuses, getPlatforms, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName } from './data.js'
+import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
 import {
@@ -1378,7 +1378,7 @@ function destroyDashChart(keyOrCanvas) {
 function destroyAllDashCharts() {
   Object.keys(dashCharts).forEach(key => destroyDashChart(key))
   dashCharts = {}
-  ;['chartCustomers', 'chartSalesStatus', 'chartPlatforms', 'chartProducts', 'chartAdvisorCompare', 'chartSalesTimeline', 'chartAovMa']
+  ;['chartCustomers', 'chartSalesStatus', 'chartFollowupConversion', 'chartPlatforms', 'chartProducts', 'chartAdvisorCompare', 'chartSalesTimeline', 'chartAovMa']
     .forEach(id => {
       const canvas = document.getElementById(id)
       if (canvas) destroyDashChart(canvas)
@@ -1387,6 +1387,15 @@ function destroyAllDashCharts() {
 
 const CHART_FONT = { family: 'Vazirmatn', size: 11 }
 const CHART_RESPONSIVE = { responsive: true, maintainAspectRatio: false }
+
+function populateDashConversionCodeFilter() {
+  const sel = document.getElementById('dashConversionCustomerCode')
+  if (!sel) return
+  const val = sel.value
+  sel.innerHTML = '<option value="">همه کدها</option>' +
+    getCustomerCodes().map(c => `<option value="${escapeAttr(c.key)}">${escapeHtml(c.label)}</option>`).join('')
+  sel.value = val
+}
 
 function renderDashCharts(dateFromNum, dateToNum, currentUser) {
   destroyAllDashCharts()
@@ -1612,6 +1621,94 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     }
   } catch (e) {
     console.error('salesStatus chart error:', e)
+  }
+
+  try {
+    populateDashConversionCodeFilter()
+    const codeFilter = document.getElementById('dashConversionCustomerCode')?.value || ''
+    const data = getData()
+    const customersWithActivity = new Set()
+    data.followups.forEach(f => {
+      const dateStr = jalaliDatePart(f.doneAt || f.date)
+      if (!inChartDateRange(dateStr)) return
+      if (!f.customerId) return
+      customersWithActivity.add(f.customerId)
+    })
+
+    const customersWithSale = new Set()
+    forEachDashSalePayment(
+      matchesSelectedSaleRegistrant,
+      hasDateFilter,
+      inChartDateRange,
+      () => {},
+      ({ customer }) => {
+        if (customer?.id) customersWithSale.add(customer.id)
+      }
+    )
+
+    let withSale = 0
+    let withoutSale = 0
+    customersWithActivity.forEach(customerId => {
+      const c = data.customers.find(x => x.id === customerId)
+      if (!c) return
+      if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
+      if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
+      if (!inUserScope(c)) return
+      if (codeFilter && (c.customerCode || '') !== codeFilter) return
+      if (customersWithSale.has(customerId)) withSale += 1
+      else withoutSale += 1
+    })
+
+    const convCanvas = document.getElementById('chartFollowupConversion')
+    if (convCanvas) {
+      const total = withSale + withoutSale
+      const convEntries = [
+        {
+          label: 'دارای فروش',
+          value: withSale,
+          color: '#198754',
+          pct: total > 0 ? Math.round((withSale / total) * 100) : 0
+        },
+        {
+          label: 'بدون فروش',
+          value: withoutSale,
+          color: '#adb5bd',
+          pct: total > 0 ? Math.round((withoutSale / total) * 100) : 0
+        }
+      ]
+      dashCharts.followupConversion = new Chart(convCanvas, {
+        type: 'pie',
+        data: {
+          labels: convEntries.map(e => `${e.label} ${formatNumber(e.pct)}٪`),
+          datasets: [{
+            data: convEntries.map(e => e.value),
+            backgroundColor: convEntries.map(e => e.color),
+            borderWidth: 2,
+            borderColor: '#fff'
+          }]
+        },
+        options: {
+          ...CHART_RESPONSIVE,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { font: CHART_FONT, boxWidth: 12, padding: 10 }
+            },
+            tooltip: {
+              callbacks: {
+                label(ctx) {
+                  const item = convEntries[ctx.dataIndex]
+                  if (!item) return ''
+                  return ` ${item.label}: ${formatNumber(item.value)} نفر (${formatNumber(item.pct)}٪)`
+                }
+              }
+            }
+          }
+        }
+      })
+    }
+  } catch (e) {
+    console.error('followupConversion chart error:', e)
   }
 
   try {
@@ -3031,6 +3128,53 @@ export async function buildDashboardExportPayload() {
     pct: salesStatusTotal > 0 ? Math.round((e.amount / salesStatusTotal) * 100) : 0
   }))
 
+  const codeFilter = document.getElementById('dashConversionCustomerCode')?.value || ''
+  const customersWithActivity = new Set()
+  data.followups.forEach(f => {
+    const dateStr = jalaliDatePart(f.doneAt || f.date)
+    if (!inDateRange(dateStr)) return
+    if (!f.customerId) return
+    customersWithActivity.add(f.customerId)
+  })
+  const customersWithSale = new Set()
+  forEachDashSalePayment(
+    matchesSelectedSaleRegistrant,
+    hasDateFilter,
+    inDateRange,
+    () => {},
+    ({ customer }) => {
+      if (customer?.id) customersWithSale.add(customer.id)
+    }
+  )
+  let convWithSale = 0
+  let convWithoutSale = 0
+  customersWithActivity.forEach(customerId => {
+    const c = data.customers.find(x => x.id === customerId)
+    if (!c) return
+    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
+    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
+    if (!inUserScope(c)) return
+    if (codeFilter && (c.customerCode || '') !== codeFilter) return
+    if (customersWithSale.has(customerId)) convWithSale += 1
+    else convWithoutSale += 1
+  })
+  const convTotal = convWithSale + convWithoutSale
+  const followupConversionChart = {
+    customerCodeFilter: codeFilter || null,
+    rows: [
+      {
+        label: 'دارای فروش',
+        count: convWithSale,
+        pct: convTotal > 0 ? Math.round((convWithSale / convTotal) * 100) : 0
+      },
+      {
+        label: 'بدون فروش',
+        count: convWithoutSale,
+        pct: convTotal > 0 ? Math.round((convWithoutSale / convTotal) * 100) : 0
+      }
+    ]
+  }
+
   const productMetric = document.getElementById('productChartMetric')?.value === 'count' ? 'count' : 'amount'
   const productSource = productMetric === 'count' ? productCounts : productSales
   const productsChart = {
@@ -3094,6 +3238,7 @@ export async function buildDashboardExportPayload() {
     charts: {
       customerStatus,
       salesStatus: salesStatusChart,
+      followupConversion: followupConversionChart,
       platforms,
       products: productsChart,
       advisorCompare,

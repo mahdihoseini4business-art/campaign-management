@@ -350,6 +350,26 @@
           <div id="settingsStatusesList" class="settings-config-list"></div>
         </section>
 
+        <!-- کدهای مشتری -->
+        <section class="settings-pane" data-settings-pane="customer-codes" hidden>
+          <div class="settings-pane-header">
+            <h3>کدهای مشتری</h3>
+            <p class="settings-pane-desc">این کدها در پنل مشتری به‌صورت دراپ‌داون قابل انتخاب‌اند و در فیلتر فروش و داشبورد استفاده می‌شوند.</p>
+          </div>
+          <div class="form-row settings-add-row">
+            <div class="form-group" style="flex:1;margin-bottom:0;">
+              <label for="newCustomerCodeKey">کلید (انگلیسی)</label>
+              <input type="text" class="form-input" id="newCustomerCodeKey" placeholder="مثلاً vip" dir="ltr" style="text-align:left;">
+            </div>
+            <div class="form-group" style="flex:1;margin-bottom:0;">
+              <label for="newCustomerCodeLabel">نام نمایشی</label>
+              <input type="text" class="form-input" id="newCustomerCodeLabel" placeholder="مثلاً VIP">
+            </div>
+            <button type="button" class="btn btn-primary" onclick="app.addCustomerCode()">افزودن</button>
+          </div>
+          <div id="settingsCustomerCodesList" class="settings-config-list"></div>
+        </section>
+
         <!-- ترجیحات مشتری / پیگیری -->
         <section class="settings-pane" data-settings-pane="customer-prefs" hidden>
           <div class="settings-pane-header">
@@ -657,6 +677,17 @@
         <div class="chart-title">وضعیت فروش</div>
         <div class="chart-container chart-container-sm">
           <canvas id="chartSalesStatus"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title-row">
+          <div class="chart-title">نرخ تبدیل پیگیری</div>
+          <select class="form-select" id="dashConversionCustomerCode" style="width:140px;" onchange="app.renderDashboard()">
+            <option value="">همه کدها</option>
+          </select>
+        </div>
+        <div class="chart-container chart-container-sm">
+          <canvas id="chartFollowupConversion"></canvas>
         </div>
       </div>
       <div class="chart-card">
@@ -1011,6 +1042,9 @@
         </select>
         <select class="form-select" id="filterSalesLevel" style="width:130px;" onchange="app.renderSales()">
           <option value="">همه سطوح</option>
+        </select>
+        <select class="form-select" id="filterSalesCustomerCode" style="width:140px;" onchange="app.renderSales()">
+          <option value="">همه کدها</option>
         </select>
         <select class="form-select" id="filterSalesStatus" style="width:120px;" onchange="app.renderSales()">
           <option value="">همه وضعیت‌ها</option>

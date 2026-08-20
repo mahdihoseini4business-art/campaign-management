@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL } from './data.js'
 import {
   loadGroupsData,
   getGroupsCache,
@@ -380,6 +380,7 @@ const SETTINGS_SECTIONS = [
   { id: 'sales-targets', label: 'تارگت‌های فروش', group: 'داده‌های پایه', keywords: 'تارگت هدف فروش target goal quota' },
   { id: 'platforms', label: 'پلتفرم‌ها', group: 'داده‌های پایه', keywords: 'پلتفرم platform' },
   { id: 'statuses', label: 'وضعیت‌های مشتری', group: 'داده‌های پایه', keywords: 'وضعیت status' },
+  { id: 'customer-codes', label: 'کدهای مشتری', group: 'داده‌های پایه', keywords: 'کد مشتری customer code' },
   { id: 'customer-prefs', label: 'ترجیحات مشتری', group: 'داده‌های پایه', keywords: 'پیگیری اجبار فروش followup مشتری ثبت' },
   { id: 'sms', label: 'پنل پیامک', group: 'ارتباطات', keywords: 'پیامک sms otp ملی پیامک melipayamak فرستنده api' },
   { id: 'notif-compose', label: 'ارسال اعلان', group: 'اعلان‌ها', keywords: 'اعلان notification ارسال' },
@@ -397,6 +398,7 @@ let _editingProductIdx = null
 let _editingBundleId = null
 let _editingPlatformIdx = null
 let _editingStatusIdx = null
+let _editingCustomerCodeIdx = null
 let _editingSalesTargetId = null
 /** @type {Array<{id?: string, metric: string, value: number, productNames: string[], startDate: string, endDate: string, createdAt?: string}>} */
 let _draftTargetBars = []
@@ -468,6 +470,7 @@ function applySettingsSection(sectionId) {
   else if (sectionId === 'sales-targets') renderSalesTargetsSettings()
   else if (sectionId === 'platforms') renderPlatformsSettings()
   else if (sectionId === 'statuses') renderStatusesSettings()
+  else if (sectionId === 'customer-codes') renderCustomerCodesSettings()
   else if (sectionId === 'sms') renderSmsPanelSettings()
 }
 
@@ -2634,6 +2637,130 @@ export async function saveStatusEdit(index) {
     _editingStatusIdx = null
     renderStatusesSettings()
     showToast('وضعیت ویرایش شد')
+  } catch (e) {
+    showToast('خطا در ذخیره')
+  }
+}
+
+// ============================================
+// Customer Codes Settings
+// ============================================
+
+export function renderCustomerCodesSettings() {
+  const list = document.getElementById('settingsCustomerCodesList')
+  if (!list) return
+  const codes = getCustomerCodes()
+  _editingCustomerCodeIdx = (_editingCustomerCodeIdx != null && _editingCustomerCodeIdx < codes.length)
+    ? _editingCustomerCodeIdx
+    : null
+  list.innerHTML = codes.map((c, idx) => {
+    if (_editingCustomerCodeIdx === idx) {
+      return `
+        <div class="settings-config-row is-editing">
+          <input type="text" class="form-input" id="editCustomerCodeLabel" value="${escapeAttr(c.label)}" style="flex:1;">
+          <button type="button" class="btn btn-sm btn-primary" onclick="app.saveCustomerCodeEdit(${idx})">ذخیره</button>
+          <button type="button" class="btn btn-sm" onclick="app.cancelCustomerCodeEdit()">لغو</button>
+        </div>`
+    }
+    return `
+      <div class="settings-config-row" data-idx="${idx}" draggable="true" ondragstart="app.onCustomerCodeDragStart(event,${idx})" ondragover="app.onCustomerCodeDragOver(event)" ondrop="app.onCustomerCodeDrop(event,${idx})">
+        <span class="drag-handle" title="جابجایی">☰</span>
+        <span class="settings-config-label">${escapeHtml(c.label)}</span>
+        <span class="settings-config-meta">${escapeHtml(c.key)}</span>
+        <span style="flex:1;"></span>
+        <button type="button" class="btn-icon" title="ویرایش" onclick="app.editCustomerCode(${idx})">✏️</button>
+        <button type="button" class="btn-icon" title="حذف" onclick="app.removeCustomerCode(${idx})" style="color:var(--danger);">🗑</button>
+      </div>`
+  }).join('') || '<div class="settings-empty-detail">هنوز کدی تعریف نشده است</div>'
+}
+
+let draggedCustomerCodeIdx = null
+export function onCustomerCodeDragStart(e, idx) {
+  draggedCustomerCodeIdx = idx
+  e.dataTransfer.effectAllowed = 'move'
+}
+export function onCustomerCodeDragOver(e) {
+  e.preventDefault()
+  e.dataTransfer.dropEffect = 'move'
+}
+export async function onCustomerCodeDrop(e, targetIdx) {
+  e.preventDefault()
+  if (draggedCustomerCodeIdx === null || draggedCustomerCodeIdx === targetIdx) return
+  const codes = [...getCustomerCodes()]
+  const [moved] = codes.splice(draggedCustomerCodeIdx, 1)
+  codes.splice(targetIdx, 0, moved)
+  draggedCustomerCodeIdx = null
+  try {
+    await saveCustomerCodes(codes)
+    renderCustomerCodesSettings()
+    showToast('ترتیب کدها ذخیره شد')
+  } catch (err) {
+    showToast('خطا در ذخیره ترتیب')
+  }
+}
+
+export async function addCustomerCode() {
+  if (!requireMainAdmin()) return
+  const keyInput = document.getElementById('newCustomerCodeKey')
+  const labelInput = document.getElementById('newCustomerCodeLabel')
+  const key = (keyInput?.value || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+  const label = (labelInput?.value || '').trim()
+  if (!key || !label) { showToast('کلید و نام کد الزامیست'); return }
+  const codes = getCustomerCodes()
+  if (codes.some(c => c.key === key)) { showToast('این کلید قبلاً وجود دارد'); return }
+  try {
+    await saveCustomerCodes([...codes, { key, label, order: codes.length }])
+    if (keyInput) keyInput.value = ''
+    if (labelInput) labelInput.value = ''
+    renderCustomerCodesSettings()
+    showToast('کد مشتری اضافه شد')
+  } catch (e) {
+    showToast('خطا در ذخیره کد مشتری')
+  }
+}
+
+export async function removeCustomerCode(index) {
+  if (!requireMainAdmin()) return
+  const codes = [...getCustomerCodes()]
+  if (index < 0 || index >= codes.length) return
+  openSettingsConfirm(`حذف کد «${codes[index].label}»؟`, async () => {
+    const next = [...getCustomerCodes()]
+    next.splice(index, 1)
+    try {
+      await saveCustomerCodes(next)
+      _editingCustomerCodeIdx = null
+      renderCustomerCodesSettings()
+      showToast('کد مشتری حذف شد')
+    } catch (e) {
+      showToast('خطا در حذف کد مشتری')
+    }
+  }, 'حذف')
+}
+
+export function editCustomerCode(index) {
+  if (!requireMainAdmin()) return
+  _editingCustomerCodeIdx = index
+  renderCustomerCodesSettings()
+}
+
+export function cancelCustomerCodeEdit() {
+  _editingCustomerCodeIdx = null
+  renderCustomerCodesSettings()
+}
+
+export async function saveCustomerCodeEdit(index) {
+  if (!requireMainAdmin()) return
+  const codes = [...getCustomerCodes()]
+  const c = codes[index]
+  if (!c) return
+  const newLabel = (document.getElementById('editCustomerCodeLabel')?.value || '').trim()
+  if (!newLabel) { showToast('نام کد را وارد کنید'); return }
+  codes[index] = { ...c, label: newLabel }
+  try {
+    await saveCustomerCodes(codes)
+    _editingCustomerCodeIdx = null
+    renderCustomerCodesSettings()
+    showToast('کد مشتری ویرایش شد')
   } catch (e) {
     showToast('خطا در ذخیره')
   }
