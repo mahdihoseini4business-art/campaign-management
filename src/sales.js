@@ -17,8 +17,11 @@ import {
   getCurrentJalaliMonthDateRange, isEmptySaleProductDraft
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
+import { toggleSortField, sortRecords, syncSortHeaders, sortSig } from './table-sort.js'
 import { renderSalesTargetBand } from './dashboard.js'
 import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
+
+let salesSortState = { field: null, asc: true }
 
 // ============================================
 // Sales Data
@@ -464,25 +467,9 @@ export async function renderSales() {
   } catch (_) { /* keep fallback advisor names */ }
 
   if (salesSortState.field) {
-    allSales.sort((a, b) => {
-      let va = a[salesSortState.field], vb = b[salesSortState.field]
-      if (salesSortState.field === 'settlementDate') {
-        va = jalaliToNum(va)
-        vb = jalaliToNum(vb)
-      }
-      if (typeof va === 'number') return salesSortState.asc ? va - vb : vb - va
-      return salesSortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa')
-    })
+    allSales = sortRecords(allSales, salesSortState, salesSortValue)
   } else {
-    // Newest payment/sale datetime first (Jalali date + 24h time)
-    allSales.sort((a, b) => {
-      const ka = formatSoldAt24h(a.soldAt) || ''
-      const kb = formatSoldAt24h(b.soldAt) || ''
-      if (!ka && !kb) return 0
-      if (!ka) return 1
-      if (!kb) return -1
-      return kb.localeCompare(ka, 'en')
-    })
+    allSales = sortRecords(allSales, { field: 'soldAt', asc: false }, salesSortValue)
   }
 
   const userDateFilter = getSalesDateFilter()
@@ -556,19 +543,27 @@ export async function renderSales() {
         </div>
       </td></tr>`
     renderPaginationBar('salesPagination', 'sales', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
+    syncSortHeaders('#sheet-sales', salesSortState)
     return
   }
 
-  const page = paginateList('sales', allSales, search)
+  const page = paginateList('sales', allSales, `${search}|${sortSig(salesSortState)}`)
   tbody.innerHTML = renderSalesRows(page.items)
   renderPaginationBar('salesPagination', 'sales', page)
+  syncSortHeaders('#sheet-sales', salesSortState)
 }
 
-let salesSortState = { field: null, asc: true }
+function salesSortValue(s, field) {
+  if (field === 'settlementDate') return { value: s.settlementDate || '', type: 'date' }
+  if (field === 'soldAt') return { value: s.soldAt || '', type: 'datetime' }
+  if (field === 'price' || field === 'deposit' || field === 'balance') {
+    return { value: s[field] || 0, type: 'number' }
+  }
+  return { value: s[field] ?? '', type: 'text' }
+}
 
 export function sortSales(field) {
-  if (salesSortState.field === field) salesSortState.asc = !salesSortState.asc
-  else { salesSortState.field = field; salesSortState.asc = true }
+  toggleSortField(salesSortState, field)
   renderSales()
 }
 

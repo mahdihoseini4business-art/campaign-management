@@ -9,12 +9,14 @@ import {
   getCurrentJalaliMonthInfo, isInJalaliMonth
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
+import { toggleSortField, sortRecords, syncSortHeaders, sortSig } from './table-sort.js'
 import { renderSales } from './sales.js'
 import { renderProducts } from './customers.js'
 import { broadcastPaymentRejectToast } from './sale-toasts.js'
 import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 
 let accountingFilter = 'pending' // pending | approved | rejected | gifts
+let accountingSortState = { field: null, asc: true }
 let rejectTarget = null // { customerId, productIndex, paymentIndex, isGift, mode }
 /** Destination-bank balances accordion (collapsed by default). */
 let bankBalancesExpanded = false
@@ -214,7 +216,11 @@ export function renderAccounting() {
     )
   }
 
-  payments.sort((a, b) => String(b.soldAt || '').localeCompare(String(a.soldAt || ''), 'fa'))
+  if (accountingSortState.field) {
+    payments = sortRecords(payments, accountingSortState, accountingSortValue)
+  } else {
+    payments.sort((a, b) => String(b.soldAt || '').localeCompare(String(a.soldAt || ''), 'fa'))
+  }
 
   const setStat = (id, n) => {
     const el = document.getElementById(id)
@@ -243,10 +249,11 @@ export function renderAccounting() {
         </div>
       </td></tr>`
     renderPaginationBar('accountingPagination', 'accounting', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
+    syncSortHeaders('#sheet-accounting', accountingSortState)
     return
   }
 
-  const filterSig = `${accountingFilter}|${search}`
+  const filterSig = `${accountingFilter}|${search}|${sortSig(accountingSortState)}`
   const page = paginateList('accounting', payments, filterSig)
 
   tbody.innerHTML = page.items.map(p => {
@@ -301,6 +308,20 @@ export function renderAccounting() {
   }).join('')
 
   renderPaginationBar('accountingPagination', 'accounting', page)
+  syncSortHeaders('#sheet-accounting', accountingSortState)
+}
+
+function accountingSortValue(p, field) {
+  if (field === 'amount') return { value: p.amount || 0, type: 'number' }
+  if (field === 'soldAt') return { value: p.soldAt || '', type: 'datetime' }
+  if (field === 'payType') return { value: p.isGift ? 'هدیه' : (p.productStatus || ''), type: 'text' }
+  if (field === 'customerPhone') return { value: p.customerPhone || '', type: 'text' }
+  return { value: p[field] ?? '', type: 'text' }
+}
+
+export function sortAccounting(field) {
+  toggleSortField(accountingSortState, field)
+  renderAccounting()
 }
 
 async function updatePaymentEntry(customerId, productIndex, paymentIndex, patch) {

@@ -16,8 +16,11 @@ import {
 import { getUsersSafe } from './auth.js'
 import { renderProducts } from './customers.js'
 import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
+import { toggleSortField, sortRecords, syncSortHeaders } from './table-sort.js'
 
 let refundsView = 'kanban' // kanban | rejected | archived
+let rejectedSortState = { field: null, asc: true }
+let archivedSortState = { field: null, asc: true }
 let rejectTargetId = null
 let completeTargetId = null
 let wizardBusy = false
@@ -484,21 +487,55 @@ function renderPayoutBlock(r) {
   return ''
 }
 
+function refundRejectedSortValue(r, field) {
+  if (field === 'amount') return { value: parseFloat(r.amount) || 0, type: 'number' }
+  if (field === 'updatedAt') return { value: r.updatedAt || '', type: 'iso' }
+  if (field === 'advisor') return { value: r._advisorName || '', type: 'text' }
+  if (field === 'createdBy') return { value: r._createdByLabel || '', type: 'text' }
+  return { value: r[field] ?? '', type: 'text' }
+}
+
+function refundArchivedSortValue(r, field) {
+  if (field === 'amount') return { value: parseFloat(r.amount) || 0, type: 'number' }
+  if (field === 'completedAt' || field === 'archivedAt') return { value: r[field] || '', type: 'iso' }
+  if (field === 'advisor') return { value: r._advisorName || '', type: 'text' }
+  return { value: r[field] ?? '', type: 'text' }
+}
+
+export function sortRefundsRejected(field) {
+  toggleSortField(rejectedSortState, field)
+  renderRefunds()
+}
+
+export function sortRefundsArchived(field) {
+  toggleSortField(archivedSortState, field)
+  renderRefunds()
+}
+
 function renderRejectedTable(items, users = []) {
   const tbody = document.getElementById('refundsRejectedBody')
   if (!tbody) return
-  if (!items.length) {
+  const decorated = items.map(r => ({
+    ...r,
+    _advisorName: resolveAdvisorName(r.advisorPhone, users),
+    _createdByLabel: r.createdByName || resolveAdvisorName(r.createdByPhone, users)
+  }))
+  const sorted = rejectedSortState.field
+    ? sortRecords(decorated, rejectedSortState, refundRejectedSortValue)
+    : decorated
+  syncSortHeaders('#refundsRejectedWrap', rejectedSortState)
+  if (!sorted.length) {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted);">ردشده‌ای نیست</td></tr>`
     return
   }
-  tbody.innerHTML = items.map(r => `
+  tbody.innerHTML = sorted.map(r => `
     <tr>
       <td>${escapeHtml(r.customerName || r.customerId)}</td>
       <td>${escapeHtml(r.productName || '—')}</td>
       <td style="direction:ltr;text-align:right;">${formatNumber(r.amount)} ریال</td>
-      <td>${escapeHtml(resolveAdvisorName(r.advisorPhone, users))}</td>
+      <td>${escapeHtml(r._advisorName)}</td>
       <td>${escapeHtml(r.rejectReason || '—')}</td>
-      <td>${escapeHtml(r.createdByName || resolveAdvisorName(r.createdByPhone, users))}</td>
+      <td>${escapeHtml(r._createdByLabel)}</td>
       <td style="font-size:12px;direction:ltr;">${escapeHtml(gregorianToJalaliStr(r.updatedAt) || '—')}</td>
     </tr>
   `).join('')
@@ -507,16 +544,24 @@ function renderRejectedTable(items, users = []) {
 function renderArchivedTable(items, users = []) {
   const tbody = document.getElementById('refundsArchivedBody')
   if (!tbody) return
-  if (!items.length) {
+  const decorated = items.map(r => ({
+    ...r,
+    _advisorName: resolveAdvisorName(r.advisorPhone, users)
+  }))
+  const sorted = archivedSortState.field
+    ? sortRecords(decorated, archivedSortState, refundArchivedSortValue)
+    : decorated
+  syncSortHeaders('#refundsArchivedWrap', archivedSortState)
+  if (!sorted.length) {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted);">بایگانی خالی است</td></tr>`
     return
   }
-  tbody.innerHTML = items.map(r => `
+  tbody.innerHTML = sorted.map(r => `
     <tr>
       <td>${escapeHtml(r.customerName || r.customerId)}</td>
       <td>${escapeHtml(r.productName || '—')}</td>
       <td style="direction:ltr;text-align:right;">${formatNumber(r.amount)} ریال</td>
-      <td>${escapeHtml(resolveAdvisorName(r.advisorPhone, users))}</td>
+      <td>${escapeHtml(r._advisorName)}</td>
       <td>${escapeHtml(r.reason || '—')}</td>
       <td style="font-size:12px;direction:ltr;">${escapeHtml(gregorianToJalaliStr(r.completedAt) || '—')}</td>
       <td style="font-size:12px;direction:ltr;">${escapeHtml(gregorianToJalaliStr(r.archivedAt) || '—')}</td>

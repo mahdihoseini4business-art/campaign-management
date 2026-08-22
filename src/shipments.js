@@ -11,10 +11,12 @@ import {
   SHIPMENT_STATUS, renderCopyableCell, getPrimaryCustomerAddress
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
+import { toggleSortField, sortRecords, syncSortHeaders, sortSig, sortThHtml } from './table-sort.js'
 import { renderProducts } from './customers.js'
 import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 
 let shipmentsFilter = 'pending' // pending | shipped
+let shipmentsSortState = { field: null, asc: true }
 let shipConfirmTarget = null // { customerId, productIndex }
 
 function getLatestApprovedSoldAt(product) {
@@ -103,34 +105,38 @@ export function setShipmentsFilter(filter) {
 function renderShipmentsHeader(canManage) {
   const thead = document.getElementById('shipmentsHead')
   if (!thead) return
+  const th = (field, label, extraClass = '', style = '') =>
+    sortThHtml({ field, label, handler: `app.sortShipmentsHeader('${field}')`, extraClass, style })
 
   if (shipmentsFilter === 'shipped') {
     thead.innerHTML = `<tr>
-      <th>مشتری</th>
-      <th>شماره</th>
-      <th>کارشناس</th>
-      <th>محصول</th>
-      <th>وضعیت فروش</th>
-      <th>آدرس گیرنده</th>
-      <th>کد پستی گیرنده</th>
-      <th>کد رهگیری</th>
-      <th>تاریخ و ساعت ارسال</th>
+      ${th('customerName', 'مشتری')}
+      ${th('customerPhone', 'شماره')}
+      ${th('advisor', 'کارشناس')}
+      ${th('productName', 'محصول')}
+      ${th('productStatus', 'وضعیت فروش')}
+      ${th('shippingAddress', 'آدرس گیرنده')}
+      ${th('shippingPostalCode', 'کد پستی گیرنده')}
+      ${th('trackingCode', 'کد رهگیری')}
+      ${th('shippedAt', 'تاریخ و ساعت ارسال')}
     </tr>`
+    syncSortHeaders(thead, shipmentsSortState)
     return
   }
 
   thead.innerHTML = `<tr>
-    <th>مشتری</th>
-    <th>شماره</th>
-    <th>کارشناس</th>
-    <th>محصول</th>
-    <th>وضعیت فروش</th>
-    <th>مبلغ تأییدشده / قیمت کل</th>
-    <th>تاریخ آخرین واریز تأییدشده</th>
-    <th>آدرس گیرنده</th>
-    <th>کد پستی گیرنده</th>
-    ${canManage ? '<th>عملیات</th>' : ''}
+    ${th('customerName', 'مشتری')}
+    ${th('customerPhone', 'شماره')}
+    ${th('advisor', 'کارشناس')}
+    ${th('productName', 'محصول')}
+    ${th('productStatus', 'وضعیت فروش')}
+    ${th('approved', 'مبلغ تأییدشده / قیمت کل')}
+    ${th('lastApprovedAt', 'تاریخ آخرین واریز تأییدشده')}
+    ${th('shippingAddress', 'آدرس گیرنده')}
+    ${th('shippingPostalCode', 'کد پستی گیرنده')}
+    ${canManage ? '<th class="actions-col">عملیات</th>' : ''}
   </tr>`
+  syncSortHeaders(thead, shipmentsSortState)
 }
 
 function phonesCell(row) {
@@ -186,8 +192,12 @@ export async function renderShipments() {
     )
   }
 
-  const sortKey = shipmentsFilter === 'shipped' ? 'shippedAt' : 'lastApprovedAt'
-  shipments.sort((a, b) => String(b[sortKey] || '').localeCompare(String(a[sortKey] || ''), 'fa'))
+  if (shipmentsSortState.field) {
+    shipments = sortRecords(shipments, shipmentsSortState, shipmentsSortValue)
+  } else {
+    const sortKey = shipmentsFilter === 'shipped' ? 'shippedAt' : 'lastApprovedAt'
+    shipments.sort((a, b) => String(b[sortKey] || '').localeCompare(String(a[sortKey] || ''), 'fa'))
+  }
 
   const setStat = (id, n) => {
     const el = document.getElementById(id)
@@ -212,7 +222,7 @@ export async function renderShipments() {
   }
 
   const myPhone = normalizePhone(getCurrentUser()?.phone || '')
-  const filterSig = `${shipmentsFilter}|${search}|${canManage ? 1 : 0}|${myPhone}`
+  const filterSig = `${shipmentsFilter}|${search}|${canManage ? 1 : 0}|${myPhone}|${sortSig(shipmentsSortState)}`
   const page = paginateList('shipments', shipments, filterSig)
 
   tbody.innerHTML = page.items.map(s => {
@@ -251,6 +261,18 @@ export async function renderShipments() {
   }).join('')
 
   renderPaginationBar('shipmentsPagination', 'shipments', page)
+}
+
+function shipmentsSortValue(s, field) {
+  if (field === 'approved' || field === 'price') return { value: s[field] || 0, type: 'number' }
+  if (field === 'lastApprovedAt' || field === 'shippedAt') return { value: s[field] || '', type: 'datetime' }
+  if (field === 'customerPhone') return { value: s.customerPhone || '', type: 'text' }
+  return { value: s[field] ?? '', type: 'text' }
+}
+
+export function sortShipments(field) {
+  toggleSortField(shipmentsSortState, field)
+  renderShipments()
 }
 
 export function openConfirmShipmentModal(customerId, productIndex) {

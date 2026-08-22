@@ -1,13 +1,13 @@
 import './styles.css'
-import { toEnDigits, initDigitConversion, hasPermission, hasAnyRefundPermission, jalaliToNum, showToast, escapeAttr, getStatusOrder, toggleToolbarActions, closeAllToolbarActions, initToolbarActionsMenus, getPrimaryPhone, formatSoldAt24h, copyToClipboard } from './utils.js'
-import { getData, loadData, backfillAdvisorPhones, cleanupConversionOrphans } from './data.js'
+import { toEnDigits, initDigitConversion, hasPermission, hasAnyRefundPermission, showToast, escapeAttr, toggleToolbarActions, closeAllToolbarActions, initToolbarActionsMenus, copyToClipboard } from './utils.js'
+import { loadData, backfillAdvisorPhones, cleanupConversionOrphans } from './data.js'
 import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal as openSettingsModalBase, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, togglePermGroup, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, selectSettingsUser, filterSettingsUsers, backToUsersList, markPermissionsDirty, switchSettingsSection, filterSettingsNav, addDestinationBank, removeDestinationBank, startDestinationBankEdit, cancelDestinationBankEdit, saveDestinationBankEdit, addProductCatalogItem, removeProductCatalogItem, startProductCatalogEdit, cancelProductCatalogEdit, saveProductCatalogEdit, onNewProductKindChange, onEditProductKindChange, onNewProductProfitModeChange, onEditProductProfitModeChange, startProductBundleEdit, cancelProductBundleEdit, saveProductBundleForm, removeProductBundle, runCatalogToBundleMigration, filterViewUserOptions, changeUserGroupAssignment, createSettingsGroup, renameSettingsGroup, deleteSettingsGroup, selectSettingsGroup, backToGroupsList, addSettingsGroupMember, removeSettingsGroupMember, makeGroupManager, addPlatform, removePlatform, updatePlatformField, editPlatform, cancelPlatformEdit, savePlatformEdit, addStatus, removeStatus, updateStatusField, editStatus, cancelStatusEdit, saveStatusEdit, onStatusDragStart, onStatusDragOver, onStatusDrop, addCustomerCode, removeCustomerCode, editCustomerCode, cancelCustomerCodeEdit, saveCustomerCodeEdit, onCustomerCodeDragStart, onCustomerCodeDragOver, onCustomerCodeDrop, onSalesTargetMetricChange, onSalesTargetAllocationChange, onSalesTargetDeadlineChange, addSalesTargetFormStage, removeSalesTargetFormStage, onSalesTargetFormStageChange, addDeadlineUrgencyStage, removeDeadlineUrgencyStage, saveDeadlineUrgencySettings, startSalesTargetEdit, cancelSalesTargetEdit, saveSalesTargetForm, removeSalesTarget, renderSalesTargetsSettings, addSalesTargetBarToDraft, removeSalesTargetBarFromDraft, startSalesTargetBarEdit, cancelSalesTargetBarEdit, saveSmsPanelSettings, resetSmsMessageTemplate } from './auth.js'
-import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, switchDetailTab, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, removeProduct, onCustomerPhoneInput, selectCustomerPhoneSuggest, onCustomerPhoneSuggestBlur, onCustomerPhoneKeydown, addCustomerPhoneSlot, removeCustomerPhoneSlot, onCustomerAddressInput, onCustomerAddressPriorityChange, addCustomerAddressSlot, removeCustomerAddressSlot, addProductPayment, removeProductPayment, onDestinationBankSelect, commitSalePayment, commitSaleProductDetails, updateSaleTotalPrice, commitGiftSale, onSaleProductNameChange, onSalePriceInput, markSalePaymentTouched, toggleClosedProductBlock, openStartSaleModal, closeStartSaleModal, confirmStartSale, filterStartSaleCustomers, closeMergeCustomerModal, confirmMergeCustomers, clearCustomerSearch, clearCustomerFilters, onCustomerSearchInput, buildFollowupsByCustomerMap, applyCustomerStatFilter, toggleRequireFollowupOnCreate, syncRequireFollowupOnCreateUi, cancelPendingCustomerCreate } from './customers.js'
-import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, clearFollowupSearch, onFollowupSearchInput, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, openFollowupDonePicker, closeFollowupDonePicker, filterFollowupDonePick, confirmFollowupDonePick, setFollowupDoneNextShortcut, isFollowupDoneNoteDirty, updateFollowupBadge, updateFollowupAdvisorDropdown } from './followups.js'
+import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, switchDetailTab, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, removeProduct, onCustomerPhoneInput, selectCustomerPhoneSuggest, onCustomerPhoneSuggestBlur, onCustomerPhoneKeydown, addCustomerPhoneSlot, removeCustomerPhoneSlot, onCustomerAddressInput, onCustomerAddressPriorityChange, addCustomerAddressSlot, removeCustomerAddressSlot, addProductPayment, removeProductPayment, onDestinationBankSelect, commitSalePayment, commitSaleProductDetails, updateSaleTotalPrice, commitGiftSale, onSaleProductNameChange, onSalePriceInput, markSalePaymentTouched, toggleClosedProductBlock, openStartSaleModal, closeStartSaleModal, confirmStartSale, filterStartSaleCustomers, closeMergeCustomerModal, confirmMergeCustomers, clearCustomerSearch, clearCustomerFilters, onCustomerSearchInput, applyCustomerStatFilter, toggleRequireFollowupOnCreate, syncRequireFollowupOnCreateUi, cancelPendingCustomerCreate, sortCustomers } from './customers.js'
+import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, clearFollowupSearch, onFollowupSearchInput, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, openFollowupDonePicker, closeFollowupDonePicker, filterFollowupDonePick, confirmFollowupDonePick, setFollowupDoneNextShortcut, isFollowupDoneNoteDirty, updateFollowupBadge, updateFollowupAdvisorDropdown, sortFollowups } from './followups.js'
 import { renderSales, sortSales, onSalesSearchInput } from './sales.js'
-import { renderProductMatrix, cycleProductMatrixFilter, clearProductMatrixFilters, toggleProductMatrixAdvisorDropdown, toggleProductMatrixAdvisor, toggleProductMatrixAdvisorsAll, onProductMatrixSearchInput } from './product-matrix.js'
-import { renderAccounting, setAccountingFilter, toggleAccountingBankBalances, approvePayment, approveGiftSale, requestUnapprovePayment, requestUnapproveGiftSale, openRejectPaymentModal, openEditRejectReasonModal, closeRejectPaymentModal, confirmRejectPayment, onRejectReasonPresetClick, onRejectReasonInput, onAccountingSearchInput } from './accounting.js'
-import { renderShipments, setShipmentsFilter, openConfirmShipmentModal, closeConfirmShipmentModal, confirmShipment, onShipmentsSearchInput } from './shipments.js'
+import { renderProductMatrix, cycleProductMatrixFilter, clearProductMatrixFilters, toggleProductMatrixAdvisorDropdown, toggleProductMatrixAdvisor, toggleProductMatrixAdvisorsAll, onProductMatrixSearchInput, sortProductMatrix } from './product-matrix.js'
+import { renderAccounting, setAccountingFilter, toggleAccountingBankBalances, approvePayment, approveGiftSale, requestUnapprovePayment, requestUnapproveGiftSale, openRejectPaymentModal, openEditRejectReasonModal, closeRejectPaymentModal, confirmRejectPayment, onRejectReasonPresetClick, onRejectReasonInput, onAccountingSearchInput, sortAccounting } from './accounting.js'
+import { renderShipments, setShipmentsFilter, openConfirmShipmentModal, closeConfirmShipmentModal, confirmShipment, onShipmentsSearchInput, sortShipments } from './shipments.js'
 import {
   renderRefunds, setRefundsView, openRefundWizard, closeRefundWizard, refundWizardBack, refundWizardNext,
   onRefundWizardCustomerSearch, selectRefundWizardCustomer, selectRefundWizardPayment, setRefundWizardFullAmount,
@@ -16,9 +16,9 @@ import {
   onRefundShebaInput, onRefundCardInput, onRefundDigitFieldKeydown,
   openCompleteRefundModal, closeCompleteRefundModal, confirmCompleteRefund,
   openRejectRefundModal, closeRejectRefundModal, confirmRejectRefund, archiveRefund,
-  onRefundsSearchInput
+  onRefundsSearchInput, sortRefundsRejected, sortRefundsArchived
 } from './refunds.js'
-import { renderDashboard, toggleDashSection, applyDashFilter, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareMetricChange, onProductChartMetricChange, onDashTargetsScopeChange, renderSalesTargetBand, onAovMaControlsChange, exportDashboardForAi, copyDashboardExport } from './dashboard.js'
+import { renderDashboard, toggleDashSection, applyDashFilter, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareMetricChange, onProductChartMetricChange, onDashTargetsScopeChange, renderSalesTargetBand, onAovMaControlsChange, exportDashboardForAi, copyDashboardExport, sortDashOverdue, sortDashSoon, sortDashTransfer } from './dashboard.js'
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners } from './import-export.js'
 import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection, openBulkTransferModal, closeBulkTransferModal, confirmBulkTransfer, refreshCustomerBulkOptions, updateBulkTransferPreview, filterBulkTransferOptions } from './bulk.js'
 import {
@@ -120,102 +120,8 @@ function openDefaultAccessibleTab() {
 }
 
 // ============================================
-// Sort Functions
+// Pagination
 // ============================================
-
-let customerSortState = { field: null, asc: true }
-let followupSortState = { field: null, asc: true }
-
-function sortFollowupsForSortKey(list) {
-  return [...list].sort((x, y) => {
-    const kx = formatSoldAt24h(x.doneAt || x.date) || x.date || ''
-    const ky = formatSoldAt24h(y.doneAt || y.date) || y.date || ''
-    const diff = String(ky).localeCompare(String(kx))
-    if (diff !== 0) return diff
-    return String(y.id || '').localeCompare(String(x.id || ''), undefined, { numeric: true })
-  })
-}
-
-function updateCustomerSortHeaders() {
-  document.querySelectorAll('#sheet-customers thead th.sort-th').forEach(th => {
-    const field = th.dataset.sortField
-    const active = customerSortState.field === field
-    th.classList.toggle('is-sorted', active)
-    th.classList.toggle('is-asc', active && customerSortState.asc)
-    th.classList.toggle('is-desc', active && !customerSortState.asc)
-    th.setAttribute('aria-sort', active
-      ? (customerSortState.asc ? 'ascending' : 'descending')
-      : 'none')
-  })
-}
-
-function sortCustomers(field) {
-  if (customerSortState.field === field) customerSortState.asc = !customerSortState.asc
-  else { customerSortState.field = field; customerSortState.asc = true }
-
-  const data = getData()
-  const followupsByCustomer = buildFollowupsByCustomerMap(data.followups)
-  const latestFollowupKey = (customerId) => {
-    const sorted = sortFollowupsForSortKey(followupsByCustomer.get(customerId) || [])
-    if (!sorted.length) return ''
-    const latest = sorted[0]
-    return formatSoldAt24h(latest.doneAt || latest.date) || latest.date || ''
-  }
-  data.customers = [...data.customers].sort((a, b) => {
-    let va = a[field], vb = b[field]
-    if (field === 'followupCount') {
-      va = (followupsByCustomer.get(a.id) || []).length
-      vb = (followupsByCustomer.get(b.id) || []).length
-    }
-    if (field === 'lastFollowup') {
-      va = latestFollowupKey(a.id)
-      vb = latestFollowupKey(b.id)
-    }
-    if (field === 'phone') {
-      va = getPrimaryPhone(a) || ''
-      vb = getPrimaryPhone(b) || ''
-    }
-    if (field === 'nextFollowupDate') {
-      va = jalaliToNum(a.nextFollowupDate || '')
-      vb = jalaliToNum(b.nextFollowupDate || '')
-      return customerSortState.asc ? va - vb : vb - va
-    }
-    if (field === 'status') {
-      const so = getStatusOrder()
-      const orderA = so.indexOf(va)
-      const orderB = so.indexOf(vb)
-      return customerSortState.asc ? orderA - orderB : orderB - orderA
-    }
-    if (typeof va === 'number') return customerSortState.asc ? va - vb : vb - va
-    return customerSortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa')
-  })
-  updateCustomerSortHeaders()
-  renderCustomers()
-}
-
-function sortFollowups(field) {
-  if (followupSortState.field === field) followupSortState.asc = !followupSortState.asc
-  else { followupSortState.field = field; followupSortState.asc = true }
-
-  const data = getData()
-  data.followups = [...data.followups].sort((a, b) => {
-    let va = a[field], vb = b[field]
-    if (field === 'customerName') {
-      va = (data.customers.find(c => c.id === a.customerId) || {}).name || ''
-      vb = (data.customers.find(c => c.id === b.customerId) || {}).name || ''
-    } else if (field === 'customerPhone') {
-      const ca = data.customers.find(c => c.id === a.customerId)
-      const cb = data.customers.find(c => c.id === b.customerId)
-      va = getPrimaryPhone(ca) || ''
-      vb = getPrimaryPhone(cb) || ''
-    } else if (field === 'advisor') {
-      va = (data.customers.find(c => c.id === a.customerId) || {}).advisor || ''
-      vb = (data.customers.find(c => c.id === b.customerId) || {}).advisor || ''
-    }
-    return followupSortState.asc ? String(va).localeCompare(String(vb), 'fa') : String(vb).localeCompare(String(va), 'fa')
-  })
-  renderFollowups()
-}
 
 function goToPage(key, page) {
   if (page < 1) return
@@ -450,6 +356,14 @@ const app = {
   sortCustomers,
   sortFollowups,
   sortSales,
+  sortAccounting,
+  sortShipments,
+  sortProductMatrix,
+  sortRefundsRejected,
+  sortRefundsArchived,
+  sortDashOverdue,
+  sortDashSoon,
+  sortDashTransfer,
   toggleDashSection,
   clearDashFilter,
   applyDashFilter,
@@ -568,6 +482,14 @@ const app = {
   sortCustomersHeader: (field) => sortCustomers(field),
   sortFollowupsHeader: (field) => sortFollowups(field),
   sortSalesHeader: (field) => sortSales(field),
+  sortAccountingHeader: (field) => sortAccounting(field),
+  sortShipmentsHeader: (field) => sortShipments(field),
+  sortProductMatrixHeader: (field) => sortProductMatrix(field),
+  sortRefundsRejectedHeader: (field) => sortRefundsRejected(field),
+  sortRefundsArchivedHeader: (field) => sortRefundsArchived(field),
+  sortDashOverdueHeader: (field) => sortDashOverdue(field),
+  sortDashSoonHeader: (field) => sortDashSoon(field),
+  sortDashTransferHeader: (field) => sortDashTransfer(field),
   debugListUsers,
   debugCreateTestUser
 }

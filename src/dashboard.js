@@ -11,9 +11,10 @@ import {
   getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
   getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin,
   jalaliEndOfDayMs, getCompletedSaleEconomics, resolveProductCostConfig, isDealCancelled,
-  getCurrentJalaliMonthInfo, isInJalaliMonth
+  getCurrentJalaliMonthInfo, isInJalaliMonth, getPrimaryPhone
 } from './utils.js'
 import { sumCompletedRefundsForDash, countPendingRefundsForDash } from './refunds.js'
+import { toggleSortField, sortRecords, syncSortHeaders } from './table-sort.js'
 
 let dashCharts = {}
 /** @type {Set<string>|null} null = not initialized yet (treat as all) */
@@ -132,6 +133,108 @@ function advisorNameForCustomer(customer) {
     if (user) return userDisplayName(user)
   }
   return (customer?.advisor || '').trim() || '—'
+}
+
+let dashOverdueCache = []
+let dashSoonCache = []
+let dashTransferCache = []
+const dashOverdueSort = { field: null, asc: true }
+const dashSoonSort = { field: null, asc: true }
+const dashTransferSort = { field: null, asc: true }
+
+function dashFollowupSortValue(c, field) {
+  if (field === 'name') return { value: c.name || c.platformId || '', type: 'text' }
+  if (field === 'phone') return { value: getPrimaryPhone(c) || '', type: 'text' }
+  if (field === 'advisor') return { value: advisorNameForCustomer(c), type: 'text' }
+  if (field === 'nextFollowupDate') return { value: c.nextFollowupDate || '', type: 'date' }
+  if (field === 'salesCount') return { value: (c.products || []).length, type: 'number' }
+  return { value: c[field] ?? '', type: 'text' }
+}
+
+function dashTransferSortValue(r, field) {
+  if (field === 'name') return { value: r.name || r.phone || '', type: 'text' }
+  if (field === 'in' || field === 'out') return { value: r[field] || 0, type: 'number' }
+  if (field === 'net') return { value: (r.in || 0) - (r.out || 0), type: 'number' }
+  return { value: r[field] ?? '', type: 'text' }
+}
+
+function paintDashFollowupTable(bodyEl, list, sortState, headerRoot, emptyMsg, rowBg, badgeClass) {
+  if (!bodyEl) return
+  const sorted = sortState.field
+    ? sortRecords(list, sortState, dashFollowupSortValue)
+    : sortRecords(list, { field: 'nextFollowupDate', asc: true }, dashFollowupSortValue)
+  syncSortHeaders(headerRoot, sortState)
+  if (!sorted.length) {
+    bodyEl.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">${emptyMsg}</td></tr>`
+    return
+  }
+  bodyEl.innerHTML = sorted.map(c => {
+    const disp = formatPhonesDisplay(c)
+    const phoneHtml = disp.text
+      ? `${escapeHtml(disp.text)}${disp.extra > 0 ? ` <span style="color:var(--text-muted);font-size:11px;">+${disp.extra}</span>` : ''}`
+      : '—'
+    return `<tr class="clickable-row" style="background:${rowBg};" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
+      <td>${escapeHtml(c.name || c.platformId)}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${phoneHtml}</td>
+      <td>${escapeHtml(advisorNameForCustomer(c))}</td>
+      <td><span class="settlement-badge ${badgeClass}">${badgeClass.includes('overdue') ? '⚠ ' : ''}${c.nextFollowupDate}</span></td>
+      <td style="text-align:center;">${(c.products || []).length}</td>
+    </tr>`
+  }).join('')
+}
+
+function paintDashTransferTable() {
+  const bodyEl = document.getElementById('dashTransferBody')
+  if (!bodyEl) return
+  const rows = dashTransferSort.field
+    ? sortRecords(dashTransferCache, dashTransferSort, dashTransferSortValue)
+    : [...dashTransferCache].sort((a, b) => (b.in + b.out) - (a.in + a.out))
+  syncSortHeaders('#dash-transfer-body', dashTransferSort)
+  if (!rows.length) {
+    bodyEl.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px;">انتقالی در این بازه ثبت نشده</td></tr>'
+    return
+  }
+  bodyEl.innerHTML = rows.map(r => {
+    const net = r.in - r.out
+    const netColor = net > 0 ? 'var(--success)' : net < 0 ? 'var(--danger)' : 'var(--text-muted)'
+    return `<tr>
+      <td>${escapeHtml(r.name || r.phone)}</td>
+      <td style="text-align:center;color:var(--success);">${r.in}</td>
+      <td style="text-align:center;color:var(--danger);">${r.out}</td>
+      <td style="text-align:center;color:${netColor};font-weight:600;">${net > 0 ? '+' : ''}${net}</td>
+    </tr>`
+  }).join('')
+}
+
+export function sortDashOverdue(field) {
+  toggleSortField(dashOverdueSort, field)
+  paintDashFollowupTable(
+    document.getElementById('dashOverdueBody'),
+    dashOverdueCache,
+    dashOverdueSort,
+    '#dash-overdue-body',
+    'پیگیری عقب افتاده‌ای وجود ندارد',
+    '#fff8f0',
+    'settlement-overdue-badge'
+  )
+}
+
+export function sortDashSoon(field) {
+  toggleSortField(dashSoonSort, field)
+  paintDashFollowupTable(
+    document.getElementById('dashSoonBody'),
+    dashSoonCache,
+    dashSoonSort,
+    '#dash-soon-body',
+    'پیگیری نزدیکی وجود ندارد',
+    '#f0fff4',
+    'settlement-soon-badge'
+  )
+}
+
+export function sortDashTransfer(field) {
+  toggleSortField(dashTransferSort, field)
+  paintDashTransferTable()
 }
 
 // ============================================
@@ -1063,7 +1166,6 @@ function renderTransferMetrics(dateFromNum, dateToNum) {
   const batchesEl = document.getElementById('dash-transfer-batches')
   const dwellEl = document.getElementById('dash-transfer-dwell')
   const convEl = document.getElementById('dash-transfer-conversion')
-  const bodyEl = document.getElementById('dashTransferBody')
 
   if (countEl) countEl.textContent = String(transfers.length)
   const badgeEl = document.getElementById('dash-transfer-badge')
@@ -1135,23 +1237,9 @@ function renderTransferMetrics(dateFromNum, dateToNum) {
     }
   }
 
-  const rows = Object.values(stats).sort((a, b) => (b.in + b.out) - (a.in + a.out))
-  if (bodyEl) {
-    if (rows.length === 0) {
-      bodyEl.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px;">انتقالی در این بازه ثبت نشده</td></tr>'
-    } else {
-      bodyEl.innerHTML = rows.map(r => {
-        const net = r.in - r.out
-        const netColor = net > 0 ? 'var(--success)' : net < 0 ? 'var(--danger)' : 'var(--text-muted)'
-        return `<tr>
-          <td>${escapeHtml(r.name || r.phone)}</td>
-          <td style="text-align:center;color:var(--success);">${r.in}</td>
-          <td style="text-align:center;color:var(--danger);">${r.out}</td>
-          <td style="text-align:center;color:${netColor};font-weight:600;">${net > 0 ? '+' : ''}${net}</td>
-        </tr>`
-      }).join('')
-    }
-  }
+  const rows = Object.values(stats)
+  dashTransferCache = rows
+  paintDashTransferTable()
 }
 
 // ============================================
@@ -1310,46 +1398,28 @@ export async function renderDashboard() {
   }
 
   const overdueBody = document.getElementById('dashOverdueBody')
-  if (overdueBody) {
-    if (overdueList.length === 0) {
-      overdueBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری عقب افتاده‌ای وجود ندارد</td></tr>'
-    } else {
-      overdueBody.innerHTML = overdueList.map(c => {
-        const disp = formatPhonesDisplay(c)
-        const phoneHtml = disp.text
-          ? `${escapeHtml(disp.text)}${disp.extra > 0 ? ` <span style="color:var(--text-muted);font-size:11px;">+${disp.extra}</span>` : ''}`
-          : '—'
-        return `<tr class="clickable-row" style="background:#fff8f0;" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
-      <td>${escapeHtml(c.name || c.platformId)}</td>
-      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${phoneHtml}</td>
-      <td>${escapeHtml(advisorNameForCustomer(c))}</td>
-      <td><span class="settlement-badge settlement-overdue-badge">⚠ ${c.nextFollowupDate}</span></td>
-      <td style="text-align:center;">${(c.products || []).length}</td>
-    </tr>`
-      }).join('')
-    }
-  }
+  dashOverdueCache = overdueList
+  paintDashFollowupTable(
+    overdueBody,
+    dashOverdueCache,
+    dashOverdueSort,
+    '#dash-overdue-body',
+    'پیگیری عقب افتاده‌ای وجود ندارد',
+    '#fff8f0',
+    'settlement-overdue-badge'
+  )
 
   const soonBody = document.getElementById('dashSoonBody')
-  if (soonBody) {
-    if (soonList.length === 0) {
-      soonBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">پیگیری نزدیکی وجود ندارد</td></tr>'
-    } else {
-      soonBody.innerHTML = soonList.map(c => {
-        const disp = formatPhonesDisplay(c)
-        const phoneHtml = disp.text
-          ? `${escapeHtml(disp.text)}${disp.extra > 0 ? ` <span style="color:var(--text-muted);font-size:11px;">+${disp.extra}</span>` : ''}`
-          : '—'
-        return `<tr class="clickable-row" style="background:#f0fff4;" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
-      <td>${escapeHtml(c.name || c.platformId)}</td>
-      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${phoneHtml}</td>
-      <td>${escapeHtml(advisorNameForCustomer(c))}</td>
-      <td><span class="settlement-badge settlement-soon-badge">${c.nextFollowupDate}</span></td>
-      <td style="text-align:center;">${(c.products || []).length}</td>
-    </tr>`
-      }).join('')
-    }
-  }
+  dashSoonCache = soonList
+  paintDashFollowupTable(
+    soonBody,
+    dashSoonCache,
+    dashSoonSort,
+    '#dash-soon-body',
+    'پیگیری نزدیکی وجود ندارد',
+    '#f0fff4',
+    'settlement-soon-badge'
+  )
 
   try {
     renderDashCharts(dateFromNum, dateToNum, currentUser)

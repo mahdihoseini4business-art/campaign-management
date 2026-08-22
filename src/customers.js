@@ -15,7 +15,7 @@ import {
   MAX_CUSTOMER_PHONES, MAX_CUSTOMER_ADDRESSES,
   getCustomerAddresses, normalizeCustomerAddresses, appendCustomerAddressIfNew,
   isPhysicalSaleLine,
-  getStatusLabels, getStatusClass,
+  getStatusLabels, getStatusClass, getStatusOrder,
   getNowJalaliDateTime, PAYMENT_STATUS_LABELS, createPayment,
   formatTeamFilterLabel,
   ensureProductPayments, syncProductStatus, getApprovedPaid, getOperationalBalance,
@@ -30,8 +30,63 @@ import {
   REFUND_STATUS, requireMainAdmin
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
+import { toggleSortField, sortRecords, syncSortHeaders, sortSig } from './table-sort.js'
 import { restoreSelection } from './bulk.js'
 import { showSearchOverlay, hideSearchOverlay, runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
+
+const LEVEL_ORDER = Object.keys(CUSTOMER_LEVELS)
+let customerSortState = { field: null, asc: true }
+
+function customerSortValue(c, field, ctx) {
+  if (field === 'phone') return { value: getPrimaryPhone(c) || '', type: 'text' }
+  if (field === 'followupCount') return { value: (ctx.followupsByCustomer.get(c.id) || []).length, type: 'number' }
+  if (field === 'lastFollowup') {
+    const latest = ctx.latestFollowup(c.id)
+    return { value: latest ? (formatSoldAt24h(latest.doneAt || latest.date) || latest.date || '') : '', type: 'datetime' }
+  }
+  if (field === 'nextFollowupDate') return { value: c.nextFollowupDate || '', type: 'date' }
+  if (field === 'status') {
+    const idx = ctx.statusOrder.indexOf(c.status)
+    return { value: idx < 0 ? 999 : idx, type: 'order' }
+  }
+  if (field === 'level') {
+    const key = resolveCustomerLevel(c, ctx.allCustomers, ctx.followups)
+    const idx = LEVEL_ORDER.indexOf(key)
+    return { value: idx < 0 ? -1 : idx, type: 'order' }
+  }
+  if (field === 'lastNote') {
+    const latest = ctx.latestFollowup(c.id)
+    return { value: String(latest?.notes || c.notes || ''), type: 'text' }
+  }
+  return { value: c[field] ?? '', type: 'text' }
+}
+
+function applyCustomerSort(list) {
+  if (!customerSortState.field) return list
+  const data = getData()
+  const needsFollowups = customerSortState.field === 'followupCount'
+    || customerSortState.field === 'lastFollowup'
+    || customerSortState.field === 'lastNote'
+  const followupsByCustomer = needsFollowups
+    ? buildFollowupsByCustomerMap(data.followups)
+    : new Map()
+  const ctx = {
+    followupsByCustomer,
+    allCustomers: data.customers,
+    followups: data.followups,
+    statusOrder: getStatusOrder(),
+    latestFollowup(customerId) {
+      const sorted = sortFollowupsNewestFirst(followupsByCustomer.get(customerId) || [])
+      return sorted[0] || null
+    }
+  }
+  return sortRecords(list, customerSortState, (c, field) => customerSortValue(c, field, ctx))
+}
+
+export function sortCustomers(field) {
+  toggleSortField(customerSortState, field)
+  renderCustomers()
+}
 
 /** Newest Jalali datetime first; stable tie-break on id. */
 function sortFollowupsNewestFirst(list) {
@@ -295,7 +350,7 @@ export function getFilteredCustomers() {
     ? buildFollowupsByCustomerMap(data.followups)
     : null
 
-  return data.customers.filter(c => {
+  const filtered = data.customers.filter(c => {
     const extras = getCustomerSearchExtras(c)
     const phones = getCustomerPhones(c)
     const matchesSearch = matchesTabSearch(search, [
@@ -354,6 +409,8 @@ export function getFilteredCustomers() {
 
     return true
   })
+
+  return applyCustomerSort(filtered)
 }
 
 function populateCustomerFilterDropdowns() {
@@ -456,13 +513,14 @@ export async function renderCustomers() {
     renderPaginationBar('customerPagination', 'customers', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
     restoreSelection('customers')
     updateStats()
-    // Still update advisor dropdown in background
     updateAdvisorDropdown()
+    syncSortHeaders('#sheet-customers', customerSortState)
     return
   }
 
-  const filterSig = `${search}|${advisorFilter}|${platformFilter}|${statusFilter}|${levelFilter}|${transferFilter}|${filters.quick}`
+  const filterSig = `${search}|${advisorFilter}|${platformFilter}|${statusFilter}|${levelFilter}|${transferFilter}|${filters.quick}|${sortSig(customerSortState)}`
   const page = paginateList('customers', filtered, filterSig)
+  syncSortHeaders('#sheet-customers', customerSortState)
   const followupsByCustomer = buildFollowupsByCustomerMap(data.followups)
 
   const rowHtml = []

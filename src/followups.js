@@ -3,9 +3,11 @@ import { getUsersSafe } from './auth.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone, formatSoldAt24h, soldAtTimePart, jalaliDatePart, formatTeamFilterLabel, isPaymentFilled, isGiftSale, isProductPriceLocked, ensureProductPayments } from './utils.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
+import { toggleSortField, sortRecords, syncSortHeaders, sortSig } from './table-sort.js'
 import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 
 let followupFilter = 'today' // today | waiting | overdue | done
+let followupSortState = { field: null, asc: true }
 
 function getFollowupAdvisorFilter() {
   return document.getElementById('filterFollowupAdvisor')?.value || ''
@@ -260,6 +262,38 @@ function getDoneItems(applySearch = true) {
   return items
 }
 
+function followupSortValue(item, field) {
+  if (field === 'date') return { value: item.date || item.doneAt || '', type: 'datetime' }
+  if (field === 'nextDate') return { value: item.nextDate || '', type: 'date' }
+  if (field === 'notes') return { value: item.notes || '', type: 'text' }
+  return { value: item[field] ?? '', type: 'text' }
+}
+
+function applyFollowupSort(items) {
+  if (followupSortState.field) {
+    return sortRecords(items, followupSortState, followupSortValue)
+  }
+  if (followupFilter === 'done') {
+    return sortRecords(items, { field: 'date', asc: false }, followupSortValue)
+  }
+  return items
+}
+
+export function sortFollowups(field) {
+  toggleSortField(followupSortState, field)
+  renderFollowups()
+}
+
+/** Same rows as the follow-ups table (category + search + advisor). */
+export function getVisibleFollowupItems() {
+  const pending = getPendingItems(true)
+  const done = getDoneItems(true)
+  const items = followupFilter === 'done'
+    ? done
+    : pending.filter(i => i.category === followupFilter)
+  return applyFollowupSort(items)
+}
+
 export function getFilteredFollowups() {
   // Kept for import-export / bulk compatibility: all raw followups with scope
   const data = getData()
@@ -285,15 +319,6 @@ export function getFilteredFollowups() {
       ...extras.depositors
     ])
   })
-}
-
-/** Same rows as the follow-ups table (category + search + advisor). */
-export function getVisibleFollowupItems() {
-  const pending = getPendingItems(true)
-  const done = getDoneItems(true)
-  return followupFilter === 'done'
-    ? done
-    : pending.filter(i => i.category === followupFilter)
 }
 
 export function hasActiveFollowupExportFilter() {
@@ -505,11 +530,12 @@ export async function renderFollowups() {
       tbody.innerHTML = `<tr><td colspan="${colCount}">${emptyHtml}</td></tr>`
       if (cards) cards.innerHTML = emptyHtml
       renderPaginationBar('followupPagination', 'followups', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
+      syncSortHeaders('#sheet-followups', followupSortState)
       return
     }
 
     const search = toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
-    const page = paginateList('followups', filtered, `${followupFilter}|${search}`)
+    const page = paginateList('followups', filtered, `${followupFilter}|${search}|${sortSig(followupSortState)}`)
     const canEdit = hasPermission('followups_add')
     const users = await getUsersSafe()
     const nameByPhone = (phone) => {
@@ -561,6 +587,7 @@ export async function renderFollowups() {
     }
 
     renderPaginationBar('followupPagination', 'followups', page)
+    syncSortHeaders('#sheet-followups', followupSortState)
   } catch (e) {
     console.error('renderFollowups error:', e)
     const errHtml = `<div class="empty-state"><h3>خطا در نمایش فالوآپ‌ها</h3><p>${escapeHtml(e.message || String(e))}</p></div>`

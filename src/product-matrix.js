@@ -20,6 +20,7 @@ import {
   userDisplayName
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
+import { toggleSortField, sortRecords, syncSortHeaders, sortSig, sortThHtml } from './table-sort.js'
 import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 
 const MARK_YES = '✅'
@@ -45,6 +46,7 @@ let selectedAdvisorPhones = null
 let advisorOptionsCache = []
 let advisorDropdownOpen = false
 let advisorOutsideClickBound = false
+let productMatrixSortState = { field: null, asc: true }
 
 function getFilterMode(key) {
   return productFilterState[key] || 'both'
@@ -140,7 +142,7 @@ export function getFilteredProductMatrixCustomers() {
   const catalog = resolveCatalogNames(getProductCatalogNames())
   const advisorFilterActive = hasActiveAdvisorFilter()
 
-  return (data.customers || []).filter(c => {
+  return applyProductMatrixSort((data.customers || []).filter(c => {
     if (advisorFilterActive) {
       const owner = normalizePhone(c.advisorPhone)
       if (!owner || !selectedAdvisorPhones.has(owner)) return false
@@ -167,7 +169,22 @@ export function getFilteredProductMatrixCustomers() {
     }
 
     return true
-  })
+  }))
+}
+
+function productMatrixSortValue(c, field) {
+  if (field === 'phone') return { value: getPrimaryPhone(c) || '', type: 'text' }
+  return { value: c[field] ?? '', type: 'text' }
+}
+
+function applyProductMatrixSort(list) {
+  if (!productMatrixSortState.field) return list
+  return sortRecords(list, productMatrixSortState, productMatrixSortValue)
+}
+
+export function sortProductMatrix(field) {
+  toggleSortField(productMatrixSortState, field)
+  renderProductMatrix()
 }
 
 export function hasActiveProductMatrixFilter() {
@@ -288,18 +305,19 @@ export async function renderProductMatrix() {
   const advisorSig = hasActiveAdvisorFilter()
     ? [...selectedAdvisorPhones].sort().join(',')
     : ''
-  const filterSig = `${search}|${JSON.stringify(productFilterState)}|${advisorSig}`
+  const filterSig = `${search}|${JSON.stringify(productFilterState)}|${advisorSig}|${sortSig(productMatrixSortState)}`
   const customers = getFilteredProductMatrixCustomers()
 
   const noneMode = getFilterMode(NONE_KEY)
   const advisorActiveClass = hasActiveAdvisorFilter() ? ' is-filtered' : ''
   thead.innerHTML = `
     <tr>
-      <th class="product-matrix-sticky product-matrix-col-name">نام مشتری</th>
-      <th class="product-matrix-sticky product-matrix-col-phone">شماره مشتری</th>
-      <th class="product-matrix-sticky product-matrix-col-advisor" id="productMatrixAdvisorFilter">
-        <button type="button" class="product-matrix-advisor-btn${advisorActiveClass}" onclick="app.toggleProductMatrixAdvisorDropdown(event)">
-          کارشناس <span class="product-matrix-advisor-count" id="productMatrixAdvisorCount"></span>
+      ${sortThHtml({ field: 'name', label: 'نام مشتری', handler: "app.sortProductMatrixHeader('name')", extraClass: 'product-matrix-sticky product-matrix-col-name' })}
+      ${sortThHtml({ field: 'phone', label: 'شماره مشتری', handler: "app.sortProductMatrixHeader('phone')", extraClass: 'product-matrix-sticky product-matrix-col-phone' })}
+      <th class="product-matrix-sticky product-matrix-col-advisor sort-th" data-sort-field="advisor" aria-sort="none" id="productMatrixAdvisorFilter">
+        <button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس کارشناس" onclick="app.sortProductMatrixHeader('advisor')">کارشناس</button>
+        <button type="button" class="product-matrix-advisor-btn${advisorActiveClass}" onclick="app.toggleProductMatrixAdvisorDropdown(event)" aria-label="فیلتر کارشناس" title="فیلتر کارشناس">
+          ▾ <span class="product-matrix-advisor-count" id="productMatrixAdvisorCount"></span>
         </button>
         <div class="product-matrix-advisor-dropdown" id="productMatrixAdvisorDropdown"${advisorDropdownOpen ? '' : ' hidden'} onclick="event.stopPropagation()">
           ${buildAdvisorDropdownHtml()}
@@ -311,6 +329,7 @@ export async function renderProductMatrix() {
       }).join('')}
       <th class="product-matrix-none-col product-matrix-product-col product-matrix-filterable${filterHeaderClass(noneMode)}" title="بدون محصول — کلیک برای فیلتر" onclick="app.cycleProductMatrixFilter('${escapeAttr(NONE_KEY)}')"><span>بدون محصول</span></th>
     </tr>`
+  syncSortHeaders(thead, productMatrixSortState)
 
   updateAdvisorFilterCount()
   syncClearFiltersButton()

@@ -806,7 +806,13 @@
     <div class="dash-collapsible-body" id="dash-overdue-body" role="region" aria-labelledby="dash-overdue-toggle">
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>نام</th><th>شماره</th><th>نام کارشناس</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
+          <thead><tr>
+            <th class="sort-th" data-sort-field="name" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس نام" onclick="app.sortDashOverdueHeader('name')">نام</button></th>
+            <th class="sort-th" data-sort-field="phone" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس شماره" onclick="app.sortDashOverdueHeader('phone')">شماره</button></th>
+            <th class="sort-th" data-sort-field="advisor" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس کارشناس" onclick="app.sortDashOverdueHeader('advisor')">نام کارشناس</button></th>
+            <th class="sort-th" data-sort-field="nextFollowupDate" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس تاریخ پیگیری" onclick="app.sortDashOverdueHeader('nextFollowupDate')">تاریخ پیگیری</button></th>
+            <th class="sort-th" data-sort-field="salesCount" aria-sort="none"><button type="button" class="sort-th-btn is-center" aria-label="مرتب‌سازی بر اساس تعداد فروش" onclick="app.sortDashOverdueHeader('salesCount')">تعداد فروش</button></th>
+          </tr></thead>
           <tbody id="dashOverdueBody"></tbody>
         </table>
       </div>
@@ -821,7 +827,13 @@
     <div class="dash-collapsible-body" id="dash-soon-body" role="region" aria-labelledby="dash-soon-toggle">
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>نام</th><th>شماره</th><th>نام کارشناس</th><th>تاریخ پیگیری</th><th>تعداد فروش</th></tr></thead>
+          <thead><tr>
+            <th class="sort-th" data-sort-field="name" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس نام" onclick="app.sortDashSoonHeader('name')">نام</button></th>
+            <th class="sort-th" data-sort-field="phone" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس شماره" onclick="app.sortDashSoonHeader('phone')">شماره</button></th>
+            <th class="sort-th" data-sort-field="advisor" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس کارشناس" onclick="app.sortDashSoonHeader('advisor')">نام کارشناس</button></th>
+            <th class="sort-th" data-sort-field="nextFollowupDate" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس تاریخ پیگیری" onclick="app.sortDashSoonHeader('nextFollowupDate')">تاریخ پیگیری</button></th>
+            <th class="sort-th" data-sort-field="salesCount" aria-sort="none"><button type="button" class="sort-th-btn is-center" aria-label="مرتب‌سازی بر اساس تعداد فروش" onclick="app.sortDashSoonHeader('salesCount')">تعداد فروش</button></th>
+          </tr></thead>
           <tbody id="dashSoonBody"></tbody>
         </table>
       </div>
@@ -845,10 +857,10 @@
         <table>
           <thead>
             <tr>
-              <th>کارشناس</th>
-              <th style="text-align:center;">ورودی</th>
-              <th style="text-align:center;">خروجی</th>
-              <th style="text-align:center;">خالص</th>
+              <th class="sort-th" data-sort-field="name" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس کارشناس" onclick="app.sortDashTransferHeader('name')">کارشناس</button></th>
+              <th class="sort-th" data-sort-field="in" aria-sort="none" style="text-align:center;"><button type="button" class="sort-th-btn is-center" aria-label="مرتب‌سازی بر اساس ورودی" onclick="app.sortDashTransferHeader('in')">ورودی</button></th>
+              <th class="sort-th" data-sort-field="out" aria-sort="none" style="text-align:center;"><button type="button" class="sort-th-btn is-center" aria-label="مرتب‌سازی بر اساس خروجی" onclick="app.sortDashTransferHeader('out')">خروجی</button></th>
+              <th class="sort-th" data-sort-field="net" aria-sort="none" style="text-align:center;"><button type="button" class="sort-th-btn is-center" aria-label="مرتب‌سازی بر اساس خالص" onclick="app.sortDashTransferHeader('net')">خالص</button></th>
             </tr>
           </thead>
           <tbody id="dashTransferBody">
@@ -941,14 +953,14 @@
               <th class="sort-th" data-sort-field="platformId" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس ایدی پلتفرم" onclick="app.sortCustomersHeader('platformId')">ایدی پلتفرم</button></th>
               <th class="sort-th" data-sort-field="platform" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس پلتفرم" onclick="app.sortCustomersHeader('platform')">پلتفرم</button></th>
               <th class="sort-th" data-sort-field="name" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس نام" onclick="app.sortCustomersHeader('name')">نام</button></th>
-              <th>سطح</th>
+              <th class="sort-th" data-sort-field="level" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس سطح" onclick="app.sortCustomersHeader('level')">سطح</button></th>
               <th class="sort-th" data-sort-field="phone" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس شماره" onclick="app.sortCustomersHeader('phone')">شماره</button></th>
               <th class="sort-th" data-sort-field="status" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس وضعیت" onclick="app.sortCustomersHeader('status')">وضعیت</button></th>
               <th class="sort-th" data-sort-field="advisor" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس کارشناس" onclick="app.sortCustomersHeader('advisor')">کارشناس</button></th>
               <th class="sort-th" data-sort-field="followupCount" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس تعداد پیگیری" onclick="app.sortCustomersHeader('followupCount')">پیگیری</button></th>
               <th class="sort-th" data-sort-field="lastFollowup" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس آخرین پیگیری" onclick="app.sortCustomersHeader('lastFollowup')">آخرین پیگیری</button></th>
               <th class="sort-th" data-sort-field="nextFollowupDate" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس پیگیری بعدی" onclick="app.sortCustomersHeader('nextFollowupDate')">پیگیری بعدی</button></th>
-              <th>آخرین یادداشت</th>
+              <th class="sort-th" data-sort-field="lastNote" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس آخرین یادداشت" onclick="app.sortCustomersHeader('lastNote')">آخرین یادداشت</button></th>
             </tr>
           </thead>
           <tbody id="customerBody"></tbody>
@@ -1001,16 +1013,16 @@
         <table>
           <thead>
             <tr>
-              <th style="width:40px;" data-perm="followups_delete"><input type="checkbox" id="selectAllFollowups" onchange="app.toggleSelectAll('followups', this.checked)"></th>
-              <th onclick="app.sortFollowupsHeader('customerName')">نام</th>
-              <th onclick="app.sortFollowupsHeader('customerPhone')">شماره مشتری</th>
-              <th onclick="app.sortFollowupsHeader('advisor')">کارشناس</th>
-              <th onclick="app.sortFollowupsHeader('date')">تاریخ</th>
-              <th onclick="app.sortFollowupsHeader('type')">نوع</th>
-              <th onclick="app.sortFollowupsHeader('result')">نتیجه</th>
-              <th onclick="app.sortFollowupsHeader('nextDate')">پیگیری بعدی</th>
-              <th>توضیحات</th>
-              <th style="width: 100px;">عملیات</th>
+              <th class="select-col" style="width:40px;" data-perm="followups_delete"><input type="checkbox" id="selectAllFollowups" onchange="app.toggleSelectAll('followups', this.checked)"></th>
+              <th class="sort-th" data-sort-field="customerName" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس نام" onclick="app.sortFollowupsHeader('customerName')">نام</button></th>
+              <th class="sort-th" data-sort-field="customerPhone" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس شماره مشتری" onclick="app.sortFollowupsHeader('customerPhone')">شماره مشتری</button></th>
+              <th class="sort-th" data-sort-field="advisor" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس کارشناس" onclick="app.sortFollowupsHeader('advisor')">کارشناس</button></th>
+              <th class="sort-th" data-sort-field="date" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس تاریخ" onclick="app.sortFollowupsHeader('date')">تاریخ</button></th>
+              <th class="sort-th" data-sort-field="type" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس نوع" onclick="app.sortFollowupsHeader('type')">نوع</button></th>
+              <th class="sort-th" data-sort-field="result" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس نتیجه" onclick="app.sortFollowupsHeader('result')">نتیجه</button></th>
+              <th class="sort-th" data-sort-field="nextDate" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس پیگیری بعدی" onclick="app.sortFollowupsHeader('nextDate')">پیگیری بعدی</button></th>
+              <th class="sort-th" data-sort-field="notes" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس توضیحات" onclick="app.sortFollowupsHeader('notes')">توضیحات</button></th>
+              <th class="actions-col" style="width: 100px;">عملیات</th>
             </tr>
           </thead>
           <tbody id="followupBody"></tbody>
@@ -1081,20 +1093,20 @@
         <table>
           <thead>
             <tr>
-              <th style="width:40px;" data-perm="customers_add"><input type="checkbox" id="selectAllSales" onchange="app.toggleSelectAll('sales', this.checked)"></th>
-              <th onclick="app.sortSalesHeader('customerName')">نام مشتری</th>
-              <th onclick="app.sortSalesHeader('customerPhone')">شماره موبایل</th>
-              <th onclick="app.sortSalesHeader('advisor')">ثبت‌کننده فروش</th>
-              <th onclick="app.sortSalesHeader('platform')">پلتفرم</th>
-              <th onclick="app.sortSalesHeader('productName')">محصول</th>
-              <th onclick="app.sortSalesHeader('status')">وضعیت</th>
-              <th onclick="app.sortSalesHeader('price')">مبلغ کل (ریال)</th>
-              <th onclick="app.sortSalesHeader('deposit')">پرداخت‌شده (ریال)</th>
-              <th onclick="app.sortSalesHeader('balance')">مانده (ریال)</th>
-              <th onclick="app.sortSalesHeader('settlementDate')">تاریخ تسویه</th>
-              <th>تاریخ واریز</th>
-              <th>نام واریزکننده</th>
-              <th>وضعیت واریزی</th>
+              <th class="select-col" style="width:40px;" data-perm="customers_add"><input type="checkbox" id="selectAllSales" onchange="app.toggleSelectAll('sales', this.checked)"></th>
+              <th class="sort-th" data-sort-field="customerName" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس نام مشتری" onclick="app.sortSalesHeader('customerName')">نام مشتری</button></th>
+              <th class="sort-th" data-sort-field="customerPhone" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس شماره موبایل" onclick="app.sortSalesHeader('customerPhone')">شماره موبایل</button></th>
+              <th class="sort-th" data-sort-field="advisor" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس ثبت‌کننده فروش" onclick="app.sortSalesHeader('advisor')">ثبت‌کننده فروش</button></th>
+              <th class="sort-th" data-sort-field="platform" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس پلتفرم" onclick="app.sortSalesHeader('platform')">پلتفرم</button></th>
+              <th class="sort-th" data-sort-field="productName" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس محصول" onclick="app.sortSalesHeader('productName')">محصول</button></th>
+              <th class="sort-th" data-sort-field="status" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس وضعیت" onclick="app.sortSalesHeader('status')">وضعیت</button></th>
+              <th class="sort-th" data-sort-field="price" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس مبلغ کل" onclick="app.sortSalesHeader('price')">مبلغ کل (ریال)</button></th>
+              <th class="sort-th" data-sort-field="deposit" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس پرداخت‌شده" onclick="app.sortSalesHeader('deposit')">پرداخت‌شده (ریال)</button></th>
+              <th class="sort-th" data-sort-field="balance" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس مانده" onclick="app.sortSalesHeader('balance')">مانده (ریال)</button></th>
+              <th class="sort-th" data-sort-field="settlementDate" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس تاریخ تسویه" onclick="app.sortSalesHeader('settlementDate')">تاریخ تسویه</button></th>
+              <th class="sort-th" data-sort-field="soldAt" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس تاریخ واریز" onclick="app.sortSalesHeader('soldAt')">تاریخ واریز</button></th>
+              <th class="sort-th" data-sort-field="depositorName" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس نام واریزکننده" onclick="app.sortSalesHeader('depositorName')">نام واریزکننده</button></th>
+              <th class="sort-th" data-sort-field="paymentStatus" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس وضعیت واریزی" onclick="app.sortSalesHeader('paymentStatus')">وضعیت واریزی</button></th>
             </tr>
           </thead>
           <tbody id="salesBody"></tbody>
@@ -1154,16 +1166,16 @@
         <table>
           <thead>
             <tr>
-              <th>مشتری</th>
-              <th>شماره</th>
-              <th>کارشناس</th>
-              <th>محصول</th>
-              <th>نوع پرداخت</th>
-              <th>مبلغ (ریال)</th>
-              <th>تاریخ و ساعت</th>
-              <th>بانک مقصد</th>
-              <th>نام واریزکننده</th>
-              <th>وضعیت / عملیات</th>
+              <th class="sort-th" data-sort-field="customerName" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس مشتری" onclick="app.sortAccountingHeader('customerName')">مشتری</button></th>
+              <th class="sort-th" data-sort-field="customerPhone" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس شماره" onclick="app.sortAccountingHeader('customerPhone')">شماره</button></th>
+              <th class="sort-th" data-sort-field="advisor" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس کارشناس" onclick="app.sortAccountingHeader('advisor')">کارشناس</button></th>
+              <th class="sort-th" data-sort-field="productName" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس محصول" onclick="app.sortAccountingHeader('productName')">محصول</button></th>
+              <th class="sort-th" data-sort-field="payType" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس نوع پرداخت" onclick="app.sortAccountingHeader('payType')">نوع پرداخت</button></th>
+              <th class="sort-th" data-sort-field="amount" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس مبلغ" onclick="app.sortAccountingHeader('amount')">مبلغ (ریال)</button></th>
+              <th class="sort-th" data-sort-field="soldAt" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس تاریخ و ساعت" onclick="app.sortAccountingHeader('soldAt')">تاریخ و ساعت</button></th>
+              <th class="sort-th" data-sort-field="destinationBank" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس بانک مقصد" onclick="app.sortAccountingHeader('destinationBank')">بانک مقصد</button></th>
+              <th class="sort-th" data-sort-field="depositorName" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس نام واریزکننده" onclick="app.sortAccountingHeader('depositorName')">نام واریزکننده</button></th>
+              <th class="sort-th" data-sort-field="paymentStatus" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس وضعیت" onclick="app.sortAccountingHeader('paymentStatus')">وضعیت / عملیات</button></th>
             </tr>
           </thead>
           <tbody id="accountingBody"></tbody>
@@ -1251,13 +1263,13 @@
         <table>
           <thead>
             <tr>
-              <th>مشتری</th>
-              <th>محصول</th>
-              <th>مبلغ</th>
-              <th>کارشناس</th>
-              <th>دلیل رد</th>
-              <th>ثبت‌کننده</th>
-              <th>تاریخ</th>
+              <th class="sort-th" data-sort-field="customerName" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس مشتری" onclick="app.sortRefundsRejectedHeader('customerName')">مشتری</button></th>
+              <th class="sort-th" data-sort-field="productName" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس محصول" onclick="app.sortRefundsRejectedHeader('productName')">محصول</button></th>
+              <th class="sort-th" data-sort-field="amount" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس مبلغ" onclick="app.sortRefundsRejectedHeader('amount')">مبلغ</button></th>
+              <th class="sort-th" data-sort-field="advisor" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس کارشناس" onclick="app.sortRefundsRejectedHeader('advisor')">کارشناس</button></th>
+              <th class="sort-th" data-sort-field="rejectReason" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس دلیل رد" onclick="app.sortRefundsRejectedHeader('rejectReason')">دلیل رد</button></th>
+              <th class="sort-th" data-sort-field="createdBy" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس ثبت‌کننده" onclick="app.sortRefundsRejectedHeader('createdBy')">ثبت‌کننده</button></th>
+              <th class="sort-th" data-sort-field="updatedAt" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس تاریخ" onclick="app.sortRefundsRejectedHeader('updatedAt')">تاریخ</button></th>
             </tr>
           </thead>
           <tbody id="refundsRejectedBody"></tbody>
@@ -1270,13 +1282,13 @@
         <table>
           <thead>
             <tr>
-              <th>مشتری</th>
-              <th>محصول</th>
-              <th>مبلغ</th>
-              <th>کارشناس</th>
-              <th>دلیل عودت</th>
-              <th>تاریخ عودت</th>
-              <th>تاریخ بایگانی</th>
+              <th class="sort-th" data-sort-field="customerName" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس مشتری" onclick="app.sortRefundsArchivedHeader('customerName')">مشتری</button></th>
+              <th class="sort-th" data-sort-field="productName" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس محصول" onclick="app.sortRefundsArchivedHeader('productName')">محصول</button></th>
+              <th class="sort-th" data-sort-field="amount" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس مبلغ" onclick="app.sortRefundsArchivedHeader('amount')">مبلغ</button></th>
+              <th class="sort-th" data-sort-field="advisor" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس کارشناس" onclick="app.sortRefundsArchivedHeader('advisor')">کارشناس</button></th>
+              <th class="sort-th" data-sort-field="reason" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس دلیل عودت" onclick="app.sortRefundsArchivedHeader('reason')">دلیل عودت</button></th>
+              <th class="sort-th" data-sort-field="completedAt" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس تاریخ عودت" onclick="app.sortRefundsArchivedHeader('completedAt')">تاریخ عودت</button></th>
+              <th class="sort-th" data-sort-field="archivedAt" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس تاریخ بایگانی" onclick="app.sortRefundsArchivedHeader('archivedAt')">تاریخ بایگانی</button></th>
             </tr>
           </thead>
           <tbody id="refundsArchivedBody"></tbody>
