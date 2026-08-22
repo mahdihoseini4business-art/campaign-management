@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, effectiveSalesTargetBarStages, scaleShareStagesFromValue } from './data.js'
 import {
   loadGroupsData,
   getGroupsCache,
@@ -402,10 +402,12 @@ let _editingCustomerCodeIdx = null
 let _editingSalesTargetId = null
 /** @type {Array<{id?: string, metric: string, value: number, stages?: Array<{id?: string, value: number, label?: string}>, productNames: string[], startDate: string, endDate: string, createdAt?: string}>} */
 let _draftTargetBars = []
-/** @type {Record<string, { shares: Record<string, number>, members: Record<string, Record<string, number>> }>} userGroupId -> team shares + per-member shares */
+/** @type {Record<string, { shares: Record<string, Record<string, number>>, members: Record<string, Record<string, Record<string, number>>> }>} */
 let _draftAllocations = {}
 /** @type {Array<{id: string, value: number, label: string}>} intermediate stages for the bar form */
 let _draftFormStages = []
+/** @type {number|null} index of the draft bar currently loaded in the form */
+let _editingDraftBarIndex = null
 
 export function renderSettingsNav(filterQuery = '') {
   const list = document.getElementById('settingsNavList')
@@ -1849,9 +1851,11 @@ function clearSalesTargetBarFields() {
 
 function clearSalesTargetForm() {
   _editingSalesTargetId = null
+  _editingDraftBarIndex = null
   _draftTargetBars = []
   _draftAllocations = {}
   _draftFormStages = []
+  syncSalesTargetAddBarButton()
   const idEl = document.getElementById('editSalesTargetId')
   if (idEl) idEl.value = ''
   const titleEl = document.getElementById('salesTargetTitle')
@@ -2033,6 +2037,18 @@ function salesTargetBarShortLabel(bar, index) {
   return `نوار ${formatNumber(index + 1)} · ${formatNumber(bar.value)} ${unit}`
 }
 
+function salesTargetStageLabel(stage, index) {
+  return String(stage?.label || '').trim() || `تارگت ${formatNumber(index + 1)}`
+}
+
+function syncSalesTargetAddBarButton() {
+  const addBtn = document.getElementById('salesTargetAddBarBtn')
+  const cancelBtn = document.getElementById('salesTargetCancelBarBtn')
+  const editing = _editingDraftBarIndex != null
+  if (addBtn) addBtn.textContent = editing ? 'اعمال تغییرات نوار' : 'افزودن نوار به گروه'
+  if (cancelBtn) cancelBtn.hidden = !editing
+}
+
 function emptyDraftAllocEntry() {
   return { shares: {}, members: {} }
 }
@@ -2045,6 +2061,133 @@ function ensureDraftAllocEntry(gid) {
     _draftAllocations[gid].members = {}
   }
   return _draftAllocations[gid]
+}
+
+function asDraftStageMap(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  return raw
+}
+
+function setDraftStageValue(ownerMap, barId, stageId, value) {
+  if (!ownerMap[barId] || typeof ownerMap[barId] !== 'object' || Array.isArray(ownerMap[barId])) {
+    ownerMap[barId] = {}
+  }
+  if (Number.isFinite(value) && value > 0) ownerMap[barId][stageId] = value
+  else {
+    delete ownerMap[barId][stageId]
+    if (!Object.keys(ownerMap[barId]).length) delete ownerMap[barId]
+  }
+}
+
+function pruneStageMapToBar(stageMap, bar) {
+  const allowed = new Set(effectiveSalesTargetBarStages(bar).map(s => s.id))
+  const next = {}
+  for (const [stageId, value] of Object.entries(asDraftStageMap(stageMap))) {
+    if (!allowed.has(stageId)) continue
+    const n = Number(value)
+    if (Number.isFinite(n) && n > 0) next[stageId] = n
+  }
+  return next
+}
+
+function readDraftBarShareState(stageMap, bar) {
+  const stages = effectiveSalesTargetBarStages(bar)
+  if (!stages.length) return { kind: 'empty' }
+  const map = asDraftStageMap(stageMap)
+  const values = stages.map(st => {
+    const n = Number(map[st.id])
+    return Number.isFinite(n) && n > 0 ? n : 0
+  })
+  const filled = values.filter(v => v > 0).length
+  if (!filled) return { kind: 'empty' }
+  if (filled !== stages.length) return { kind: 'partial' }
+  for (let i = 1; i < values.length; i++) {
+    if (!(values[i] > values[i - 1])) return { kind: 'order' }
+  }
+  return {
+    kind: 'complete',
+    share: {
+      barId: bar.id,
+      value: values[values.length - 1],
+      stages: stages.map((st, i) => ({ stageId: st.id, value: values[i] }))
+    }
+  }
+}
+
+function isDraftGroupBarComplete(gid, bar) {
+  const entry = _draftAllocations[gid]
+  return readDraftBarShareState(entry?.shares?.[bar.id], bar).kind === 'complete'
+}
+
+function isDraftGroupBarEmpty(gid, bar) {
+  const entry = _draftAllocations[gid]
+  return readDraftBarShareState(entry?.shares?.[bar.id], bar).kind === 'empty'
+}
+
+function shareMapFromPersisted(share, bar) {
+  const stageMap = {}
+  if (Array.isArray(share?.stages) && share.stages.length) {
+    for (const stage of share.stages) {
+      const id = String(stage.stageId || stage.id || '').trim()
+      const value = Number(stage.value)
+      if (id && value > 0) stageMap[id] = value
+    }
+    if (Object.keys(stageMap).length) return stageMap
+  }
+  if (Number(share?.value) > 0 && bar) {
+    for (const stage of scaleShareStagesFromValue(share.value, bar)) {
+      stageMap[stage.stageId] = stage.value
+    }
+  }
+  return stageMap
+}
+
+function remapStageMap(stageMap, oldBar, newBar) {
+  const oldStages = effectiveSalesTargetBarStages(oldBar)
+  const newStages = effectiveSalesTargetBarStages(newBar)
+  const src = asDraftStageMap(stageMap)
+  const next = {}
+  for (const st of newStages) {
+    const v = Number(src[st.id])
+    if (v > 0) next[st.id] = v
+  }
+  if (oldStages.length && newStages.length) {
+    const oldFinal = oldStages[oldStages.length - 1].id
+    const newFinal = newStages[newStages.length - 1].id
+    if (oldFinal !== newFinal && Number(src[oldFinal]) > 0 && !(next[newFinal] > 0)) {
+      next[newFinal] = Number(src[oldFinal])
+    }
+  }
+  return next
+}
+
+function remapDraftAllocationsForBar(oldBar, newBar) {
+  if (!oldBar?.id || !newBar?.id || oldBar.id !== newBar.id) return
+  for (const gid of Object.keys(_draftAllocations)) {
+    const entry = ensureDraftAllocEntry(gid)
+    if (entry.shares[oldBar.id]) {
+      const next = remapStageMap(entry.shares[oldBar.id], oldBar, newBar)
+      if (Object.keys(next).length) entry.shares[newBar.id] = next
+      else delete entry.shares[newBar.id]
+    }
+    for (const phone of Object.keys(entry.members || {})) {
+      const ms = entry.members[phone]
+      if (!ms?.[oldBar.id]) continue
+      const next = remapStageMap(ms[oldBar.id], oldBar, newBar)
+      if (Object.keys(next).length) ms[newBar.id] = next
+      else delete ms[oldBar.id]
+      if (!Object.keys(ms).length) delete entry.members[phone]
+    }
+  }
+}
+
+function clearDraftMemberBar(gid, barId) {
+  const entry = _draftAllocations[gid]
+  if (!entry?.members) return
+  for (const phone of Object.keys(entry.members)) {
+    if (entry.members[phone]) delete entry.members[phone][barId]
+    if (!Object.keys(entry.members[phone] || {}).length) delete entry.members[phone]
+  }
 }
 
 function syncFormStagesFromDom() {
@@ -2129,38 +2272,49 @@ function buildStagesForBar(finalValue, intermediateStages) {
 function syncAllocationsFromDom() {
   const box = document.getElementById('salesTargetAllocations')
   if (!box) return
-  box.querySelectorAll('input[data-alloc-group][data-alloc-bar]').forEach(input => {
+  box.querySelectorAll('input[data-alloc-group][data-alloc-bar][data-alloc-stage]').forEach(input => {
     const gid = input.getAttribute('data-alloc-group') || ''
     const bid = input.getAttribute('data-alloc-bar') || ''
+    const stageId = input.getAttribute('data-alloc-stage') || ''
     const memberPhone = normalizePhone(input.getAttribute('data-alloc-member') || '')
-    if (!gid || !bid) return
+    if (!gid || !bid || !stageId) return
     const value = parseSalesTargetValueInput(input.value)
     const entry = ensureDraftAllocEntry(gid)
     if (memberPhone) {
       if (!entry.members[memberPhone]) entry.members[memberPhone] = {}
-      if (Number.isFinite(value) && value > 0) entry.members[memberPhone][bid] = value
-      else {
-        delete entry.members[memberPhone][bid]
-        if (!Object.keys(entry.members[memberPhone]).length) delete entry.members[memberPhone]
-      }
+      setDraftStageValue(entry.members[memberPhone], bid, stageId, value)
+      if (!Object.keys(entry.members[memberPhone]).length) delete entry.members[memberPhone]
     } else {
-      if (Number.isFinite(value) && value > 0) entry.shares[bid] = value
-      else delete entry.shares[bid]
+      setDraftStageValue(entry.shares, bid, stageId, value)
     }
   })
 }
 
-function pruneDraftAllocations(barIds) {
-  const idSet = new Set(barIds || [])
+function pruneDraftAllocations(bars) {
+  const barMap = new Map((bars || []).map(bar => [bar.id, bar]))
   for (const gid of Object.keys(_draftAllocations)) {
     const entry = ensureDraftAllocEntry(gid)
     for (const bid of Object.keys(entry.shares)) {
-      if (!idSet.has(bid)) delete entry.shares[bid]
+      const bar = barMap.get(bid)
+      if (!bar) {
+        delete entry.shares[bid]
+        continue
+      }
+      const next = pruneStageMapToBar(entry.shares[bid], bar)
+      if (Object.keys(next).length) entry.shares[bid] = next
+      else delete entry.shares[bid]
     }
     for (const phone of Object.keys(entry.members)) {
       const ms = entry.members[phone] || {}
       for (const bid of Object.keys(ms)) {
-        if (!idSet.has(bid)) delete ms[bid]
+        const bar = barMap.get(bid)
+        if (!bar) {
+          delete ms[bid]
+          continue
+        }
+        const next = pruneStageMapToBar(ms[bid], bar)
+        if (Object.keys(next).length) ms[bid] = next
+        else delete ms[bid]
       }
       if (!Object.keys(ms).length) delete entry.members[phone]
     }
@@ -2174,23 +2328,24 @@ function loadDraftAllocationsFromGroup(group) {
   _draftAllocations = {}
   const box = document.getElementById('salesTargetAllocations')
   if (box) box.innerHTML = ''
+  const barsById = new Map((group?.items || []).map(bar => [bar.id, bar]))
   for (const alloc of group?.allocations || []) {
     const gid = alloc.userGroupId
     if (!gid) continue
     const entry = emptyDraftAllocEntry()
     for (const share of alloc.shares || []) {
-      if (share?.barId && Number(share.value) > 0) {
-        entry.shares[share.barId] = Number(share.value)
-      }
+      if (!share?.barId) continue
+      const stageMap = shareMapFromPersisted(share, barsById.get(share.barId))
+      if (Object.keys(stageMap).length) entry.shares[share.barId] = stageMap
     }
     for (const member of alloc.members || []) {
       const phone = normalizePhone(member.userPhone || '')
       if (!phone) continue
       entry.members[phone] = {}
       for (const share of member.shares || []) {
-        if (share?.barId && Number(share.value) > 0) {
-          entry.members[phone][share.barId] = Number(share.value)
-        }
+        if (!share?.barId) continue
+        const stageMap = shareMapFromPersisted(share, barsById.get(share.barId))
+        if (Object.keys(stageMap).length) entry.members[phone][share.barId] = stageMap
       }
       if (!Object.keys(entry.members[phone]).length) delete entry.members[phone]
     }
@@ -2202,24 +2357,31 @@ function loadDraftAllocationsFromGroup(group) {
 
 function collectDraftAllocations(items) {
   syncAllocationsFromDom()
+  pruneDraftAllocations(items)
   const barIds = new Set((items || []).map(bar => bar.id))
-  pruneDraftAllocations([...barIds])
   const allocations = []
   for (const [userGroupId, entryRaw] of Object.entries(_draftAllocations)) {
     const entry = ensureDraftAllocEntry(userGroupId)
     const memberPhones = new Set(
       (getMembersOfGroup(userGroupId) || []).map(m => normalizePhone(m.user_phone || '')).filter(Boolean)
     )
-    const shares = Object.entries(entry.shares || {})
-      .filter(([barId, value]) => barIds.has(barId) && Number(value) > 0)
-      .map(([barId, value]) => ({ barId, value: Number(value) }))
+    const shares = []
+    for (const bar of items || []) {
+      if (!barIds.has(bar.id)) continue
+      const state = readDraftBarShareState(entry.shares?.[bar.id], bar)
+      if (state.kind === 'complete') shares.push(state.share)
+    }
     if (!shares.length) continue
+    const completeBarIds = new Set(shares.map(s => s.barId))
     const members = []
     for (const [phone, shareMap] of Object.entries(entry.members || {})) {
       if (!memberPhones.has(phone)) continue
-      const mShares = Object.entries(shareMap || {})
-        .filter(([barId, value]) => barIds.has(barId) && Number(value) > 0)
-        .map(([barId, value]) => ({ barId, value: Number(value) }))
+      const mShares = []
+      for (const bar of items || []) {
+        if (!completeBarIds.has(bar.id)) continue
+        const state = readDraftBarShareState(shareMap?.[bar.id], bar)
+        if (state.kind === 'complete') mShares.push(state.share)
+      }
       if (mShares.length) members.push({ userPhone: phone, shares: mShares })
     }
     allocations.push({ userGroupId, shares, members })
@@ -2227,24 +2389,71 @@ function collectDraftAllocations(items) {
   return allocations
 }
 
-function validateAllocationsAgainstBars(items, allocations) {
-  for (const bar of items || []) {
-    let teamSum = 0
-    for (const alloc of allocations || []) {
-      const share = (alloc.shares || []).find(s => s.barId === bar.id)
-      const teamShare = share ? Number(share.value) || 0 : 0
-      teamSum += teamShare
-      let memberSum = 0
-      for (const member of alloc.members || []) {
-        const ms = (member.shares || []).find(s => s.barId === bar.id)
-        if (ms) memberSum += Number(ms.value) || 0
+function validateDraftAllocationCompleteness(items) {
+  syncAllocationsFromDom()
+  pruneDraftAllocations(items)
+  for (const g of getGroupsCache()) {
+    const entry = _draftAllocations[g.id]
+    if (!entry) continue
+    for (const bar of items || []) {
+      const barLabel = salesTargetBarShortLabel(bar, (items || []).indexOf(bar))
+      const teamState = readDraftBarShareState(entry.shares?.[bar.id], bar)
+      if (teamState.kind === 'partial') {
+        return `تارگت گروه «${g.name || 'گروه'}» در «${barLabel}» باید همه مراحل را داشته باشد`
       }
-      if (teamShare > 0 && memberSum > teamShare) {
-        return `جمع سهم اعضای یک گروه در «${salesTargetBarShortLabel(bar, (items || []).indexOf(bar))}» از سهم گروه بیشتر است`
+      if (teamState.kind === 'order') {
+        return `مراحل تارگت گروه «${g.name || 'گروه'}» در «${barLabel}» باید صعودی باشند`
+      }
+      for (const [phone, barMap] of Object.entries(entry.members || {})) {
+        const mState = readDraftBarShareState(barMap?.[bar.id], bar)
+        if (teamState.kind !== 'complete' && mState.kind !== 'empty') {
+          return `ابتدا تارگت گروه «${g.name || 'گروه'}» را در «${barLabel}» کامل کنید`
+        }
+        if (mState.kind === 'partial') {
+          return `تارگت ${memberDisplayName(phone)} در «${barLabel}» باید همه مراحل را داشته باشد`
+        }
+        if (mState.kind === 'order') {
+          return `مراحل تارگت ${memberDisplayName(phone)} در «${barLabel}» باید صعودی باشند`
+        }
       }
     }
-    if (teamSum > Number(bar.value)) {
-      return `جمع سهم‌های «${salesTargetBarShortLabel(bar, (items || []).indexOf(bar))}» از مقدار هدف بیشتر است`
+  }
+  return null
+}
+
+function shareStageValue(share, stageId, fallbackIndex, stageCount) {
+  const stages = Array.isArray(share?.stages) ? share.stages : []
+  const found = stages.find(s => String(s.stageId || s.id || '') === stageId)
+  if (found) return Number(found.value) || 0
+  if (!stages.length && fallbackIndex === stageCount - 1) return Number(share?.value) || 0
+  return 0
+}
+
+function validateAllocationsAgainstBars(items, allocations) {
+  for (const bar of items || []) {
+    const barIdx = (items || []).indexOf(bar)
+    const barLabel = salesTargetBarShortLabel(bar, barIdx)
+    const stages = effectiveSalesTargetBarStages(bar)
+    for (let i = 0; i < stages.length; i++) {
+      const stage = stages[i]
+      const stageLabel = salesTargetStageLabel(stage, i)
+      let teamSum = 0
+      for (const alloc of allocations || []) {
+        const share = (alloc.shares || []).find(s => s.barId === bar.id)
+        const teamShare = share ? shareStageValue(share, stage.id, i, stages.length) : 0
+        teamSum += teamShare
+        let memberSum = 0
+        for (const member of alloc.members || []) {
+          const ms = (member.shares || []).find(s => s.barId === bar.id)
+          if (ms) memberSum += shareStageValue(ms, stage.id, i, stages.length)
+        }
+        if (teamShare > 0 && memberSum > teamShare) {
+          return `جمع سهم اعضا در «${barLabel} · ${stageLabel}» از تارگت گروه بیشتر است`
+        }
+      }
+      if (teamSum > Number(stage.value)) {
+        return `جمع تارگت گروه‌ها در «${barLabel} · ${stageLabel}» از تارگت کل بیشتر است`
+      }
     }
   }
   return null
@@ -2258,20 +2467,27 @@ function updateSalesTargetAllocSums() {
     return
   }
   syncAllocationsFromDom()
-  const teamLines = _draftTargetBars.map((bar, idx) => {
-    let sum = 0
-    for (const entry of Object.values(_draftAllocations)) {
-      sum += Number(entry?.shares?.[bar.id]) || 0
-    }
-    const over = sum > Number(bar.value)
-    const unit = bar.metric === 'count' ? 'فروش' : 'ریال'
-    return `
-      <div class="settings-target-alloc-sum${over ? ' is-over' : ''}">
-        ${escapeHtml(salesTargetBarShortLabel(bar, idx))}:
-        جمع سهم گروه‌ها ${formatNumber(sum)} / هدف ${formatNumber(bar.value)} ${unit}
-        ${over ? ' — بیش از هدف' : ''}
-      </div>
-    `
+  const unitOf = bar => (bar.metric === 'count' ? 'فروش' : 'ریال')
+  const teamLines = _draftTargetBars.flatMap((bar, idx) => {
+    const stages = effectiveSalesTargetBarStages(bar)
+    return stages.map((stage, stageIdx) => {
+      let sum = 0
+      for (const entry of Object.values(_draftAllocations)) {
+        sum += Number(asDraftStageMap(entry?.shares?.[bar.id])[stage.id]) || 0
+      }
+      const over = sum > Number(stage.value)
+      const multi = stages.length > 1
+      const label = multi
+        ? `${salesTargetBarShortLabel(bar, idx)} · ${salesTargetStageLabel(stage, stageIdx)}`
+        : salesTargetBarShortLabel(bar, idx)
+      return `
+        <div class="settings-target-alloc-sum${over ? ' is-over' : ''}">
+          ${escapeHtml(label)}:
+          جمع گروه‌ها ${formatNumber(sum)} / هدف ${formatNumber(stage.value)} ${unitOf(bar)}
+          ${over ? ' — بیش از هدف' : ''}
+        </div>
+      `
+    })
   }).join('')
 
   const memberLines = []
@@ -2279,22 +2495,30 @@ function updateSalesTargetAllocSums() {
     const entry = _draftAllocations[g.id]
     if (!entry) continue
     for (const [barIdx, bar] of _draftTargetBars.entries()) {
-      const teamShare = Number(entry.shares?.[bar.id]) || 0
-      if (!(teamShare > 0)) continue
-      let memberSum = 0
-      for (const shareMap of Object.values(entry.members || {})) {
-        memberSum += Number(shareMap?.[bar.id]) || 0
+      const teamMap = asDraftStageMap(entry.shares?.[bar.id])
+      const stages = effectiveSalesTargetBarStages(bar)
+      const hasTeam = stages.some(st => Number(teamMap[st.id]) > 0)
+      if (!hasTeam) continue
+      for (const [stageIdx, stage] of stages.entries()) {
+        const teamShare = Number(teamMap[stage.id]) || 0
+        let memberSum = 0
+        for (const shareMap of Object.values(entry.members || {})) {
+          memberSum += Number(asDraftStageMap(shareMap?.[bar.id])[stage.id]) || 0
+        }
+        if (!(memberSum > 0) && !Object.keys(entry.members || {}).length) continue
+        const over = memberSum > teamShare
+        const multi = stages.length > 1
+        const label = multi
+          ? `${g.name || 'گروه'} · ${salesTargetBarShortLabel(bar, barIdx)} · ${salesTargetStageLabel(stage, stageIdx)}`
+          : `${g.name || 'گروه'} · ${salesTargetBarShortLabel(bar, barIdx)}`
+        memberLines.push(`
+          <div class="settings-target-alloc-sum${over ? ' is-over' : ''}">
+            ${escapeHtml(label)}:
+            جمع اعضا ${formatNumber(memberSum)} / تارگت گروه ${formatNumber(teamShare)} ${unitOf(bar)}
+            ${over ? ' — بیش از تارگت گروه' : ''}
+          </div>
+        `)
       }
-      if (!(memberSum > 0) && !Object.keys(entry.members || {}).length) continue
-      const over = memberSum > teamShare
-      const unit = bar.metric === 'count' ? 'فروش' : 'ریال'
-      memberLines.push(`
-        <div class="settings-target-alloc-sum${over ? ' is-over' : ''}">
-          ${escapeHtml(g.name || 'گروه')} · ${escapeHtml(salesTargetBarShortLabel(bar, barIdx))}:
-          جمع سهم اعضا ${formatNumber(memberSum)} / سهم گروه ${formatNumber(teamShare)} ${unit}
-          ${over ? ' — بیش از سهم گروه' : ''}
-        </div>
-      `)
     }
   }
 
@@ -2308,11 +2532,27 @@ function memberDisplayName(phone) {
   return p
 }
 
+function allocInputHtml({ gid, barId, stageId, value, memberPhone, disabled }) {
+  const display = value != null && value > 0 ? formatNumber(value) : ''
+  const memberAttr = memberPhone ? ` data-alloc-member="${escapeAttr(memberPhone)}"` : ''
+  const disabledAttr = disabled ? ' disabled' : ''
+  return `<td>
+    <input type="text" class="form-input settings-target-alloc-input"
+      data-alloc-group="${escapeAttr(gid)}"
+      data-alloc-bar="${escapeAttr(barId)}"
+      data-alloc-stage="${escapeAttr(stageId)}"${memberAttr}
+      value="${escapeAttr(display)}"
+      placeholder="۰"
+      dir="ltr"${disabledAttr}
+      oninput="app.onSalesTargetAllocationChange(this)">
+  </td>`
+}
+
 function renderSalesTargetAllocations() {
   const box = document.getElementById('salesTargetAllocations')
   if (!box) return
   syncAllocationsFromDom()
-  pruneDraftAllocations(_draftTargetBars.map(b => b.id))
+  pruneDraftAllocations(_draftTargetBars)
 
   const userGroups = getGroupsCache()
   if (!_draftTargetBars.length) {
@@ -2326,9 +2566,20 @@ function renderSalesTargetAllocations() {
     return
   }
 
-  const barHeaders = _draftTargetBars.map((bar, idx) =>
-    `<th>${escapeHtml(salesTargetBarShortLabel(bar, idx))}</th>`
+  const barStages = _draftTargetBars.map(bar => ({
+    bar,
+    stages: effectiveSalesTargetBarStages(bar)
+  }))
+  const hasMultiStage = barStages.some(item => item.stages.length > 1)
+
+  const topHeaders = barStages.map(({ bar, stages }, idx) =>
+    `<th colspan="${Math.max(1, stages.length)}" class="settings-target-alloc-bar-head">${escapeHtml(salesTargetBarShortLabel(bar, idx))}</th>`
   ).join('')
+  const stageHeaders = hasMultiStage
+    ? `<tr>${barStages.map(({ stages }) => stages.map((stage, i) =>
+        `<th class="settings-target-alloc-stage-head">${escapeHtml(salesTargetStageLabel(stage, i))}</th>`
+      ).join('')).join('')}</tr>`
+    : ''
 
   const rows = userGroups.map(g => {
     const entry = _draftAllocations[g.id] && typeof _draftAllocations[g.id].shares === 'object'
@@ -2338,19 +2589,10 @@ function renderSalesTargetAllocations() {
     const teamRow = `
       <tr class="settings-target-alloc-team-row">
         <td>${escapeHtml(g.name || 'گروه')}</td>
-        ${_draftTargetBars.map(bar => {
-          const val = entry.shares?.[bar.id]
-          const display = val != null && val > 0 ? formatNumber(val) : ''
-          return `<td>
-            <input type="text" class="form-input settings-target-alloc-input"
-              data-alloc-group="${escapeAttr(g.id)}"
-              data-alloc-bar="${escapeAttr(bar.id)}"
-              value="${escapeAttr(display)}"
-              placeholder="۰"
-              dir="ltr"
-              oninput="app.onSalesTargetAllocationChange(this)">
-          </td>`
-        }).join('')}
+        ${barStages.map(({ bar, stages }) => stages.map(stage => {
+          const val = asDraftStageMap(entry.shares?.[bar.id])[stage.id]
+          return allocInputHtml({ gid: g.id, barId: bar.id, stageId: stage.id, value: val })
+        }).join('')).join('')}
       </tr>
     `
     const memberRows = members.map(m => {
@@ -2364,19 +2606,19 @@ function renderSalesTargetAllocations() {
             <span class="settings-target-alloc-member-label">${escapeHtml(name)}</span>
             <span class="settings-target-alloc-member-meta">${escapeHtml(role)} · ${escapeHtml(phone)}</span>
           </td>
-          ${_draftTargetBars.map(bar => {
-            const val = entry.members?.[phone]?.[bar.id]
-            const display = val != null && val > 0 ? formatNumber(val) : ''
-            return `<td>
-              <input type="text" class="form-input settings-target-alloc-input"
-                data-alloc-group="${escapeAttr(g.id)}"
-                data-alloc-member="${escapeAttr(phone)}"
-                data-alloc-bar="${escapeAttr(bar.id)}"
-                value="${escapeAttr(display)}"
-                placeholder="۰"
-                dir="ltr"
-                oninput="app.onSalesTargetAllocationChange(this)">
-            </td>`
+          ${barStages.map(({ bar, stages }) => {
+            const disabled = !isDraftGroupBarComplete(g.id, bar)
+            return stages.map(stage => {
+              const val = asDraftStageMap(entry.members?.[phone]?.[bar.id])[stage.id]
+              return allocInputHtml({
+                gid: g.id,
+                barId: bar.id,
+                stageId: stage.id,
+                value: val,
+                memberPhone: phone,
+                disabled
+              })
+            }).join('')
           }).join('')}
         </tr>
       `
@@ -2389,9 +2631,10 @@ function renderSalesTargetAllocations() {
       <table class="settings-target-alloc-table">
         <thead>
           <tr>
-            <th>گروه / عضو</th>
-            ${barHeaders}
+            <th${hasMultiStage ? ' rowspan="2"' : ''}>گروه / عضو</th>
+            ${topHeaders}
           </tr>
+          ${stageHeaders}
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -2400,9 +2643,29 @@ function renderSalesTargetAllocations() {
   updateSalesTargetAllocSums()
 }
 
+function syncMemberInputsEnabled(gid, bar) {
+  const box = document.getElementById('salesTargetAllocations')
+  if (!box || !gid || !bar) return
+  const complete = isDraftGroupBarComplete(gid, bar)
+  const empty = isDraftGroupBarEmpty(gid, bar)
+  if (empty) clearDraftMemberBar(gid, bar.id)
+  box.querySelectorAll('input[data-alloc-member]').forEach(el => {
+    if (el.getAttribute('data-alloc-group') !== gid || el.getAttribute('data-alloc-bar') !== bar.id) return
+    el.disabled = !complete
+    if (empty) el.value = ''
+  })
+}
+
 export function onSalesTargetAllocationChange(inputEl) {
   if (inputEl) formatInput(inputEl)
   syncAllocationsFromDom()
+  const gid = inputEl?.getAttribute('data-alloc-group') || ''
+  const bid = inputEl?.getAttribute('data-alloc-bar') || ''
+  const isMember = !!inputEl?.getAttribute('data-alloc-member')
+  if (gid && bid && !isMember) {
+    const bar = _draftTargetBars.find(b => b.id === bid)
+    if (bar) syncMemberInputsEnabled(gid, bar)
+  }
   updateSalesTargetAllocSums()
 }
 
@@ -2423,12 +2686,15 @@ function renderSalesTargetDraftBars() {
         ).join('')}</div>`
       : ''
     return `
-    <div class="settings-target-draft-row">
+    <div class="settings-target-draft-row${_editingDraftBarIndex === idx ? ' is-editing' : ''}">
       <div>
         <div class="settings-config-meta">${escapeHtml(salesTargetBarMetaText(bar))}</div>
         ${stagesHtml}
       </div>
-      <button type="button" class="btn-icon" title="حذف نوار" onclick="app.removeSalesTargetBarFromDraft(${idx})" style="color:var(--danger);">🗑</button>
+      <div class="settings-target-draft-row-actions">
+        <button type="button" class="btn-icon" title="ویرایش نوار" onclick="app.startSalesTargetBarEdit(${idx})">✏️</button>
+        <button type="button" class="btn-icon" title="حذف نوار" onclick="app.removeSalesTargetBarFromDraft(${idx})" style="color:var(--danger);">🗑</button>
+      </div>
     </div>
   `
   }).join('')
@@ -2470,16 +2736,74 @@ function readSalesTargetBarFromForm() {
   }
 }
 
+function commitParsedBarToDraft(parsedBar) {
+  if (_editingDraftBarIndex != null && _draftTargetBars[_editingDraftBarIndex]) {
+    const oldBar = _draftTargetBars[_editingDraftBarIndex]
+    const nextBar = {
+      ...parsedBar,
+      id: oldBar.id,
+      createdAt: oldBar.createdAt || parsedBar.createdAt
+    }
+    const oldEffective = effectiveSalesTargetBarStages(oldBar)
+    if (oldEffective.length && Array.isArray(nextBar.stages) && nextBar.stages.length) {
+      nextBar.stages[nextBar.stages.length - 1].id = oldEffective[oldEffective.length - 1].id
+    }
+    remapDraftAllocationsForBar(oldBar, nextBar)
+    _draftTargetBars[_editingDraftBarIndex] = nextBar
+    _editingDraftBarIndex = null
+    return 'updated'
+  }
+  _draftTargetBars.push(parsedBar)
+  return 'added'
+}
+
+export function startSalesTargetBarEdit(index) {
+  if (!requireMainAdmin()) return
+  const idx = Number(index)
+  const bar = _draftTargetBars[idx]
+  if (!bar) return
+  syncAllocationsFromDom()
+  _editingDraftBarIndex = idx
+  const metricEl = document.getElementById('salesTargetMetric')
+  if (metricEl) metricEl.value = bar.metric === 'count' ? 'count' : 'amount'
+  const valueEl = document.getElementById('salesTargetValue')
+  if (valueEl) valueEl.value = bar.value ? formatNumber(bar.value) : ''
+  const startEl = document.getElementById('salesTargetStart')
+  if (startEl) startEl.value = bar.startDate || ''
+  const endEl = document.getElementById('salesTargetEnd')
+  if (endEl) endEl.value = bar.endDate || ''
+  const stages = Array.isArray(bar.stages) ? bar.stages : []
+  _draftFormStages = stages.length > 1
+    ? stages.slice(0, -1).map(s => ({ id: s.id, value: Number(s.value) || 0, label: s.label || '' }))
+    : []
+  renderSalesTargetFormStages()
+  renderSalesTargetProductChecks(bar.productNames || [])
+  onSalesTargetMetricChange()
+  syncSalesTargetAddBarButton()
+  syncDeadlineUrgencyBlockVisibility()
+  renderSalesTargetDraftBars()
+  valueEl?.focus()
+}
+
+export function cancelSalesTargetBarEdit() {
+  if (!requireMainAdmin()) return
+  _editingDraftBarIndex = null
+  clearSalesTargetBarFields()
+  syncSalesTargetAddBarButton()
+  renderSalesTargetDraftBars()
+}
+
 export function addSalesTargetBarToDraft() {
   if (!requireMainAdmin()) return
   const parsed = readSalesTargetBarFromForm()
   if (parsed.empty) { showToast('مقدار هدف را وارد کنید'); return }
   if (parsed.error) { showToast(parsed.error); return }
 
-  _draftTargetBars.push(parsed.bar)
+  const mode = commitParsedBarToDraft(parsed.bar)
   clearSalesTargetBarFields()
+  syncSalesTargetAddBarButton()
   renderSalesTargetDraftBars()
-  showToast('نوار به گروه اضافه شد')
+  showToast(mode === 'updated' ? 'نوار به‌روز شد' : 'نوار به گروه اضافه شد')
 }
 
 export function removeSalesTargetBarFromDraft(index) {
@@ -2488,6 +2812,13 @@ export function removeSalesTargetBarFromDraft(index) {
   if (!Number.isInteger(idx) || idx < 0 || idx >= _draftTargetBars.length) return
   const removed = _draftTargetBars[idx]
   _draftTargetBars.splice(idx, 1)
+  if (_editingDraftBarIndex === idx) {
+    _editingDraftBarIndex = null
+    clearSalesTargetBarFields()
+    syncSalesTargetAddBarButton()
+  } else if (_editingDraftBarIndex != null && _editingDraftBarIndex > idx) {
+    _editingDraftBarIndex -= 1
+  }
   if (removed?.id) {
     for (const gid of Object.keys(_draftAllocations)) {
       const entry = ensureDraftAllocEntry(gid)
@@ -2505,6 +2836,7 @@ export function renderSalesTargetsSettings() {
   renderSalesTargetProductChecks(getSelectedSalesTargetProducts())
   onSalesTargetMetricChange()
   renderSalesTargetFormStages()
+  syncSalesTargetAddBarButton()
   renderSalesTargetDraftBars()
 
   const list = document.getElementById('settingsSalesTargetsList')
@@ -2545,6 +2877,8 @@ export function startSalesTargetEdit(id) {
   const group = getSalesTargets().find(t => t.id === id)
   if (!group) return
   _editingSalesTargetId = id
+  _editingDraftBarIndex = null
+  syncSalesTargetAddBarButton()
   _draftTargetBars = (group.items || []).map(bar => ({
     ...bar,
     productNames: [...(bar.productNames || [])],
@@ -2576,22 +2910,30 @@ export async function saveSalesTargetForm() {
 
   const pending = readSalesTargetBarFromForm()
   if (pending.error) { showToast(pending.error); return }
+  if (pending.bar) {
+    commitParsedBarToDraft(pending.bar)
+    clearSalesTargetBarFields()
+    syncSalesTargetAddBarButton()
+  } else if (_editingDraftBarIndex != null) {
+    _editingDraftBarIndex = null
+    clearSalesTargetBarFields()
+    syncSalesTargetAddBarButton()
+  }
 
-  const items = [
-    ..._draftTargetBars.map(bar => ({
-      ...bar,
-      productNames: [...(bar.productNames || [])],
-      stages: (bar.stages || []).map(s => ({ ...s }))
-    })),
-    ...(pending.bar ? [{
-      ...pending.bar,
-      productNames: [...(pending.bar.productNames || [])],
-      stages: (pending.bar.stages || []).map(s => ({ ...s }))
-    }] : [])
-  ]
+  const items = _draftTargetBars.map(bar => ({
+    ...bar,
+    productNames: [...(bar.productNames || [])],
+    stages: (bar.stages || []).map(s => ({ ...s }))
+  }))
 
   if (!items.length) {
     showToast('حداقل یک نوار به گروه اضافه کنید')
+    return
+  }
+
+  const completenessError = validateDraftAllocationCompleteness(items)
+  if (completenessError) {
+    showToast(completenessError)
     return
   }
 

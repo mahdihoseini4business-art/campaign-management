@@ -5850,9 +5850,26 @@
     color: var(--text-muted);
   }
 
+  .settings-target-alloc-bar-head {
+    text-align: center;
+    border-inline-start: 1px solid var(--border);
+  }
+
+  .settings-target-alloc-stage-head {
+    text-align: center;
+    font-weight: 500;
+    font-size: 11px;
+  }
+
   .settings-target-alloc-input {
-    min-width: 110px;
+    min-width: 96px;
     text-align: left;
+  }
+
+  .settings-target-alloc-input:disabled {
+    opacity: 0.45;
+    background: color-mix(in srgb, var(--border) 35%, #fff);
+    cursor: not-allowed;
   }
 
   .settings-target-alloc-team-row td:first-child {
@@ -5948,6 +5965,19 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     background: #fff;
+  }
+
+  .settings-target-draft-row.is-editing {
+    border-color: var(--primary, #0155d2);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary, #0155d2) 35%, transparent);
+  }
+
+  .settings-target-draft-row-actions,
+  .settings-target-bar-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
   }
 
   .settings-target-bar-fields {

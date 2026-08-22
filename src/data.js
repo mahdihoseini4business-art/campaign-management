@@ -1359,15 +1359,143 @@ export async function migrateCatalogNameToBundle(oldCatalogName, bundleId) {
 // Sales targets
 // ============================================
 
-function normalizeSalesTargetShares(raw, barIds) {
-  const idSet = new Set(barIds || [])
+/** Org stages, or a single implicit final stage when the bar has none. */
+export function effectiveSalesTargetBarStages(bar) {
+  const stages = (Array.isArray(bar?.stages) ? bar.stages : [])
+    .map(stage => {
+      if (!stage || typeof stage !== 'object') return null
+      const id = String(stage.id || '').trim()
+      const value = Number(stage.value)
+      if (!id || !Number.isFinite(value) || value <= 0) return null
+      const label = String(stage.label || '').trim()
+      return { id, value, ...(label ? { label } : {}) }
+    })
+    .filter(Boolean)
+  if (stages.length) return stages
+  const value = Number(bar?.value)
+  const id = String(bar?.id || '').trim()
+  if (!(value > 0) || !id) return []
+  return [{ id: `${id}__final`, value }]
+}
+
+/** Expand a legacy final-only share across org stages (last stage = value). */
+export function scaleShareStagesFromValue(value, bar) {
+  const stages = effectiveSalesTargetBarStages(bar)
+  const final = Number(stages[stages.length - 1]?.value) || Number(bar?.value) || 0
+  const v = Number(value)
+  if (!stages.length || !(v > 0) || !(final > 0)) return []
+
+  const out = stages.map((st, i) => {
+    if (i === stages.length - 1) return { stageId: st.id, value: v }
+    const scaled = Math.round((Number(st.value) / final) * v)
+    return { stageId: st.id, value: Math.max(1, scaled) }
+  })
+
+  for (let i = out.length - 2; i >= 0; i--) {
+    if (out[i].value >= out[i + 1].value) {
+      out[i].value = Math.max(1, out[i + 1].value - 1)
+    }
+  }
+  for (let i = 1; i < out.length; i++) {
+    if (out[i].value <= out[i - 1].value) {
+      out[i].value = out[i - 1].value + 1
+    }
+  }
+  out[out.length - 1].value = v
+  if (out.some(s => !(s.value > 0)) || (out.length > 1 && out[out.length - 1].value <= out[out.length - 2].value)) {
+    return []
+  }
+  return out
+}
+
+export function salesTargetShareGoalAndStages(share, bar) {
+  if (!share || !bar) return null
+  const barStages = effectiveSalesTargetBarStages(bar)
+  const rawStages = Array.isArray(share.stages) ? share.stages : []
+  const byId = new Map()
+  for (const stage of rawStages) {
+    const stageId = String(stage?.stageId || stage?.id || '').trim()
+    const value = Number(stage?.value)
+    if (!stageId || !Number.isFinite(value) || value <= 0) continue
+    byId.set(stageId, value)
+  }
+  const complete = barStages.length > 0 && barStages.every(st => (byId.get(st.id) || 0) > 0)
+  if (complete) {
+    const scopeStages = barStages.map(st => ({
+      id: st.id,
+      value: byId.get(st.id),
+      ...(st.label ? { label: st.label } : {})
+    }))
+    return { goal: scopeStages[scopeStages.length - 1].value, scopeStages }
+  }
+  const value = Number(share.value)
+  if (!(value > 0)) return null
+  return { goal: value, scopeStages: null }
+}
+
+function barListById(bars) {
+  const map = new Map()
+  for (const bar of bars || []) {
+    const id = String(bar?.id || '').trim()
+    if (id) map.set(id, bar)
+  }
+  return map
+}
+
+function cloneShareStages(stages) {
+  return (Array.isArray(stages) ? stages : []).map(stage => ({
+    stageId: String(stage.stageId || stage.id || '').trim(),
+    value: Number(stage.value)
+  })).filter(s => s.stageId && Number.isFinite(s.value) && s.value > 0)
+}
+
+function normalizeOneSalesTargetShare(share, bar) {
+  if (!share || typeof share !== 'object' || !bar) return null
+  const barId = String(share.barId || bar.id || '').trim()
+  if (!barId) return null
+  const barStages = effectiveSalesTargetBarStages(bar)
+  if (!barStages.length) return null
+
+  const rawStages = Array.isArray(share.stages) ? share.stages : []
+  const byId = new Map()
+  for (const stage of rawStages) {
+    const stageId = String(stage?.stageId || stage?.id || '').trim()
+    const value = Number(stage?.value)
+    if (!stageId || !Number.isFinite(value) || value <= 0) continue
+    byId.set(stageId, value)
+  }
+
+  const complete = barStages.every(st => (byId.get(st.id) || 0) > 0)
+  if (complete) {
+    const stages = barStages.map(st => ({ stageId: st.id, value: Number(byId.get(st.id)) }))
+    for (let i = 1; i < stages.length; i++) {
+      if (!(stages[i].value > stages[i - 1].value)) return null
+    }
+    return { barId, value: stages[stages.length - 1].value, stages }
+  }
+
+  const anyFilled = barStages.some(st => (byId.get(st.id) || 0) > 0)
+  if (anyFilled) return null
+
+  const value = Number(share.value)
+  if (!Number.isFinite(value) || value <= 0) return null
+  if (barStages.length === 1) {
+    return { barId, value, stages: [{ stageId: barStages[0].id, value }] }
+  }
+  const scaled = scaleShareStagesFromValue(value, bar)
+  if (scaled.length === barStages.length) {
+    return { barId, value, stages: scaled }
+  }
+  return { barId, value }
+}
+
+function normalizeSalesTargetShares(raw, bars) {
+  const map = barListById(bars)
   return (Array.isArray(raw) ? raw : [])
     .map(share => {
       if (!share || typeof share !== 'object') return null
       const barId = String(share.barId || '').trim()
-      const value = Number(share.value)
-      if (!barId || !idSet.has(barId) || !Number.isFinite(value) || value <= 0) return null
-      return { barId, value }
+      return normalizeOneSalesTargetShare(share, map.get(barId))
     })
     .filter(Boolean)
 }
@@ -1443,29 +1571,29 @@ function normalizeSalesTargetBar(item) {
   }
 }
 
-function normalizeAllocationMembers(raw, barIds) {
+function normalizeAllocationMembers(raw, bars) {
   if (!Array.isArray(raw)) return []
   const seen = new Set()
   return raw.map(member => {
     if (!member || typeof member !== 'object') return null
     const userPhone = normalizePhoneLocal(member.userPhone || member.user_phone || '')
     if (!userPhone || seen.has(userPhone)) return null
-    const shares = normalizeSalesTargetShares(member.shares, barIds)
+    const shares = normalizeSalesTargetShares(member.shares, bars)
     if (!shares.length) return null
     seen.add(userPhone)
     return { userPhone, shares }
   }).filter(Boolean)
 }
 
-function normalizeSalesTargetAllocations(raw, barIds) {
+function normalizeSalesTargetAllocations(raw, bars) {
   if (!Array.isArray(raw)) return []
   return raw.map(alloc => {
     if (!alloc || typeof alloc !== 'object') return null
     const userGroupId = String(alloc.userGroupId || '').trim()
     if (!userGroupId) return null
-    const shares = normalizeSalesTargetShares(alloc.shares, barIds)
+    const shares = normalizeSalesTargetShares(alloc.shares, bars)
     if (!shares.length) return null
-    const members = normalizeAllocationMembers(alloc.members, barIds)
+    const members = normalizeAllocationMembers(alloc.members, bars)
     return { userGroupId, shares, members }
   }).filter(Boolean)
 }
@@ -1484,12 +1612,11 @@ function normalizeSalesTargets(raw) {
       const items = item.items.map(normalizeSalesTargetBar).filter(Boolean)
       if (!items.length) return null
       const title = String(item.title || '').trim() || 'گروه تارگت'
-      const barIds = items.map(bar => bar.id)
       return {
         id: String(item.id || '').trim() || `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         title,
         items,
-        allocations: normalizeSalesTargetAllocations(item.allocations, barIds),
+        allocations: normalizeSalesTargetAllocations(item.allocations, items),
         createdAt: String(item.createdAt || '').trim() || new Date().toISOString()
       }
     }
@@ -1518,10 +1645,18 @@ function cloneSalesTargetGroup(group) {
     })),
     allocations: (group.allocations || []).map(alloc => ({
       userGroupId: alloc.userGroupId,
-      shares: (alloc.shares || []).map(share => ({ ...share })),
+      shares: (alloc.shares || []).map(share => ({
+        barId: share.barId,
+        value: share.value,
+        ...(share.stages?.length ? { stages: cloneShareStages(share.stages) } : {})
+      })),
       members: (alloc.members || []).map(member => ({
         userPhone: member.userPhone,
-        shares: (member.shares || []).map(share => ({ ...share }))
+        shares: (member.shares || []).map(share => ({
+          barId: share.barId,
+          value: share.value,
+          ...(share.stages?.length ? { stages: cloneShareStages(share.stages) } : {})
+        }))
       }))
     }))
   }

@@ -235,7 +235,7 @@
         <section class="settings-pane" data-settings-pane="sales-targets" hidden>
           <div class="settings-pane-header">
             <h3>تارگت‌های فروش</h3>
-            <p class="settings-pane-desc">تارگت کلی سازمان با نوارهای پیشرفت، و سهمیه‌بندی مطلق بین گروه‌های کاربری. بازه زمانی و فیلتر محصول برای هر نوار اختیاری است.</p>
+            <p class="settings-pane-desc">تارگت کل هر نوار می‌تواند چند مرحله باشد. سهمیه گروه و عضو اختیاری است؛ اگر تعیین شود باید همان تعداد مرحله پر شود و جمع هر مرحله از والد بیشتر نشود.</p>
           </div>
           <div class="settings-target-form" id="settingsTargetForm">
             <input type="hidden" id="editSalesTargetId" value="">
@@ -299,12 +299,15 @@
                   <label>محصولات <span class="settings-optional">(خالی = همه)</span></label>
                   <div id="salesTargetProducts" class="settings-target-products"></div>
                 </div>
-                <button type="button" class="btn btn-sm" onclick="app.addSalesTargetBarToDraft()">افزودن نوار به گروه</button>
+                <div class="settings-target-bar-actions">
+                  <button type="button" class="btn btn-sm" id="salesTargetAddBarBtn" onclick="app.addSalesTargetBarToDraft()">افزودن نوار به گروه</button>
+                  <button type="button" class="btn btn-sm" id="salesTargetCancelBarBtn" hidden onclick="app.cancelSalesTargetBarEdit()">لغو ویرایش نوار</button>
+                </div>
               </div>
             </div>
             <div class="settings-target-alloc-block">
               <div class="settings-target-bars-heading">سهمیه‌بندی بین گروه‌ها و اعضا</div>
-              <p class="settings-pane-desc" style="margin:0 0 10px;">برای هر گروه سهم مطلق از هر نوار تعیین کنید. زیر هر گروه می‌توانید برای اعضا هم تارگت جدا بگذارید. جمع سهم اعضا نباید از سهم گروه، و جمع سهم گروه‌ها نباید از هدف نوار بیشتر شود.</p>
+              <p class="settings-pane-desc" style="margin:0 0 10px;">برای هر گروه می‌توانید تارگت جدا با همان تعداد مرحلهٔ نوار بگذارید. تارگت اعضا فقط بعد از تکمیل تارگت گروه فعال است. جمع هر مرحله نباید از مرحلهٔ والد بیشتر شود.</p>
               <div id="salesTargetAllocations" class="settings-target-allocations"></div>
               <div id="salesTargetAllocSums" class="settings-target-alloc-sums"></div>
             </div>

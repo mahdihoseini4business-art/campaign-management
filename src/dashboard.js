@@ -1,5 +1,5 @@
 import Chart from 'chart.js/auto'
-import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName } from './data.js'
+import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
 import {
@@ -1821,21 +1821,41 @@ function memberPhoneSetForUserGroup(userGroupId) {
 }
 
 /** Resolve cumulative stage markers for a progress bar relative to goal (final or override). */
-function resolveSalesTargetStageMarkers(bar, current, goal) {
-  const barFinal = Number(bar.value) || 0
+function resolveSalesTargetStageMarkers(bar, current, goal, scopeStages) {
   const goalNum = Number(goal) || 0
-  if (!(barFinal > 0) || !(goalNum > 0)) return []
+  if (!(goalNum > 0)) return []
 
-  let stages = Array.isArray(bar.stages) ? bar.stages.filter(s => Number(s?.value) > 0) : []
-  if (!stages.length) {
-    stages = [{ id: 'final', value: barFinal }]
+  const scoped = (Array.isArray(scopeStages) ? scopeStages : [])
+    .map(stage => {
+      const value = Number(stage?.value)
+      if (!(value > 0)) return null
+      const label = String(stage?.label || '').trim()
+      return { id: stage.id || '', value, ...(label ? { label } : {}) }
+    })
+    .filter(Boolean)
+
+  let source = scoped
+  let last = scoped.length ? Number(scoped[scoped.length - 1].value) : 0
+  let useRatio = false
+  const barFinal = Number(bar.value) || 0
+
+  if (!source.length) {
+    let stages = Array.isArray(bar.stages) ? bar.stages.filter(s => Number(s?.value) > 0) : []
+    if (!stages.length) {
+      if (!(barFinal > 0)) return []
+      stages = [{ id: 'final', value: barFinal }]
+    }
+    source = stages
+    last = barFinal > 0 ? barFinal : Number(stages[stages.length - 1].value) || 0
+    useRatio = true
+    if (!(last > 0)) return []
   }
 
-  const markers = stages.map((stage, index) => {
+  const markers = source.map((stage, index) => {
     const stageValue = Number(stage.value)
-    const ratio = stageValue / barFinal
-    const threshold = goalNum * ratio
-    const pct = Math.min(100, Math.max(0, ratio * 100))
+    const threshold = useRatio ? goalNum * (stageValue / last) : stageValue
+    const pctBase = useRatio ? stageValue / last : stageValue / (Number(source[source.length - 1].value) || goalNum)
+    const pct = Math.min(100, Math.max(0, pctBase * 100))
     const hit = current >= threshold
     const label = String(stage.label || '').trim() || `تارگت ${formatNumber(index + 1)}`
     const shortLabel = String(index + 1)
@@ -1894,7 +1914,7 @@ function renderDashTargetBar(bar, dateFromNum, dateToNum, groupTitle, options = 
   const metricHint = bar.metric === 'count' ? 'تعداد' : 'مبلغ تأییدشده'
   const memberHint = options.memberLabel ? ` · ${options.memberLabel}` : ''
   const ariaLabel = `${groupTitle}${memberHint} — ${metricHint} · ${productsHint}`
-  const markers = resolveSalesTargetStageMarkers(bar, current, goal)
+  const markers = resolveSalesTargetStageMarkers(bar, current, goal, options.scopeStages)
 
   return `
     <div class="dash-target-row">
@@ -1938,7 +1958,7 @@ function buildDashTargetBlocks(targets, viewer) {
         groupName: null,
         title,
         className: 'is-org',
-        bars: items.map(bar => ({ bar, goalOverride: null, phoneSet: null }))
+        bars: items.map(bar => ({ bar, goalOverride: null, scopeStages: null, phoneSet: null }))
       })
     }
 
@@ -1947,12 +1967,12 @@ function buildDashTargetBlocks(targets, viewer) {
       const ug = getGroupById(alloc.userGroupId)
       const groupName = ug?.name || 'گروه'
       const phoneSet = memberPhoneSetForUserGroup(alloc.userGroupId)
-      const shareMap = new Map((alloc.shares || []).map(s => [s.barId, Number(s.value)]))
       const bars = items
         .map(bar => {
-          const shareVal = shareMap.get(bar.id)
-          if (!(shareVal > 0)) return null
-          return { bar, goalOverride: shareVal, phoneSet }
+          const share = (alloc.shares || []).find(s => s.barId === bar.id)
+          const scope = salesTargetShareGoalAndStages(share, bar)
+          if (!scope) return null
+          return { bar, goalOverride: scope.goal, scopeStages: scope.scopeStages, phoneSet }
         })
         .filter(Boolean)
       if (!bars.length) continue
@@ -1973,14 +1993,15 @@ function buildDashTargetBlocks(targets, viewer) {
       for (const member of alloc.members || []) {
         const phone = normalizePhone(member.userPhone || '')
         if (!phone || !activeMembers.has(phone)) continue
-        const mShareMap = new Map((member.shares || []).map(s => [s.barId, Number(s.value)]))
         const mBars = items
           .map(bar => {
-            const shareVal = mShareMap.get(bar.id)
-            if (!(shareVal > 0)) return null
+            const share = (member.shares || []).find(s => s.barId === bar.id)
+            const scope = salesTargetShareGoalAndStages(share, bar)
+            if (!scope) return null
             return {
               bar,
-              goalOverride: shareVal,
+              goalOverride: scope.goal,
+              scopeStages: scope.scopeStages,
               phoneSet: new Set([phone]),
               memberLabel: dashMemberLabel(phone)
             }
@@ -2134,10 +2155,11 @@ function renderDashTargetsProgress(dateFromNum, dateToNum) {
 
   el.innerHTML = visibleBlocks.map(block => {
     try {
-      const barsHtml = (block.bars || []).map(({ bar, goalOverride, phoneSet, memberLabel }) => {
+      const barsHtml = (block.bars || []).map(({ bar, goalOverride, scopeStages, phoneSet, memberLabel }) => {
         try {
           return renderDashTargetBar(bar, dateFromNum, dateToNum, block.title || '', {
             goalOverride,
+            scopeStages,
             phoneSet,
             memberLabel: memberLabel || block.memberLabel || ''
           })
@@ -2178,29 +2200,28 @@ function buildMemberTargetBlocks(targets, groupId) {
     const alloc = (target.allocations || []).find(a => a.userGroupId === groupId)
     if (!alloc) continue
 
-    const teamShareMap = new Map((alloc.shares || []).map(s => [s.barId, Number(s.value)]))
     const memberAlloc = viewerPhone
       ? (alloc.members || []).find(m => normalizePhone(m.userPhone || '') === viewerPhone)
       : null
-    const memberShareMap = memberAlloc
-      ? new Map((memberAlloc.shares || []).map(s => [s.barId, Number(s.value)]))
-      : null
-    const usePersonal = !!(memberShareMap && [...memberShareMap.values()].some(v => v > 0))
+    const usePersonal = !!(memberAlloc && (memberAlloc.shares || []).some(s => Number(s?.value) > 0))
 
     const bars = items
       .map(bar => {
         if (usePersonal) {
-          const personal = memberShareMap.get(bar.id)
-          if (!(personal > 0)) return null
+          const share = (memberAlloc.shares || []).find(s => s.barId === bar.id)
+          const scope = salesTargetShareGoalAndStages(share, bar)
+          if (!scope) return null
           return {
             bar,
-            goalOverride: personal,
+            goalOverride: scope.goal,
+            scopeStages: scope.scopeStages,
             phoneSet: new Set([viewerPhone])
           }
         }
-        const shareVal = teamShareMap.get(bar.id)
-        if (!(shareVal > 0)) return null
-        return { bar, goalOverride: shareVal, phoneSet: teamPhoneSet }
+        const share = (alloc.shares || []).find(s => s.barId === bar.id)
+        const scope = salesTargetShareGoalAndStages(share, bar)
+        if (!scope) return null
+        return { bar, goalOverride: scope.goal, scopeStages: scope.scopeStages, phoneSet: teamPhoneSet }
       })
       .filter(Boolean)
     if (!bars.length) continue
@@ -2273,7 +2294,7 @@ function formatSalesTargetRemaining(bar, current, goal) {
   return `${formatNumber(left)} ریال`
 }
 
-function computeSalesTargetBarProgress(bar, goalOverride, phoneSet) {
+function computeSalesTargetBarProgress(bar, goalOverride, phoneSet, scopeStages) {
   const goal = goalOverride != null ? Number(goalOverride) : (Number(bar.value) || 0)
   const current = computeSalesTargetCurrent(bar, 0, 99999999, phoneSet || null)
   const pctRaw = goal > 0 ? (current / goal) * 100 : 0
@@ -2281,7 +2302,7 @@ function computeSalesTargetBarProgress(bar, goalOverride, phoneSet) {
   const complete = goal > 0 && current >= goal
   const deadline = targetDeadlineInfo(bar.endDate)
   const unit = bar.metric === 'count' ? 'فروش' : 'ریال'
-  const stages = resolveSalesTargetStageMarkers(bar, current, goal)
+  const stages = resolveSalesTargetStageMarkers(bar, current, goal, scopeStages)
   return {
     goal,
     current,
@@ -2446,9 +2467,9 @@ function summarizeSalesTargetProgresses(progresses) {
 }
 
 function blockProgresses(block) {
-  return (block.bars || []).map(({ bar, goalOverride, phoneSet }) => ({
+  return (block.bars || []).map(({ bar, goalOverride, phoneSet, scopeStages }) => ({
     bar,
-    ...computeSalesTargetBarProgress(bar, goalOverride, phoneSet)
+    ...computeSalesTargetBarProgress(bar, goalOverride, phoneSet, scopeStages)
   }))
 }
 
