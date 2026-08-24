@@ -235,7 +235,14 @@
         <section class="settings-pane" data-settings-pane="sales-targets" hidden>
           <div class="settings-pane-header">
             <h3>تارگت‌های فروش</h3>
-            <p class="settings-pane-desc">تارگت کل هر نوار می‌تواند چند مرحله باشد. سهمیه گروه و عضو اختیاری است؛ اگر تعیین شود باید همان تعداد مرحله پر شود و جمع هر مرحله از والد بیشتر نشود.</p>
+            <p class="settings-pane-desc">گروه تارگت بسازید، نوارها را تعریف کنید و در صورت نیاز سهمیه بین گروه‌ها بگذارید.</p>
+            <details class="settings-target-help">
+              <summary>راهنمای کامل</summary>
+              <div class="settings-target-help-body">
+                <p>هر نوار می‌تواند چند مرحله (مقادیر تجمعی) داشته باشد. سهمیه گروه و عضو اختیاری است؛ اگر تعیین شود باید همه مراحل پر شوند و جمع هر مرحله از والد بیشتر نشود.</p>
+                <p>تارگت اعضا فقط بعد از تکمیل تارگت گروه فعال می‌شود. رنگ‌های تایمر ددلاین تنظیم سراسری هستند و روی همه تارگت‌های دارای ددلاین اعمال می‌شوند.</p>
+              </div>
+            </details>
           </div>
           <div class="settings-target-form" id="settingsTargetForm">
             <input type="hidden" id="editSalesTargetId" value="">
@@ -243,42 +250,74 @@
               <label for="salesTargetTitle">عنوان گروه</label>
               <input type="text" class="form-input" id="salesTargetTitle" placeholder="مثلاً تارگت خرداد">
             </div>
-            <div class="settings-target-bars-block">
-              <div class="settings-target-bars-heading">نوارهای این گروه</div>
-              <div id="salesTargetDraftBars" class="settings-target-draft-bars"></div>
-              <div class="settings-target-bar-fields">
-                <div class="form-row">
-                  <div class="form-group" style="flex:0.7;">
-                    <label for="salesTargetMetric">نوع نوار</label>
-                    <select class="form-select" id="salesTargetMetric" onchange="app.onSalesTargetMetricChange()">
-                      <option value="amount">مبلغ فروش (تأییدشده)</option>
-                      <option value="count">تعداد فروش محصول</option>
-                    </select>
+            <details class="settings-target-section" id="salesTargetBarsSection" open>
+              <summary>
+                <span class="settings-target-section-title">نوارهای این گروه</span>
+                <span class="settings-target-section-meta" id="salesTargetBarsSummary"></span>
+              </summary>
+              <div class="settings-target-section-body settings-target-bars-block">
+                <div id="salesTargetDraftBars" class="settings-target-draft-bars"></div>
+                <div class="settings-target-bar-fields">
+                  <div class="form-row">
+                    <div class="form-group" style="flex:0.7;">
+                      <label for="salesTargetMetric">نوع نوار</label>
+                      <select class="form-select" id="salesTargetMetric" onchange="app.onSalesTargetMetricChange()">
+                        <option value="amount">مبلغ فروش (تأییدشده)</option>
+                        <option value="count">تعداد فروش محصول</option>
+                      </select>
+                    </div>
+                    <div class="form-group" style="flex:0.7;">
+                      <label for="salesTargetValue" id="salesTargetValueLabel">تارگت آخر (ریال)</label>
+                      <input type="text" class="form-input" id="salesTargetValue" placeholder="مثلاً ۱۰۰۰۰۰۰۰۰" dir="ltr" style="text-align:left;" oninput="app.formatInput(this)">
+                    </div>
                   </div>
-                  <div class="form-group" style="flex:0.7;">
-                    <label for="salesTargetValue" id="salesTargetValueLabel">تارگت آخر (ریال)</label>
-                    <input type="text" class="form-input" id="salesTargetValue" placeholder="مثلاً ۱۰۰۰۰۰۰۰۰" dir="ltr" style="text-align:left;" oninput="app.formatInput(this)">
+                  <div class="form-group">
+                    <label>مراحل میانی <span class="settings-optional">(اختیاری)</span></label>
+                    <p class="settings-pane-desc" style="margin:0 0 8px;">مقادیر تجمعی کمتر از تارگت آخر. خالی بگذارید برای تارگت تک‌مرحله‌ای.</p>
+                    <div id="salesTargetFormStages" class="settings-target-stages"></div>
+                    <button type="button" class="btn btn-sm" style="margin-top:6px;" onclick="app.addSalesTargetFormStage()">افزودن مرحله میانی</button>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group" style="flex:1;margin-bottom:0;">
+                      <label for="salesTargetStart">از تاریخ <span class="settings-optional">(اختیاری)</span></label>
+                      <input type="text" class="form-input" id="salesTargetStart" placeholder="از تاریخ" data-jdp autocomplete="off">
+                    </div>
+                    <div class="form-group" style="flex:1;margin-bottom:0;">
+                      <label for="salesTargetEnd">تا تاریخ / ددلاین <span class="settings-optional">(اختیاری)</span></label>
+                      <input type="text" class="form-input" id="salesTargetEnd" placeholder="تا تاریخ" data-jdp autocomplete="off">
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>محصولات <span class="settings-optional">(خالی = همه)</span></label>
+                    <div id="salesTargetProducts" class="settings-target-products"></div>
+                  </div>
+                  <div class="settings-target-bar-actions">
+                    <button type="button" class="btn btn-sm" id="salesTargetAddBarBtn" onclick="app.addSalesTargetBarToDraft()">افزودن نوار به گروه</button>
+                    <button type="button" class="btn btn-sm" id="salesTargetCancelBarBtn" hidden onclick="app.cancelSalesTargetBarEdit()">لغو ویرایش نوار</button>
                   </div>
                 </div>
-                <div class="form-group">
-                  <label>مراحل میانی <span class="settings-optional">(اختیاری)</span></label>
-                  <p class="settings-pane-desc" style="margin:0 0 8px;">مقادیر تجمعی کمتر از تارگت آخر. خالی بگذارید برای تارگت تک‌مرحله‌ای.</p>
-                  <div id="salesTargetFormStages" class="settings-target-stages"></div>
-                  <button type="button" class="btn btn-sm" style="margin-top:6px;" onclick="app.addSalesTargetFormStage()">افزودن مرحله میانی</button>
-                </div>
-                <div class="form-row">
-                  <div class="form-group" style="flex:1;margin-bottom:0;">
-                    <label for="salesTargetStart">از تاریخ <span class="settings-optional">(اختیاری)</span></label>
-                    <input type="text" class="form-input" id="salesTargetStart" placeholder="از تاریخ" data-jdp autocomplete="off">
-                  </div>
-                  <div class="form-group" style="flex:1;margin-bottom:0;">
-                    <label for="salesTargetEnd">تا تاریخ / ددلاین <span class="settings-optional">(اختیاری)</span></label>
-                    <input type="text" class="form-input" id="salesTargetEnd" placeholder="تا تاریخ" data-jdp autocomplete="off" onchange="app.onSalesTargetDeadlineChange()" oninput="app.onSalesTargetDeadlineChange()">
-                  </div>
-                </div>
-                <div id="salesTargetUrgencyBlock" class="settings-target-urgency-block" hidden>
-                  <div class="settings-target-bars-heading">رنگ‌بندی تایمر ددلاین</div>
-                  <p class="settings-pane-desc" style="margin:0 0 10px;">وقتی ددلاین ست باشد، تایمر معکوس با این رنگ‌ها (بر اساس زمان باقی‌مانده) برای اعضای گروه نمایش داده می‌شود. بازه‌ها را داینامیک اضافه یا حذف کنید.</p>
+              </div>
+            </details>
+            <details class="settings-target-section" id="salesTargetAllocSection">
+              <summary>
+                <span class="settings-target-section-title">سهمیه‌بندی بین گروه‌ها و اعضا</span>
+                <span class="settings-optional">(اختیاری)</span>
+                <span class="settings-target-section-meta" id="salesTargetAllocSummary"></span>
+              </summary>
+              <div class="settings-target-section-body settings-target-alloc-block">
+                <p class="settings-pane-desc" style="margin:0 0 10px;">برای هر گروه می‌توانید تارگت جدا با همان تعداد مرحلهٔ نوار بگذارید.</p>
+                <div id="salesTargetAllocations" class="settings-target-allocations"></div>
+                <div id="salesTargetAllocSums" class="settings-target-alloc-sums"></div>
+              </div>
+            </details>
+            <details class="settings-target-section" id="salesTargetUrgencySection">
+              <summary>
+                <span class="settings-target-section-title">رنگ‌بندی تایمر ددلاین</span>
+                <span class="settings-target-section-badge">سراسری</span>
+              </summary>
+              <div class="settings-target-section-body">
+                <div id="salesTargetUrgencyBlock" class="settings-target-urgency-block">
+                  <p class="settings-pane-desc" style="margin:0 0 10px;">این تنظیم روی همه تارگت‌های دارای ددلاین اعمال می‌شود. تایمر معکوس بر اساس زمان باقی‌مانده رنگ می‌شود.</p>
                   <div class="settings-urgency-defaults">
                     <label class="settings-urgency-color-field">
                       <span>رنگ عادی (زمان زیاد)</span>
@@ -295,22 +334,8 @@
                     <button type="button" class="btn btn-sm btn-primary" onclick="app.saveDeadlineUrgencySettings()">ذخیره رنگ‌ها</button>
                   </div>
                 </div>
-                <div class="form-group">
-                  <label>محصولات <span class="settings-optional">(خالی = همه)</span></label>
-                  <div id="salesTargetProducts" class="settings-target-products"></div>
-                </div>
-                <div class="settings-target-bar-actions">
-                  <button type="button" class="btn btn-sm" id="salesTargetAddBarBtn" onclick="app.addSalesTargetBarToDraft()">افزودن نوار به گروه</button>
-                  <button type="button" class="btn btn-sm" id="salesTargetCancelBarBtn" hidden onclick="app.cancelSalesTargetBarEdit()">لغو ویرایش نوار</button>
-                </div>
               </div>
-            </div>
-            <div class="settings-target-alloc-block">
-              <div class="settings-target-bars-heading">سهمیه‌بندی بین گروه‌ها و اعضا</div>
-              <p class="settings-pane-desc" style="margin:0 0 10px;">برای هر گروه می‌توانید تارگت جدا با همان تعداد مرحلهٔ نوار بگذارید. تارگت اعضا فقط بعد از تکمیل تارگت گروه فعال است. جمع هر مرحله نباید از مرحلهٔ والد بیشتر شود.</p>
-              <div id="salesTargetAllocations" class="settings-target-allocations"></div>
-              <div id="salesTargetAllocSums" class="settings-target-alloc-sums"></div>
-            </div>
+            </details>
             <div class="settings-target-form-actions">
               <button type="button" class="btn btn-primary" id="salesTargetSaveBtn" onclick="app.saveSalesTargetForm()">ذخیره گروه</button>
               <button type="button" class="btn" id="salesTargetCancelBtn" hidden onclick="app.cancelSalesTargetEdit()">لغو ویرایش</button>

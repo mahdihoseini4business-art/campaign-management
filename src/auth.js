@@ -1868,7 +1868,7 @@ function clearSalesTargetForm() {
   const cancelBtn = document.getElementById('salesTargetCancelBtn')
   if (cancelBtn) cancelBtn.hidden = true
   renderSalesTargetDraftBars()
-  syncDeadlineUrgencyBlockVisibility()
+  ensureDeadlineUrgencyRendered()
 }
 
 function refreshDashboardTargets() {
@@ -1896,26 +1896,47 @@ export function onSalesTargetMetricChange() {
   if (input) input.placeholder = metric === 'count' ? 'مثلاً ۵۰' : 'مثلاً ۱۰۰۰۰۰۰۰۰'
 }
 
-function shouldShowDeadlineUrgencyBlock() {
-  const endVal = toEnDigits((document.getElementById('salesTargetEnd')?.value || '').trim())
-  if (endVal) return true
-  return (_draftTargetBars || []).some(bar => !!(bar.endDate || '').trim())
+function updateSalesTargetSectionSummaries() {
+  const barsSummary = document.getElementById('salesTargetBarsSummary')
+  if (barsSummary) {
+    const n = _draftTargetBars.length
+    barsSummary.textContent = n ? `${formatNumber(n)} نوار` : 'هنوز نواری نیست'
+  }
+  const allocSummary = document.getElementById('salesTargetAllocSummary')
+  if (allocSummary) {
+    const groupCount = Object.keys(_draftAllocations).filter(gid => {
+      const entry = _draftAllocations[gid]
+      if (!entry) return false
+      const hasShares = Object.values(entry.shares || {}).some(map => Object.keys(asDraftStageMap(map)).length > 0)
+      const hasMembers = Object.values(entry.members || {}).some(barMap =>
+        Object.values(barMap || {}).some(map => Object.keys(asDraftStageMap(map)).length > 0)
+      )
+      return hasShares || hasMembers
+    }).length
+    allocSummary.textContent = groupCount ? `${formatNumber(groupCount)} گروه` : ''
+  }
 }
 
-export function onSalesTargetDeadlineChange() {
-  syncDeadlineUrgencyBlockVisibility()
-}
-
-function syncDeadlineUrgencyBlockVisibility() {
-  const block = document.getElementById('salesTargetUrgencyBlock')
-  if (!block) return
-  const show = shouldShowDeadlineUrgencyBlock()
-  const wasHidden = block.hidden
-  block.hidden = !show
-  if (show && (wasHidden || !document.querySelector('#salesTargetUrgencyStages .settings-urgency-stage-row'))) {
+function ensureDeadlineUrgencyRendered() {
+  if (!document.getElementById('salesTargetUrgencyStages')) return
+  if (!document.querySelector('#salesTargetUrgencyStages .settings-urgency-stage-row')) {
     renderDeadlineUrgencySettings()
   }
 }
+
+let _salesTargetUrgencySectionBound = false
+
+function initSalesTargetUrgencySection() {
+  const section = document.getElementById('salesTargetUrgencySection')
+  if (!section || _salesTargetUrgencySectionBound) return
+  _salesTargetUrgencySectionBound = true
+  section.addEventListener('toggle', () => {
+    if (section.open) ensureDeadlineUrgencyRendered()
+  })
+}
+
+/** kept for app.onSalesTargetDeadlineChange compatibility */
+export function onSalesTargetDeadlineChange() {}
 
 function collectDeadlineUrgencyFromDom() {
   const defaultColor = document.getElementById('salesTargetUrgencyDefault')?.value || DEFAULT_DEADLINE_URGENCY.defaultColor
@@ -2523,6 +2544,7 @@ function updateSalesTargetAllocSums() {
   }
 
   sumsEl.innerHTML = teamLines + memberLines.join('')
+  updateSalesTargetSectionSummaries()
 }
 
 function memberDisplayName(phone) {
@@ -2675,7 +2697,7 @@ function renderSalesTargetDraftBars() {
   if (!_draftTargetBars.length) {
     box.innerHTML = '<div class="settings-target-draft-empty">هنوز نواری به این گروه اضافه نشده</div>'
     renderSalesTargetAllocations()
-    syncDeadlineUrgencyBlockVisibility()
+    updateSalesTargetSectionSummaries()
     return
   }
   box.innerHTML = _draftTargetBars.map((bar, idx) => {
@@ -2699,7 +2721,7 @@ function renderSalesTargetDraftBars() {
   `
   }).join('')
   renderSalesTargetAllocations()
-  syncDeadlineUrgencyBlockVisibility()
+  updateSalesTargetSectionSummaries()
 }
 
 function readSalesTargetBarFromForm() {
@@ -2780,7 +2802,7 @@ export function startSalesTargetBarEdit(index) {
   renderSalesTargetProductChecks(bar.productNames || [])
   onSalesTargetMetricChange()
   syncSalesTargetAddBarButton()
-  syncDeadlineUrgencyBlockVisibility()
+  updateSalesTargetSectionSummaries()
   renderSalesTargetDraftBars()
   valueEl?.focus()
 }
@@ -2838,6 +2860,8 @@ export function renderSalesTargetsSettings() {
   renderSalesTargetFormStages()
   syncSalesTargetAddBarButton()
   renderSalesTargetDraftBars()
+  initSalesTargetUrgencySection()
+  updateSalesTargetSectionSummaries()
 
   const list = document.getElementById('settingsSalesTargetsList')
   if (!list) return
@@ -2933,6 +2957,8 @@ export async function saveSalesTargetForm() {
 
   const completenessError = validateDraftAllocationCompleteness(items)
   if (completenessError) {
+    const allocSection = document.getElementById('salesTargetAllocSection')
+    if (allocSection) allocSection.open = true
     showToast(completenessError)
     return
   }
@@ -2940,6 +2966,8 @@ export async function saveSalesTargetForm() {
   const allocations = collectDraftAllocations(items)
   const allocError = validateAllocationsAgainstBars(items, allocations)
   if (allocError) {
+    const allocSection = document.getElementById('salesTargetAllocSection')
+    if (allocSection) allocSection.open = true
     showToast(allocError)
     return
   }
