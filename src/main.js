@@ -2,7 +2,7 @@ import './styles.css'
 import { toEnDigits, initDigitConversion, hasPermission, hasAnyRefundPermission, showToast, escapeAttr, toggleToolbarActions, closeAllToolbarActions, initToolbarActionsMenus, copyToClipboard } from './utils.js'
 import { loadData, backfillAdvisorPhones, cleanupConversionOrphans } from './data.js'
 import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal as openSettingsModalBase, closeSettingsModal, addUser, deleteUser, saveUserPermissions, togglePermCheckbox, togglePermGroup, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, selectSettingsUser, filterSettingsUsers, backToUsersList, markPermissionsDirty, switchSettingsSection, filterSettingsNav, addDestinationBank, removeDestinationBank, startDestinationBankEdit, cancelDestinationBankEdit, saveDestinationBankEdit, addProductCatalogItem, removeProductCatalogItem, startProductCatalogEdit, cancelProductCatalogEdit, saveProductCatalogEdit, onNewProductKindChange, onEditProductKindChange, onNewProductProfitModeChange, onEditProductProfitModeChange, startProductBundleEdit, cancelProductBundleEdit, saveProductBundleForm, removeProductBundle, runCatalogToBundleMigration, filterViewUserOptions, changeUserGroupAssignment, createSettingsGroup, renameSettingsGroup, deleteSettingsGroup, selectSettingsGroup, backToGroupsList, addSettingsGroupMember, removeSettingsGroupMember, makeGroupManager, addPlatform, removePlatform, updatePlatformField, editPlatform, cancelPlatformEdit, savePlatformEdit, addStatus, removeStatus, updateStatusField, editStatus, cancelStatusEdit, saveStatusEdit, onStatusDragStart, onStatusDragOver, onStatusDrop, addCustomerCode, removeCustomerCode, editCustomerCode, cancelCustomerCodeEdit, saveCustomerCodeEdit, onCustomerCodeDragStart, onCustomerCodeDragOver, onCustomerCodeDrop, onSalesTargetMetricChange, onSalesTargetAllocationChange, onSalesTargetDeadlineChange, addSalesTargetFormStage, removeSalesTargetFormStage, onSalesTargetFormStageChange, addDeadlineUrgencyStage, removeDeadlineUrgencyStage, saveDeadlineUrgencySettings, startSalesTargetEdit, cancelSalesTargetEdit, saveSalesTargetForm, removeSalesTarget, renderSalesTargetsSettings, addSalesTargetBarToDraft, removeSalesTargetBarFromDraft, startSalesTargetBarEdit, cancelSalesTargetBarEdit, saveSmsPanelSettings, resetSmsMessageTemplate } from './auth.js'
-import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, switchDetailTab, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, updateCustomerLevel, addProductRow, removeProduct, onCustomerPhoneInput, selectCustomerPhoneSuggest, onCustomerPhoneSuggestBlur, onCustomerPhoneKeydown, addCustomerPhoneSlot, removeCustomerPhoneSlot, onCustomerAddressInput, onCustomerAddressPriorityChange, addCustomerAddressSlot, removeCustomerAddressSlot, addProductPayment, removeProductPayment, onDestinationBankSelect, commitSalePayment, commitSaleProductDetails, updateSaleTotalPrice, commitGiftSale, onSaleProductNameChange, onSalePriceInput, markSalePaymentTouched, toggleClosedProductBlock, openStartSaleModal, closeStartSaleModal, confirmStartSale, filterStartSaleCustomers, closeMergeCustomerModal, confirmMergeCustomers, clearCustomerSearch, clearCustomerFilters, onCustomerSearchInput, applyCustomerStatFilter, toggleRequireFollowupOnCreate, syncRequireFollowupOnCreateUi, cancelPendingCustomerCreate, sortCustomers } from './customers.js'
+import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, switchDetailTab, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, claimUnassignedCustomer, updateCustomerLevel, addProductRow, removeProduct, onCustomerPhoneInput, selectCustomerPhoneSuggest, onCustomerPhoneSuggestBlur, onCustomerPhoneKeydown, addCustomerPhoneSlot, removeCustomerPhoneSlot, onCustomerAddressInput, onCustomerAddressPriorityChange, addCustomerAddressSlot, removeCustomerAddressSlot, addProductPayment, removeProductPayment, onDestinationBankSelect, commitSalePayment, commitSaleProductDetails, updateSaleTotalPrice, commitGiftSale, onSaleProductNameChange, onSalePriceInput, markSalePaymentTouched, toggleClosedProductBlock, openStartSaleModal, closeStartSaleModal, confirmStartSale, filterStartSaleCustomers, closeMergeCustomerModal, confirmMergeCustomers, clearCustomerSearch, clearCustomerFilters, onCustomerSearchInput, applyCustomerStatFilter, toggleRequireFollowupOnCreate, syncRequireFollowupOnCreateUi, cancelPendingCustomerCreate, sortCustomers } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, clearFollowupSearch, onFollowupSearchInput, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, openFollowupDonePicker, closeFollowupDonePicker, filterFollowupDonePick, confirmFollowupDonePick, setFollowupDoneNextShortcut, isFollowupDoneNoteDirty, updateFollowupBadge, updateFollowupAdvisorDropdown, sortFollowups } from './followups.js'
 import { renderSales, sortSales, onSalesSearchInput } from './sales.js'
 import { renderProductMatrix, cycleProductMatrixFilter, clearProductMatrixFilters, toggleProductMatrixAdvisorDropdown, toggleProductMatrixAdvisor, toggleProductMatrixAdvisorsAll, onProductMatrixSearchInput, sortProductMatrix } from './product-matrix.js'
@@ -19,7 +19,7 @@ import {
   onRefundsSearchInput, sortRefundsRejected, sortRefundsArchived
 } from './refunds.js'
 import { renderDashboard, toggleDashSection, applyDashFilter, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareMetricChange, onProductChartMetricChange, onDashTargetsScopeChange, renderSalesTargetBand, onAovMaControlsChange, exportDashboardForAi, copyDashboardExport, sortDashOverdue, sortDashSoon, sortDashTransfer } from './dashboard.js'
-import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners } from './import-export.js'
+import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners, openMatrixImportModal, closeMatrixImportModal, doMatrixImport, dryRunMatrixImport, setMatrixImportMapping, setMatrixProductValueMap, downloadMatrixImportProblems, initMatrixImportListeners } from './import-export.js'
 import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection, openBulkTransferModal, closeBulkTransferModal, confirmBulkTransfer, refreshCustomerBulkOptions, updateBulkTransferPreview, filterBulkTransferOptions } from './bulk.js'
 import {
   openTransferInbox,
@@ -219,6 +219,7 @@ const app = {
   clearNextFollowup,
   addQuickNote,
   updateCustomerAdvisor,
+  claimUnassignedCustomer,
   updateCustomerLevel,
   addProductRow,
   addProductPayment,
@@ -261,6 +262,13 @@ const app = {
   setSalesStatusValueMap,
   setSalesAdvisorValueMap,
   downloadSalesImportProblems,
+  openMatrixImportModal,
+  closeMatrixImportModal,
+  doMatrixImport,
+  dryRunMatrixImport,
+  setMatrixImportMapping,
+  setMatrixProductValueMap,
+  downloadMatrixImportProblems,
   doLogin,
   showToast,
   hasPermission,
@@ -634,6 +642,7 @@ async function init() {
   initToolbarActionsMenus()
   initImportListeners()
   initSalesImportListeners()
+  initMatrixImportListeners()
   initAppUpdate().catch(e => console.error('app update init error:', e))
 
   // Show loading overlay

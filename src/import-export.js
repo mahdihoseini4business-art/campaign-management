@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import { getData, saveCustomerToDB, generateId, getStatuses, getCustomerCodes, saveFollowupToDB, getDestinationBanks, getSellableNames, putCustomerInCache } from './data.js'
+import { getData, saveCustomerToDB, generateId, generateIdBatch, getStatuses, getCustomerCodes, saveFollowupToDB, getDestinationBanks, getSellableNames, putCustomerInCache, getProductCatalogNames, getCustomerOwnedProductNames, getPlatforms, coerceProductName } from './data.js'
 import {
   toEnDigits, showToast, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
@@ -8,13 +8,13 @@ import {
   formatCustomerLevel, parseCustomerLevel, syncCustomerLevel,
   normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone,
   jalaliDatePart, jalaliToNum, escapeHtml, escapeAttr, normalizeTimeTo24h,
-  userDisplayName, applyProfitSnapshotToProduct
+  userDisplayName, applyProfitSnapshotToProduct, jalaliDateTimeToIso, jalaliAddDays, getTodayJalaliStr
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
 import { getFollowupsForExport, hasActiveFollowupExportFilter, renderFollowups } from './followups.js'
 import { renderSales, getFilteredSales, getSalesDateFilter } from './sales.js'
-import { getProductMatrixExportAoa, hasActiveProductMatrixFilter } from './product-matrix.js'
+import { getProductMatrixExportAoa, hasActiveProductMatrixFilter, renderProductMatrix } from './product-matrix.js'
 
 // ============================================
 // Helpers
@@ -1994,3 +1994,582 @@ export async function doSalesImport() {
     problemCount: problemRows.length
   })
 }
+
+// ============================================
+// Historical product-matrix import
+// ============================================
+
+const MATRIX_IMPORT_FIELDS = [
+  { key: 'name', label: 'نام', aliases: ['نام مشتری'] },
+  { key: 'phone', label: 'شماره', aliases: ['شماره مشتری', 'شماره تماس', 'شماره موبایل'] },
+  { key: 'platform', label: 'پلتفرم' },
+  { key: 'platformId', label: 'ایدی پلتفرم', aliases: ['آیدی پلتفرم', 'id پلتفرم'] }
+]
+
+const MATRIX_RESERVED_HEADER_LABELS = [
+  'نام', 'نام مشتری', 'شماره', 'شماره مشتری', 'شماره تماس', 'شماره موبایل',
+  'کارشناس', 'پلتفرم', 'ایدی پلتفرم', 'آیدی پلتفرم', 'id پلتفرم', 'بدون محصول'
+]
+
+function emptyMatrixImportState() {
+  return {
+    headers: [],
+    rows: [],
+    mapping: {},
+    productCols: [], // [{ index, header }]
+    productValueMap: {},
+    productAutoMap: {},
+    uniqueProductHeaders: [],
+    refJalali: '',
+    dryRun: null,
+    problemExport: null,
+    running: false
+  }
+}
+
+let matrixImportData = emptyMatrixImportState()
+
+function matrixReservedHeaderSet() {
+  return new Set(MATRIX_RESERVED_HEADER_LABELS.map(normalizeHeaderLabel))
+}
+
+function cellMarksOwned(raw) {
+  const s = String(raw ?? '').trim()
+  if (!s) return false
+  const n = toEnDigits(s).replace(/\s/g, '').toLowerCase()
+  const fa = s.replace(/\u200c/g, '').trim()
+  if (fa === 'بله' || fa === 'بلی' || fa.includes('✅')) return true
+  if (n === '1' || n === 'true' || n === 'yes' || n === 'y' || n === 'x' || n === '✓') return true
+  return false
+}
+
+function collectMatrixProductColumns(headers, mapping) {
+  const reserved = matrixReservedHeaderSet()
+  const used = new Set(Object.values(mapping).filter(i => i != null))
+  const cols = []
+  headers.forEach((h, i) => {
+    if (used.has(i)) return
+    const label = String(h || '').trim()
+    if (!label) return
+    if (reserved.has(normalizeHeaderLabel(label))) return
+    cols.push({ index: i, header: label })
+  })
+  return cols
+}
+
+function defaultMatrixRefJalali() {
+  return jalaliAddDays(getTodayJalaliStr(), -365) || '1403/01/01'
+}
+
+function readMatrixRefJalali() {
+  const el = document.getElementById('matrixImportRefDate')
+  const raw = toEnDigits(el?.value || matrixImportData.refJalali || '').trim()
+  if (raw && jalaliToNum(raw) !== 99999999) return jalaliDatePart(raw)
+  return defaultMatrixRefJalali()
+}
+
+function buildHistoricalSaleLine(productName, soldAtJalali) {
+  const soldAt = soldAtJalali ? `${soldAtJalali} 00:00` : ''
+  const product = {
+    name: productName,
+    status: 'تکمیل',
+    price: '0',
+    priceLocked: false,
+    historicalImport: true,
+    payments: [createPayment({
+      amount: '0',
+      soldAt,
+      depositorName: 'ایمپورت تاریخی',
+      destinationBank: '',
+      paymentStatus: PAYMENT_STATUS.approved,
+      soldByPhone: ''
+    })]
+  }
+  ensureProductPayments(product)
+  syncProductStatus(product)
+  applyProfitSnapshotToProduct(product)
+  return product
+}
+
+function customerHasProductLine(customer, productName) {
+  const key = String(productName || '').trim().toLowerCase()
+  if (!key) return false
+  for (const n of getCustomerOwnedProductNames(customer)) {
+    if (String(n).trim().toLowerCase() === key) return true
+  }
+  return (customer?.products || []).some(p => String(coerceProductName(p?.name) || '').trim().toLowerCase() === key)
+}
+
+function buildPhoneIndex(customers) {
+  const map = new Map()
+  for (const c of customers || []) {
+    for (const p of getCustomerPhones(c)) {
+      const n = normalizePhone(p)
+      if (n && !map.has(n)) map.set(n, c)
+    }
+  }
+  return map
+}
+
+function resolveMatrixPlatform(raw) {
+  const v = String(raw || '').trim()
+  if (!v) return ''
+  const map = buildPlatformImportMap()
+  const key = map[v] || map[v.toLowerCase()] || ''
+  if (key) return key
+  const platforms = getPlatforms() || []
+  const hit = platforms.find(p => p.key === v || normalizeHeaderLabel(p.label) === normalizeHeaderLabel(v))
+  return hit ? hit.key : ''
+}
+
+function shouldBackdateCreatedAt(customer, refIso) {
+  if (!refIso) return false
+  const ref = new Date(refIso).getTime()
+  if (!Number.isFinite(ref)) return false
+  if (!customer?.createdAt) return true
+  const cur = new Date(customer.createdAt).getTime()
+  return !Number.isFinite(cur) || ref < cur
+}
+
+function mergeMatrixFileRows() {
+  const mapping = matrixImportData.mapping
+  const productCols = matrixImportData.productCols || []
+  const productValueMap = matrixImportData.productValueMap || {}
+  const merged = new Map()
+  const problems = []
+
+  const getCell = (row, fieldKey) => {
+    const colIdx = mapping[fieldKey]
+    if (colIdx === undefined || colIdx === null) return ''
+    const v = row[colIdx]
+    if (v == null || v === '') return ''
+    return String(v).trim()
+  }
+
+  for (const row of matrixImportData.rows) {
+    const phoneRaw = toEnDigits(getCell(row, 'phone'))
+    const phones = normalizeCustomerPhones(phoneRaw)
+    const phone = phones[0] || ''
+    if (!phone || !/^09\d{9}$/.test(phone)) {
+      problems.push({ row, reason: 'شماره موبایل نامعتبر است' })
+      continue
+    }
+
+    let rec = merged.get(phone)
+    if (!rec) {
+      rec = {
+        phone,
+        name: '',
+        platform: '',
+        platformId: '',
+        products: new Set(),
+        unmapped: []
+      }
+      merged.set(phone, rec)
+    }
+    const name = getCell(row, 'name')
+    if (name && !rec.name) rec.name = name
+    const platform = resolveMatrixPlatform(getCell(row, 'platform'))
+    if (platform && !rec.platform) rec.platform = platform
+    const platformId = getCell(row, 'platformId')
+    if (platformId && !rec.platformId) rec.platformId = platformId
+
+    for (const col of productCols) {
+      if (!cellMarksOwned(row[col.index])) continue
+      const catalogName = productValueMap[col.header]
+      if (!catalogName) {
+        rec.unmapped.push(col.header)
+        continue
+      }
+      rec.products.add(catalogName)
+    }
+  }
+
+  return { merged, problems }
+}
+
+function previewMatrixImport() {
+  const { merged, problems } = mergeMatrixFileRows()
+  const data = getData()
+  const phoneIndex = buildPhoneIndex(data.customers)
+  let created = 0
+  let updated = 0
+  let productsAdded = 0
+  let skippedProducts = 0
+  let unmappedMarks = 0
+
+  for (const rec of merged.values()) {
+    const existing = phoneIndex.get(rec.phone)
+    if (!existing) created++
+    else updated++
+    unmappedMarks += rec.unmapped.length
+    const customer = existing || { products: [] }
+    for (const name of rec.products) {
+      if (customerHasProductLine(customer, name)) skippedProducts++
+      else productsAdded++
+    }
+  }
+
+  return {
+    uniquePhones: merged.size,
+    created,
+    updated,
+    productsAdded,
+    skippedProducts,
+    unmappedMarks,
+    invalidPhones: problems.length,
+    problems
+  }
+}
+
+function renderMatrixImportMapping() {
+  const container = document.getElementById('matrixImportMapping')
+  if (!container) return
+  container.style.display = ''
+  document.getElementById('matrixImportDryRunBtn').style.display = ''
+  document.getElementById('matrixImportBtn').style.display = ''
+  const problemsBtn = document.getElementById('matrixImportProblemsBtn')
+  if (problemsBtn) problemsBtn.style.display = 'none'
+
+  const mapping = matrixImportData.mapping
+  const fieldSelect = (fieldKey) => {
+    const selected = mapping[fieldKey]
+    const opts = ['<option value="">— مپ نشده —</option>']
+      .concat(matrixImportData.headers.map((h, i) => {
+        const sel = selected === i ? ' selected' : ''
+        return `<option value="${i}"${sel}>${escapeHtml(h || `(ستون ${i + 1})`)}</option>`
+      }))
+    return `<select class="form-select" onchange="app.setMatrixImportMapping('${fieldKey}', this.value)">${opts.join('')}</select>`
+  }
+
+  const catalog = getProductCatalogNames()
+
+  const productRows = (matrixImportData.productCols || []).map(col => {
+    const mapped = matrixImportData.productValueMap[col.header] || ''
+    const opts = catalog.map(n => {
+      const sel = n === mapped ? ' selected' : ''
+      return `<option value="${escapeAttr(n)}"${sel}>${escapeHtml(n)}</option>`
+    }).join('')
+    return `<tr>
+      <td>${escapeHtml(col.header)}</td>
+      <td><select class="form-select" onchange="app.setMatrixProductValueMap('${escapeAttr(col.header)}', this.value)">
+        <option value="">— مپ نشده —</option>${opts}
+      </select></td>
+    </tr>`
+  }).join('')
+
+  const ref = matrixImportData.refJalali || defaultMatrixRefJalali()
+  container.innerHTML = `
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">
+      ستون کارشناس نادیده گرفته می‌شود. مشتری جدید بدون کارشناس ساخته می‌شود.
+      پلتفرم و ایدی پلتفرم فقط اگر در فایل مقدار داشته باشند وارد می‌شوند.
+    </div>
+    <div class="form-group">
+      <label>تاریخ مرجع LRFM (شروع رابطه)</label>
+      <input type="text" class="form-input" id="matrixImportRefDate" value="${escapeAttr(ref)}" placeholder="مثلاً 1403/01/01" data-jdp style="max-width:180px;font-family:'Vazirmatn',sans-serif;">
+      <div class="form-hint">برای مشتری جدید و مشتری موجود با created_at جدیدتر از این تاریخ اعمال می‌شود.</div>
+    </div>
+    <div style="font-weight:600;margin:12px 0 6px;">ستون‌های شناسایی</div>
+    <table class="import-map-table" style="width:100%;font-size:13px;">
+      <tbody>
+        ${MATRIX_IMPORT_FIELDS.map(f => `<tr><td style="width:140px;">${escapeHtml(f.label)}${f.key === 'phone' ? ' *' : ''}</td><td>${fieldSelect(f.key)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    <div style="font-weight:600;margin:14px 0 6px;">ستون‌های محصول → کاتالوگ</div>
+    ${productRows
+      ? `<div style="max-height:280px;overflow:auto;border:1px solid var(--border);border-radius:8px;">
+          <table class="import-map-table" style="width:100%;font-size:13px;">
+            <thead><tr><th>ستون فایل</th><th>محصول سیستم</th></tr></thead>
+            <tbody>${productRows}</tbody>
+          </table>
+        </div>`
+      : '<div style="font-size:13px;color:var(--text-muted);">ستون محصولی تشخیص داده نشد.</div>'}
+  `
+  if (window.jalaliDatepicker) {
+    try { window.jalaliDatepicker.startWatch({ time: false, zIndex: 11000 }) } catch (_) { /* ignore */ }
+  }
+}
+
+function refreshMatrixProductMaps() {
+  matrixImportData.productCols = collectMatrixProductColumns(
+    matrixImportData.headers,
+    matrixImportData.mapping
+  )
+  const headers = matrixImportData.productCols.map(c => c.header)
+  matrixImportData.uniqueProductHeaders = headers
+  const auto = autoMapValueNames(headers, getProductCatalogNames())
+  const next = { ...auto }
+  for (const [k, v] of Object.entries(matrixImportData.productValueMap || {})) {
+    if (headers.includes(k) && v) next[k] = v
+  }
+  matrixImportData.productAutoMap = auto
+  matrixImportData.productValueMap = next
+}
+
+export function setMatrixImportMapping(fieldKey, value) {
+  const idx = value === '' ? null : Number(value)
+  matrixImportData.mapping[fieldKey] = Number.isFinite(idx) ? idx : null
+  refreshMatrixProductMaps()
+  renderMatrixImportMapping()
+}
+
+export function setMatrixProductValueMap(header, value) {
+  if (!value) delete matrixImportData.productValueMap[header]
+  else matrixImportData.productValueMap[header] = value
+}
+
+export function openMatrixImportModal() {
+  if (!requirePermission('matrix_historical_import')) return
+  matrixImportData = emptyMatrixImportState()
+  matrixImportData.refJalali = defaultMatrixRefJalali()
+  const mapping = document.getElementById('matrixImportMapping')
+  if (mapping) {
+    mapping.style.display = 'none'
+    mapping.innerHTML = ''
+  }
+  const preview = document.getElementById('matrixImportPreview')
+  if (preview) preview.textContent = ''
+  const file = document.getElementById('matrixImportFileInput')
+  if (file) file.value = ''
+  const dry = document.getElementById('matrixImportDryRunBtn')
+  const btn = document.getElementById('matrixImportBtn')
+  const problemsBtn = document.getElementById('matrixImportProblemsBtn')
+  if (dry) dry.style.display = 'none'
+  if (btn) btn.style.display = 'none'
+  if (problemsBtn) problemsBtn.style.display = 'none'
+  document.getElementById('matrixImportModal')?.classList.add('active')
+}
+
+export function closeMatrixImportModal() {
+  document.getElementById('matrixImportModal')?.classList.remove('active')
+}
+
+export function initMatrixImportListeners() {
+  const input = document.getElementById('matrixImportFileInput')
+  if (!input) return
+  input.addEventListener('change', function (e) {
+    const file = e.target.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const json = XLSX.utils.sheet_to_json(ws, { header: 1 })
+        if (json.length < 2) { showToast('فایل خالی است'); return }
+        matrixImportData = emptyMatrixImportState()
+        matrixImportData.headers = (json[0] || []).map(h => String(h || '').trim())
+        matrixImportData.rows = json.slice(1).filter(r => Array.isArray(r) && r.some(c => c != null && String(c).trim() !== ''))
+        matrixImportData.mapping = autoMapColumns(matrixImportData.headers, MATRIX_IMPORT_FIELDS)
+        matrixImportData.refJalali = defaultMatrixRefJalali()
+        refreshMatrixProductMaps()
+        renderMatrixImportMapping()
+        const preview = document.getElementById('matrixImportPreview')
+        if (preview) preview.textContent = `${matrixImportData.rows.length} ردیف خوانده شد — ${matrixImportData.productCols.length} ستون محصول`
+      } catch (err) {
+        console.error(err)
+        showToast('خطا در خواندن فایل')
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  })
+}
+
+export function dryRunMatrixImport() {
+  if (!requirePermission('matrix_historical_import')) return
+  if (!isFieldMapped(matrixImportData.mapping, 'phone')) {
+    showToast('ستون شماره موبایل را مپ کنید')
+    return
+  }
+  const stats = previewMatrixImport()
+  matrixImportData.dryRun = stats
+  const preview = document.getElementById('matrixImportPreview')
+  if (preview) {
+    preview.innerHTML = [
+      `<b>پیش‌نمایش:</b> ${stats.uniquePhones} شماره یکتا`,
+      `${stats.created} مشتری جدید`,
+      `${stats.updated} مشتری موجود`,
+      `${stats.productsAdded} محصول اضافه`,
+      `${stats.skippedProducts} محصول تکراری`,
+      stats.invalidPhones ? `${stats.invalidPhones} شماره نامعتبر` : '',
+      stats.unmappedMarks ? `${stats.unmappedMarks} علامت روی محصول مپ‌نشده` : ''
+    ].filter(Boolean).join(' — ')
+  }
+  showToast('پیش‌نمایش آماده است — در دیتابیس تغییری ذخیره نشد')
+}
+
+export function downloadMatrixImportProblems() {
+  const pack = matrixImportData.problemExport
+  if (!pack?.rows?.length) {
+    showToast('ردیفی برای دانلود نیست')
+    return
+  }
+  const headers = [...pack.headers, 'علت رد']
+  const rows = pack.rows.map((r, i) => [...padImportRow(r, pack.headers.length), pack.reasons[i] || ''])
+  const ws = sheetFromAoa(headers, rows)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'ردیف‌های مشکل‌دار')
+  XLSX.writeFile(wb, `ماتریس_تاریخی_مشکل‌دار_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  showToast(`${rows.length} ردیف مشکل‌دار دانلود شد`)
+}
+
+export async function doMatrixImport() {
+  if (!requirePermission('matrix_historical_import')) return
+  if (matrixImportData.running) return
+  if (!isFieldMapped(matrixImportData.mapping, 'phone')) {
+    showToast('ستون شماره موبایل را مپ کنید')
+    return
+  }
+  if (!getProductCatalogNames().length) {
+    showToast('کاتالوگ محصولات خالی است — از تنظیمات اضافه کنید')
+    return
+  }
+
+  const refJalali = readMatrixRefJalali()
+  const refIso = jalaliDateTimeToIso(refJalali, '00:00')
+  if (!refIso) {
+    showToast('تاریخ مرجع LRFM نامعتبر است')
+    return
+  }
+
+  matrixImportData.running = true
+  const previewEl = document.getElementById('matrixImportPreview')
+  const setProgress = (msg) => { if (previewEl) previewEl.textContent = msg }
+
+  try {
+    const { merged, problems } = mergeMatrixFileRows()
+    const data = getData()
+    const phoneIndex = buildPhoneIndex(data.customers)
+    const toCreate = []
+    const toUpdate = []
+    const extraProblems = [...problems]
+
+    for (const rec of merged.values()) {
+      if (rec.unmapped.length) {
+        extraProblems.push({
+          row: [rec.phone, rec.name, rec.unmapped.join('، ')],
+          reason: `محصول مپ نشده: ${rec.unmapped.join('، ')}`
+        })
+      }
+      let customer = phoneIndex.get(rec.phone)
+      let isNew = false
+      let dirty = false
+      if (!customer) {
+        isNew = true
+        dirty = true
+        customer = {
+          id: '',
+          platformId: rec.platformId || '',
+          platform: rec.platform || '',
+          name: rec.name || '',
+          phone: rec.phone,
+          phones: [rec.phone],
+          status: rec.products.size ? 'purchased' : 'new',
+          notes: 'ایجاد شده از ایمپورت تاریخی ماتریس',
+          advisor: '',
+          advisorPhone: '',
+          nextFollowupDate: '',
+          products: [],
+          createdAt: refIso,
+          customerLevel: '',
+          customerLevelLocked: false,
+          referredByPhone: '',
+          customerCode: ''
+        }
+      } else {
+        if (!customer.name && rec.name) { customer.name = rec.name; dirty = true }
+        if (!customer.platformId && rec.platformId) { customer.platformId = rec.platformId; dirty = true }
+        if (!customer.platform && rec.platform) { customer.platform = rec.platform; dirty = true }
+        if (!Array.isArray(customer.products)) customer.products = []
+      }
+
+      let added = 0
+      for (const name of rec.products) {
+        if (customerHasProductLine(customer, name)) continue
+        customer.products.push(buildHistoricalSaleLine(name, refJalali))
+        added++
+        dirty = true
+      }
+      if (added && customer.status !== 'purchased' && rec.products.size) {
+        customer.status = 'purchased'
+      }
+
+      const backdate = shouldBackdateCreatedAt(customer, refIso)
+      if (backdate) {
+        customer.createdAt = refIso
+        dirty = true
+      }
+
+      if (!dirty) continue
+      if (isNew) toCreate.push(customer)
+      else toUpdate.push({ customer, backdate })
+    }
+
+    setProgress(`در حال ساخت شناسه برای ${toCreate.length} مشتری جدید...`)
+    const ids = await generateIdBatch('CS', toCreate.length)
+    toCreate.forEach((c, i) => { c.id = ids[i] })
+
+    const touched = [...toCreate, ...toUpdate.map(x => x.customer)]
+    const BATCH = 40
+    let saved = 0
+    let failed = 0
+    for (let i = 0; i < touched.length; i += BATCH) {
+      const chunk = touched.slice(i, i + BATCH)
+      await Promise.all(chunk.map(async (c) => {
+        try {
+          if (!c.customerLevelLocked) {
+            syncCustomerLevel(c, data.customers, data.followups)
+          }
+          await saveCustomerToDB(c, {
+            createdAt: c.createdAt || refIso,
+            updateCreatedAt: true,
+            allowEmptyPlatform: true
+          })
+          putCustomerInCache(c)
+          saved++
+        } catch (err) {
+          console.error('matrix import save failed', c.id, err)
+          failed++
+          extraProblems.push({ row: [c.phone, c.name, c.id], reason: err?.message || 'خطای ذخیره' })
+        }
+      }))
+      setProgress(`ذخیره ${Math.min(i + BATCH, touched.length)} از ${touched.length} مشتری...`)
+    }
+
+    const problemPackRows = extraProblems.map(p => {
+      if (Array.isArray(p.row) && p.row.length && typeof p.row[0] !== 'object') {
+        return padImportRow(p.row, Math.max(matrixImportData.headers.length, p.row.length))
+      }
+      return padImportRow(p.row, matrixImportData.headers.length)
+    })
+    matrixImportData.problemExport = extraProblems.length
+      ? {
+          headers: [...matrixImportData.headers],
+          rows: extraProblems.map((p, i) => {
+            if (Array.isArray(p.row) && p.row.length === matrixImportData.headers.length) return p.row
+            return problemPackRows[i]
+          }),
+          reasons: extraProblems.map(p => p.reason || '')
+        }
+      : null
+
+    const problemsBtn = document.getElementById('matrixImportProblemsBtn')
+    if (problemsBtn) problemsBtn.style.display = extraProblems.length ? '' : 'none'
+
+    try { await renderCustomers() } catch (_) {}
+    try { await renderProductMatrix() } catch (_) {}
+    try { await renderSales() } catch (_) {}
+
+    const parts = []
+    if (toCreate.length) parts.push(`${toCreate.length} مشتری جدید`)
+    if (toUpdate.length) parts.push(`${toUpdate.length} مشتری به‌روزرسانی`)
+    if (saved) parts.push(`${saved} ذخیره`)
+    if (failed) parts.push(`${failed} خطا`)
+    if (extraProblems.length) parts.push(`${extraProblems.length} ردیف مشکل‌دار`)
+    setProgress(parts.join(' — ') || 'ایمپورت انجام شد')
+    showToast(parts.length ? parts.join(' — ') : 'هیچ ردیفی ایمپورت نشد')
+  } finally {
+    matrixImportData.running = false
+  }
+}
+

@@ -1126,6 +1126,7 @@
         <div class="toolbar-actions-dropdown" hidden>
           <button type="button" class="toolbar-actions-item" data-perm="products_matrix" onclick="app.exportTabCSV('products');app.closeAllToolbarActions()">خروجی CSV</button>
           <button type="button" class="toolbar-actions-item" data-perm="products_matrix" onclick="app.exportTabXLSX('products');app.closeAllToolbarActions()">خروجی Excel</button>
+          <button type="button" class="toolbar-actions-item" data-perm="matrix_historical_import" onclick="app.openMatrixImportModal();app.closeAllToolbarActions()">ایمپورت تاریخی ماتریس</button>
         </div>
       </div>
     </div>
@@ -1742,6 +1743,31 @@
       <button class="btn" onclick="app.closeSalesImportModal()">بستن</button>
       <button class="btn" id="salesImportProblemsBtn" onclick="app.downloadSalesImportProblems()" style="display:none;">دانلود ردیف‌های مشکل‌دار</button>
       <button class="btn btn-primary" id="salesImportBtn" onclick="app.doSalesImport()" style="display:none;">ایمپورت</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال ایمپورت تاریخی ماتریس محصول -->
+<div class="modal-overlay" id="matrixImportModal">
+  <div class="modal" style="max-width: 760px;">
+    <div class="modal-header"><h2>ایمپورت تاریخی ماتریس محصول</h2><button class="modal-close" onclick="app.closeMatrixImportModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="import-preflight" style="font-size:13px;color:var(--text);background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:12px;line-height:1.7;">
+        <b>این ایمپورت برای دادهٔ قبل از نرم‌افزار است.</b>
+        مشتری جدید بدون کارشناس ساخته می‌شود و فقط ادمین در لیست می‌بیند؛ کارشناس با سرچ شماره کامل می‌تواند پنل را باز کند و «ثبت به‌نام من» بزند.
+        پلتفرم و ایدی پلتفرم فقط اگر در اکسل مقدار داشته باشند وارد می‌شوند — چیزی خودکار ساخته نمی‌شود.
+        محصول‌های علامت‌خورده بدون مبلغ به‌صورت فروش تاریخی اضافه می‌شوند و در ماتریس دیده می‌شوند.
+        اول پیش‌نمایش بگیرید، بعد ایمپورت کنید.
+      </div>
+      <div class="form-group"><label>فایل اکسل ماتریس را انتخاب کنید</label><input type="file" id="matrixImportFileInput" accept=".xlsx,.xls,.csv" style="font-size:13px;"></div>
+      <div id="matrixImportMapping" style="display:none;"></div>
+      <div id="matrixImportPreview" style="margin-top:8px;font-size:12px;color:var(--text-muted);"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeMatrixImportModal()">بستن</button>
+      <button class="btn" id="matrixImportProblemsBtn" onclick="app.downloadMatrixImportProblems()" style="display:none;">دانلود ردیف‌های مشکل‌دار</button>
+      <button class="btn" id="matrixImportDryRunBtn" onclick="app.dryRunMatrixImport()" style="display:none;">پیش‌نمایش</button>
+      <button class="btn btn-primary" id="matrixImportBtn" onclick="app.doMatrixImport()" style="display:none;">ایمپورت</button>
     </div>
   </div>
 </div>

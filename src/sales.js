@@ -13,7 +13,7 @@ import {
   productHasRejectedPayment, getProductPayments, getPaymentEntryStatus,
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
   normalizePhone, userDisplayName, formatTeamFilterLabel,
-  getCompletedSaleEconomics, isGiftSale, getProductRefundBadge, isDealCancelled,
+  getCompletedSaleEconomics, isGiftSale, isHistoricalImportSale, getProductRefundBadge, isDealCancelled,
   getCurrentJalaliMonthDateRange, isEmptySaleProductDraft
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
@@ -91,6 +91,7 @@ export function getAllSales() {
           hasRejected: productHasRejectedPayment(p),
           countable: isProductCountableInSales(p),
           isGift: isGiftSale(p),
+          isHistorical: isHistoricalImportSale(p),
           refundBadge: getProductRefundBadge(p),
           customerCode: c.customerCode || ''
         })
@@ -359,7 +360,7 @@ function renderSalesRows(allSales) {
       })()}</td>
       <td style="font-size:12px;">${escapeHtml(s.advisor) || '—'}</td>
       <td><span class="platform-icon"><span class="platform-dot ${pClass}"></span>${escapeHtml(pLabel)}</span></td>
-      <td>${escapeHtml(s.productName)}${s.isGift ? ' <span class="gift-badge">هدیه</span>' : ''}${s.refundBadge ? ` <span class="refund-badge${s.refundBadge.kind === 'partial' ? ' is-partial' : ''}">${escapeHtml(s.refundBadge.label)}</span>` : ''}</td>
+      <td>${escapeHtml(s.productName)}${s.isGift ? ' <span class="gift-badge">هدیه</span>' : ''}${s.isHistorical ? ' <span class="historical-badge">تاریخی</span>' : ''}${s.refundBadge ? ` <span class="refund-badge${s.refundBadge.kind === 'partial' ? ' is-partial' : ''}">${escapeHtml(s.refundBadge.label)}</span>` : ''}</td>
       <td><span style="color:${statusColor};font-weight:600;">${escapeHtml(s.status)}</span></td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.isGift ? '<span class="gift-badge">۰</span>' : (s.price > 0 ? formatNumber(s.price) + ' ریال' : '—')}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${s.isGift ? '—' : (s.deposit > 0 ? formatNumber(s.deposit) + ' ریال' : '—')}</td>

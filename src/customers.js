@@ -8,6 +8,7 @@ import {
   canViewCustomer, canManageCustomer, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
   getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, ownsCustomer, isAdmin, canViewOrgWideData,
   canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canScheduleFollowupOnCustomer, canDeleteSalePayment, matchesTabSearch, getCustomerSearchExtras,
+  canClaimUnassignedCustomer, canRevealUnassignedByPhoneSearch, isHistoricalImportSale,
   resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
   findCustomersByPhonePrefix,
@@ -383,8 +384,15 @@ export function getFilteredCustomers() {
         : false
 
     // Normal scope, unless this row matches an active transfer filter (e.g. sender after handoff).
-    if (!search && !canViewScopedCustomer(c, currentUser)) {
-      if (!transferFilter || !matchesTransferFilter) return false
+    // Unassigned customers: non-org-wide users only see them via full phone-number search.
+    if (!canViewScopedCustomer(c, currentUser)) {
+      if (transferFilter && matchesTransferFilter) {
+        // ok — transfer filter override
+      } else if (search && canRevealUnassignedByPhoneSearch(c, search, currentUser)) {
+        // ok — full phone search reveal for unassigned
+      } else {
+        return false
+      }
     }
 
     if (advisorScopePhones) {
@@ -803,7 +811,11 @@ function renderCustomerPhoneSuggest(index, rawDigits) {
   }
 
   const matches = findCustomersByPhonePrefix(q, getData().customers, { limit: 8 })
-    .filter(m => canViewCustomer(m.customer))
+    .filter(m => {
+      if (!canViewCustomer(m.customer)) return false
+      if (canViewScopedCustomer(m.customer, getCurrentUser())) return true
+      return canRevealUnassignedByPhoneSearch(m.customer, q, getCurrentUser())
+    })
   if (!matches.length) return
 
   const box = document.getElementById(`customerPhoneSuggest-${index}`)
@@ -1568,7 +1580,7 @@ const DETAIL_TABS = ['info', 'sales', 'followups']
 const DETAIL_TAB_LABELS = { info: 'اطلاعات', sales: 'فروش‌ها', followups: 'پیگیری‌ها' }
 
 /** @type {{ customerId: string|null, tab: 'info'|'sales'|'followups', canEdit?: boolean, canDelete?: boolean }} */
-let detailPanelState = { customerId: null, tab: 'info', canEdit: false, canDelete: false }
+let detailPanelState = { customerId: null, tab: 'info', canEdit: false, canDelete: false, canClaim: false }
 
 /** Session-tracked creates that still need follow-up date OR a committed sale before the panel can close. */
 const PENDING_CREATE_STORAGE_KEY = 'cm_pending_create_completion_ids'
@@ -1710,6 +1722,7 @@ export function switchDetailTab(tab) {
     isNew: false,
     canEdit: !!detailPanelState.canEdit,
     canDelete: !!detailPanelState.canDelete,
+    canClaim: !!detailPanelState.canClaim,
     customerId: detailPanelState.customerId,
     tab: detailPanelState.tab
   })
@@ -1723,7 +1736,7 @@ export function onCustomerRowClick(event, customerId) {
   openCustomerDetail(customerId)
 }
 
-function renderDetailFooter({ isNew, canEdit, canDelete, customerId, tab = 'info' }) {
+function renderDetailFooter({ isNew, canEdit, canDelete, customerId, tab = 'info', canClaim = false }) {
   const footer = document.getElementById('detailFooter')
   if (!footer) return
   if (isNew) {
@@ -1747,6 +1760,7 @@ function renderDetailFooter({ isNew, canEdit, canDelete, customerId, tab = 'info
         ? `<button type="button" class="btn btn-danger" onclick="app.deleteCustomer('${id}')">حذف مشتری</button>`
         : '<span></span>')}
     <div class="detail-footer-actions">
+      ${canClaim && onInfo ? `<button type="button" class="btn btn-primary" onclick="app.claimUnassignedCustomer('${id}')">ثبت به‌نام من</button>` : ''}
       ${canEdit && onInfo ? `<button type="button" class="btn btn-primary" onclick="app.saveCustomerDetail('${id}')">ذخیره اطلاعات مشتری</button>` : ''}
       <button type="button" class="btn" onclick="app.closeDetailModal()">${pending ? 'تکمیل و بستن' : 'بستن'}</button>
     </div>
@@ -2125,6 +2139,7 @@ export async function openCustomerDetail(id, options = {}) {
   const canEdit = isNew || (hasPermission('customers_add') && canManageCustomer(c))
   const canTransfer = !isNew && canTransferCustomer(c)
   const canDelete = !isNew && hasPermission('customers_delete') && canManageCustomer(c)
+  const canClaim = !isNew && canClaimUnassignedCustomer(c)
   const canAddSale = !isNew && canAddSaleOnCustomer(c)
   const canAddFollowup = !isNew && canAddNoteOnCustomer(c)
   const canScheduleFollowup = !isNew && canScheduleFollowupOnCustomer(c)
@@ -2179,6 +2194,9 @@ export async function openCustomerDetail(id, options = {}) {
       <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">با تغییر، مالکیت فوراً منتقل می‌شود</div>`
   } else {
     advisorHtml = escapeHtml(c.advisor || '—')
+    if (canClaim) {
+      advisorHtml += `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">این مشتری کارشناس ندارد. با دکمه «ثبت به‌نام من» به لیست شما اضافه می‌شود.</div>`
+    }
   }
 
   const levelDisplay = isNew ? '—' : formatCustomerLevel(levelKey)
@@ -2526,11 +2544,12 @@ export async function openCustomerDetail(id, options = {}) {
     customerId: isNew ? null : c.id,
     tab: activeTab,
     canEdit,
-    canDelete
+    canDelete,
+    canClaim
   }
 
   document.getElementById('detailBody').innerHTML = html
-  renderDetailFooter({ isNew, canEdit, canDelete, customerId: c.id, tab: activeTab })
+  renderDetailFooter({ isNew, canEdit, canDelete, canClaim, customerId: c.id, tab: activeTab })
   document.getElementById('detailModal').classList.add('active')
 
   if (canEdit) {
@@ -2822,6 +2841,42 @@ export async function updateCustomerAdvisor(customerId, advisorPhoneValue) {
   }
 }
 
+/** Claim an unassigned (no-advisor) customer into the current user's list. */
+export async function claimUnassignedCustomer(customerId) {
+  const data = getData()
+  const c = data.customers.find(x => x.id === customerId)
+  if (!c) { showToast('مشتری یافت نشد'); return }
+  if (!canClaimUnassignedCustomer(c)) {
+    showToast('امکان ثبت این مشتری به‌نام شما وجود ندارد')
+    return
+  }
+  const currentUser = getCurrentUser()
+  const advisorPhone = normalizePhone(currentUser?.phone)
+  const advisor = userDisplayName(currentUser)
+  if (!advisorPhone) {
+    showToast('شماره شما برای ثبت مالکیت تنظیم نشده است')
+    return
+  }
+  try {
+    await reassignCustomerOwnership({
+      customer: c,
+      toAdvisor: advisor,
+      toAdvisorPhone: advisorPhone,
+      reason: 'claim',
+      skipPermissionCheck: true
+    })
+    await renderCustomers()
+    updateTransferInboxBadge()
+    showToast('مشتری به لیست شما اضافه شد')
+    if (document.getElementById('detailModal')?.classList.contains('active')) {
+      await openCustomerDetail(customerId)
+    }
+  } catch (e) {
+    console.error('claimUnassignedCustomer error:', e)
+    showToast(e?.message || 'خطا در ثبت مشتری')
+  }
+}
+
 export async function updateCustomerLevel(customerId, levelValue) {
   if (!isAdmin()) {
     showToast('فقط مدیر می‌تواند سطح مشتری را تغییر دهد')
@@ -2868,7 +2923,7 @@ export function closeDetailModal({ force = false } = {}) {
   hideCustomerPhoneSuggest()
   document.getElementById('detailModal')?.classList.remove('active')
   phoneFormMode = 'detail'
-  detailPanelState = { customerId: null, tab: 'info', canEdit: false, canDelete: false }
+  detailPanelState = { customerId: null, tab: 'info', canEdit: false, canDelete: false, canClaim: false }
   return true
 }
 
@@ -3089,11 +3144,12 @@ export async function renderProducts(customerId, users = null) {
       closed ? 'is-closed' : '',
       closed ? 'is-collapsed' : '',
       cancelled ? 'is-cancelled' : '',
-      isGift ? 'is-gift-sale' : ''
+      isGift ? 'is-gift-sale' : '',
+      isHistoricalImportSale(p) ? 'is-historical-sale' : ''
     ].filter(Boolean).join(' ')
     const closure = getProductClosureBadge(p)
     const closedBadge = closure
-      ? `<span class="invoice-closed-badge${closure.kind === 'cancelled' ? ' is-cancelled' : ''}">${escapeHtml(closure.label)}</span>`
+      ? `<span class="invoice-closed-badge${closure.kind === 'cancelled' ? ' is-cancelled' : ''}${closure.kind === 'historical' ? ' is-historical' : ''}">${escapeHtml(closure.label)}</span>`
       : ''
     const giftBadge = isGift ? '<span class="gift-badge">هدیه</span>' : ''
 

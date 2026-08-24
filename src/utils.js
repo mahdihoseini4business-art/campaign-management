@@ -132,7 +132,7 @@ export function syncToolbarActionsMenus() {
     { id: 'customersActionsMenu', perms: ['customers_export', 'customers_import'] },
     { id: 'followupsActionsMenu', perms: ['followups_export'] },
     { id: 'salesActionsMenu', perms: ['sales_export', 'sales_import'] },
-    { id: 'productsActionsMenu', perms: ['products_matrix'] },
+    { id: 'productsActionsMenu', perms: ['products_matrix', 'matrix_historical_import'] },
   ]
   for (const { id, perms } of menus) {
     const el = document.getElementById(id)
@@ -1099,6 +1099,7 @@ export const ALL_PERMISSIONS = {
   sales_add_others: 'ثبت فروش برای مشتریان دیگران',
   sales_export: 'خروجی فروش‌ها',
   products_matrix: 'ماتریس محصولات',
+  matrix_historical_import: 'ایمپورت تاریخی ماتریس محصول',
   accounting: 'تأیید واریزی‌ها (حسابداری)',
   shipments_manage: 'مدیریت ارسالی‌ها',
   refunds_view: 'مشاهده عودت وجه',
@@ -1113,7 +1114,7 @@ export const PERMISSION_GROUPS = [
   { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_delete', 'customers_transfer', 'customers_import', 'customers_export'] },
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_add_others', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_add_others', 'sales_import', 'sales_export'] },
-  { label: 'محصولات', keys: ['products_matrix'] },
+  { label: 'محصولات', keys: ['products_matrix', 'matrix_historical_import'] },
   { label: 'حسابداری', keys: ['accounting'] },
   { label: 'ارسالی‌ها', keys: ['shipments_manage'] },
   { label: 'عودت وجه', keys: [...REFUND_PERMISSION_KEYS] }
@@ -1160,6 +1161,11 @@ export const PAYMENT_STATUS_LABELS = {
   pending: 'در انتظار تأیید',
   approved: 'تأیید شده',
   rejected: 'رد شده'
+}
+
+/** Historical matrix-import sale line (ownership without real payment amount). */
+export function isHistoricalImportSale(product) {
+  return !!(product && typeof product === 'object' && product.historicalImport)
 }
 
 /** Registered gift sale line (saleType or legacy status label). */
@@ -1249,6 +1255,7 @@ export function sumProductPayments(product, predicate) {
 }
 
 export function getApprovedPaid(product) {
+  if (isHistoricalImportSale(product)) return 0
   return sumProductPayments(product, p => getPaymentEntryStatus(p) === PAYMENT_STATUS.approved)
 }
 
@@ -1316,6 +1323,9 @@ export function isProductSaleLocked(product) {
 
 /** Badge where «فاکتور بسته شده» appears (closed invoice or cancelled deal). */
 export function getProductClosureBadge(product) {
+  if (isHistoricalImportSale(product)) {
+    return { kind: 'historical', label: 'تاریخی' }
+  }
   if (isDealCancelled(product)) {
     return { kind: 'cancelled', label: 'معامله لغو شد' }
   }
@@ -1475,6 +1485,7 @@ export function isProductPriceLocked(product) {
  * Approved gifts are closed (no further edits).
  */
 export function isInvoiceClosed(product) {
+  if (isHistoricalImportSale(product)) return true
   if (isGiftSale(product)) {
     return getGiftAccountingStatus(product) === PAYMENT_STATUS.approved
   }
@@ -1490,6 +1501,13 @@ export function isInvoiceClosed(product) {
 
 /** Auto status from approved payments vs total price. */
 export function syncProductStatus(product) {
+  if (isHistoricalImportSale(product)) {
+    if (!Array.isArray(product.payments)) product.payments = []
+    product.status = product.status || 'تکمیل'
+    product.invoiceClosed = true
+    product.paymentStatus = PAYMENT_STATUS.approved
+    return product
+  }
   if (isGiftSale(product)) {
     if (!Array.isArray(product.payments)) product.payments = []
     product.saleType = 'gift'
@@ -1529,6 +1547,7 @@ export function productHasRejectedPayment(product) {
 }
 
 export function isProductCountableInSales(product) {
+  if (isHistoricalImportSale(product)) return true
   if (isGiftSale(product)) {
     // Approved gifts count toward purchase count / levels, not revenue
     return getGiftAccountingStatus(product) === PAYMENT_STATUS.approved
@@ -1539,6 +1558,7 @@ export function isProductCountableInSales(product) {
 }
 
 export function getWorstPaymentStatus(product) {
+  if (isHistoricalImportSale(product)) return PAYMENT_STATUS.approved
   if (isGiftSale(product)) return getGiftAccountingStatus(product)
   // Ignore empty draft slots (amount 0) so they don't force "pending" on otherwise clean sales
   const payments = getProductPayments(product).filter(p => {
@@ -1680,6 +1700,7 @@ export function getDefaultPermissions() {
   p.refunds_view = false
   p.refunds_request = false
   p.refunds_manage = false
+  p.matrix_historical_import = false
   return p
 }
 
@@ -1859,6 +1880,33 @@ export function canViewCustomer(customer, user = getCurrentUser()) {
   if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
   if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
   return true
+}
+
+/**
+ * Claim an unassigned customer (no advisorPhone) into the current advisor's list.
+ * Admins do not need this — they already see org-wide.
+ */
+export function canClaimUnassignedCustomer(customer, user = getCurrentUser()) {
+  if (!user || !customer) return false
+  if (user.role === 'admin') return false
+  if (!canViewCustomer(customer, user)) return false
+  if (!hasPermission('customers_add')) return false
+  if (normalizePhone(customer.advisorPhone)) return false
+  return !!normalizePhone(user.phone)
+}
+
+/**
+ * Unassigned customers (no advisorPhone) are hidden from non-org-wide users
+ * unless the search is a full matching mobile number.
+ */
+export function canRevealUnassignedByPhoneSearch(customer, search, user = getCurrentUser()) {
+  if (!customer) return false
+  if (canViewOrgWideData(user)) return true
+  if (normalizePhone(customer.advisorPhone)) return true
+  const phoneQ = normalizePhone(search)
+  if (!phoneQ || !/^09\d{9}$/.test(phoneQ)) return false
+  const phones = getCustomerPhones(customer)
+  return phones.some(p => normalizePhone(p) === phoneQ)
 }
 
 /** Edit core fields / delete / change owner: owner or admin. */
