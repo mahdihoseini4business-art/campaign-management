@@ -291,7 +291,7 @@ export function mapCustomerFromDb(c) {
   return {
     id,
     platformId: c.platform_id || '',
-    platform: c.platform || 'instagram',
+    platform: c.platform ?? 'instagram',
     name: c.name || '',
     phones,
     phone: phones[0] || '',
@@ -1168,8 +1168,15 @@ function saleLineHasApprovedPayment(line) {
   })
 }
 
-/** Ownership from paid sale or accounting-approved gift (excludes any refunded lines). */
+/** Ownership from paid sale, accounting-approved gift, or historical matrix import (excludes refunded lines). */
 function saleLineGrantsOwnership(line) {
+  if (!line || typeof line !== 'object') return false
+  // Historical ownership rows (no real payment amount) still light up the product matrix.
+  if (line.historicalImport) {
+    const refunds = Array.isArray(line.refunds) ? line.refunds : []
+    const refunded = refunds.reduce((s, r) => s + (parseFloat(r?.amount) || 0), 0)
+    return refunded <= 0
+  }
   if (isGiftSaleLine(line)) {
     return (line.giftAccountingStatus || 'pending') === 'approved'
   }
@@ -1668,8 +1675,10 @@ export async function saveCustomerToDB(customer, options = {}) {
     referred_by_phone: customer.referredByPhone || '',
     customer_code: customer.customerCode || ''
   }
-  // Only set on insert (e.g. LD↔CS rekey) so L/relationship start is preserved.
+  // Only set when caller passes createdAt (insert/rekey or historical LRFM backdate).
   if (options.createdAt) row.created_at = options.createdAt
+  // Historical matrix import may persist empty platform (no instagram fallback).
+  if (options.allowEmptyPlatform) row.platform = customer.platform || ''
 
   let { error } = await supabase.from('customers').upsert(row, { onConflict: 'id' })
   // Graceful fallback before migration 007 / 015 / 024 is applied
@@ -2070,7 +2079,8 @@ export const TRANSFER_REASON_LABELS = {
   distribution: 'توزیع بین تیم',
   handoff: 'تحویل به مسئول بالاتر',
   reassign: 'جابه‌جایی مسئول',
-  reclaim: 'بازپس‌گیری شماره'
+  reclaim: 'بازپس‌گیری شماره',
+  claim: 'تصاحب مشتری بدون کارشناس'
 }
 
 export function generateTransferBatchId() {
@@ -2752,6 +2762,17 @@ export async function generateId(type) {
   const nextNum = await getNextIdNumber(prefix)
   await saveSetting(`id_counter_${prefix}`, nextNum)
   return prefix + String(nextNum).padStart(4, '0')
+}
+
+/** Reserve a contiguous block of CS/LD ids (one counter write). */
+export async function generateIdBatch(type, count) {
+  const n = Math.max(0, Math.floor(Number(count) || 0))
+  if (!n) return []
+  const prefix = type === 'CS' ? 'CS' : 'LD'
+  const start = await getNextIdNumber(prefix)
+  const last = start + n - 1
+  await saveSetting(`id_counter_${prefix}`, last)
+  return Array.from({ length: n }, (_, i) => prefix + String(start + i).padStart(4, '0'))
 }
 
 /**
