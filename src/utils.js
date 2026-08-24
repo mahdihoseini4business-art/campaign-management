@@ -484,7 +484,7 @@ export function gregorianToJalaliDateTimeStr(input) {
  * L = days since first entry into the program
  * R = last follow-up date (Jalali string)
  * F = average days between consecutive follow-up dates
- * M = sum of approved payments
+ * M = sum of approved payments, plus historical-import product prices
  */
 export function computeCustomerLrfm(customer, followups = []) {
   const empty = { L: null, R: '', F: null, M: 0 }
@@ -493,7 +493,7 @@ export function computeCustomerLrfm(customer, followups = []) {
   let monetary = 0
   ;(customer.products || []).forEach(p => {
     ensureProductPayments(p)
-    monetary += getApprovedPaid(p)
+    monetary += getLrfmMonetary(p)
   })
 
   const customerFollowups = followups.filter(f => f.customerId === customer.id)
@@ -1257,6 +1257,15 @@ export function sumProductPayments(product, predicate) {
 export function getApprovedPaid(product) {
   if (isHistoricalImportSale(product)) return 0
   return sumProductPayments(product, p => getPaymentEntryStatus(p) === PAYMENT_STATUS.approved)
+}
+
+/** LRFM Monetary: approved payments, or total price from historical matrix import. */
+export function getLrfmMonetary(product) {
+  if (isHistoricalImportSale(product)) {
+    const price = parseFloat(product?.price) || 0
+    return Math.max(0, price - getProductCompletedRefundTotal(product))
+  }
+  return getApprovedPaid(product)
 }
 
 /** Completed refund records written back onto the product JSON. */
