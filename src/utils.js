@@ -1408,6 +1408,7 @@ export function getCountablePaid(product) {
 export function getProductBalance(product) {
   // Refunded deals are closed — refunded amount must not reopen as مانده حساب
   if (isDealCancelled(product)) return 0
+  if (isHistoricalImportSale(product)) return 0
   const price = parseFloat(product?.price) || 0
   return Math.max(0, price - getApprovedPaid(product))
 }
@@ -1415,6 +1416,7 @@ export function getProductBalance(product) {
 /** Remaining after approved + pending (excludes rejected) — for next deposit UX */
 export function getOperationalBalance(product) {
   if (isDealCancelled(product)) return 0
+  if (isHistoricalImportSale(product)) return 0
   const price = parseFloat(product?.price) || 0
   return Math.max(0, price - getCountablePaid(product))
 }

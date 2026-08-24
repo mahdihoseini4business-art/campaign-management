@@ -2018,6 +2018,7 @@ function emptyMatrixImportState() {
     mapping: {},
     productCols: [], // [{ index, header }]
     productValueMap: {},
+    productPriceMap: {},
     productAutoMap: {},
     uniqueProductHeaders: [],
     refJalali: '',
@@ -2068,13 +2069,19 @@ function readMatrixRefJalali() {
   return defaultMatrixRefJalali()
 }
 
-function buildHistoricalSaleLine(productName, soldAtJalali) {
+function parseMatrixColumnPrice(raw) {
+  const n = parseMoney(raw)
+  return n > 0 ? Math.round(n) : 0
+}
+
+function buildHistoricalSaleLine(productName, soldAtJalali, priceValue = 0) {
   const soldAt = soldAtJalali ? `${soldAtJalali} 00:00` : ''
+  const price = parseMatrixColumnPrice(priceValue)
   const product = {
     name: productName,
     status: 'تکمیل',
-    price: '0',
-    priceLocked: false,
+    price: String(price),
+    priceLocked: price > 0,
     historicalImport: true,
     payments: [createPayment({
       amount: '0',
@@ -2162,7 +2169,7 @@ function mergeMatrixFileRows() {
         name: '',
         platform: '',
         platformId: '',
-        products: new Set(),
+        products: new Map(),
         unmapped: []
       }
       merged.set(phone, rec)
@@ -2181,7 +2188,9 @@ function mergeMatrixFileRows() {
         rec.unmapped.push(col.header)
         continue
       }
-      rec.products.add(catalogName)
+      const price = parseMatrixColumnPrice(matrixImportData.productPriceMap?.[col.header])
+      const existing = rec.products.get(catalogName) || 0
+      rec.products.set(catalogName, Math.max(existing, price))
     }
   }
 
@@ -2204,7 +2213,7 @@ function previewMatrixImport() {
     else updated++
     unmappedMarks += rec.unmapped.length
     const customer = existing || { products: [] }
-    for (const name of rec.products) {
+    for (const name of rec.products.keys()) {
       if (customerHasProductLine(customer, name)) skippedProducts++
       else productsAdded++
     }
@@ -2218,7 +2227,8 @@ function previewMatrixImport() {
     skippedProducts,
     unmappedMarks,
     invalidPhones: problems.length,
-    problems
+    problems,
+    merged
   }
 }
 
@@ -2246,6 +2256,7 @@ function renderMatrixImportMapping() {
 
   const productRows = (matrixImportData.productCols || []).map(col => {
     const mapped = matrixImportData.productValueMap[col.header] || ''
+    const price = matrixImportData.productPriceMap[col.header] || ''
     const opts = catalog.map(n => {
       const sel = n === mapped ? ' selected' : ''
       return `<option value="${escapeAttr(n)}"${sel}>${escapeHtml(n)}</option>`
@@ -2255,6 +2266,7 @@ function renderMatrixImportMapping() {
       <td><select class="form-select" onchange="app.setMatrixProductValueMap('${escapeAttr(col.header)}', this.value)">
         <option value="">— مپ نشده —</option>${opts}
       </select></td>
+      <td><input type="text" class="form-input" value="${escapeAttr(price)}" inputmode="numeric" placeholder="0" onchange="app.setMatrixProductPriceMap('${escapeAttr(col.header)}', this.value)"></td>
     </tr>`
   }).join('')
 
@@ -2263,6 +2275,7 @@ function renderMatrixImportMapping() {
     <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">
       ستون کارشناس نادیده گرفته می‌شود. مشتری جدید بدون کارشناس ساخته می‌شود.
       پلتفرم و ایدی پلتفرم فقط اگر در فایل مقدار داشته باشند وارد می‌شوند.
+      برای هر ستون محصول می‌توانید قیمت کل همان فروش تاریخی را هم وارد کنید.
     </div>
     <div class="form-group">
       <label>تاریخ مرجع LRFM (شروع رابطه)</label>
@@ -2279,7 +2292,7 @@ function renderMatrixImportMapping() {
     ${productRows
       ? `<div style="max-height:280px;overflow:auto;border:1px solid var(--border);border-radius:8px;">
           <table class="import-map-table" style="width:100%;font-size:13px;">
-            <thead><tr><th>ستون فایل</th><th>محصول سیستم</th></tr></thead>
+            <thead><tr><th>ستون فایل</th><th>محصول سیستم</th><th>قیمت کل</th></tr></thead>
             <tbody>${productRows}</tbody>
           </table>
         </div>`
@@ -2316,6 +2329,17 @@ export function setMatrixImportMapping(fieldKey, value) {
 export function setMatrixProductValueMap(header, value) {
   if (!value) delete matrixImportData.productValueMap[header]
   else matrixImportData.productValueMap[header] = value
+}
+
+export function setMatrixProductPriceMap(header, value) {
+  const raw = String(value ?? '').trim()
+  if (!raw) {
+    delete matrixImportData.productPriceMap[header]
+    return
+  }
+  const price = parseMatrixColumnPrice(raw)
+  if (price > 0) matrixImportData.productPriceMap[header] = String(price)
+  else delete matrixImportData.productPriceMap[header]
 }
 
 export function openMatrixImportModal() {
@@ -2385,12 +2409,16 @@ export function dryRunMatrixImport() {
   matrixImportData.dryRun = stats
   const preview = document.getElementById('matrixImportPreview')
   if (preview) {
+    const totalAmount = Array.from(stats.merged.values()).reduce((sum, rec) => {
+      return sum + Array.from(rec.products.values()).reduce((inner, price) => inner + (parseFloat(price) || 0), 0)
+    }, 0)
     preview.innerHTML = [
       `<b>پیش‌نمایش:</b> ${stats.uniquePhones} شماره یکتا`,
       `${stats.created} مشتری جدید`,
       `${stats.updated} مشتری موجود`,
       `${stats.productsAdded} محصول اضافه`,
       `${stats.skippedProducts} محصول تکراری`,
+      totalAmount > 0 ? `${totalAmount.toLocaleString('en-US')} قیمت کل تاریخی` : '',
       stats.invalidPhones ? `${stats.invalidPhones} شماره نامعتبر` : '',
       stats.unmappedMarks ? `${stats.unmappedMarks} علامت روی محصول مپ‌نشده` : ''
     ].filter(Boolean).join(' — ')
@@ -2484,9 +2512,9 @@ export async function doMatrixImport() {
       }
 
       let added = 0
-      for (const name of rec.products) {
+      for (const [name, price] of rec.products.entries()) {
         if (customerHasProductLine(customer, name)) continue
-        customer.products.push(buildHistoricalSaleLine(name, refJalali))
+        customer.products.push(buildHistoricalSaleLine(name, refJalali, price))
         added++
         dirty = true
       }
