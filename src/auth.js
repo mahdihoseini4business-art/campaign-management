@@ -549,6 +549,7 @@ export async function openSettingsModal() {
   _editingBundleId = null
   _editingPlatformIdx = null
   _editingStatusIdx = null
+  clearSalesTargetForm()
 
   const fn = document.getElementById('newFirstName')
   const ln = document.getElementById('newLastName')
