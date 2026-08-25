@@ -1972,6 +1972,8 @@ function ensureDeadlineUrgencyRendered() {
 }
 
 let _salesTargetUrgencySectionBound = false
+let _deadlineUrgencySaveTimer = null
+let _deadlineUrgencySaveInFlight = null
 
 function initSalesTargetUrgencySection() {
   const section = document.getElementById('salesTargetUrgencySection')
@@ -1980,10 +1982,47 @@ function initSalesTargetUrgencySection() {
   section.addEventListener('toggle', () => {
     if (section.open) ensureDeadlineUrgencyRendered()
   })
+  const defaultEl = document.getElementById('salesTargetUrgencyDefault')
+  const overdueEl = document.getElementById('salesTargetUrgencyOverdue')
+  defaultEl?.addEventListener('input', () => scheduleDeadlineUrgencySave())
+  overdueEl?.addEventListener('input', () => scheduleDeadlineUrgencySave())
 }
 
 /** kept for app.onSalesTargetDeadlineChange compatibility */
 export function onSalesTargetDeadlineChange() {}
+
+export function onDeadlineUrgencyFieldChange() {
+  scheduleDeadlineUrgencySave()
+}
+
+function scheduleDeadlineUrgencySave({ immediate = false, toastOnSuccess = false } = {}) {
+  if (_deadlineUrgencySaveTimer) {
+    clearTimeout(_deadlineUrgencySaveTimer)
+    _deadlineUrgencySaveTimer = null
+  }
+  const run = () => {
+    _deadlineUrgencySaveTimer = null
+    _deadlineUrgencySaveInFlight = persistDeadlineUrgencyFromDom({ toastOnSuccess })
+      .catch(() => {})
+      .finally(() => {
+        _deadlineUrgencySaveInFlight = null
+      })
+  }
+  if (immediate) run()
+  else _deadlineUrgencySaveTimer = setTimeout(run, 350)
+}
+
+async function persistDeadlineUrgencyFromDom({ toastOnSuccess = false, successMessage = 'رنگ‌های تایمر ددلاین ذخیره شد' } = {}) {
+  try {
+    await saveDeadlineUrgency(collectDeadlineUrgencyFromDom())
+    refreshDashboardTargets()
+    if (toastOnSuccess) showToast(successMessage)
+  } catch (e) {
+    console.error(e)
+    showToast('خطا در ذخیره رنگ‌های تایمر', 'error')
+    throw e
+  }
+}
 
 function collectDeadlineUrgencyFromDom() {
   const defaultColor = document.getElementById('salesTargetUrgencyDefault')?.value || DEFAULT_DEADLINE_URGENCY.defaultColor
@@ -2024,19 +2063,26 @@ export function renderDeadlineUrgencySettings() {
   box.innerHTML = stages.map((stage, idx) => `
     <div class="settings-urgency-stage-row" data-stage-id="${escapeAttr(stage.id)}">
       <span class="settings-urgency-stage-label">کمتر از</span>
-      <input type="number" class="form-input" data-urg-value min="1" step="1" value="${escapeAttr(String(stage.withinValue))}" style="width:72px;" dir="ltr">
-      <select class="form-select" data-urg-unit style="width:100px;">
+      <input type="number" class="form-input" data-urg-value min="1" step="1" value="${escapeAttr(String(stage.withinValue))}" style="width:72px;" dir="ltr" oninput="app.onDeadlineUrgencyFieldChange()">
+      <select class="form-select" data-urg-unit style="width:100px;" onchange="app.onDeadlineUrgencyFieldChange()">
         <option value="day" ${stage.withinUnit === 'day' ? 'selected' : ''}>روز</option>
         <option value="hour" ${stage.withinUnit === 'hour' ? 'selected' : ''}>ساعت</option>
         <option value="minute" ${stage.withinUnit === 'minute' ? 'selected' : ''}>دقیقه</option>
       </select>
-      <input type="color" data-urg-color value="${escapeAttr(stage.color)}" title="رنگ بازه ${idx + 1}" style="width:36px;height:32px;border:none;cursor:pointer;padding:0;">
+      <input type="color" data-urg-color value="${escapeAttr(stage.color)}" title="رنگ بازه ${idx + 1}" style="width:36px;height:32px;border:none;cursor:pointer;padding:0;" oninput="app.onDeadlineUrgencyFieldChange()">
       <button type="button" class="btn btn-sm btn-danger" onclick="app.removeDeadlineUrgencyStage(${idx})">حذف</button>
     </div>
   `).join('')
 }
 
 export async function addDeadlineUrgencyStage() {
+  if (_deadlineUrgencySaveTimer) {
+    clearTimeout(_deadlineUrgencySaveTimer)
+    _deadlineUrgencySaveTimer = null
+  }
+  if (_deadlineUrgencySaveInFlight) {
+    try { await _deadlineUrgencySaveInFlight } catch (_) {}
+  }
   const cfg = collectDeadlineUrgencyFromDom()
   cfg.stages.push({
     id: `urg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -2056,6 +2102,13 @@ export async function addDeadlineUrgencyStage() {
 }
 
 export async function removeDeadlineUrgencyStage(index) {
+  if (_deadlineUrgencySaveTimer) {
+    clearTimeout(_deadlineUrgencySaveTimer)
+    _deadlineUrgencySaveTimer = null
+  }
+  if (_deadlineUrgencySaveInFlight) {
+    try { await _deadlineUrgencySaveInFlight } catch (_) {}
+  }
   const cfg = collectDeadlineUrgencyFromDom()
   cfg.stages.splice(index, 1)
   try {
@@ -2070,15 +2123,14 @@ export async function removeDeadlineUrgencyStage(index) {
 }
 
 export async function saveDeadlineUrgencySettings() {
-  try {
-    await saveDeadlineUrgency(collectDeadlineUrgencyFromDom())
-    renderDeadlineUrgencySettings()
-    refreshDashboardTargets()
-    showToast('رنگ‌های تایمر ددلاین ذخیره شد')
-  } catch (e) {
-    console.error(e)
-    showToast('خطا در ذخیره رنگ‌ها', 'error')
+  if (_deadlineUrgencySaveTimer) {
+    clearTimeout(_deadlineUrgencySaveTimer)
+    _deadlineUrgencySaveTimer = null
   }
+  try {
+    await persistDeadlineUrgencyFromDom({ toastOnSuccess: true })
+    renderDeadlineUrgencySettings()
+  } catch (_) {}
 }
 
 function salesTargetBarMetaText(bar) {
