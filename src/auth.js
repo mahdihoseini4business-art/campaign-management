@@ -2318,8 +2318,11 @@ function syncFormStagesFromDom() {
     const id = row.getAttribute('data-stage-id') || `stg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const value = parseSalesTargetValueInput(row.querySelector('[data-stage-value]')?.value)
     const label = String(row.querySelector('[data-stage-label]')?.value || '').trim()
-    if (!Number.isFinite(value) || value <= 0) return
-    next.push({ id, value, label })
+    next.push({
+      id,
+      value: Number.isFinite(value) && value > 0 ? value : 0,
+      label
+    })
   })
   _draftFormStages = next
 }
