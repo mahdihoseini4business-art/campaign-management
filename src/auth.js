@@ -3033,16 +3033,34 @@ export async function saveSalesTargetForm() {
 
   const pending = readSalesTargetBarFromForm()
   if (pending.error) { showToast(pending.error); return }
+
   if (pending.bar) {
-    commitParsedBarToDraft(pending.bar)
-    clearSalesTargetBarFields()
-    syncSalesTargetAddBarButton()
-  } else if (_editingDraftBarIndex != null) {
+    const editingBar = _editingDraftBarIndex != null
+    openSettingsConfirm(
+      editingBar
+        ? 'تغییرات نوار در حال ویرایش هنوز اعمال نشده. اعمال شود و گروه ذخیره شود؟'
+        : 'فیلدهای نوار پر است ولی به گروه اضافه نشده. به گروه اضافه و ذخیره شود؟',
+      () => {
+        commitParsedBarToDraft(pending.bar)
+        clearSalesTargetBarFields()
+        syncSalesTargetAddBarButton()
+        persistSalesTargetGroup(title)
+      },
+      editingBar ? 'اعمال و ذخیره' : 'افزودن و ذخیره'
+    )
+    return
+  }
+
+  if (_editingDraftBarIndex != null) {
     _editingDraftBarIndex = null
     clearSalesTargetBarFields()
     syncSalesTargetAddBarButton()
   }
 
+  await persistSalesTargetGroup(title)
+}
+
+async function persistSalesTargetGroup(title) {
   const items = _draftTargetBars.map(bar => ({
     ...bar,
     productNames: [...(bar.productNames || [])],
