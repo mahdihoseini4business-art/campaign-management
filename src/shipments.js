@@ -6,7 +6,7 @@ import {
   ensureProductPayments, syncProductStatus, formatSoldAt24h, matchesTabSearch,
   getCustomerPhones, getPrimaryPhone, getApprovedPaid, getProductPayments,
   getPaymentEntryStatus, PAYMENT_STATUS, getSaleRegistrantPhone,
-  canViewScopedCustomer, userDisplayName,
+  userDisplayName,
   isPhysicalSaleLine, hasApprovedPayment, getShipmentStatus,
   SHIPMENT_STATUS, renderCopyableCell, getPrimaryCustomerAddress
 } from './utils.js'
@@ -72,25 +72,6 @@ export function getAllShipments() {
     })
   })
   return rows
-}
-
-/** Same visibility as sales tab: own/scoped customers, or sales registered by me. */
-function getVisibleShipments() {
-  const data = getData()
-  const currentUser = getCurrentUser()
-  const myPhone = normalizePhone(currentUser?.phone || '')
-  return getAllShipments().filter(s => {
-    if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false
-    if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
-    const customer = data.customers.find(c => c.id === s.customerId)
-    const product = customer?.products?.[s.productIndex]
-    const registeredByMe = !!(myPhone && (
-      s.soldByPhone === myPhone ||
-      (product && getProductPayments(product).some(pay => normalizePhone(pay.soldByPhone) === myPhone))
-    ))
-    if (!canViewScopedCustomer(customer, currentUser) && !registeredByMe) return false
-    return true
-  })
 }
 
 export function setShipmentsFilter(filter) {
@@ -160,7 +141,7 @@ export async function renderShipments() {
   renderShipmentsHeader(canManage)
 
   const search = toEnDigits(document.getElementById('searchShipments')?.value || '').toLowerCase()
-  const allShipments = getVisibleShipments()
+  const allShipments = getAllShipments()
 
   try {
     const users = await getUsersSafe()
