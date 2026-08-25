@@ -1,8 +1,8 @@
 // ============================================
-// Hybrid live sync: Realtime first, rare incremental backup
+// Hybrid live sync: Realtime first + polling backup
 // - postgres_changes: single-row cache patches
-// - visibility / slow poll: incremental sync (not full table dump)
-// - full load only on init (main.js) or hard fallback
+// - visibility / 90s poll: incremental sync
+// - if Realtime is "subscribed" but misses DB changes, degrade + reconnect
 // ============================================
 
 import { supabase } from './supabase.js'
@@ -28,13 +28,19 @@ import { renderDashboard } from './dashboard.js'
 import { updateTransferInboxBadge } from './transfers.js'
 
 const CHANNEL_NAME = 'live-data-sync'
-/** Backup poll while Realtime is healthy — rare on purpose (egress). */
-const POLL_MS_HEALTHY = 20 * 60_000
-/** Faster poll only while Realtime is down. */
-const POLL_MS_DEGRADED = 90_000
+/** Backup poll while Realtime appears healthy (aligned with original hybrid plan). */
+const POLL_MS_HEALTHY = 90_000
+/** Faster poll while Realtime is down or deaf. */
+const POLL_MS_DEGRADED = 45_000
 const VISIBILITY_MIN_GAP_MS = 30_000
 const UI_DEBOUNCE_MS = 350
 const LOCAL_WRITE_SUPPRESS_MS = 2000
+/** After subscribe, ignore "deaf" detection briefly (quiet is normal). */
+const RT_GRACE_MS = 120_000
+/** Min silence before a poll that finds remote rows can mark Realtime deaf. */
+const RT_DEAF_SILENCE_MS = 90_000
+/** Min gap between reconnect attempts. */
+const RT_RECONNECT_COOLDOWN_MS = 60_000
 
 let channel = null
 let pollTimer = null
@@ -48,6 +54,10 @@ let started = false
 let visibilityHandler = null
 let realtimeOk = false
 let pollGeneration = 0
+let subscribedAt = 0
+let lastRealtimeEventAt = 0
+let lastReconnectAt = 0
+let reconnecting = false
 
 /** Call after a successful local DB write to ignore echo events briefly. */
 export function noteLocalWrite(ms = LOCAL_WRITE_SUPPRESS_MS) {
@@ -56,6 +66,11 @@ export function noteLocalWrite(ms = LOCAL_WRITE_SUPPRESS_MS) {
 
 function isLocalWriteSuppressed() {
   return Date.now() < localWriteUntil || isDataLocalWriteSuppressed()
+}
+
+function markRealtimeEvent() {
+  lastRealtimeEventAt = Date.now()
+  if (!realtimeOk) setRealtimeOk(true)
 }
 
 function getActiveSheet() {
@@ -122,17 +137,25 @@ function scheduleUiRefresh() {
   }, UI_DEBOUNCE_MS)
 }
 
+function coreRemoteHits(result) {
+  const c = result?.counts
+  if (!c) return false
+  return (c.customers || 0) + (c.followups || 0) + (c.refunds || 0) > 0
+}
+
 async function refreshCoreData(reason = 'sync', opts = {}) {
-  if (refreshingCore) return
+  if (refreshingCore) return null
   refreshingCore = true
   try {
     const reconcile = !!opts.reconcile
     const mode = opts.mode || 'auto'
-    await syncCoreData({ mode, reconcile })
+    const result = await syncCoreData({ mode, reconcile })
     lastSyncAt = Date.now()
     scheduleUiRefresh()
+    return result
   } catch (e) {
     console.error(`live-sync core refresh (${reason}) error:`, e)
+    return null
   } finally {
     refreshingCore = false
   }
@@ -160,10 +183,11 @@ function scheduleNotifRefresh(reason) {
 }
 
 async function refreshAll(reason, opts = {}) {
-  await Promise.all([
+  const [coreResult] = await Promise.all([
     refreshCoreData(reason, opts),
     refreshNotifData(reason)
   ])
+  return coreResult
 }
 
 function fallbackFullCore(reason) {
@@ -171,6 +195,7 @@ function fallbackFullCore(reason) {
 }
 
 function onCustomerChange(payload) {
+  markRealtimeEvent()
   if (isLocalWriteSuppressed()) return
   const event = payload?.eventType || payload?.event
   try {
@@ -198,6 +223,7 @@ function onCustomerChange(payload) {
 }
 
 function onFollowupChange(payload) {
+  markRealtimeEvent()
   if (isLocalWriteSuppressed()) return
   const event = payload?.eventType || payload?.event
   try {
@@ -225,11 +251,13 @@ function onFollowupChange(payload) {
 }
 
 function onRemoteNotifChange() {
+  markRealtimeEvent()
   if (isLocalWriteSuppressed()) return
   scheduleNotifRefresh('realtime')
 }
 
 function onRefundChange(payload) {
+  markRealtimeEvent()
   if (isLocalWriteSuppressed()) return
   const event = payload?.eventType || payload?.event
   try {
@@ -259,7 +287,51 @@ function onRefundChange(payload) {
 function setRealtimeOk(ok) {
   const prev = realtimeOk
   realtimeOk = !!ok
-  if (prev !== realtimeOk) startPolling()
+  if (prev !== realtimeOk) {
+    console.info('live-sync realtime:', realtimeOk ? 'healthy' : 'degraded')
+    startPolling()
+  }
+}
+
+/**
+ * Poll found remote rows while Realtime claimed healthy but sent nothing recently
+ * → publication/channel likely broken; switch to degraded poll and resubscribe.
+ */
+async function maybeRecoverDeafRealtime(coreResult) {
+  if (!realtimeOk || reconnecting) return
+  if (!coreRemoteHits(coreResult)) return
+
+  const now = Date.now()
+  if (subscribedAt && now - subscribedAt < RT_GRACE_MS) return
+
+  const lastEvent = lastRealtimeEventAt || subscribedAt || 0
+  if (now - lastEvent < RT_DEAF_SILENCE_MS) return
+  if (now - lastReconnectAt < RT_RECONNECT_COOLDOWN_MS) {
+    setRealtimeOk(false)
+    return
+  }
+
+  console.warn('live-sync: Realtime subscribed but missed DB changes — reconnecting')
+  await reconnectRealtime('deaf-missed-poll')
+}
+
+async function reconnectRealtime(reason) {
+  if (reconnecting) return
+  reconnecting = true
+  lastReconnectAt = Date.now()
+  try {
+    setRealtimeOk(false)
+    if (channel) {
+      try { await supabase.removeChannel(channel) } catch (_) { /* ignore */ }
+      channel = null
+    }
+    await ensureRealtimeChannel()
+  } catch (e) {
+    console.error(`live-sync reconnect (${reason}) error:`, e)
+    setRealtimeOk(false)
+  } finally {
+    reconnecting = false
+  }
 }
 
 async function ensureRealtimeChannel() {
@@ -276,6 +348,8 @@ async function ensureRealtimeChannel() {
   await new Promise(resolve => {
     channel.subscribe(status => {
       if (status === 'SUBSCRIBED') {
+        subscribedAt = Date.now()
+        // Do not invent an "event"; wait for real postgres_changes
         setRealtimeOk(true)
         resolve(status)
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
@@ -300,18 +374,23 @@ function startPolling() {
   pollTimer = setInterval(() => {
     if (gen !== pollGeneration) return
     if (document.visibilityState === 'hidden') return
-    // Healthy realtime: incremental + id reconcile. Degraded: incremental only (faster).
-    refreshAll('poll', {
-      mode: 'auto',
-      reconcile: realtimeOk
-    })
+    ;(async () => {
+      const coreResult = await refreshAll('poll', {
+        mode: 'auto',
+        reconcile: realtimeOk
+      })
+      await maybeRecoverDeafRealtime(coreResult)
+    })().catch(e => console.error('live-sync poll error:', e))
   }, ms)
 }
 
 function onVisibilityChange() {
   if (document.visibilityState !== 'visible') return
   if (Date.now() - lastSyncAt < VISIBILITY_MIN_GAP_MS) return
-  refreshAll('visibility', { mode: 'auto', reconcile: false })
+  ;(async () => {
+    const coreResult = await refreshAll('visibility', { mode: 'auto', reconcile: false })
+    await maybeRecoverDeafRealtime(coreResult)
+  })().catch(e => console.error('live-sync visibility error:', e))
 }
 
 export async function initLiveSync() {
@@ -354,9 +433,13 @@ export function disposeLiveSync() {
     channel = null
   }
   realtimeOk = false
+  subscribedAt = 0
+  lastRealtimeEventAt = 0
 }
 
 /** Force a refresh (optional external use). */
 export async function refreshFromServer(reason = 'manual') {
-  await refreshAll(reason, { mode: 'auto', reconcile: true })
+  const coreResult = await refreshAll(reason, { mode: 'auto', reconcile: true })
+  await maybeRecoverDeafRealtime(coreResult)
+  return coreResult
 }
