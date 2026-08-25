@@ -441,6 +441,26 @@ export function filterSettingsNav(query) {
   renderSettingsNav(query)
 }
 
+function isSalesTargetDraftDirty() {
+  if (_editingSalesTargetId) return true
+  if (_editingDraftBarIndex != null) return true
+  if (_draftTargetBars.length) return true
+  if (_draftFormStages.length) return true
+  if (Object.keys(_draftAllocations).length) return true
+  const title = (document.getElementById('salesTargetTitle')?.value || '').trim()
+  if (title) return true
+  if (String(document.getElementById('salesTargetValue')?.value || '').trim()) return true
+  if (String(document.getElementById('salesTargetStart')?.value || '').trim()) return true
+  if (String(document.getElementById('salesTargetEnd')?.value || '').trim()) return true
+  const products = document.getElementById('salesTargetProducts')
+  if (products?.querySelector('input[type="checkbox"][data-product]:checked')) return true
+  return false
+}
+
+function discardSalesTargetDraft() {
+  clearSalesTargetForm()
+}
+
 export function switchSettingsSection(sectionId) {
   if (!SETTINGS_SECTIONS.some(s => s.id === sectionId)) return
   if (_settingsSection === 'users' && sectionId !== 'users' && _permissionsDirty) {
@@ -448,6 +468,17 @@ export function switchSettingsSection(sectionId) {
       'تغییرات دسترسی ذخیره‌نشده دارید. ادامه می‌دهید؟',
       () => {
         _permissionsDirty = false
+        applySettingsSection(sectionId)
+      },
+      'ادامه'
+    )
+    return
+  }
+  if (_settingsSection === 'sales-targets' && sectionId !== 'sales-targets' && isSalesTargetDraftDirty()) {
+    openSettingsConfirm(
+      'پیش‌نویس تارگت ذخیره‌نشده دارید. بدون ذخیره ادامه می‌دهید؟',
+      () => {
+        discardSalesTargetDraft()
         applySettingsSection(sectionId)
       },
       'ادامه'
@@ -570,12 +601,12 @@ export async function openSettingsModal() {
   updateUsersLayoutMode(false)
 }
 
-export function closeSettingsModal() {
-  if (_permissionsDirty) {
+function finishCloseSettingsModal() {
+  if (isSalesTargetDraftDirty()) {
     openSettingsConfirm(
-      'تغییرات دسترسی ذخیره‌نشده دارید. بدون ذخیره ببندید؟',
+      'پیش‌نویس تارگت ذخیره‌نشده دارید. بدون ذخیره ببندید؟',
       () => {
-        _permissionsDirty = false
+        discardSalesTargetDraft()
         document.getElementById('settingsModal')?.classList.remove('active')
       },
       'بستن'
@@ -583,6 +614,21 @@ export function closeSettingsModal() {
     return
   }
   document.getElementById('settingsModal')?.classList.remove('active')
+}
+
+export function closeSettingsModal() {
+  if (_permissionsDirty) {
+    openSettingsConfirm(
+      'تغییرات دسترسی ذخیره‌نشده دارید. بدون ذخیره ببندید؟',
+      () => {
+        _permissionsDirty = false
+        finishCloseSettingsModal()
+      },
+      'بستن'
+    )
+    return
+  }
+  finishCloseSettingsModal()
 }
 
 export async function addUser() {
