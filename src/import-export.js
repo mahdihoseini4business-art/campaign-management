@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import { getData, saveCustomerToDB, generateId, generateIdBatch, getStatuses, getCustomerCodes, saveFollowupToDB, getDestinationBanks, getSellableNames, putCustomerInCache, getProductCatalogNames, getCustomerOwnedProductNames, getPlatforms, coerceProductName } from './data.js'
+import { getData, saveCustomerToDB, generateId, generateIdBatch, getStatuses, getCustomerCodes, saveFollowupToDB, updateFollowupInDB, getDestinationBanks, getSellableNames, putCustomerInCache, getProductCatalogNames, getCustomerOwnedProductNames, getPlatforms, coerceProductName } from './data.js'
 import {
   toEnDigits, showToast, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
@@ -667,18 +667,24 @@ function isDoneFollowupType(type) {
 
 /**
  * Import structured followup rows (same shape as export sheet «پیگیری‌ها»).
- * Skips exact duplicates (fingerprint); creates missing notes.
+ * Matching notes (fingerprint) update nextDate/result instead of being skipped.
+ * When syncCustomerNextDate is true (خروجی تب پیگیری‌ها), also rewrites
+ * customer.nextFollowupDate from column «پیگیری بعدی».
  */
-async function importFollowupRows({ headers, rows, mapping }) {
+async function importFollowupRows({ headers, rows, mapping }, { syncCustomerNextDate = false } = {}) {
   const data = getData()
   const map = mapping || autoMapColumns(headers, FOLLOWUP_IMPORT_FIELDS)
   if (map.customerId === undefined || map.customerId === null) {
-    return { created: 0, skipped: 0, failed: 0, missingCustomer: 0 }
+    return { created: 0, updated: 0, skipped: 0, failed: 0, missingCustomer: 0, customersUpdated: 0 }
   }
 
-  let created = 0, skipped = 0, failed = 0, missingCustomer = 0
-  const seen = new Set(data.followups.map(followupFingerprint))
+  let created = 0, updated = 0, skipped = 0, failed = 0, missingCustomer = 0, customersUpdated = 0
+  const byFingerprint = new Map()
+  for (const f of data.followups) {
+    byFingerprint.set(followupFingerprint(f), f)
+  }
   const currentUser = getCurrentUser()
+  const nextDateMapped = map.nextDate !== undefined && map.nextDate !== null
 
   for (const row of rows) {
     const getValue = (fieldKey) => {
@@ -691,7 +697,7 @@ async function importFollowupRows({ headers, rows, mapping }) {
     const notes = getValue('notes')
     const date = toEnDigits(getValue('date'))
     const type = getValue('type') || 'یادداشت'
-    if (!customerId || (!notes && !date)) {
+    if (!customerId || (!notes && !date && !(syncCustomerNextDate && nextDateMapped))) {
       skipped++
       continue
     }
@@ -722,24 +728,54 @@ async function importFollowupRows({ headers, rows, mapping }) {
     }
 
     const fp = followupFingerprint(followup)
-    if (seen.has(fp)) {
-      skipped++
-      continue
-    }
+    const existing = byFingerprint.get(fp)
 
     try {
-      const id = await saveFollowupToDB(followup)
-      followup.id = id
-      data.followups.push(followup)
-      seen.add(fp)
-      created++
+      let noteTouched = false
+      if (existing) {
+        let noteChanged = false
+        if ((existing.nextDate || '') !== (followup.nextDate || '')) {
+          existing.nextDate = followup.nextDate || ''
+          noteChanged = true
+        }
+        if ((existing.result || '') !== (followup.result || '')) {
+          existing.result = followup.result || ''
+          noteChanged = true
+        }
+        if (noteChanged) {
+          await updateFollowupInDB(existing)
+          updated++
+          noteTouched = true
+        }
+      } else if (notes || date) {
+        const id = await saveFollowupToDB(followup)
+        followup.id = id
+        data.followups.push(followup)
+        byFingerprint.set(fp, followup)
+        created++
+        noteTouched = true
+      }
+
+      // Pending tab reads customer.nextFollowupDate — rewrite from Excel when asked
+      let customerTouched = false
+      if (syncCustomerNextDate && nextDateMapped) {
+        const normalizedNext = nextDate || ''
+        if ((customer.nextFollowupDate || '') !== normalizedNext) {
+          customer.nextFollowupDate = normalizedNext
+          await saveCustomerToDB(customer)
+          customersUpdated++
+          customerTouched = true
+        }
+      }
+
+      if (!noteTouched && !customerTouched) skipped++
     } catch (err) {
       console.error('followup import row failed', err)
       failed++
     }
   }
 
-  return { created, skipped, failed, missingCustomer }
+  return { created, updated, skipped, failed, missingCustomer, customersUpdated }
 }
 
 let importData = {
@@ -847,7 +883,7 @@ function renderImportMapping() {
     document.getElementById('importPreview').textContent =
       `${fuCount} یادداشت/پیگیری یافت شد — مپینگ خودکار از روی هدر خروجی`
     container.innerHTML = `
-      <p class="import-map-hint">فایل خروجی پیگیری‌ها تشخیص داده شد. همه ردیف‌ها با مپینگ خودکار ایمپورت می‌شوند.</p>
+      <p class="import-map-hint">فایل خروجی پیگیری‌ها تشخیص داده شد. یادداشت‌های موجود به‌روزرسانی می‌شوند و تاریخ «پیگیری بعدی» روی مشتری بازنویسی می‌شود.</p>
       ${renderFieldMappingRows({
         fields: FOLLOWUP_IMPORT_FIELDS,
         headers: fu.headers,
@@ -983,16 +1019,18 @@ export async function doImport() {
       showToast('ردیفی برای ایمپورت پیگیری یافت نشد')
       return
     }
-    const fu = await importFollowupRows(importData.followups)
+    const fu = await importFollowupRows(importData.followups, { syncCustomerNextDate: true })
     closeImportModal()
     await renderCustomers()
     try { await renderFollowups() } catch (_) {}
     const parts = []
+    if (fu.customersUpdated) parts.push(`${fu.customersUpdated} تاریخ پیگیری مشتری`)
+    if (fu.updated) parts.push(`${fu.updated} یادداشت به‌روزرسانی`)
     if (fu.created) parts.push(`${fu.created} یادداشت ایجاد`)
-    if (fu.skipped) parts.push(`${fu.skipped} تکراری`)
+    if (fu.skipped) parts.push(`${fu.skipped} بدون تغییر`)
     if (fu.missingCustomer) parts.push(`${fu.missingCustomer} بدون مشتری`)
     if (fu.failed) parts.push(`${fu.failed} خطا`)
-    showToast(parts.length ? parts.join(' — ') : 'هیچ یادداشتی ایمپورت نشد')
+    showToast(parts.length ? parts.join(' — ') : 'هیچ تغییری اعمال نشد')
     return
   }
 
@@ -1126,7 +1164,7 @@ export async function doImport() {
   }
 
   // Import sheet «پیگیری‌ها» from the same workbook (after customers exist)
-  let fu = { created: 0, skipped: 0, failed: 0, missingCustomer: 0 }
+  let fu = { created: 0, updated: 0, skipped: 0, failed: 0, missingCustomer: 0, customersUpdated: 0 }
   if (importData.followups?.rows?.length) {
     fu = await importFollowupRows(importData.followups)
   }
@@ -1141,7 +1179,8 @@ export async function doImport() {
   if (skipped) parts.push(`${skipped} رد شده`)
   if (failed) parts.push(`${failed} خطای مشتری`)
   if (fu.created) parts.push(`${fu.created} یادداشت`)
-  if (fu.skipped) parts.push(`${fu.skipped} یادداشت تکراری`)
+  if (fu.updated) parts.push(`${fu.updated} یادداشت به‌روزرسانی`)
+  if (fu.skipped) parts.push(`${fu.skipped} یادداشت بدون تغییر`)
   if (fu.missingCustomer) parts.push(`${fu.missingCustomer} یادداشت بدون مشتری`)
   if (fu.failed) parts.push(`${fu.failed} خطای یادداشت`)
   showToast(parts.length ? parts.join(' — ') : 'هیچ ردیفی ایمپورت نشد')
