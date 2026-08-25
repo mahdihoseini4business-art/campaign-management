@@ -1423,12 +1423,39 @@
     border-radius: 8px;
   }
 
-  .detail-next-followup {
+  .detail-add-note {
     margin-bottom: 20px;
     padding: 12px 16px;
     background: #f8f9fa;
     border-radius: 8px;
     border: 1px solid var(--border);
+  }
+
+  .detail-add-note .form-row {
+    margin-bottom: 10px;
+  }
+
+  .detail-next-followup-status {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+
+  .detail-next-followup-status-label {
+    color: var(--text-muted);
+  }
+
+  .detail-next-followup-status-value {
+    font-family: 'Vazirmatn', sans-serif;
+    color: var(--text-muted);
+  }
+
+  .detail-next-followup-status-value.is-set {
+    color: var(--accent);
+    font-weight: 600;
   }
 
   .detail-sales-hint {

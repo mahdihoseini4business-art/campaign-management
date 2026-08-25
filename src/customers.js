@@ -2210,20 +2210,6 @@ export async function openCustomerDetail(id, options = {}) {
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${c.customerLevelLocked ? 'سطح دستی — با انتخاب «خودکار» دوباره محاسبه می‌شود' : `فعلی: ${escapeHtml(levelDisplay)}`}</div>`
     : `<span class="customer-level-badge">${escapeHtml(levelDisplay)}</span>`
 
-  const followupDateControls = canScheduleFollowup
-    ? `<div style="display:flex;flex-direction:column;gap:8px;align-items:stretch;min-width:min(100%,280px);">
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-            <input type="text" id="detailFollowupDate" placeholder="تاریخ پیگیری" data-jdp style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:150px;">
-            <button class="btn btn-sm btn-primary" onclick="app.setNextFollowup('${escapeAttr(c.id)}')">ذخیره</button>
-            ${canClearFollowupDate && c.nextFollowupDate ? `<button class="btn btn-sm" onclick="app.clearNextFollowup('${escapeAttr(c.id)}')" style="color:var(--danger);">حذف</button>` : ''}
-          </div>
-          ${schedulingForOther ? `
-            <textarea id="detailFollowupScheduleNote" class="form-textarea" placeholder="توضیحات برای کارشناس مسئول (اجباری)..." style="min-height:64px;font-size:13px;"></textarea>
-            <div style="font-size:11px;color:var(--text-muted);">این پیگیری در صف فالوآپ‌های کارشناس مسئول (${escapeHtml(c.advisor || '—')}) ظاهر می‌شود.</div>
-          ` : ''}
-        </div>`
-    : ''
-
   const fmtDays = (n) => (n == null ? '—' : `${formatNumber(n)} روز`)
   const fmtMoney = (n) => `${formatNumber(n || 0)} ریال`
 
@@ -2442,10 +2428,31 @@ export async function openCustomerDetail(id, options = {}) {
       timelineHtml += `</div>`
     }
 
+    const nextDateStatusHtml = `
+      <div class="detail-next-followup-status">
+        <span class="detail-next-followup-status-label">پیگیری بعدی فعلی:</span>
+        <span class="detail-next-followup-status-value${c.nextFollowupDate ? ' is-set' : ''}">${c.nextFollowupDate || 'تنظیم نشده'}</span>
+        ${canClearFollowupDate && c.nextFollowupDate
+          ? `<button type="button" class="btn btn-sm" onclick="app.clearNextFollowup('${escapeAttr(c.id)}')" style="color:var(--danger);">حذف تاریخ</button>`
+          : ''}
+      </div>`
+
+    const nextDateFieldHtml = canScheduleFollowup
+      ? `
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="detail-label" for="detailFollowupDate">تاریخ پیگیری بعدی (اختیاری)</label>
+          <input type="text" class="form-input" id="detailFollowupDate" placeholder="مثلاً 1405/05/01" data-jdp style="font-family:'Vazirmatn',sans-serif;">
+          ${schedulingForOther
+            ? `<div class="form-hint" style="margin-top:6px;">در صورت وارد کردن تاریخ، این پیگیری در صف کارشناس مسئول (${escapeHtml(c.advisor || '—')}) ظاهر می‌شود.</div>`
+            : `<div class="form-hint" style="margin-top:6px;">اگر خالی بگذارید، تاریخ پیگیری بعدی مشتری تغییر نمی‌کند.</div>`}
+        </div>`
+      : ''
+
     const quickNoteHtml = canAddFollowup
       ? `
-      <div class="detail-add-note" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+      <div class="detail-add-note">
         <div style="font-size:13px;font-weight:600;margin-bottom:8px;">افزودن توضیحات جدید</div>
+        ${nextDateStatusHtml}
         <textarea class="form-textarea" id="detailQuickNote" placeholder="توضیحات جدید را اینجا بنویسید..." style="min-height:60px;margin-bottom:8px;"></textarea>
         <div class="form-row">
           <div class="form-group" style="margin-bottom:0;">
@@ -2467,30 +2474,37 @@ export async function openCustomerDetail(id, options = {}) {
               <option value="Happy Customer ❤️">Happy Customer ❤️</option>
             </select>
           </div>
-          <div class="form-group" style="margin-bottom:0;">
-            <button class="btn btn-primary" style="width:100%;" onclick="app.addQuickNote('${escapeAttr(c.id)}')">ثبت</button>
-          </div>
+        </div>
+        ${nextDateFieldHtml}
+        <div style="margin-top:10px;">
+          <button class="btn btn-primary" style="width:100%;" onclick="app.addQuickNote('${escapeAttr(c.id)}')">ثبت</button>
         </div>
       </div>`
-      : ''
+      : (canScheduleFollowup
+        ? `
+      <div class="detail-add-note">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px;">تاریخ پیگیری بعدی</div>
+        ${nextDateStatusHtml}
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+          <input type="text" class="form-input" id="detailFollowupDate" placeholder="مثلاً 1405/05/01" data-jdp style="font-family:'Vazirmatn',sans-serif;max-width:180px;">
+          <button class="btn btn-sm btn-primary" onclick="app.setNextFollowup('${escapeAttr(c.id)}')">ذخیره</button>
+        </div>
+        ${schedulingForOther ? `
+          <textarea id="detailFollowupScheduleNote" class="form-textarea" placeholder="توضیحات برای کارشناس مسئول (اجباری)..." style="min-height:64px;font-size:13px;margin-top:8px;"></textarea>
+          <div class="form-hint" style="margin-top:6px;">این پیگیری در صف فالوآپ‌های کارشناس مسئول (${escapeHtml(c.advisor || '—')}) ظاهر می‌شود.</div>
+        ` : ''}
+      </div>`
+        : `
+      <div class="detail-add-note">
+        ${nextDateStatusHtml}
+      </div>`)
 
     followupsPanelHtml = `
-      <div class="detail-next-followup">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-          <div>
-            <div style="font-size:13px;font-weight:600;margin-bottom:2px;">تاریخ پیگیری بعدی</div>
-            <div style="font-size:13px;color:${c.nextFollowupDate ? 'var(--accent)' : 'var(--text-muted)'}; font-family:'Vazirmatn',sans-serif;">
-              ${c.nextFollowupDate || 'تنظیم نشده'}
-            </div>
-          </div>
-          ${followupDateControls}
-        </div>
-      </div>
+      ${quickNoteHtml}
       <div class="detail-timeline-title">
         تاریخچه پیگیری <span class="count">${customerFollowups.length}</span>
       </div>
       ${timelineHtml}
-      ${quickNoteHtml}
     `
   }
 
@@ -2700,7 +2714,7 @@ export async function setNextFollowup(customerId) {
     return
   }
   const input = document.getElementById('detailFollowupDate')
-  const date = input?.value.trim() || ''
+  const date = toEnDigits(input?.value || '').trim()
   if (!date) { showToast('تاریخ را وارد کنید'); return }
   if (!/^\d{4}\/\d{2}\/\d{2}$/.test(date)) { showToast('فرمت تاریخ صحیح نیست (1405/05/01)'); return }
 
@@ -2787,19 +2801,58 @@ export async function addQuickNote(customerId) {
   const notes = textarea.value.trim()
   const type = document.getElementById('detailQuickType').value
   const result = document.getElementById('detailQuickResult').value
+  const nextDateRaw = toEnDigits(
+    document.getElementById('detailFollowupDate')?.value || ''
+  ).trim()
 
   if (!notes) { showToast('توضیحات را وارد کنید'); return }
 
+  let nextDate = ''
+  if (nextDateRaw) {
+    if (!canScheduleFollowupOnCustomer(customer)) {
+      showToast('شما دسترسی تنظیم تاریخ پیگیری برای این مشتری را ندارید')
+      return
+    }
+    if (!/^\d{4}\/\d{2}\/\d{2}$/.test(nextDateRaw)) {
+      showToast('فرمت تاریخ پیگیری بعدی صحیح نیست (1405/05/01)')
+      return
+    }
+    nextDate = nextDateRaw
+  }
+
   const { dateTime } = getNowJalaliDateTime()
 
-  const newFollowup = { customerId, date: dateTime, type, result, nextDate: '', notes, createdByPhone: normalizePhone(getCurrentUser()?.phone || '') }
+  const newFollowup = {
+    customerId,
+    date: dateTime,
+    type,
+    result,
+    nextDate,
+    notes,
+    createdByPhone: normalizePhone(getCurrentUser()?.phone || ''),
+    status: 'pending'
+  }
   try {
     const id = await saveFollowupToDB(newFollowup)
     newFollowup.id = id
     data.followups.push(newFollowup)
+
+    if (nextDate) {
+      const idx = data.customers.findIndex(c => c.id === customerId)
+      if (idx !== -1) {
+        data.customers[idx].nextFollowupDate = nextDate
+        await saveCustomerToDB(data.customers[idx])
+      }
+    }
+
     await renderCustomers()
+    const resolved = nextDate
+      ? maybeResolvePendingCreateCompletion(customerId, { toast: true })
+      : false
     openCustomerDetail(customerId)
-    showToast('توضیحات ثبت شد')
+    if (!resolved) {
+      showToast(nextDate ? 'توضیحات ثبت و تاریخ پیگیری بعدی تنظیم شد' : 'توضیحات ثبت شد')
+    }
   } catch (e) {
     console.error('addQuickNote error:', e)
     showToast(e.message || 'خطا در ذخیره توضیحات')
