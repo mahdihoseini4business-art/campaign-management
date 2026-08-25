@@ -1182,6 +1182,13 @@ export function getGiftAccountingStatus(product) {
   return PAYMENT_STATUS.pending
 }
 
+/** Physical sale ready for the shipments queue (approved payment or approved gift). */
+export function isEligibleForShipment(product) {
+  if (!product) return false
+  if (isGiftSale(product)) return getGiftAccountingStatus(product) === PAYMENT_STATUS.approved
+  return hasApprovedPayment(product)
+}
+
 let _paySeq = 0
 export function createPayment(overrides = {}) {
   const { dateTime } = getNowJalaliDateTime()

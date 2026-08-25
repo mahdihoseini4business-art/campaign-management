@@ -7,8 +7,8 @@ import {
   getCustomerPhones, getPrimaryPhone, getApprovedPaid, getProductPayments,
   getPaymentEntryStatus, PAYMENT_STATUS, getSaleRegistrantPhone,
   userDisplayName,
-  isPhysicalSaleLine, hasApprovedPayment, getShipmentStatus,
-  SHIPMENT_STATUS, renderCopyableCell, getPrimaryCustomerAddress
+  isPhysicalSaleLine, isEligibleForShipment, isGiftSale, getGiftAccountingStatus,
+  getShipmentStatus, SHIPMENT_STATUS, renderCopyableCell, getPrimaryCustomerAddress
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig, sortThHtml } from './table-sort.js'
@@ -20,6 +20,9 @@ let shipmentsSortState = { field: null, asc: true }
 let shipConfirmTarget = null // { customerId, productIndex }
 
 function getLatestApprovedSoldAt(product) {
+  if (isGiftSale(product) && getGiftAccountingStatus(product) === PAYMENT_STATUS.approved) {
+    return String(product.giftReviewedAt || product.soldAt || '')
+  }
   const pays = getProductPayments(product)
     .filter(p => getPaymentEntryStatus(p) === PAYMENT_STATUS.approved && (parseFloat(p.amount) || 0) > 0)
   if (!pays.length) return ''
@@ -37,9 +40,9 @@ export function getAllShipments() {
       ensureProductPayments(product)
       syncProductStatus(product)
       if (!isPhysicalSaleLine(product)) return
-      if (!hasApprovedPayment(product)) return
+      if (!isEligibleForShipment(product)) return
       const price = parseFloat(product.price) || 0
-      const approved = getApprovedPaid(product)
+      const approved = isGiftSale(product) ? 0 : getApprovedPaid(product)
       const pays = getProductPayments(product)
       const lastPay = pays[pays.length - 1]
       const soldByPhone = getSaleRegistrantPhone(product, lastPay, c)
@@ -59,6 +62,7 @@ export function getAllShipments() {
         soldByPhone,
         productName: coerceProductName(product.name),
         productStatus: product.status || '',
+        isGift: isGiftSale(product),
         price,
         approved,
         shippingAddress,
@@ -168,7 +172,8 @@ export async function renderShipments() {
         s.shippingAddress,
         s.shippingPostalCode,
         s.trackingCode,
-        s.productStatus
+        s.productStatus,
+        s.isGift ? 'هدیه' : ''
       ])
     )
   }
@@ -207,15 +212,19 @@ export async function renderShipments() {
   const page = paginateList('shipments', shipments, filterSig)
 
   tbody.innerHTML = page.items.map(s => {
+    const productLabel = s.isGift
+      ? `${escapeHtml(s.productName)} <span class="gift-badge">هدیه</span>`
+      : escapeHtml(s.productName)
+    const statusLabel = escapeHtml(s.productStatus) || '—'
     const common = `
       <td>${escapeHtml(s.customerName)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${phonesCell(s)}</td>
       <td>${escapeHtml(s.advisor) || '—'}</td>
-      <td>${escapeHtml(s.productName)}</td>
-      <td>${escapeHtml(s.productStatus) || '—'}</td>`
+      <td>${productLabel}</td>
+      <td>${statusLabel}</td>`
 
     if (shipmentsFilter === 'shipped') {
-      return `<tr class="clickable-row" onclick="app.onCustomerRowClick(event, '${escapeAttr(s.customerId)}')">
+      return `<tr class="clickable-row${s.isGift ? ' gift-row' : ''}" onclick="app.onCustomerRowClick(event, '${escapeAttr(s.customerId)}')">
         ${common}
         <td>${renderCopyableCell(s.shippingAddress)}</td>
         <td>${renderCopyableCell(s.shippingPostalCode)}</td>
@@ -228,11 +237,15 @@ export async function renderShipments() {
       ? `<td><button type="button" class="btn btn-sm btn-approve" onclick="event.stopPropagation(); app.openConfirmShipmentModal('${escapeAttr(s.customerId)}', ${s.productIndex})">تأیید ارسال</button></td>`
       : ''
 
-    return `<tr class="clickable-row" onclick="app.onCustomerRowClick(event, '${escapeAttr(s.customerId)}')">
+    const amountHtml = s.isGift
+      ? `<span class="gift-badge">۰ · هدیه</span>`
+      : `<b>${formatNumber(s.approved)}</b>
+        <span style="color:var(--text-muted);"> / ${formatNumber(s.price)}</span>`
+
+    return `<tr class="clickable-row${s.isGift ? ' gift-row' : ''}" onclick="app.onCustomerRowClick(event, '${escapeAttr(s.customerId)}')">
       ${common}
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">
-        <b>${formatNumber(s.approved)}</b>
-        <span style="color:var(--text-muted);"> / ${formatNumber(s.price)}</span>
+        ${amountHtml}
       </td>
       <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;direction:ltr;text-align:right;">${escapeHtml(formatSoldAt24h(s.lastApprovedAt) || '—')}</td>
       <td>${renderCopyableCell(s.shippingAddress)}</td>
@@ -261,7 +274,7 @@ export function openConfirmShipmentModal(customerId, productIndex) {
   const data = getData()
   const customer = data.customers.find(c => c.id === customerId)
   const product = customer?.products?.[productIndex]
-  if (!product || !isPhysicalSaleLine(product) || !hasApprovedPayment(product)) {
+  if (!product || !isPhysicalSaleLine(product) || !isEligibleForShipment(product)) {
     showToast('ردیف ارسالی یافت نشد')
     return
   }
