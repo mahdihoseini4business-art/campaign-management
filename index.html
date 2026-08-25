@@ -1159,7 +1159,7 @@
         <button type="button" class="btn accounting-filter-btn" data-filter="rejected" onclick="app.setAccountingFilter('rejected')">رد شده‌ها</button>
         <button type="button" class="btn accounting-filter-btn" data-filter="gifts" onclick="app.setAccountingFilter('gifts')">هدایا</button>
       </div>
-      <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchAccounting" oninput="app.onAccountingSearchInput()">
+      <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، ثبت‌کننده فروش)..." id="searchAccounting" oninput="app.onAccountingSearchInput()">
     </div>
 
     <div class="list-search-host" id="accountingSearchHost">
@@ -1169,7 +1169,7 @@
             <tr>
               <th class="sort-th" data-sort-field="customerName" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس مشتری" onclick="app.sortAccountingHeader('customerName')">مشتری</button></th>
               <th class="sort-th" data-sort-field="customerPhone" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس شماره" onclick="app.sortAccountingHeader('customerPhone')">شماره</button></th>
-              <th class="sort-th" data-sort-field="advisor" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس کارشناس" onclick="app.sortAccountingHeader('advisor')">کارشناس</button></th>
+              <th class="sort-th" data-sort-field="advisor" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس ثبت‌کننده فروش" onclick="app.sortAccountingHeader('advisor')">ثبت‌کننده فروش</button></th>
               <th class="sort-th" data-sort-field="productName" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس محصول" onclick="app.sortAccountingHeader('productName')">محصول</button></th>
               <th class="sort-th" data-sort-field="payType" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس نوع پرداخت" onclick="app.sortAccountingHeader('payType')">نوع پرداخت</button></th>
               <th class="sort-th" data-sort-field="amount" aria-sort="none"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس مبلغ" onclick="app.sortAccountingHeader('amount')">مبلغ (ریال)</button></th>

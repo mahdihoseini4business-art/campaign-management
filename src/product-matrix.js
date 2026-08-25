@@ -359,7 +359,9 @@ export async function renderProductMatrix() {
     const phone = getPrimaryPhone(c) || '—'
     const productCells = catalog.map(name => markCell(owned.has(name))).join('')
     return `<tr>
-      <td class="product-matrix-sticky product-matrix-col-name">${escapeHtml(c.name || '—')}</td>
+      <td class="product-matrix-sticky product-matrix-col-name">
+        <button type="button" class="product-matrix-customer-link" onclick="app.openCustomerDetail('${escapeAttr(c.id)}')">${escapeHtml(c.name || '—')}</button>
+      </td>
       <td class="product-matrix-sticky product-matrix-col-phone" dir="ltr">${escapeHtml(phone)}</td>
       <td class="product-matrix-sticky product-matrix-col-advisor">${escapeHtml(c.advisor || '—')}</td>
       ${productCells}

@@ -6682,6 +6682,25 @@
     min-width: 140px;
   }
 
+  .product-matrix-customer-link {
+    display: inline;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    text-align: inherit;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .product-matrix-customer-link:hover {
+    color: var(--accent-hover, var(--accent));
+    opacity: 0.9;
+  }
+
   .product-matrix-col-phone {
     right: 140px;
     min-width: 120px;

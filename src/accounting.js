@@ -1,4 +1,5 @@
 import { getData, saveCustomerToDB, coerceProductName, isGiftSaleLine, getDestinationBanks, collapseDuplicateCustomersInCache } from './data.js'
+import { getUsersSafe } from './auth.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
   requirePermission, getCurrentUser, normalizePhone, getNowJalaliDateTime,
@@ -6,7 +7,7 @@ import {
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, formatSoldAt24h, matchesTabSearch,
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
   isGiftSale, getGiftAccountingStatus, getShipmentStatus, SHIPMENT_STATUS,
-  getCurrentJalaliMonthInfo, isInJalaliMonth
+  getCurrentJalaliMonthInfo, isInJalaliMonth, userDisplayName
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig } from './table-sort.js'
@@ -45,6 +46,7 @@ export function getAllPayments() {
       if (isGiftSale(product) || isGiftSaleLine(product)) {
         syncProductStatus(product)
         const giftStatus = getGiftAccountingStatus(product)
+        const soldByPhone = getSaleRegistrantPhone(product, null, c)
         payments.push({
           customerId: c.id,
           productIndex,
@@ -54,7 +56,9 @@ export function getAllPayments() {
           customerPhone: getPrimaryPhone(c),
           customerPhones: getCustomerPhones(c),
           advisor: c.advisor || '',
-          advisorPhone: c.advisorPhone || '',
+          advisorPhone: soldByPhone,
+          soldByPhone,
+          ownerAdvisor: c.advisor || '',
           productName: coerceProductName(product.name),
           productStatus: 'هدیه',
           amount: 0,
@@ -73,6 +77,7 @@ export function getAllPayments() {
       ;(product.payments || []).forEach((pay, paymentIndex) => {
         const amount = parseFloat(pay.amount) || 0
         if (amount <= 0) return
+        const soldByPhone = getSaleRegistrantPhone(product, pay, c)
         payments.push({
           customerId: c.id,
           productIndex,
@@ -82,7 +87,9 @@ export function getAllPayments() {
           customerPhone: getPrimaryPhone(c),
           customerPhones: getCustomerPhones(c),
           advisor: c.advisor || '',
-          advisorPhone: c.advisorPhone || '',
+          advisorPhone: soldByPhone,
+          soldByPhone,
+          ownerAdvisor: c.advisor || '',
           productName: coerceProductName(product.name),
           productStatus: product.status || '',
           amount,
@@ -181,7 +188,7 @@ export function onAccountingSearchInput() {
   return runWithSearchOverlay(SEARCH_HOST.accounting, () => renderAccounting())
 }
 
-export function renderAccounting() {
+export async function renderAccounting() {
   const tbody = document.getElementById('accountingBody')
   if (!tbody) return
   if (!hasPermission('accounting')) {
@@ -193,6 +200,18 @@ export function renderAccounting() {
 
   const search = toEnDigits(document.getElementById('searchAccounting')?.value || '').toLowerCase()
   const allPayments = getAllPayments()
+
+  try {
+    const users = await getUsersSafe()
+    const nameByPhone = new Map(
+      users.filter(u => u.phone).map(u => [normalizePhone(u.phone), userDisplayName(u)])
+    )
+    allPayments.forEach(p => {
+      const phone = p.soldByPhone || p.advisorPhone
+      p.advisor = nameByPhone.get(phone) || p.ownerAdvisor || p.advisor || '—'
+    })
+  } catch (_) { /* keep fallback advisor names */ }
+
   let payments = allPayments.filter(p => {
     if (accountingFilter === 'gifts') return !!p.isGift
     return p.paymentStatus === accountingFilter
