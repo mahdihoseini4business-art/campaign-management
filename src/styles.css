@@ -3212,6 +3212,12 @@
     color: #842029;
   }
 
+  .settlement-today-badge {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffc107;
+  }
+
   .settlement-soon-badge {
     background: #d1e7dd;
     color: #0f5132;

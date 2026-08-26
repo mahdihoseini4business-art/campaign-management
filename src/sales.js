@@ -17,7 +17,7 @@ import {
   getCurrentJalaliMonthDateRange, isEmptySaleProductDraft
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
-import { toggleSortField, sortRecords, syncSortHeaders, sortSig } from './table-sort.js'
+import { toggleSortField, sortRecords, syncSortHeaders, sortSig, compareSortValues } from './table-sort.js'
 import { renderSalesTargetBand } from './dashboard.js'
 import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 
@@ -318,8 +318,12 @@ function renderSalesRows(allSales) {
     } else if (s.settlementDate) {
       const dateNum = jalaliToNum(s.settlementDate)
       const in3DaysNum = jalaliAddDays(getTodayJalaliStr(), 3)
-      if (dateNum < todayNum) {
+      if (dateNum > 0 && dateNum < todayNum) {
         settlementHtml = `<span class="settlement-badge settlement-overdue-badge">⚠ ${s.settlementDate}</span>`
+        rowClass = 'settlement-overdue'
+      } else if (dateNum === todayNum) {
+        // Today due: same light-yellow row as overdue so it stands out in the list
+        settlementHtml = `<span class="settlement-badge settlement-today-badge">${s.settlementDate}</span>`
         rowClass = 'settlement-overdue'
       } else if (dateNum <= in3DaysNum) {
         settlementHtml = `<span class="settlement-badge settlement-soon-badge">${s.settlementDate}</span>`
@@ -470,7 +474,9 @@ export async function renderSales() {
   if (salesSortState.field) {
     allSales = sortRecords(allSales, salesSortState, salesSortValue)
   } else {
-    allSales = sortRecords(allSales, { field: 'soldAt', asc: false }, salesSortValue)
+    // Default: rejected → due settlement (past then today) → newest sales
+    const todayNum = getTodayJalaliNum()
+    allSales = [...allSales].sort((a, b) => compareDefaultSalesOrder(a, b, todayNum))
   }
 
   const userDateFilter = getSalesDateFilter()
@@ -561,6 +567,40 @@ function salesSortValue(s, field) {
     return { value: s[field] || 0, type: 'number' }
   }
   return { value: s[field] ?? '', type: 'text' }
+}
+
+/** 0 = rejected, 1 = settlement due (today or past), 2 = normal */
+function salesAttentionTier(s, todayNum = getTodayJalaliNum()) {
+  if (s.hasRejected) return 0
+  if (s.status === 'بیعانه' && s.settlementDate) {
+    const n = jalaliToNum(s.settlementDate)
+    if (n > 0 && n <= todayNum) return 1
+  }
+  return 2
+}
+
+function compareSoldAtDesc(a, b) {
+  return compareSortValues(a.soldAt || '', b.soldAt || '', 'datetime') * -1
+}
+
+/**
+ * Default sales order (when no column sort is active):
+ * 1) accounting-rejected payments
+ * 2) بیعانه with settlement today or past (past dates before today)
+ * 3) remaining sales, newest payment/sale first
+ */
+function compareDefaultSalesOrder(a, b, todayNum = getTodayJalaliNum()) {
+  const tierA = salesAttentionTier(a, todayNum)
+  const tierB = salesAttentionTier(b, todayNum)
+  if (tierA !== tierB) return tierA - tierB
+
+  if (tierA === 1) {
+    const dateA = jalaliToNum(a.settlementDate)
+    const dateB = jalaliToNum(b.settlementDate)
+    if (dateA !== dateB) return dateA - dateB
+  }
+
+  return compareSoldAtDesc(a, b)
 }
 
 export function sortSales(field) {
