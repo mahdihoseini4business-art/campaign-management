@@ -121,13 +121,61 @@ function getLatestCustomerNotes(customerId, followups) {
   return ''
 }
 
-function canSeeCustomer(customer, currentUser) {
+function canSeeCustomerType(customer) {
   if (!customer) return false
   if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
   if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
-  // Own customers + team members (group managers via viewUserPhones).
-  // Admin / accounting: org-wide via canViewScopedCustomer.
-  return canViewScopedCustomer(customer, currentUser)
+  return true
+}
+
+/** Creator of a follow-up on someone else's customer (not the owner). */
+function isNonOwnerFollowupCreator(customer, createdByPhone, currentUser) {
+  const me = normalizePhone(currentUser?.phone)
+  const creator = normalizePhone(createdByPhone)
+  if (!me || !creator || me !== creator) return false
+  const owner = normalizePhone(customer?.advisorPhone)
+  if (owner && creator === owner) return false
+  return true
+}
+
+/**
+ * Follow-ups tab visibility for a single follow-up row:
+ * - Owner / team / org-wide: via canViewScopedCustomer
+ * - Creator of a follow-up on someone else's customer: also sees it
+ * - Owner-created follow-ups: only via ownership path
+ */
+function canSeeFollowupInTab(customer, currentUser, createdByPhone) {
+  if (!canSeeCustomerType(customer)) return false
+  if (canViewScopedCustomer(customer, currentUser)) return true
+  return isNonOwnerFollowupCreator(customer, createdByPhone, currentUser)
+}
+
+/**
+ * Pending queue visibility for a customer with nextFollowupDate:
+ * owner/team/org-wide, or anyone who created a still-pending follow-up
+ * on this customer while not being the owner.
+ */
+function canSeePendingCustomerInTab(customer, currentUser, customerFollowups) {
+  if (!canSeeCustomerType(customer)) return false
+  if (canViewScopedCustomer(customer, currentUser)) return true
+  return (customerFollowups || []).some(f =>
+    !isDoneFollowup(f) && isNonOwnerFollowupCreator(customer, f.createdByPhone, currentUser)
+  )
+}
+
+/** Prefer creator of the follow-up that matches the scheduled next date. */
+function resolvePendingCreatorPhone(customer, customerFollowups) {
+  const next = normalizeJalaliDate(customer?.nextFollowupDate)
+  if (next) {
+    const matching = [...customerFollowups].reverse().find(f =>
+      !isDoneFollowup(f)
+      && normalizeJalaliDate(f.nextDate) === next
+      && f.createdByPhone
+    )
+    if (matching) return normalizePhone(matching.createdByPhone)
+  }
+  const last = [...customerFollowups].reverse().find(f => !isDoneFollowup(f) && f.createdByPhone)
+  return normalizePhone(last?.createdByPhone)
 }
 
 function safeSearchExtras(customer) {
@@ -151,14 +199,15 @@ function getPendingItems(applySearch = true) {
   const items = []
   for (const c of data.customers) {
     if (!c.nextFollowupDate) continue
-    if (!canSeeCustomer(c, currentUser)) continue
-    if (!matchesAdvisorScope(c, advisorScope)) continue
     const category = classifyDate(c.nextFollowupDate)
     if (!category) continue
 
     const customerFollowups = data.followups.filter(f => f.customerId === c.id)
+    if (!canSeePendingCustomerInTab(c, currentUser, customerFollowups)) continue
+    if (!matchesAdvisorScope(c, advisorScope)) continue
+
     const last = [...customerFollowups].reverse().find(f => !isDoneFollowup(f))
-    const creatorPhone = normalizePhone(last?.createdByPhone)
+    const creatorPhone = resolvePendingCreatorPhone(c, customerFollowups)
     const ownerPhone = normalizePhone(c.advisorPhone)
     const setByOther = !!(creatorPhone && ownerPhone && creatorPhone !== ownerPhone)
     const phones = formatPhonesDisplay(c)
@@ -219,7 +268,7 @@ function getDoneItems(applySearch = true) {
   for (const f of data.followups) {
     if (!isDoneFollowup(f)) continue
     const customer = data.customers.find(c => c.id === f.customerId)
-    if (!canSeeCustomer(customer, currentUser)) continue
+    if (!canSeeFollowupInTab(customer, currentUser, f.createdByPhone)) continue
     if (!matchesAdvisorScope(customer, advisorScope)) continue
 
     if (search) {
@@ -241,6 +290,9 @@ function getDoneItems(applySearch = true) {
     }
 
     const phones = customer ? formatPhonesDisplay(customer) : { text: '', extra: 0 }
+    const creatorPhone = normalizePhone(f.createdByPhone)
+    const ownerPhone = normalizePhone(customer?.advisorPhone)
+    const setByOther = !!(creatorPhone && ownerPhone && creatorPhone !== ownerPhone)
     items.push({
       kind: 'done',
       id: f.id,
@@ -255,6 +307,7 @@ function getDoneItems(applySearch = true) {
       nextDate: f.nextDate || '',
       notes: f.notes || f.doneNote || '',
       createdByPhone: f.createdByPhone || '',
+      setByOther,
       wasOverdue: !!f.wasOverdue || f.type === 'پیگیری معوقه انجام‌شده',
       category: 'done'
     })
@@ -303,7 +356,7 @@ export function getFilteredFollowups() {
   return data.followups.filter(f => {
     const customer = data.customers.find(c => c.id === f.customerId)
     const name = customer ? customer.name : ''
-    if (customer && !canSeeCustomer(customer, currentUser)) return false
+    if (!canSeeFollowupInTab(customer, currentUser, f.createdByPhone)) return false
     const extras = getCustomerSearchExtras(customer)
     return matchesTabSearch(search, [
       f.customerId,

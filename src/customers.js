@@ -2754,7 +2754,7 @@ export async function setNextFollowup(customerId) {
     const resolved = maybeResolvePendingCreateCompletion(customerId, { toast: true })
     openCustomerDetail(customerId)
     if (!resolved) {
-      showToast(isOwner ? 'تاریخ پیگیری تنظیم شد' : 'پیگیری برای کارشناس مسئول ثبت شد')
+      showToast(isOwner ? 'تاریخ پیگیری تنظیم شد' : 'پیگیری برای شما و کارشناس مسئول ثبت شد')
     }
   } catch (e) {
     console.error('setNextFollowup error:', e)
