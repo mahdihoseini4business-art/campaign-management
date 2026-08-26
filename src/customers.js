@@ -6,7 +6,7 @@ import { broadcastSaleToast, buildSaleToastPayload, broadcastAppSetting } from '
 import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
   canViewCustomer, canManageCustomer, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
-  getTodayJalaliStr, getTodayJalaliNum, jalaliAddDays, ownsCustomer, isAdmin, canViewOrgWideData,
+  getTodayJalaliStr, jalaliAddDays, ownsCustomer, isAdmin, canViewOrgWideData,
   canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canScheduleFollowupOnCustomer, canDeleteSalePayment, matchesTabSearch, getCustomerSearchExtras,
   canClaimUnassignedCustomer, canRevealUnassignedByPhoneSearch, isHistoricalImportSale,
   resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
@@ -31,12 +31,32 @@ import {
   REFUND_STATUS, requireMainAdmin
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
-import { toggleSortField, sortRecords, syncSortHeaders, sortSig } from './table-sort.js'
+import { toggleSortField, sortRecords, syncSortHeaders, sortSig, compareSortValues } from './table-sort.js'
 import { restoreSelection } from './bulk.js'
 import { showSearchOverlay, hideSearchOverlay, runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 
 const LEVEL_ORDER = Object.keys(CUSTOMER_LEVELS)
 let customerSortState = { field: null, asc: true }
+
+/** 0 overdue, 1 soon (today through +3 days), 2 other / none */
+function nextFollowupUrgency(c, bounds) {
+  const date = String(c?.nextFollowupDate || '').trim()
+  if (!date) return 2
+  const dateN = jalaliToNum(date)
+  if (dateN === 99999999) return 2
+  const { todayN, soonUntilN } = bounds || getFollowupUrgencyBounds()
+  if (dateN < todayN) return 0
+  if (dateN <= soonUntilN) return 1
+  return 2
+}
+
+function getFollowupUrgencyBounds() {
+  const todayStr = getTodayJalaliStr()
+  return {
+    todayN: jalaliToNum(todayStr),
+    soonUntilN: jalaliAddDays(todayStr, 3)
+  }
+}
 
 function customerSortValue(c, field, ctx) {
   if (field === 'phone') return { value: getPrimaryPhone(c) || '', type: 'text' }
@@ -62,16 +82,12 @@ function customerSortValue(c, field, ctx) {
   return { value: c[field] ?? '', type: 'text' }
 }
 
-function applyCustomerSort(list) {
-  if (!customerSortState.field) return list
+function buildCustomerSortCtx(needsFollowups) {
   const data = getData()
-  const needsFollowups = customerSortState.field === 'followupCount'
-    || customerSortState.field === 'lastFollowup'
-    || customerSortState.field === 'lastNote'
   const followupsByCustomer = needsFollowups
     ? buildFollowupsByCustomerMap(data.followups)
     : new Map()
-  const ctx = {
+  return {
     followupsByCustomer,
     allCustomers: data.customers,
     followups: data.followups,
@@ -81,6 +97,53 @@ function applyCustomerSort(list) {
       return sorted[0] || null
     }
   }
+}
+
+function lastFollowupSortKey(c, ctx) {
+  return customerSortValue(c, 'lastFollowup', ctx).value
+}
+
+function compareLastFollowupNewestFirst(ka, kb) {
+  if (!ka && !kb) return 0
+  if (!ka) return 1
+  if (!kb) return -1
+  return compareSortValues(kb, ka, 'datetime')
+}
+
+function compareCustomerId(a, b) {
+  return String(a?.id || '').localeCompare(String(b?.id || ''), undefined, { numeric: true })
+}
+
+/** Default list order: overdue/soon next-followups first, then newest last note. */
+function applyDefaultCustomerSort(list) {
+  const ctx = buildCustomerSortCtx(true)
+  const bounds = getFollowupUrgencyBounds()
+  const lastKeyById = new Map()
+  const urgencyById = new Map()
+  for (const c of list) {
+    lastKeyById.set(c.id, lastFollowupSortKey(c, ctx))
+    urgencyById.set(c.id, nextFollowupUrgency(c, bounds))
+  }
+  return [...list].sort((a, b) => {
+    const ua = urgencyById.get(a.id)
+    const ub = urgencyById.get(b.id)
+    if (ua !== ub) return ua - ub
+    if (ua < 2) {
+      const dateCmp = compareSortValues(a.nextFollowupDate, b.nextFollowupDate, 'date')
+      if (dateCmp !== 0) return dateCmp
+    }
+    const lastCmp = compareLastFollowupNewestFirst(lastKeyById.get(a.id), lastKeyById.get(b.id))
+    if (lastCmp !== 0) return lastCmp
+    return compareCustomerId(a, b)
+  })
+}
+
+function applyCustomerSort(list) {
+  if (!customerSortState.field) return applyDefaultCustomerSort(list)
+  const needsFollowups = customerSortState.field === 'followupCount'
+    || customerSortState.field === 'lastFollowup'
+    || customerSortState.field === 'lastNote'
+  const ctx = buildCustomerSortCtx(needsFollowups)
   return sortRecords(list, customerSortState, (c, field) => customerSortValue(c, field, ctx))
 }
 
@@ -286,14 +349,16 @@ function renderCustomerCard(c, {
   statusClass,
   statusLabel,
   nameBadges,
-  nextFollowupHtml
+  nextFollowupHtml,
+  nextFollowupClass = ''
 }) {
   const phoneDisp = formatPhonesDisplay(c)
   const phoneHtml = phoneDisp.text
     ? `${escapeHtml(phoneDisp.text)}${phoneDisp.extra > 0 ? ` <span style="color:var(--text-muted);font-size:11px;">+${phoneDisp.extra}</span>` : ''}`
     : '<span style="color:var(--text-muted)">—</span>'
 
-  return `<article class="customer-card" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
+  const cardClass = ['customer-card', nextFollowupClass].filter(Boolean).join(' ')
+  return `<article class="${cardClass}" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
     <div class="customer-card-header">
       <div class="customer-card-name">${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}${nameBadges}</div>
       <span class="status-badge ${statusClass}">${escapeHtml(statusLabel)}</span>
@@ -578,15 +643,13 @@ export async function renderCustomers() {
     let nextFollowupHtml = '<span style="color:var(--text-muted)">—</span>'
     let nextFollowupClass = ''
     if (c.nextFollowupDate) {
-      const todayN = getTodayJalaliNum()
-      const dateN = jalaliToNum(c.nextFollowupDate)
-      const in3N = jalaliAddDays(getTodayJalaliStr(), 3)
-      if (dateN < todayN) {
+      const urgency = nextFollowupUrgency(c)
+      if (urgency === 0) {
         nextFollowupHtml = `<span class="settlement-badge settlement-overdue-badge">⚠ ${c.nextFollowupDate}</span>`
         nextFollowupClass = 'settlement-overdue'
-      } else if (dateN <= in3N) {
+      } else if (urgency === 1) {
         nextFollowupHtml = `<span class="settlement-badge settlement-soon-badge">${c.nextFollowupDate}</span>`
-        nextFollowupClass = 'settlement-soon'
+        nextFollowupClass = 'settlement-overdue'
       } else {
         nextFollowupHtml = `<span style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${c.nextFollowupDate}</span>`
       }
@@ -630,7 +693,7 @@ export async function renderCustomers() {
       <td class="notes-cell" title="${escapeAttr(noteSource ? `${noteSource}: ${noteText}` : '')}">${escapeHtml(noteText) || '<span style="color:var(--text-muted)">—</span>'}</td>
     </tr>`)
 
-    cardHtml.push(renderCustomerCard(c, { statusClass, statusLabel, nameBadges, nextFollowupHtml }))
+    cardHtml.push(renderCustomerCard(c, { statusClass, statusLabel, nameBadges, nextFollowupHtml, nextFollowupClass }))
   }
 
   tbody.innerHTML = rowHtml.join('')
