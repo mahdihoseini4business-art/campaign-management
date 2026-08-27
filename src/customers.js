@@ -2502,12 +2502,9 @@ export async function openCustomerDetail(id, options = {}) {
 
     const nextDateFieldHtml = canScheduleFollowup
       ? `
-        <div class="form-group" style="margin-bottom:0;">
+        <div class="form-group" style="margin-bottom:0;flex:1;min-width:0;">
           <label class="detail-label" for="detailFollowupDate">تاریخ پیگیری بعدی (اختیاری)</label>
           <input type="text" class="form-input" id="detailFollowupDate" placeholder="مثلاً 1405/05/01" data-jdp style="font-family:'Vazirmatn',sans-serif;">
-          ${schedulingForOther
-            ? `<div class="form-hint" style="margin-top:6px;">در صورت وارد کردن تاریخ، این پیگیری در صف کارشناس مسئول (${escapeHtml(c.advisor || '—')}) ظاهر می‌شود.</div>`
-            : `<div class="form-hint" style="margin-top:6px;">اگر خالی بگذارید، تاریخ پیگیری بعدی مشتری تغییر نمی‌کند.</div>`}
         </div>`
       : ''
 
@@ -2538,9 +2535,9 @@ export async function openCustomerDetail(id, options = {}) {
             </select>
           </div>
         </div>
-        ${nextDateFieldHtml}
-        <div style="margin-top:10px;">
-          <button class="btn btn-primary" style="width:100%;" onclick="app.addQuickNote('${escapeAttr(c.id)}')">ثبت</button>
+        <div style="display:flex;gap:8px;align-items:flex-end;margin-top:10px;">
+          ${nextDateFieldHtml || '<div style="flex:1;"></div>'}
+          <button class="btn btn-sm btn-primary" style="flex-shrink:0;" onclick="app.addQuickNote('${escapeAttr(c.id)}')">ثبت</button>
         </div>
       </div>`
       : (canScheduleFollowup
