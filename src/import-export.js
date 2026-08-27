@@ -8,7 +8,8 @@ import {
   formatCustomerLevel, parseCustomerLevel, syncCustomerLevel,
   normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone,
   jalaliDatePart, jalaliToNum, escapeHtml, escapeAttr, normalizeTimeTo24h,
-  userDisplayName, applyProfitSnapshotToProduct, jalaliDateTimeToIso, jalaliAddDays, getTodayJalaliStr
+  userDisplayName, applyProfitSnapshotToProduct, jalaliDateTimeToIso, jalaliAddDays, getTodayJalaliStr,
+  formatNumber
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
@@ -2296,6 +2297,7 @@ function renderMatrixImportMapping() {
   const productRows = (matrixImportData.productCols || []).map(col => {
     const mapped = matrixImportData.productValueMap[col.header] || ''
     const price = matrixImportData.productPriceMap[col.header] || ''
+    const priceDisplay = price ? formatNumber(price) : ''
     const opts = catalog.map(n => {
       const sel = n === mapped ? ' selected' : ''
       return `<option value="${escapeAttr(n)}"${sel}>${escapeHtml(n)}</option>`
@@ -2305,7 +2307,7 @@ function renderMatrixImportMapping() {
       <td><select class="form-select" onchange="app.setMatrixProductValueMap('${escapeAttr(col.header)}', this.value)">
         <option value="">— مپ نشده —</option>${opts}
       </select></td>
-      <td><input type="text" class="form-input" value="${escapeAttr(price)}" inputmode="numeric" placeholder="0" onchange="app.setMatrixProductPriceMap('${escapeAttr(col.header)}', this.value)"></td>
+      <td><input type="text" class="form-input num-input" value="${escapeAttr(priceDisplay)}" inputmode="numeric" placeholder="مثلاً ۱۰٬۰۰۰٬۰۰۰" oninput="app.formatInput(this);app.setMatrixProductPriceMap('${escapeAttr(col.header)}', this.value)" title="واحد: ریال"></td>
     </tr>`
   }).join('')
 
