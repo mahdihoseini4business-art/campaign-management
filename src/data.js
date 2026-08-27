@@ -360,6 +360,7 @@ export function putCustomerInCache(customer) {
   }
   if (!replaced) next.push(customer)
   data.customers = next
+  invalidateProductSalesCountCache()
   return true
 }
 
@@ -383,6 +384,7 @@ export function removeCustomerFromCache(id) {
   if (!nid) return false
   const before = data.customers.length
   data.customers = data.customers.filter(c => normalizeCustomerId(c.id) !== nid)
+  if (data.customers.length !== before) invalidateProductSalesCountCache()
   return data.customers.length !== before
 }
 
@@ -646,6 +648,7 @@ async function loadDataInner() {
   }
 
   data.customers = dedupeCustomersById((customersRes.data || []).map(mapCustomerFromDb).filter(Boolean))
+  invalidateProductSalesCountCache()
   data.followups = (followupsRes.data || []).map(mapFollowupFromDb).filter(Boolean)
 
   data.ownershipTransfers = (transfersData.error || !transfersData.data)
@@ -837,7 +840,9 @@ export async function reconcileDeletedRows() {
 
   if (!customersRes.error && customersRes.data) {
     const ids = new Set(customersRes.data.map(r => normalizeCustomerId(r.id)))
+    const before = data.customers.length
     data.customers = data.customers.filter(c => ids.has(normalizeCustomerId(c.id)))
+    if (data.customers.length !== before) invalidateProductSalesCountCache()
   }
   if (!followupsRes.error && followupsRes.data) {
     const ids = new Set(followupsRes.data.map(r => Number(r.id)))
@@ -1101,7 +1106,40 @@ export async function saveProductBundles(bundles) {
   return getProductBundles()
 }
 
-/** Union of catalog product names + bundle names (sellable dropdown options). */
+/**
+ * Cached sale-line counts by product/bundle name (case-insensitive key).
+ * Each customer.products[] row with a non-empty name counts as 1 sale
+ * (completed, deposit, or gift — payment count does not matter).
+ */
+let productSalesCountCache = null
+
+export function invalidateProductSalesCountCache() {
+  productSalesCountCache = null
+}
+
+function buildProductSalesCountMap() {
+  const map = new Map()
+  for (const c of data.customers || []) {
+    for (const p of c.products || []) {
+      const name = coerceProductName(p?.name)
+      if (!name) continue
+      const key = name.toLowerCase()
+      map.set(key, (map.get(key) || 0) + 1)
+    }
+  }
+  return map
+}
+
+/** @returns {Map<string, number>} lowercase product name → sale-line count */
+export function getProductSalesCountMap() {
+  if (!productSalesCountCache) {
+    productSalesCountCache = buildProductSalesCountMap()
+  }
+  return productSalesCountCache
+}
+
+/** Union of catalog product names + bundle names (sellable dropdown options).
+ * Ordered by sale volume (most → least); ties use Persian alphabetical order. */
 export function getSellableNames() {
   const products = getProductCatalogNames()
   const bundleNames = getProductBundles().map(b => coerceProductName(b.name)).filter(Boolean)
@@ -1115,6 +1153,12 @@ export function getSellableNames() {
     seen.add(key)
     out.push(clean)
   }
+  const counts = getProductSalesCountMap()
+  out.sort((a, b) => {
+    const diff = (counts.get(b.toLowerCase()) || 0) - (counts.get(a.toLowerCase()) || 0)
+    if (diff !== 0) return diff
+    return String(a).localeCompare(String(b), 'fa')
+  })
   return out
 }
 
@@ -1300,17 +1344,12 @@ export async function renameProductInBundles(oldName, newName) {
 
 /**
  * Count customer sale lines whose product.name matches (case-insensitive).
+ * Uses the shared sales-count cache (one scan of customers until invalidated).
  */
 export function countSalesByProductName(productName) {
   const key = String(productName || '').trim().toLowerCase()
   if (!key) return 0
-  let n = 0
-  for (const c of data.customers || []) {
-    for (const p of c.products || []) {
-      if (String(p?.name || '').trim().toLowerCase() === key) n++
-    }
-  }
-  return n
+  return getProductSalesCountMap().get(key) || 0
 }
 
 /**
@@ -1831,6 +1870,7 @@ export async function saveCustomerToDB(customer, options = {}) {
   }
   if (error) throw new Error('خطا در ذخیره مشتری: ' + error.message)
   bumpLocalWrite()
+  invalidateProductSalesCountCache()
 }
 
 // ============================================
@@ -2099,6 +2139,7 @@ export function collapseDuplicateCustomersInCache() {
   }
   if (!hasDup) return false
   data.customers = dedupeCustomersById(data.customers)
+  invalidateProductSalesCountCache()
   return true
 }
 
@@ -2176,6 +2217,7 @@ export async function cleanupConversionOrphans() {
       data.followups.forEach(f => { if (f.customerId === orphan.id) f.customerId = survivor.id })
       await deleteCustomerRowOnly(orphan.id)
       data.customers = data.customers.filter(c => c.id !== orphan.id)
+      invalidateProductSalesCountCache()
       merged++
     } catch (e) {
       console.error('cleanupConversionOrphans error', ld.id, cs.id, e)
