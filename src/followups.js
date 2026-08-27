@@ -24,7 +24,7 @@ export async function updateFollowupAdvisorDropdown() {
   if (!select) return
   const currentUser = getCurrentUser()
   const isManager = !!(currentUser?.isGroupManager)
-  const isOrgWide = canViewOrgWideData(currentUser)
+  const isOrgWide = canViewOrgWideData(null, currentUser)
   if (!isManager && !isOrgWide) {
     select.style.display = 'none'
     return

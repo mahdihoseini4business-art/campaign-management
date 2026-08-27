@@ -388,7 +388,7 @@ function countScopedCustomers() {
   return data.customers.filter(c => {
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false
-    if (!canViewScopedCustomer(c, currentUser)) return false
+    if (!canViewScopedCustomer(c, currentUser, 'customers')) return false
     return true
   }).length
 }
@@ -450,7 +450,7 @@ export function getFilteredCustomers() {
 
     // Normal scope, unless this row matches an active transfer filter (e.g. sender after handoff).
     // Unassigned customers: non-org-wide users only see them via full phone-number search.
-    if (!canViewScopedCustomer(c, currentUser)) {
+    if (!canViewScopedCustomer(c, currentUser, 'customers')) {
       if (transferFilter && matchesTransferFilter) {
         // ok — transfer filter override
       } else if (search && canRevealUnassignedByPhoneSearch(c, search, currentUser)) {
@@ -608,7 +608,7 @@ export async function renderCustomers() {
       (hasPermission('customers_delete') && canManageCustomer(c, currentUser)) ||
       canTransferCustomer(c, currentUser)
     )
-    const isMine = ownsCustomer(c, currentUser) || canViewOrgWideData()
+    const isMine = ownsCustomer(c, currentUser) || canViewOrgWideData('customers')
     const transferredIn = isRecentTransferredIn(c.id, myPhone, 7)
     const transferredUnread = transferredIn && isUnreadTransferredIn(c.id, myPhone, 7)
     const transferredOut = isRecentTransferredOut(c.id, myPhone, 7) && !transferredIn
@@ -744,7 +744,7 @@ export function updateStats() {
   function inScope(c) {
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return false
-    if (!canViewScopedCustomer(c, currentUser)) return false
+    if (!canViewScopedCustomer(c, currentUser, 'customers')) return false
     return true
   }
 
@@ -764,7 +764,7 @@ export function updateStats() {
     (followupsByCustomer.get(c.id) || []).length > 0
   ).length
   // تبدیل LD→CS: شمارنده سازمانی برای دید کلی؛ برای بقیه تعداد CS در اسکوپ خودشان
-  document.getElementById('stat-converted').textContent = canViewOrgWideData()
+  document.getElementById('stat-converted').textContent = canViewOrgWideData('customers')
     ? (data.convertedCount || 0)
     : scoped.filter(c => c.id.startsWith('CS')).length
 
@@ -876,7 +876,7 @@ function renderCustomerPhoneSuggest(index, rawDigits) {
   const matches = findCustomersByPhonePrefix(q, getData().customers, { limit: 8 })
     .filter(m => {
       if (!canViewCustomer(m.customer)) return false
-      if (canViewScopedCustomer(m.customer, getCurrentUser())) return true
+      if (canViewScopedCustomer(m.customer, getCurrentUser(), 'customers')) return true
       return canRevealUnassignedByPhoneSearch(m.customer, q, getCurrentUser())
     })
   if (!matches.length) return

@@ -117,7 +117,7 @@ function matchesSelectedSaleRegistrant({ customer, product, payment }) {
 function matchesFollowupMonitorScope(customer) {
   if (!matchesSelectedUsers(customer)) return false
   const currentUser = getCurrentUser()
-  if (canViewOrgWideData(currentUser)) return true
+  if (canViewOrgWideData('dashboard', currentUser)) return true
   const teamPhones = normalizeViewUserPhones(
     currentUser?.viewUserPhones ?? currentUser?.permissions?.viewUserPhones
   )
@@ -341,7 +341,7 @@ function buildDashGroupedUsersHtml(users) {
 
 async function ensureUserFilterUI() {
   const currentUser = getCurrentUser()
-  const orgWide = canViewOrgWideData()
+  const orgWide = canViewOrgWideData('dashboard')
   const users = (await getUsersSafe()).filter(u => u.phone)
   const visiblePhones = getVisibleAdvisorPhones(currentUser)
   try { await loadGroupsData() } catch (_) { /* optional until migration */ }

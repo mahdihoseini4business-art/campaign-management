@@ -1101,7 +1101,9 @@ export const ALL_PERMISSIONS = {
   products_matrix: 'ماتریس محصولات',
   matrix_historical_import: 'ایمپورت تاریخی ماتریس محصول',
   accounting: 'تأیید واریزی‌ها (حسابداری)',
-  accounting_org_wide: 'مشاهده سراسری داشبورد، مشتریان و فروش‌ها',
+  accounting_org_wide_dashboard: 'مشاهده سراسری داشبورد',
+  accounting_org_wide_customers: 'مشاهده سراسری لیست مشتریان',
+  accounting_org_wide_sales: 'مشاهده سراسری فروش‌ها',
   shipments_manage: 'مدیریت ارسالی‌ها',
   refunds_view: 'مشاهده عودت وجه',
   refunds_request: 'درخواست عودت وجه',
@@ -1116,7 +1118,7 @@ export const PERMISSION_GROUPS = [
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_add_others', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_add_others', 'sales_import', 'sales_export'] },
   { label: 'محصولات', keys: ['products_matrix', 'matrix_historical_import'] },
-  { label: 'حسابداری', keys: ['accounting', 'accounting_org_wide'] },
+  { label: 'حسابداری', keys: ['accounting', 'accounting_org_wide_dashboard', 'accounting_org_wide_customers', 'accounting_org_wide_sales'] },
   { label: 'ارسالی‌ها', keys: ['shipments_manage'] },
   { label: 'عودت وجه', keys: [...REFUND_PERMISSION_KEYS] }
 ]
@@ -1715,7 +1717,9 @@ export function getDefaultPermissions() {
   p.followups_add_others = false
   p.sales_add_others = false
   p.accounting = false
-  p.accounting_org_wide = false
+  p.accounting_org_wide_dashboard = false
+  p.accounting_org_wide_customers = false
+  p.accounting_org_wide_sales = false
   p.shipments_manage = false
   p.refunds_view = false
   p.refunds_request = false
@@ -1787,15 +1791,24 @@ export function hasAnyRefundPermission() {
   return REFUND_PERMISSION_KEYS.some(key => hasPermission(key))
 }
 
+/** Permission keys that grant org-wide read for a given list/tab scope. */
+export const ORG_WIDE_PERMISSION_BY_SCOPE = {
+  dashboard: 'accounting_org_wide_dashboard',
+  customers: 'accounting_org_wide_customers',
+  sales: 'accounting_org_wide_sales'
+}
+
 /**
- * Org-wide read for admins or users with accounting_org_wide.
- * Sales list, dashboard, and similar views use this instead of ownsCustomer.
+ * Org-wide read for admins, or for the matching accounting_org_wide_* permission.
+ * scope: 'dashboard' | 'customers' | 'sales' (other/omitted → admin only).
  * Does not open tabs by itself — dashboard / customers_view / sales_view still required.
  */
-export function canViewOrgWideData(user = getCurrentUser()) {
+export function canViewOrgWideData(scope, user = getCurrentUser()) {
   if (!user) return false
   if (user.role === 'admin') return true
-  return !!(user.permissions && user.permissions.accounting_org_wide === true)
+  const key = ORG_WIDE_PERMISSION_BY_SCOPE[scope]
+  if (!key) return false
+  return !!(user.permissions && user.permissions[key] === true)
 }
 
 /** Normalize list of phones granted for extra read access. */
@@ -1822,11 +1835,13 @@ export function getVisibleAdvisorPhones(user = getCurrentUser()) {
 
 /**
  * Read access to a customer record in lists/dashboard/followups/sales.
- * Admin / accounting_org_wide → org-wide. Others → own + viewUserPhones grants (view-only for grants).
+ * Admin / matching accounting_org_wide_* (via scope) → org-wide.
+ * Others → own + viewUserPhones grants (view-only for grants).
+ * scope: 'dashboard' | 'customers' | 'sales' — omit for admin-only org-wide.
  */
-export function canViewScopedCustomer(customer, user = getCurrentUser()) {
+export function canViewScopedCustomer(customer, user = getCurrentUser(), scope) {
   if (!user || !customer) return false
-  if (canViewOrgWideData(user)) return true
+  if (canViewOrgWideData(scope, user)) return true
   if (ownsCustomer(customer, user)) return true
   const ownerPhone = normalizePhone(customer.advisorPhone)
   if (ownerPhone && getVisibleAdvisorPhones(user).has(ownerPhone)) return true
@@ -1905,7 +1920,7 @@ export function canClaimUnassignedCustomer(customer, user = getCurrentUser()) {
  */
 export function canRevealUnassignedByPhoneSearch(customer, search, user = getCurrentUser()) {
   if (!customer) return false
-  if (canViewOrgWideData(user)) return true
+  if (canViewOrgWideData('customers', user)) return true
   if (normalizePhone(customer.advisorPhone)) return true
   const phoneQ = normalizePhone(search)
   if (!phoneQ || !/^09\d{9}$/.test(phoneQ)) return false

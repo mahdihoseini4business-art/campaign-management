@@ -199,7 +199,7 @@ export function getFilteredSales(dateFilterOverride = null) {
       s.soldByPhone === myPhone ||
       (product && getProductPayments(product).some(pay => normalizePhone(pay.soldByPhone) === myPhone))
     ))
-    if (!canViewScopedCustomer(customer, currentUser) && !registeredByMe) return false
+    if (!canViewScopedCustomer(customer, currentUser, 'sales') && !registeredByMe) return false
     if (platformFilter && s.platform !== platformFilter) return false
     if (statusFilter && s.status !== statusFilter) return false
     // Without a date scope, match product-level worst payment status.
@@ -427,7 +427,7 @@ async function updateSalesAdvisorFilter() {
   try { await loadGroupsData() } catch (_) { /* optional */ }
 
   let allowedPhones = null
-  if (!canViewOrgWideData(currentUser)) {
+  if (!canViewOrgWideData('sales', currentUser)) {
     const visible = getVisibleAdvisorPhones(currentUser)
     if (visible.size <= 1) {
       sel.style.display = 'none'
@@ -441,7 +441,7 @@ async function updateSalesAdvisorFilter() {
   sel.innerHTML = buildGroupedAdvisorSelectHtml({
     users,
     selectedValue: currentVal,
-    teamLabel: canViewOrgWideData(currentUser) ? null : formatTeamFilterLabel(currentUser),
+    teamLabel: canViewOrgWideData('sales', currentUser) ? null : formatTeamFilterLabel(currentUser),
     allowedPhones
   })
   if (![...sel.options].some(o => o.value === currentVal)) sel.value = ''
