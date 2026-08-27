@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { ADMIN_PHONE } from './config.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, applyAccountingPermissionBundle, ACCOUNTING_PERMISSION_BUNDLE, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
 import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, effectiveSalesTargetBarStages, scaleShareStagesFromValue } from './data.js'
 import {
   loadGroupsData,
@@ -3532,7 +3532,6 @@ export async function saveUserPermissions(username) {
   checkboxes.forEach(cb => {
     permissions[cb.dataset.permKey] = cb.checked
   })
-  permissions = applyAccountingPermissionBundle(permissions)
 
   // Preserve group-derived viewUserPhones (not edited via boolean chips)
   const cached = _settingsUsersCache.find(u => u.username === username)
@@ -3541,15 +3540,6 @@ export async function saveUserPermissions(username) {
   permissions.viewUserPhones = membership?.isManager
     ? getManagedMemberPhonesFromCache(phone)
     : []
-
-  checkboxes.forEach(cb => {
-    const key = cb.dataset.permKey
-    if (permissions[key] && !cb.checked) {
-      cb.checked = true
-      const label = cb.closest('label')
-      if (label) label.classList.add('is-on')
-    }
-  })
 
   const { error } = await supabase
     .from('users')
@@ -3577,17 +3567,6 @@ export function togglePermCheckbox(el) {
   const label = el.closest('label')
   if (label) {
     label.classList.toggle('is-on', el.checked)
-  }
-
-  if (el.dataset.permKey === 'accounting' && el.checked) {
-    const username = el.dataset.permUser
-    ACCOUNTING_PERMISSION_BUNDLE.forEach(key => {
-      const cb = document.querySelector(`input[data-perm-user="${username}"][data-perm-key="${key}"]`)
-      if (!cb) return
-      cb.checked = true
-      const lbl = cb.closest('label')
-      if (lbl) lbl.classList.add('is-on')
-    })
   }
 
   markPermissionsDirty()

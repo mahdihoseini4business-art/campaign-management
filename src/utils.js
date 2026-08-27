@@ -1786,13 +1786,12 @@ export function hasAnyRefundPermission() {
 }
 
 /**
- * Org-wide read for financial roles (admin or accounting).
+ * Org-wide read for admins.
  * Sales list, dashboard, and similar views use this instead of ownsCustomer.
  */
 export function canViewOrgWideData(user = getCurrentUser()) {
   if (!user) return false
-  if (user.role === 'admin') return true
-  return !!(user.permissions && user.permissions.accounting === true)
+  return user.role === 'admin'
 }
 
 /** Normalize list of phones granted for extra read access. */
@@ -1819,7 +1818,7 @@ export function getVisibleAdvisorPhones(user = getCurrentUser()) {
 
 /**
  * Read access to a customer record in lists/dashboard/followups/sales.
- * Admin/accounting → org-wide. Others → own + viewUserPhones grants (view-only for grants).
+ * Admin → org-wide. Others → own + viewUserPhones grants (view-only for grants).
  */
 export function canViewScopedCustomer(customer, user = getCurrentUser()) {
   if (!user || !customer) return false
@@ -1828,23 +1827,6 @@ export function canViewScopedCustomer(customer, user = getCurrentUser()) {
   const ownerPhone = normalizePhone(customer.advisorPhone)
   if (ownerPhone && getVisibleAdvisorPhones(user).has(ownerPhone)) return true
   return false
-}
-
-/** Permissions auto-enabled with accounting (Level-1 accountant pack). */
-export const ACCOUNTING_PERMISSION_BUNDLE = [
-  'dashboard',
-  'sales_view',
-  'customers_view',
-  'customers_ld',
-  'customers_cs'
-]
-
-export function applyAccountingPermissionBundle(permissions = {}) {
-  const next = { ...permissions }
-  if (next.accounting) {
-    ACCOUNTING_PERMISSION_BUNDLE.forEach(k => { next[k] = true })
-  }
-  return next
 }
 
 /** Guard for actions — shows toast and returns false when denied. */
