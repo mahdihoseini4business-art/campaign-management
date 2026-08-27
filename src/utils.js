@@ -1101,6 +1101,7 @@ export const ALL_PERMISSIONS = {
   products_matrix: 'ماتریس محصولات',
   matrix_historical_import: 'ایمپورت تاریخی ماتریس محصول',
   accounting: 'تأیید واریزی‌ها (حسابداری)',
+  accounting_org_wide: 'مشاهده سراسری داشبورد، مشتریان و فروش‌ها',
   shipments_manage: 'مدیریت ارسالی‌ها',
   refunds_view: 'مشاهده عودت وجه',
   refunds_request: 'درخواست عودت وجه',
@@ -1115,7 +1116,7 @@ export const PERMISSION_GROUPS = [
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_add_others', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_add_others', 'sales_import', 'sales_export'] },
   { label: 'محصولات', keys: ['products_matrix', 'matrix_historical_import'] },
-  { label: 'حسابداری', keys: ['accounting'] },
+  { label: 'حسابداری', keys: ['accounting', 'accounting_org_wide'] },
   { label: 'ارسالی‌ها', keys: ['shipments_manage'] },
   { label: 'عودت وجه', keys: [...REFUND_PERMISSION_KEYS] }
 ]
@@ -1714,6 +1715,7 @@ export function getDefaultPermissions() {
   p.followups_add_others = false
   p.sales_add_others = false
   p.accounting = false
+  p.accounting_org_wide = false
   p.shipments_manage = false
   p.refunds_view = false
   p.refunds_request = false
@@ -1786,12 +1788,14 @@ export function hasAnyRefundPermission() {
 }
 
 /**
- * Org-wide read for admins.
+ * Org-wide read for admins or users with accounting_org_wide.
  * Sales list, dashboard, and similar views use this instead of ownsCustomer.
+ * Does not open tabs by itself — dashboard / customers_view / sales_view still required.
  */
 export function canViewOrgWideData(user = getCurrentUser()) {
   if (!user) return false
-  return user.role === 'admin'
+  if (user.role === 'admin') return true
+  return !!(user.permissions && user.permissions.accounting_org_wide === true)
 }
 
 /** Normalize list of phones granted for extra read access. */
@@ -1818,7 +1822,7 @@ export function getVisibleAdvisorPhones(user = getCurrentUser()) {
 
 /**
  * Read access to a customer record in lists/dashboard/followups/sales.
- * Admin → org-wide. Others → own + viewUserPhones grants (view-only for grants).
+ * Admin / accounting_org_wide → org-wide. Others → own + viewUserPhones grants (view-only for grants).
  */
 export function canViewScopedCustomer(customer, user = getCurrentUser()) {
   if (!user || !customer) return false
