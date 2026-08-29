@@ -9,7 +9,7 @@ import {
   normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone,
   jalaliDatePart, jalaliToNum, escapeHtml, escapeAttr, normalizeTimeTo24h,
   userDisplayName, applyProfitSnapshotToProduct, jalaliDateTimeToIso, jalaliAddDays, getTodayJalaliStr,
-  formatNumber
+  formatNumber, getSaleRegistrantPhone
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
@@ -28,7 +28,9 @@ const INFO_ONLY_HEADERS = new Set([
   // Follow-up export extra (lives on customer, not the follow-up row)
   'شماره مشتری',
   // Accounting approval is never imported — accountants review deposits manually
-  'وضعیت واریزی', 'وضعیت واریز'
+  'وضعیت واریزی', 'وضعیت واریز',
+  // Sales export-only — customer advisor stays in «کارشناس»
+  'ثبت‌کننده فروش'
 ])
 
 const FOLLOWUP_EXPORT_HEADERS = [
@@ -318,6 +320,112 @@ function parseImportMoney(raw, amountUnit = salesImportData.amountUnit) {
 // Export
 // ============================================
 
+function resolveSaleRegistrantName(product, payment, customer, soldByPhoneFallback, nameByPhone) {
+  const phone = getSaleRegistrantPhone(product, payment, customer) || normalizePhone(soldByPhoneFallback || '')
+  if (!phone) return ''
+  return nameByPhone.get(phone) || ''
+}
+
+async function buildSalesExportRows() {
+  let nameByPhone = new Map()
+  try {
+    const users = await getUsersSafe()
+    nameByPhone = new Map(
+      users.filter(u => u.phone).map(u => [normalizePhone(u.phone), userDisplayName(u)])
+    )
+  } catch (_) { /* names optional */ }
+
+  const data = getData()
+  const codeLabels = Object.fromEntries(getCustomerCodes().map(c => [c.key, c.label]))
+  const rows = []
+  getFilteredSales().forEach(s => {
+    const c = data.customers.find(x => x.id === s.customerId)
+    const p = c?.products?.[s.productIndex]
+    const codeKey = c?.customerCode || s.customerCode || ''
+    const codeLabel = codeLabels[codeKey] || codeKey || ''
+    const customerAdvisor = c?.advisor || s.advisor || ''
+    if (!c || !p) {
+      rows.push([
+        s.customerId, s.customerName, s.customerPhone,
+        getPlatformLabels()[s.platform] || s.platform || '',
+        codeLabel,
+        s.productName, s.status, s.price || '', s.deposit || '', s.balance || '',
+        s.settlementDate || '', customerAdvisor,
+        resolveSaleRegistrantName(null, null, c, s.soldByPhone, nameByPhone),
+        '', formatSoldAt24h(s.soldAt) || s.soldAt || '', s.depositorName || '', '', ''
+      ])
+      return
+    }
+    ensureProductPayments(p)
+    syncProductStatus(p)
+    const price = parseFloat(p.price) || 0
+    const dateFilter = getSalesDateFilter()
+    let pays = getProductPayments(p).filter(pay => (parseFloat(pay.amount) || 0) > 0)
+    if (dateFilter.hasDateFilter) {
+      pays = pays.filter(pay => {
+        if (getPaymentEntryStatus(pay) === PAYMENT_STATUS.rejected) return false
+        const d = jalaliDatePart(pay.soldAt)
+        if (!d) return false
+        const n = jalaliToNum(d)
+        return n >= dateFilter.fromNum && n <= dateFilter.toNum
+      })
+    }
+    // Primary phone only — multi-phone lives on customer export; join breaks import match
+    const phoneStr = getCustomerPhones(c)[0] || ''
+    const platformLabel = getPlatformLabels()[c.platform] || c.platform || ''
+    if (pays.length === 0) {
+      rows.push([
+        c.id,
+        c.name || c.platformId || '',
+        phoneStr,
+        platformLabel,
+        codeLabel,
+        p.name || '',
+        p.status || '',
+        price || '',
+        dateFilter.hasDateFilter ? (s.deposit || '') : (getApprovedPaid(p) || ''),
+        getProductBalance(p) || '',
+        p.settlementDate || '',
+        customerAdvisor,
+        resolveSaleRegistrantName(p, null, c, s.soldByPhone, nameByPhone),
+        '', '', '', '', ''
+      ])
+      return
+    }
+    let paidSoFar = 0
+    pays.forEach(pay => {
+      const amount = parseFloat(pay.amount) || 0
+      const status = getPaymentEntryStatus(pay)
+      // Cumulative paid = sum of non-rejected deposits up to this row
+      if (status !== PAYMENT_STATUS.rejected) {
+        paidSoFar += amount
+      }
+      const balance = Math.max(0, price - paidSoFar)
+      rows.push([
+        c.id,
+        c.name || c.platformId || '',
+        phoneStr,
+        platformLabel,
+        codeLabel,
+        p.name || '',
+        p.status || '',
+        price || '',
+        paidSoFar || '',
+        balance || '',
+        p.settlementDate || '',
+        customerAdvisor,
+        resolveSaleRegistrantName(p, pay, c, s.soldByPhone, nameByPhone),
+        amount || '',
+        formatSoldAt24h(pay.soldAt) || pay.soldAt || '',
+        pay.depositorName || '',
+        pay.destinationBank || '',
+        PAYMENT_STATUS_LABELS[status] || status || ''
+      ])
+    })
+  })
+  return rows
+}
+
 const EXPORT_CONFIG = {
   customers: {
     label: 'مشتریان',
@@ -378,96 +486,9 @@ const EXPORT_CONFIG = {
     label: 'فروش‌ها',
     headers: [
       'شناسه مشتری', 'نام مشتری', 'شماره موبایل', 'پلتفرم', 'کد مشتری', 'محصول', 'وضعیت',
-      'مبلغ کل', 'پرداخت‌شده', 'مانده', 'تاریخ تسویه', 'کارشناس',
+      'مبلغ کل', 'پرداخت‌شده', 'مانده', 'تاریخ تسویه', 'کارشناس', 'ثبت‌کننده فروش',
       'مبلغ واریز', 'تاریخ واریز', 'نام واریزکننده', 'بانک مقصد', 'وضعیت واریزی'
-    ],
-    getRows: () => {
-      const data = getData()
-      const codeLabels = Object.fromEntries(getCustomerCodes().map(c => [c.key, c.label]))
-      const rows = []
-      getFilteredSales().forEach(s => {
-        const c = data.customers.find(x => x.id === s.customerId)
-        const p = c?.products?.[s.productIndex]
-        const codeKey = c?.customerCode || s.customerCode || ''
-        const codeLabel = codeLabels[codeKey] || codeKey || ''
-        if (!c || !p) {
-          rows.push([
-            s.customerId, s.customerName, s.customerPhone,
-            getPlatformLabels()[s.platform] || s.platform || '',
-            codeLabel,
-            s.productName, s.status, s.price || '', s.deposit || '', s.balance || '',
-            s.settlementDate || '', s.advisor || '',
-            '', formatSoldAt24h(s.soldAt) || s.soldAt || '', s.depositorName || '', '', ''
-          ])
-          return
-        }
-        ensureProductPayments(p)
-        syncProductStatus(p)
-        const price = parseFloat(p.price) || 0
-        const dateFilter = getSalesDateFilter()
-        let pays = getProductPayments(p).filter(pay => (parseFloat(pay.amount) || 0) > 0)
-        if (dateFilter.hasDateFilter) {
-          pays = pays.filter(pay => {
-            if (getPaymentEntryStatus(pay) === PAYMENT_STATUS.rejected) return false
-            const d = jalaliDatePart(pay.soldAt)
-            if (!d) return false
-            const n = jalaliToNum(d)
-            return n >= dateFilter.fromNum && n <= dateFilter.toNum
-          })
-        }
-        // Primary phone only — multi-phone lives on customer export; join breaks import match
-        const phoneStr = getCustomerPhones(c)[0] || ''
-        const platformLabel = getPlatformLabels()[c.platform] || c.platform || ''
-        if (pays.length === 0) {
-          rows.push([
-            c.id,
-            c.name || c.platformId || '',
-            phoneStr,
-            platformLabel,
-            codeLabel,
-            p.name || '',
-            p.status || '',
-            price || '',
-            dateFilter.hasDateFilter ? (s.deposit || '') : (getApprovedPaid(p) || ''),
-            getProductBalance(p) || '',
-            p.settlementDate || '',
-            c.advisor || '',
-            '', '', '', '', ''
-          ])
-          return
-        }
-        let paidSoFar = 0
-        pays.forEach(pay => {
-          const amount = parseFloat(pay.amount) || 0
-          const status = getPaymentEntryStatus(pay)
-          // Cumulative paid = sum of non-rejected deposits up to this row
-          if (status !== PAYMENT_STATUS.rejected) {
-            paidSoFar += amount
-          }
-          const balance = Math.max(0, price - paidSoFar)
-          rows.push([
-            c.id,
-            c.name || c.platformId || '',
-            phoneStr,
-            platformLabel,
-            codeLabel,
-            p.name || '',
-            p.status || '',
-            price || '',
-            paidSoFar || '',
-            balance || '',
-            p.settlementDate || '',
-            c.advisor || '',
-            amount || '',
-            formatSoldAt24h(pay.soldAt) || pay.soldAt || '',
-            pay.depositorName || '',
-            pay.destinationBank || '',
-            PAYMENT_STATUS_LABELS[status] || status || ''
-          ])
-        })
-      })
-      return rows
-    }
+    ]
   },
   products: {
     label: 'ماتریس_محصولات',
@@ -480,13 +501,13 @@ const EXPORT_CONFIG = {
   }
 }
 
-export function exportTabCSV(tab) {
+export async function exportTabCSV(tab) {
   const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'products_matrix' }[tab]
   if (exportPerm && !requirePermission(exportPerm)) return
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
 
-  const rows = cfg.getRows()
+  const rows = tab === 'sales' ? await buildSalesExportRows() : cfg.getRows()
   const csvContent = '\uFEFF' + [cfg.headers, ...rows]
     .map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
     .join('\n')
@@ -500,13 +521,13 @@ export function exportTabCSV(tab) {
   showToast(`${rows.length} ردیف در CSV ذخیره شد${filterHint}`)
 }
 
-export function exportTabXLSX(tab) {
+export async function exportTabXLSX(tab) {
   const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'products_matrix' }[tab]
   if (exportPerm && !requirePermission(exportPerm)) return
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
 
-  const rows = cfg.getRows()
+  const rows = tab === 'sales' ? await buildSalesExportRows() : cfg.getRows()
   const ws = sheetFromAoa(cfg.headers, rows)
 
   // Keep phone / id columns as text so Excel doesn't drop leading zeros
