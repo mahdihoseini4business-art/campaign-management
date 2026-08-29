@@ -706,18 +706,6 @@ async function init() {
     })
   })
 
-  // Modal close on overlay click (only the clicked overlay)
-  document.querySelectorAll('.modal-overlay').forEach(overlay => {
-    overlay.addEventListener('click', function (e) {
-      if (e.target !== this) return
-      if (this.id === 'followupDoneModal' && isFollowupDoneNoteDirty()) {
-        showToast('یادداشت نیمه‌نوشته است — برای بستن از انصراف استفاده کنید')
-        return
-      }
-      this.classList.remove('active')
-    })
-  })
-
   // Escape closes only the topmost modal so nested confirms stay usable
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return

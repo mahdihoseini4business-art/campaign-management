@@ -2105,6 +2105,12 @@ export async function saveCustomerDetail(customerId) {
     const { listId } = phoneForm()
 
     if (isNew) {
+      if (!fields.phones.length && !fields.platformId) {
+        showToast('برای ثبت مشتری جدید، شماره موبایل یا آیدی پلتفرم را وارد کنید')
+        document.querySelector(`#${listId} .customer-phone-input`)?.focus()
+          || document.getElementById('detailPlatformId')?.focus()
+        return
+      }
       if (getRequireFollowupOnCreate()) {
         const followup = readCreateFollowupDate()
         if (!followup.ok) {
@@ -2330,6 +2336,7 @@ export async function openCustomerDetail(id, options = {}) {
         <div id="detailPhonesList" class="phone-fields"></div>
         <div class="form-error" id="detailPhoneError" hidden></div>
         <div class="form-hint" id="detailPhoneHint" hidden></div>
+        ${isNew ? '<div class="form-hint">حداقل یکی از «شماره تماس» یا «ایدی پلتفرم» الزامی است.</div>' : ''}
       </div>
       <div class="detail-field">
         <span class="detail-label">آدرس پستی</span>
@@ -2345,7 +2352,7 @@ export async function openCustomerDetail(id, options = {}) {
       </div>
       <div class="detail-field">
         <span class="detail-label">ایدی پلتفرم</span>
-        <input type="text" class="form-input" id="detailPlatformId" value="${escapeAttr(c.platformId || '')}" placeholder="اختیاری" style="font-family:'Vazirmatn',sans-serif;">
+        <input type="text" class="form-input" id="detailPlatformId" value="${escapeAttr(c.platformId || '')}" placeholder="${isNew ? 'در صورت نبود شماره، الزامی' : 'اختیاری'}" style="font-family:'Vazirmatn',sans-serif;">
       </div>
       ${requireFollowupOnCreate ? `
       <div class="detail-field">
