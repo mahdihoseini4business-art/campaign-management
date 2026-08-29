@@ -1947,19 +1947,26 @@ function resolveSalesTargetStageMarkers(bar, current, goal, scopeStages) {
   return markers
 }
 
-function renderTargetStageMarkersHtml(markers, variant = 'sales') {
+function renderTargetStageMarkersHtml(markers, variant = 'sales', unit = '') {
   if (!markers || markers.length < 2) return ''
   const prefix = variant === 'dash' ? 'dash-target' : 'sales-target'
+  const unitSuffix = unit ? ` ${unit}` : ''
   return `
-    <div class="${prefix}-markers" aria-hidden="true">
-      ${markers.map(m => `
+    <div class="${prefix}-markers">
+      ${markers.map(m => {
+        const tipText = `${m.label}: ${m.valueLabel}${unitSuffix}`
+        return `
         <div class="${prefix}-marker${m.hit ? ' is-hit' : ''}${m.isNext ? ' is-next' : ''}"
           style="inset-inline-start:${m.pct}%;"
-          title="${escapeAttr(`${m.label}: ${m.valueLabel}`)}">
+          tabindex="0"
+          role="img"
+          aria-label="${escapeAttr(tipText)}">
+          <span class="${prefix}-marker-tip">${escapeHtml(tipText)}</span>
           <span class="${prefix}-marker-dot">${m.hit ? '✓' : ''}</span>
           <span class="${prefix}-marker-label">${escapeHtml(m.shortLabel)}</span>
         </div>
-      `).join('')}
+      `
+      }).join('')}
     </div>
   `
 }
@@ -1996,7 +2003,7 @@ function renderDashTargetBar(bar, dateFromNum, dateToNum, groupTitle, options = 
         <div class="dash-target-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}" aria-label="${escapeAttr(ariaLabel)}">
           <div class="dash-target-bar-fill ${fillClass}" style="width:${pct}%;"></div>
         </div>
-        ${renderTargetStageMarkersHtml(markers, 'dash')}
+        ${renderTargetStageMarkersHtml(markers, 'dash', unit)}
       </div>
       ${deadline ? `<div class="dash-target-deadline ${deadline.className}">${escapeHtml(deadline.text)}${bar.endDate ? ` · تا ${escapeHtml(bar.endDate)}` : ''}</div>` : ''}
     </div>
@@ -2364,6 +2371,26 @@ function formatSalesTargetRemaining(bar, current, goal) {
   return `${formatNumber(left)} ریال`
 }
 
+/** Nearest unhit stage marker, or null when every stage is hit. */
+function resolveNextSalesTargetStage(stages) {
+  if (!Array.isArray(stages) || !stages.length) return null
+  return stages.find(m => !m.hit) || null
+}
+
+function salesTargetDisplayMetrics(bar, current, goal, complete, stages, unit) {
+  const nextStage = complete ? null : resolveNextSalesTargetStage(stages)
+  const displayThreshold = nextStage ? nextStage.threshold : goal
+  const displayPctRaw = displayThreshold > 0 ? (current / displayThreshold) * 100 : 0
+  const displayPct = displayThreshold > 0 ? Math.min(100, Math.round(displayPctRaw * 10) / 10) : 0
+  return {
+    nextStage,
+    displayThreshold,
+    displayGoalLabel: `${formatNumber(Math.round(displayThreshold))} ${unit}`,
+    displayPct,
+    displayRemainingLabel: formatSalesTargetRemaining(bar, current, displayThreshold)
+  }
+}
+
 function computeSalesTargetBarProgress(bar, goalOverride, phoneSet, scopeStages) {
   const goal = goalOverride != null ? Number(goalOverride) : (Number(bar.value) || 0)
   const current = computeSalesTargetCurrent(bar, 0, 99999999, phoneSet || null)
@@ -2373,6 +2400,7 @@ function computeSalesTargetBarProgress(bar, goalOverride, phoneSet, scopeStages)
   const deadline = targetDeadlineInfo(bar.endDate)
   const unit = bar.metric === 'count' ? 'فروش' : 'ریال'
   const stages = resolveSalesTargetStageMarkers(bar, current, goal, scopeStages)
+  const display = salesTargetDisplayMetrics(bar, current, goal, complete, stages, unit)
   return {
     goal,
     current,
@@ -2383,7 +2411,8 @@ function computeSalesTargetBarProgress(bar, goalOverride, phoneSet, scopeStages)
     stages,
     remainingLabel: formatSalesTargetRemaining(bar, current, goal),
     currentLabel: `${formatNumber(current)} ${unit}`,
-    goalLabel: `${formatNumber(goal)} ${unit}`
+    goalLabel: `${formatNumber(goal)} ${unit}`,
+    ...display
   }
 }
 
@@ -2526,11 +2555,11 @@ function summarizeSalesTargetProgresses(progresses) {
   if (!progresses.length) return null
   const incomplete = progresses.filter(p => !p.complete)
   const focus = incomplete.length
-    ? incomplete.reduce((a, b) => (a.pct <= b.pct ? a : b))
+    ? incomplete.reduce((a, b) => (a.displayPct <= b.displayPct ? a : b))
     : progresses[0]
   const avgPct = progresses.reduce((s, p) => s + p.pct, 0) / progresses.length
   const allDone = progresses.every(p => p.complete)
-  const stage = salesTargetStage(focus.pct, allDone)
+  const stage = salesTargetStage(focus.displayPct, allDone)
   const ringPct = Math.round(allDone ? 100 : avgPct)
   const deadlineMs = allDone ? null : pickSalesTargetDeadlineMs(progresses)
   return { focus, allDone, stage, ringPct, deadlineMs, progresses }
@@ -2595,8 +2624,8 @@ function renderSalesTargetCampaignHtml(block) {
   if (!summary) return ''
 
   const copy = salesTargetMotivationalCopy(
-    summary.focus.pct,
-    summary.focus.remainingLabel,
+    summary.focus.displayPct,
+    summary.focus.displayRemainingLabel,
     summary.allDone,
     summary.focus.deadline
   )
@@ -2608,14 +2637,14 @@ function renderSalesTargetCampaignHtml(block) {
   const barsHtml = progresses.map(p => `
     <div class="sales-target-bar-row">
       <div class="sales-target-bar-meta">
-        <span>${escapeHtml(p.currentLabel)} / ${escapeHtml(p.goalLabel)}</span>
-        <span class="pct">${formatNumber(p.pct)}٪</span>
+        <span>${escapeHtml(p.currentLabel)} / ${escapeHtml(p.displayGoalLabel)}</span>
+        <span class="pct">${formatNumber(p.displayPct)}٪</span>
       </div>
       <div class="sales-target-bar-wrap">
         <div class="sales-target-bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(p.pct)}" aria-label="${escapeAttr(block.title || 'تارگت')}">
           <div class="sales-target-bar-fill" style="width:${p.pct}%;"></div>
         </div>
-        ${renderTargetStageMarkersHtml(p.stages, 'sales')}
+        ${renderTargetStageMarkersHtml(p.stages, 'sales', p.unit)}
       </div>
     </div>
   `).join('')
