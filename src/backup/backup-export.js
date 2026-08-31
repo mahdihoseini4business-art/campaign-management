@@ -9,6 +9,12 @@ import {
   suggestBackupFilename
 } from './backup-format.js'
 import { BACKUP_TABLE_CONFIG } from './backup-tables.js'
+import {
+  CUSTOMER_DETAIL_SELECT,
+  FOLLOWUP_SELECT,
+  REFUND_SELECT,
+  OWNERSHIP_TRANSFER_SELECT
+} from './backup-selects.js'
 import { fetchAllRows, fetchAllRowsWithFallback, fetchAppSettings } from './supabase-fetch.js'
 import { fetchPendingDeletions, clearDeletionLogEntries } from './deletion-log.js'
 import { buildBackupZip, parseBackupZip } from './backup-zip.js'
