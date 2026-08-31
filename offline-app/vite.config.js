@@ -30,7 +30,7 @@ function resolveOnlineShim(source, importer) {
 /** Serve shared static assets (fonts, icons) from the online app root in dev/build. */
 function sharedStaticPlugin() {
   const sharedDirs = ['public/fonts', 'public/vendor']
-  const sharedFiles = ['public/icon.webp']
+  const sharedFiles = ['public/logo.webp', 'public/icon.webp']
 
   return {
     name: 'offline-shared-static',
@@ -84,19 +84,32 @@ function sharedStaticPlugin() {
   }
 }
 
+/** Absolute /public paths break under Electron file:// — use relative paths in packaged builds. */
+function fixOfflineAssetPaths(html) {
+  return html
+    .replace(/href="\/icon\.webp"/g, 'href="./icon.webp"')
+    .replace(/src="\/icon\.webp"/g, 'src="./icon.webp"')
+    .replace(/href="\/logo\.webp"/g, 'href="./logo.webp"')
+    .replace(/src="\/logo\.webp"/g, 'src="./logo.webp"')
+    .replace(/href="\/fonts\//g, 'href="./fonts/')
+    .replace(/href="\/vendor\//g, 'href="./vendor/')
+}
+
 function onlineAppHtmlPlugin() {
   let appHtml = ''
   return {
     name: 'offline-app-html',
     buildStart() {
       const onlineHtml = fs.readFileSync(path.join(repoRoot, 'index.html'), 'utf8')
-      appHtml = onlineHtml
-        .replace(
-          '<script type="module" src="/src/main.js"></script>',
-          '<script type="module" src="/src/app-main.js"></script>'
-        )
-        .replace(/<script src="\/vendor\/jalalidatepicker.min.js"><\/script>\s*/g, '')
-        .replace(/<title>[^<]+<\/title>/, '<title>CARNO — نسخه آفلاین</title>')
+      appHtml = fixOfflineAssetPaths(
+        onlineHtml
+          .replace(
+            '<script type="module" src="/src/main.js"></script>',
+            '<script type="module" src="/src/app-main.js"></script>'
+          )
+          .replace(/<script src="\/vendor\/jalalidatepicker.min.js"><\/script>\s*/g, '')
+          .replace(/<title>[^<]+<\/title>/, '<title>CARNO — نسخه آفلاین</title>')
+      )
     },
     transformIndexHtml: {
       order: 'pre',
@@ -116,10 +129,6 @@ function onlineAppHtmlPlugin() {
         }
         next()
       })
-    },
-    closeBundle() {
-      const outDir = path.resolve(__dirname, 'dist')
-      fs.writeFileSync(path.join(outDir, 'app.html'), appHtml, 'utf8')
     }
   }
 }

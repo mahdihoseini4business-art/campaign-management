@@ -39,8 +39,9 @@ function schemaVersionPath() {
 
 function appIconPath() {
   const candidates = [
-    path.join(appRoot(), 'dist', 'icon.webp'),
     path.join(appRoot(), 'build', 'icon.png'),
+    path.join(appRoot(), 'dist', 'logo.webp'),
+    path.join(appRoot(), 'dist', 'icon.webp'),
     path.join(appRoot(), 'build', 'icon.ico')
   ]
   for (const candidate of candidates) {
