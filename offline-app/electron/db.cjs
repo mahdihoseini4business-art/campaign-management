@@ -1,6 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const initSqlJs = require('sql.js')
+const { schemaSqlPath, schemaVersionPath, sqlJsDistDir } = require('./paths.cjs')
 
 const SCHEMA_VERSION = readSchemaVersion()
 const BACKUP_TABLES = [
@@ -24,7 +25,7 @@ let dbPath = ''
 
 function readSchemaVersion() {
   try {
-    const raw = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema-version.txt'), 'utf8')
+    const raw = fs.readFileSync(schemaVersionPath(), 'utf8')
     const n = parseInt(String(raw).trim(), 10)
     return Number.isFinite(n) ? n : 1
   } catch {
@@ -49,7 +50,7 @@ async function openDatabase(targetPath = defaultDbPath()) {
   if (db) return db
   dbPath = targetPath
   const SQL = await initSqlJs({
-    locateFile: (file) => path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist', file)
+    locateFile: (file) => path.join(sqlJsDistDir(), file)
   })
 
   if (fs.existsSync(dbPath)) {
@@ -77,7 +78,7 @@ function closeDatabase() {
 
 function initSchema() {
   const database = getDatabase()
-  const schemaPath = path.join(__dirname, '..', 'db', 'schema.sql')
+  const schemaPath = schemaSqlPath()
   const sql = fs.readFileSync(schemaPath, 'utf8')
   database.run(sql)
 

@@ -30,7 +30,7 @@ function resolveOnlineShim(source, importer) {
 /** Serve shared static assets (fonts, icons) from the online app root in dev/build. */
 function sharedStaticPlugin() {
   const sharedDirs = ['public/fonts', 'public/vendor']
-  const sharedFiles = ['icon.webp']
+  const sharedFiles = ['public/icon.webp']
 
   return {
     name: 'offline-shared-static',
@@ -49,7 +49,8 @@ function sharedStaticPlugin() {
           }
         }
         for (const file of sharedFiles) {
-          if (url === `/${file}`) {
+          const urlPath = file.startsWith('public/') ? `/${file.slice('public/'.length)}` : `/${file}`
+          if (url === urlPath || url === `/${path.basename(file)}`) {
             const filePath = path.join(repoRoot, file)
             if (fs.existsSync(filePath)) {
               fs.createReadStream(filePath).pipe(res)
@@ -72,8 +73,10 @@ function sharedStaticPlugin() {
       }
       for (const file of sharedFiles) {
         const src = path.join(repoRoot, file)
-        const dest = path.join(outDir, file)
+        const destName = file.startsWith('public/') ? file.slice('public/'.length) : file
+        const dest = path.join(outDir, path.basename(destName))
         if (fs.existsSync(src)) {
+          fs.mkdirSync(path.dirname(dest), { recursive: true })
           fs.copyFileSync(src, dest)
         }
       }

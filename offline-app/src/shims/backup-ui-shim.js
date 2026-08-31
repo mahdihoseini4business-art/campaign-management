@@ -40,3 +40,5 @@ export function closeBackupRestoreModal() {}
 export function applyBackupRestore() {}
 
 export function setBackupConflictResolution() {}
+
+export function resolveAllBackupConflicts() {}

@@ -3,11 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "description": "CARNO emergency offline desktop app (Electron + SQLite)",
+  "author": "CARNO",
+  "productName": "CARNO Offline",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k \"vite --port 5174 --strictPort\" \"wait-on http://127.0.0.1:5174 && electron .\"",
     "build:renderer": "vite build",
+    "prepare:build": "node scripts/prepare-build.cjs",
     "start": "electron .",
+    "start:prod": "npm run build:renderer && electron .",
+    "pack": "npm run prepare:build && npm run build:renderer && electron-builder --dir",
+    "dist": "npm run prepare:build && npm run build:renderer && electron-builder --win",
+    "dist:portable": "npm run prepare:build && npm run build:renderer && electron-builder --win portable",
+    "test:packaged": "node scripts/test-packaged.cjs",
     "test:phase7": "node scripts/test-phase7.cjs"
   },
   "dependencies": {
@@ -21,7 +29,67 @@
   "devDependencies": {
     "concurrently": "^9.2.1",
     "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "sharp": "^0.35.4",
     "vite": "^5.4.19",
     "wait-on": "^8.0.4"
+  },
+  "build": {
+    "appId": "com.carno.offline",
+    "productName": "CARNO Offline",
+    "copyright": "Copyright © CARNO",
+    "directories": {
+      "output": "out",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/sql.js/dist/**"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/sql.js/dist",
+        "to": "sql.js",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "db",
+        "to": "db",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerLanguages": [
+        "en_US"
+      ],
+      "language": "1033",
+      "shortcutName": "CARNO Offline"
+    },
+    "portable": {
+      "artifactName": "CARNO-Offline-Portable-${version}.${ext}"
+    },
+    "artifactName": "CARNO-Offline-Setup-${version}.${ext}"
   }
 }

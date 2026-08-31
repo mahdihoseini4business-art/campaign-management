@@ -14,6 +14,7 @@ OTP-SETUP-GUIDE.md
 offline-app/node_modules
 offline-app/dist
 offline-app/out
+offline-app/build
 
 # Secrets — never commit real credentials (SEC-M4)
 .env
