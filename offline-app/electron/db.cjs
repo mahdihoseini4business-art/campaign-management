@@ -111,10 +111,8 @@ function getTableCounts() {
 
 function getAppInfo(resolvedPath = dbPath || defaultDbPath()) {
   const database = getDatabase()
-  const result = database.exec(
-    "SELECT value FROM app_meta WHERE key = 'schema_version'"
-  )
-  const schemaValue = result?.[0]?.values?.[0]?.[0]
+  const rows = queryAll("SELECT value FROM app_meta WHERE key = 'schema_version'")
+  const schemaValue = rows[0]?.value
   return {
     mode: 'offline',
     dbPath: resolvedPath,
@@ -123,6 +121,32 @@ function getAppInfo(resolvedPath = dbPath || defaultDbPath()) {
     tables: BACKUP_TABLES,
     engine: 'sql.js'
   }
+}
+
+/**
+ * @param {string} sql
+ * @param {unknown[]} [params]
+ */
+function queryAll(sql, params = []) {
+  const database = getDatabase()
+  const stmt = database.prepare(sql)
+  if (params.length) stmt.bind(params)
+  /** @type {Record<string, unknown>[]} */
+  const rows = []
+  while (stmt.step()) {
+    rows.push(stmt.getAsObject())
+  }
+  stmt.free()
+  return rows
+}
+
+/**
+ * @param {string} sql
+ * @param {unknown[]} [params]
+ */
+function queryOne(sql, params = []) {
+  const rows = queryAll(sql, params)
+  return rows[0] || null
 }
 
 module.exports = {
@@ -135,5 +159,7 @@ module.exports = {
   persistDatabase,
   initSchema,
   getTableCounts,
-  getAppInfo
+  getAppInfo,
+  queryAll,
+  queryOne
 }

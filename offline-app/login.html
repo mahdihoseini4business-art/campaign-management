@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0155d2">
+  <title>ورود — CARNO آفلاین</title>
+  <link rel="icon" type="image/webp" href="/icon.webp">
+  <link rel="stylesheet" href="/fonts/vazirmatn.css">
+  <link rel="stylesheet" href="/src/shell.css">
+  <script type="module" src="/src/login.js"></script>
+</head>
+<body class="login-body">
+  <div class="login-wrap">
+    <div class="login-card">
+      <img src="/icon.webp" alt="" width="72" height="72" class="login-logo">
+      <h1>CARNO — نسخه آفلاین</h1>
+      <p class="login-subtitle">ورود محلی بدون اینترنت</p>
+
+      <div id="loginNotice" class="login-notice" hidden></div>
+      <div id="loginError" class="login-error" hidden></div>
+
+      <div id="importPanel" class="login-panel" hidden>
+        <p>هنوز داده‌ای وارد نشده است. ابتدا بکاپ کامل نسخه آنلاین را ایمپورت کنید.</p>
+        <button type="button" class="btn btn-primary btn-block" id="importBtn">ایمپورت بکاپ…</button>
+        <p id="importStatus" class="login-status" hidden></p>
+      </div>
+
+      <form id="loginForm" class="login-form" hidden>
+        <label class="form-label" for="loginUsername">نام کاربری</label>
+        <input type="text" id="loginUsername" class="form-input" autocomplete="username">
+
+        <label class="form-label" for="loginPassword">رمز عبور</label>
+        <input type="password" id="loginPassword" class="form-input" autocomplete="current-password">
+
+        <button type="submit" class="btn btn-primary btn-block">ورود</button>
+      </form>
+
+      <details id="setupPasswordPanel" class="login-details" hidden>
+        <summary>تنظیم رمز آفلاین (اولین بار)</summary>
+        <p class="login-hint">بکاپ آنلاین رمز عبور را شامل نمی‌شود. برای هر کاربر یک رمز آفلاین تعیین کنید.</p>
+        <form id="setupPasswordForm" class="login-form">
+          <label class="form-label" for="setupUsername">نام کاربری</label>
+          <input type="text" id="setupUsername" class="form-input" autocomplete="username">
+
+          <label class="form-label" for="setupPassword">رمز آفلاین جدید</label>
+          <input type="password" id="setupPassword" class="form-input" autocomplete="new-password">
+
+          <label class="form-label" for="setupPassword2">تکرار رمز</label>
+          <input type="password" id="setupPassword2" class="form-input" autocomplete="new-password">
+
+          <button type="submit" class="btn btn-block">ذخیره رمز آفلاین</button>
+        </form>
+      </details>
+    </div>
+  </div>
+</body>
+</html>

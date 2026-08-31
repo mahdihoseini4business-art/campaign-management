@@ -32,10 +32,10 @@ function createWindow() {
   })
 
   if (isDev) {
-    mainWindow.loadURL('http://127.0.0.1:5174')
+    mainWindow.loadURL('http://127.0.0.1:5174/login.html')
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
+    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'login.html'))
   }
 
   mainWindow.on('closed', () => {

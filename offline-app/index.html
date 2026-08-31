@@ -15,9 +15,10 @@
     <header class="offline-header">
       <img src="/icon.webp" alt="" width="40" height="40" class="offline-logo">
       <div>
-        <h1>CARNO — نسخه آفلاین اضطراری</h1>
+        <h1>CARNO — نسخه آفلاین</h1>
         <p class="offline-subtitle">ذخیره‌سازی محلی SQLite — بدون نیاز به اینترنت</p>
       </div>
+      <div id="userBar" class="offline-user-bar"></div>
       <span class="offline-badge">آفلاین</span>
     </header>
 
@@ -31,21 +32,15 @@
 
       <section class="offline-card">
         <h2>جداول پایگاه داده</h2>
-        <p class="offline-hint">پس از ایمپورت بکاپ آنلاین، تعداد رکوردها اینجا نمایش داده می‌شود.</p>
         <div class="offline-table-grid" id="tableCounts"></div>
       </section>
 
       <section class="offline-card offline-card-muted">
-        <h2>مرحله بعدی (فاز ۵)</h2>
-        <ul class="offline-steps">
-          <li>ایمپورت فایل <code>.carno-backup</code> از نسخه آنلاین</li>
-          <li>ورود محلی با همان کاربران بکاپ</li>
-          <li>کار روزمره روی داده‌های محلی</li>
-          <li>خروجی بکاپ برای ادغام هوشمند در نسخه آنلاین</li>
-        </ul>
+        <h2>بکاپ و داده</h2>
+        <p class="offline-hint">برای به‌روزرسانی داده‌ها، بکاپ جدید از نسخه آنلاین را ایمپورت کنید (جایگزینی کامل).</p>
         <div class="offline-actions">
-          <button type="button" class="btn btn-primary" id="pickBackupBtn" disabled>انتخاب فایل بکاپ…</button>
-          <button type="button" class="btn" id="refreshBtn">بروزرسانی وضعیت</button>
+          <button type="button" class="btn btn-primary" id="importBackupBtn" disabled>ایمپورت بکاپ جدید…</button>
+          <button type="button" class="btn" id="refreshBtn">بروزرسانی</button>
         </div>
         <p id="backupPreview" class="offline-preview" hidden></p>
       </section>

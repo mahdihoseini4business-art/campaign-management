@@ -201,3 +201,146 @@ code {
   border-radius: 4px;
   font-size: 0.88em;
 }
+
+.offline-user-bar {
+  margin-right: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.offline-user-role {
+  background: #eef2f8;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 0.82rem;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+/* Login page */
+.login-body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #e6effa 0%, #f0f5fc 100%);
+  padding: 24px;
+}
+
+.login-wrap {
+  width: 100%;
+  max-width: 420px;
+}
+
+.login-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px 24px;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.login-logo {
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.login-card h1 {
+  margin: 0 0 6px;
+  font-size: 1.2rem;
+}
+
+.login-subtitle {
+  margin: 0 0 20px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.login-form {
+  text-align: right;
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.form-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.form-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.login-error {
+  background: #fef2f2;
+  color: #dc2626;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.88rem;
+  margin-bottom: 12px;
+  text-align: right;
+}
+
+.login-notice {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.88rem;
+  margin-bottom: 12px;
+  text-align: right;
+}
+
+.login-status {
+  margin-top: 10px;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.login-hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-align: right;
+  margin: 8px 0;
+}
+
+.login-details {
+  margin-top: 16px;
+  text-align: right;
+  font-size: 0.9rem;
+}
+
+.login-details summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.login-panel p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  text-align: right;
+  margin: 0 0 12px;
+}
+
