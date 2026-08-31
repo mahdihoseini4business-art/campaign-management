@@ -57,6 +57,14 @@ import {
   requestBrowserNotificationPermission,
   getNotificationPermission
 } from './browser-notifications.js'
+import {
+  exportFullBackup,
+  openBackupRestoreModal,
+  closeBackupRestoreModal,
+  applyBackupRestore,
+  setBackupConflictResolution,
+  initBackupRestoreListeners
+} from './backup-ui.js'
 import { setPage } from './pagination.js'
 
 // ============================================
@@ -338,6 +346,11 @@ const app = {
   cancelSalesTargetBarEdit,
   saveSmsPanelSettings,
   resetSmsMessageTemplate,
+  exportFullBackup,
+  openBackupRestoreModal,
+  closeBackupRestoreModal,
+  applyBackupRestore,
+  setBackupConflictResolution,
   addPlatform,
   removePlatform,
   updatePlatformField,
@@ -645,6 +658,7 @@ async function init() {
   initImportListeners()
   initSalesImportListeners()
   initMatrixImportListeners()
+  initBackupRestoreListeners()
   initAppUpdate().catch(e => console.error('app update init error:', e))
 
   // Show loading overlay

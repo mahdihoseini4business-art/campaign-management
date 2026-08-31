@@ -458,6 +458,25 @@
           </div>
         </section>
 
+        <!-- بکاپ و بازیابی -->
+        <section class="settings-pane" data-settings-pane="backup" hidden>
+          <div class="settings-pane-header">
+            <h3>بکاپ و بازیابی</h3>
+            <p class="settings-pane-desc">پشتیبان‌گیری کامل از تمام داده‌های برنامه، یا بازیابی و ادغام هوشمند از فایل بکاپ (نسخه آفلاین یا آنلاین).</p>
+          </div>
+          <div class="settings-subsection">
+            <div class="import-preflight" style="font-size:13px;line-height:1.75;margin-bottom:16px;">
+              فایل بکاپ شامل مشتریان (با یادداشت‌ها)، پیگیری‌ها، عودت‌ها، کاربران، گروه‌ها، تنظیمات و اعلان‌هاست.
+              برای کار آفلاین اضطراری، این فایل را در نسخه آفلاین ایمپورت کنید.
+            </div>
+            <div class="form-row settings-add-row" style="justify-content:flex-start;gap:8px;flex-wrap:wrap;">
+              <button type="button" class="btn btn-primary" onclick="app.exportFullBackup()">بکاپ کامل (دانلود)</button>
+              <button type="button" class="btn" onclick="app.openBackupRestoreModal()">بازیابی از بکاپ…</button>
+            </div>
+            <p id="backupProgress" class="settings-pane-desc backup-progress" hidden></p>
+          </div>
+        </section>
+
         <!-- ارسال اعلان -->
         <section class="settings-pane settings-notif-compose" data-settings-pane="notif-compose" id="settingsNotificationsSection" hidden>
           <div class="settings-pane-header">
@@ -1792,6 +1811,22 @@
       <button class="btn" id="matrixImportProblemsBtn" onclick="app.downloadMatrixImportProblems()" style="display:none;">دانلود ردیف‌های مشکل‌دار</button>
       <button class="btn" id="matrixImportDryRunBtn" onclick="app.dryRunMatrixImport()" style="display:none;">پیش‌نمایش</button>
       <button class="btn btn-primary" id="matrixImportBtn" onclick="app.doMatrixImport()" style="display:none;">ایمپورت</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال بازیابی بکاپ کامل -->
+<div class="modal-overlay" id="backupRestoreModal">
+  <div class="modal" style="max-width: 640px;">
+    <div class="modal-header">
+      <h2>بازیابی از بکاپ</h2>
+      <button type="button" class="modal-close" onclick="app.closeBackupRestoreModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="backupRestoreBody"></div>
+    <p id="backupRestoreProgress" class="settings-pane-desc backup-progress" style="padding:0 20px 12px;margin:0;" hidden></p>
+    <div class="modal-footer">
+      <button type="button" class="btn" onclick="app.closeBackupRestoreModal()">انصراف</button>
+      <button type="button" class="btn btn-primary" id="backupRestoreApplyBtn" onclick="app.applyBackupRestore()" style="display:none;">اعمال بازیابی</button>
     </div>
   </div>
 </div>

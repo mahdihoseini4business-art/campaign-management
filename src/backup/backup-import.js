@@ -1,5 +1,6 @@
 import { parseBackupFile, parseBackupZip, collectFullBackupFromSupabase } from './backup-export.js'
 import { analyzeMerge, applyMergePlanToSnapshot, summarizeMergePlan, listMergeConflicts } from './backup-merge.js'
+import { applyMergePlanToSupabase } from './backup-apply.js'
 import { validateManifest } from './backup-format.js'
 import { BACKUP_TABLES } from './constants.js'
 
@@ -54,20 +55,12 @@ export function buildMergedSnapshot(onlineTables, plan, conflictResolutions = {}
   return applyMergePlanToSnapshot(onlineTables, plan, conflictResolutions)
 }
 
-/**
- * Apply merge plan to Supabase — implemented in phase 2 (restore UI).
- * @param {MergePlan} _plan
- * @param {Record<string, 'backup'|'online'>} [_conflictResolutions]
- */
-export async function applyMergePlanToSupabase(_plan, _conflictResolutions = {}) {
-  throw new Error('بازیابی در پایگاه داده هنوز پیاده‌سازی نشده است (فاز ۲).')
-}
-
 export {
   parseBackupFile,
   parseBackupZip,
   analyzeMerge,
   summarizeMergePlan,
   listMergeConflicts,
+  applyMergePlanToSupabase,
   BACKUP_TABLES
 }

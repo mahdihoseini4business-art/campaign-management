@@ -383,6 +383,7 @@ const SETTINGS_SECTIONS = [
   { id: 'customer-codes', label: 'کدهای مشتری', group: 'داده‌های پایه', keywords: 'کد مشتری customer code' },
   { id: 'customer-prefs', label: 'ترجیحات مشتری', group: 'داده‌های پایه', keywords: 'پیگیری اجبار فروش followup مشتری ثبت' },
   { id: 'sms', label: 'پنل پیامک', group: 'ارتباطات', keywords: 'پیامک sms otp ملی پیامک melipayamak فرستنده api' },
+  { id: 'backup', label: 'بکاپ و بازیابی', group: 'سیستم', keywords: 'بکاپ backup restore بازیابی پشتیبان آفلاین carno' },
   { id: 'notif-compose', label: 'ارسال اعلان', group: 'اعلان‌ها', keywords: 'اعلان notification ارسال' },
   { id: 'notif-prefs', label: 'ترجیحات اعلان', group: 'اعلان‌ها', keywords: 'toast فروش زنده ترجیح نوتیفیکیشن مرورگر browser notification' },
   { id: 'notif-history', label: 'تاریخچه اعلان‌ها', group: 'اعلان‌ها', keywords: 'تاریخچه ارسال‌شده' }

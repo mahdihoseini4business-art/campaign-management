@@ -37,7 +37,7 @@ import {
  * @property {MergeTableSummary} totals
  */
 
-const MERGE_ORDER = [
+export const MERGE_ORDER = [
   'users',
   'groups',
   'group_members',

@@ -59,6 +59,7 @@ export {
 export {
   previewBackupMergeFromFile,
   previewBackupMerge,
-  buildMergedSnapshot,
-  applyMergePlanToSupabase
+  buildMergedSnapshot
 } from './backup-import.js'
+
+export { applyMergePlanToSupabase } from './backup-apply.js'
