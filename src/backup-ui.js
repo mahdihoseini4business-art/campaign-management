@@ -74,7 +74,7 @@ export async function exportFullBackup() {
   try {
     const user = getCurrentUser()
     const backup = await import('./backup/index.js')
-    const { bytes, filename } = await backup.exportFullBackupFromSupabase({
+    const { bytes, filename, manifest } = await backup.exportFullBackupFromSupabase({
       exportedBy: {
         phone: user?.phone || '',
         role: user?.role || '',
@@ -82,6 +82,7 @@ export async function exportFullBackup() {
         username: user?.username || ''
       },
       source: 'online',
+      includeDeletions: true,
       onProgress: ({ table, done, total }) => {
         const label = TABLE_LABELS[table] || table
         setBackupProgress(`خواندن ${label}… (${done}/${total})`)
@@ -89,7 +90,10 @@ export async function exportFullBackup() {
     })
 
     backup.downloadBackupFile(bytes, filename)
-    showToast('بکاپ کامل با موفقیت دانلود شد')
+    const delCount = backup.countPendingDeletions(manifest.deletions || {})
+    showToast(delCount > 0
+      ? `بکاپ کامل دانلود شد (${delCount} حذف از آخرین بکاپ)`
+      : 'بکاپ کامل با موفقیت دانلود شد')
   } catch (e) {
     console.error('exportFullBackup error:', e)
     showToast(e?.message || 'خطا در ایجاد بکاپ', 'error')

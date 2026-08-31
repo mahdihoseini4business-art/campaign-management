@@ -1,7 +1,8 @@
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate'
 import {
   BACKUP_MANIFEST_PATH,
-  BACKUP_TABLES
+  BACKUP_TABLES,
+  emptyDeletionsMap
 } from './constants.js'
 import {
   createManifest,
@@ -13,6 +14,7 @@ import {
 } from './backup-format.js'
 import { BACKUP_TABLE_CONFIG } from './backup-tables.js'
 import { fetchAllRows, fetchAllRowsWithFallback, fetchAppSettings } from './supabase-fetch.js'
+import { fetchPendingDeletions, clearDeletionLogEntries } from './deletion-log.js'
 import {
   CUSTOMER_DETAIL_SELECT,
   FOLLOWUP_SELECT,
@@ -30,8 +32,9 @@ import {
  * @param {import('./backup-format.js').BackupExportedBy} [opts.exportedBy]
  * @param {'online'|'offline'} [opts.source]
  * @param {Record<string, string[]>} [opts.deletions]
+ * @param {boolean} [opts.includeDeletions] read deletion_log (default false — true on full export)
  * @param {(info: { table: string, done: number, total: number }) => void} [opts.onProgress]
- * @returns {Promise<{ manifest: BackupManifest, tables: Record<string, Record<string, unknown>[]> }>}
+ * @returns {Promise<{ manifest: BackupManifest, tables: Record<string, Record<string, unknown>[]>, deletionLogIds?: number[] }>}
  */
 export async function collectFullBackupFromSupabase(opts = {}) {
   /** @type {Record<string, Record<string, unknown>[]>} */
@@ -151,6 +154,16 @@ export async function collectFullBackupFromSupabase(opts = {}) {
   tables.notification_reads = readsRes.error ? [] : readsRes.data
   report('notification_reads')
 
+  let deletions = opts.deletions
+  /** @type {number[]} */
+  let deletionLogIds = []
+
+  if (opts.includeDeletions && !deletions) {
+    const pending = await fetchPendingDeletions()
+    deletions = pending.deletions
+    deletionLogIds = pending.logIds
+  }
+
   /** @type {Record<string, number>} */
   const tableCounts = {}
   for (const table of BACKUP_TABLES) {
@@ -160,11 +173,11 @@ export async function collectFullBackupFromSupabase(opts = {}) {
   const manifest = createManifest({
     exportedBy: opts.exportedBy,
     source: opts.source || 'online',
-    deletions: opts.deletions,
+    deletions: deletions || emptyDeletionsMap(),
     tableCounts
   })
 
-  return { manifest, tables }
+  return { manifest, tables, deletionLogIds }
 }
 
 /**
@@ -203,11 +216,23 @@ export function packFullBackup(manifest, tables) {
 
 /**
  * Export full backup from Supabase and return ZIP bytes + filename.
+ * Includes deletions since last export (from deletion_log) and clears the log on success.
  * @param {object} [opts] same as collectFullBackupFromSupabase
  */
 export async function exportFullBackupFromSupabase(opts = {}) {
-  const { manifest, tables } = await collectFullBackupFromSupabase(opts)
-  return packFullBackup(manifest, tables)
+  const { manifest, tables, deletionLogIds } = await collectFullBackupFromSupabase({
+    ...opts,
+    includeDeletions: opts.includeDeletions !== false
+  })
+  const packed = packFullBackup(manifest, tables)
+  if (opts.includeDeletions !== false && deletionLogIds?.length) {
+    try {
+      await clearDeletionLogEntries(deletionLogIds)
+    } catch (e) {
+      console.warn('clearDeletionLogEntries failed:', e)
+    }
+  }
+  return { ...packed, manifest }
 }
 
 /**

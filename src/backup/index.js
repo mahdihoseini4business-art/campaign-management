@@ -39,6 +39,12 @@ export {
 } from './supabase-fetch.js'
 
 export {
+  fetchPendingDeletions,
+  clearDeletionLogEntries,
+  countPendingDeletions
+} from './deletion-log.js'
+
+export {
   collectFullBackupFromSupabase,
   buildBackupZip,
   packFullBackup,
