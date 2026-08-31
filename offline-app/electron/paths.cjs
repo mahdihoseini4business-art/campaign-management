@@ -39,10 +39,11 @@ function schemaVersionPath() {
 
 function appIconPath() {
   const candidates = [
+    path.join(appRoot(), 'dist', 'icon.png'),
     path.join(appRoot(), 'build', 'icon.png'),
+    path.join(appRoot(), 'build', 'icon.ico'),
     path.join(appRoot(), 'dist', 'logo.webp'),
-    path.join(appRoot(), 'dist', 'icon.webp'),
-    path.join(appRoot(), 'build', 'icon.ico')
+    path.join(appRoot(), 'dist', 'icon.webp')
   ]
   for (const candidate of candidates) {
     if (require('node:fs').existsSync(candidate)) return candidate

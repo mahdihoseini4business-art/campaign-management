@@ -5,12 +5,15 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const sharp = require('sharp')
+const toIco = require('to-ico')
 
 const repoRoot = path.resolve(__dirname, '..', '..')
 const LOGO_URL = 'https://cm.sepehralimohammadi.com/logo.webp'
 const srcLogo = path.join(repoRoot, 'public', 'logo.webp')
 const buildDir = path.join(__dirname, '..', 'build')
 const destPng = path.join(buildDir, 'icon.png')
+const destIco = path.join(buildDir, 'icon.ico')
+const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
 
 async function ensureLogoFile() {
   if (fs.existsSync(srcLogo)) return srcLogo
@@ -27,12 +30,17 @@ async function main() {
   const logoPath = await ensureLogoFile()
 
   fs.mkdirSync(buildDir, { recursive: true })
-  await sharp(logoPath)
-    .resize(512, 512, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 0 } })
-    .png()
-    .toFile(destPng)
 
-  console.log('prepare-build: wrote', destPng, 'from', logoPath)
+  const transparentBg = { r: 255, g: 255, b: 255, alpha: 0 }
+  const resizeLogo = size =>
+    sharp(logoPath).resize(size, size, { fit: 'contain', background: transparentBg }).png()
+
+  await resizeLogo(512).toFile(destPng)
+
+  const icoPngBuffers = await Promise.all(ICO_SIZES.map(size => resizeLogo(size).toBuffer()))
+  fs.writeFileSync(destIco, await toIco(icoPngBuffers))
+
+  console.log('prepare-build: wrote', destPng, 'and', destIco, 'from', logoPath)
 }
 
 main().catch(err => {

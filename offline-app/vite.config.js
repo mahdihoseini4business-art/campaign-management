@@ -80,6 +80,11 @@ function sharedStaticPlugin() {
           fs.copyFileSync(src, dest)
         }
       }
+
+      const buildIconPng = path.resolve(__dirname, 'build', 'icon.png')
+      if (fs.existsSync(buildIconPng)) {
+        fs.copyFileSync(buildIconPng, path.join(outDir, 'icon.png'))
+      }
     }
   }
 }
