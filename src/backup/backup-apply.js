@@ -33,6 +33,8 @@ export async function applyMergePlanToSupabase(plan, conflictResolutions = {}, o
   const writes = items.filter(i => i.action === 'insert' || i.action === 'update')
 
   const totalSteps = deletes.length + writes.length
+  if (!totalSteps) return { appliedDeletes: 0, appliedWrites: 0 }
+
   let done = 0
   const tick = (phase, detail) => {
     done += 1
@@ -57,6 +59,8 @@ export async function applyMergePlanToSupabase(plan, conflictResolutions = {}, o
     const sanitized = sanitizeTableForBackup(table, rows)
     await upsertRowsBatched(table, sanitized, (detail) => tick('upsert', detail))
   }
+
+  return { appliedDeletes: deletes.length, appliedWrites: writes.length }
 }
 
 /**

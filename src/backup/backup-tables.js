@@ -4,7 +4,7 @@ import {
   REFUND_SELECT,
   OWNERSHIP_TRANSFER_SELECT,
   OWNERSHIP_ACK_SELECT
-} from '../data.js'
+} from './backup-selects.js'
 
 /**
  * Per-table export metadata for full backup.

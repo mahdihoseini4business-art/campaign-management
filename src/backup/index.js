@@ -59,7 +59,11 @@ export {
   analyzeMerge,
   applyMergePlanToSnapshot,
   summarizeMergePlan,
-  listMergeConflicts
+  listMergeConflicts,
+  mergeCustomerNotes,
+  tryAutoMergeCustomerRow,
+  diffRowFields,
+  formatDiffValue
 } from './backup-merge.js'
 
 export {

@@ -63,6 +63,7 @@ import {
   closeBackupRestoreModal,
   applyBackupRestore,
   setBackupConflictResolution,
+  resolveAllBackupConflicts,
   initBackupRestoreListeners
 } from './backup-ui.js'
 import { setPage } from './pagination.js'
@@ -351,6 +352,7 @@ const app = {
   closeBackupRestoreModal,
   applyBackupRestore,
   setBackupConflictResolution,
+  resolveAllBackupConflicts,
   addPlatform,
   removePlatform,
   updatePlatformField,

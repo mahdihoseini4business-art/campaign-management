@@ -51,6 +51,9 @@ export const MERGE_ORDER = [
   'notification_reads'
 ]
 
+/** Tables where existing online rows are never overwritten by backup. */
+const INSERT_ONLY_TABLES = new Set(['notifications', 'notification_reads'])
+
 function emptySummary() {
   return {
     inserts: 0,
@@ -102,6 +105,94 @@ function compareIso(a, b) {
 }
 
 /**
+ * Append customer notes when both sides changed independently.
+ * @param {unknown} onlineNotes
+ * @param {unknown} backupNotes
+ */
+export function mergeCustomerNotes(onlineNotes, backupNotes) {
+  const a = String(onlineNotes || '').trim()
+  const b = String(backupNotes || '').trim()
+  if (!a) return b
+  if (!b) return a
+  if (a === b) return a
+  if (a.includes(b)) return a
+  if (b.includes(a)) return b
+  return `${a}\n---\n${b}`
+}
+
+/**
+ * Auto-merge customer row when only notes differ (or notes can be appended).
+ * @param {Record<string, unknown>} onlineRow
+ * @param {Record<string, unknown>} backupRow
+ * @returns {Record<string, unknown> | null}
+ */
+export function tryAutoMergeCustomerRow(onlineRow, backupRow) {
+  const mergedNotes = mergeCustomerNotes(onlineRow.notes, backupRow.notes)
+  const mergedRow = { ...backupRow, notes: mergedNotes }
+  const onlineNormalized = { ...onlineRow, notes: mergedNotes }
+  if (rowsEquivalent(onlineNormalized, mergedRow)) {
+    return mergedRow
+  }
+  return null
+}
+
+/**
+ * Field-level diff for conflict UI.
+ * @param {Record<string, unknown>} [onlineRow]
+ * @param {Record<string, unknown>} [backupRow]
+ * @param {number} [maxFields]
+ */
+export function diffRowFields(onlineRow, backupRow, maxFields = 16) {
+  /** @type {{ field: string, online: unknown, backup: unknown }[]} */
+  const diffs = []
+  const keys = new Set([
+    ...Object.keys(onlineRow || {}),
+    ...Object.keys(backupRow || {})
+  ])
+  for (const field of [...keys].sort()) {
+    const onlineVal = onlineRow?.[field]
+    const backupVal = backupRow?.[field]
+    if (JSON.stringify(sortKeysDeep(onlineVal)) === JSON.stringify(sortKeysDeep(backupVal))) continue
+    diffs.push({ field, online: onlineVal, backup: backupVal })
+    if (diffs.length >= maxFields) break
+  }
+  return diffs
+}
+
+/**
+ * Format a value for compact conflict preview.
+ * @param {unknown} value
+ * @param {number} [maxLen]
+ */
+export function formatDiffValue(value, maxLen = 120) {
+  if (value == null || value === '') return '—'
+  let text
+  if (typeof value === 'object') {
+    try {
+      text = JSON.stringify(value)
+    } catch {
+      text = String(value)
+    }
+  } else {
+    text = String(value)
+  }
+  if (text.length <= maxLen) return text
+  return `${text.slice(0, maxLen)}…`
+}
+
+function recordInsertOnlyMatch(table, key, backupRow, onlineRow, records, summary) {
+  records.push({
+    table,
+    key,
+    action: 'unchanged',
+    backupRow,
+    onlineRow,
+    reason: 'insert_only_table'
+  })
+  summary.unchanged += 1
+}
+
+/**
  * Build merge plan: apply backup onto an online snapshot (in-memory).
  * @param {object} opts
  * @param {Record<string, Record<string, unknown>[]>} opts.onlineTables
@@ -144,6 +235,11 @@ export function analyzeMerge({ onlineTables, backupManifest, backupTables }) {
         continue
       }
 
+      if (INSERT_ONLY_TABLES.has(table)) {
+        recordInsertOnlyMatch(table, key, backupRow, onlineRow, records, summary)
+        continue
+      }
+
       const cmp = compareIso(backupAt, onlineAt)
       if (cmp > 0) {
         records.push({ table, key, action: 'update', backupRow, onlineRow, reason: 'backup_newer' })
@@ -151,6 +247,29 @@ export function analyzeMerge({ onlineTables, backupManifest, backupTables }) {
       } else if (cmp < 0) {
         records.push({ table, key, action: 'keep_online', backupRow, onlineRow, reason: 'online_newer' })
         summary.keepOnline += 1
+      } else if (table === 'customers') {
+        const mergedRow = tryAutoMergeCustomerRow(onlineRow, backupRow)
+        if (mergedRow) {
+          records.push({
+            table,
+            key,
+            action: 'update',
+            backupRow: mergedRow,
+            onlineRow,
+            reason: 'notes_append'
+          })
+          summary.updates += 1
+        } else {
+          records.push({
+            table,
+            key,
+            action: 'conflict',
+            backupRow,
+            onlineRow,
+            reason: 'same_timestamp_diff_content'
+          })
+          summary.conflicts += 1
+        }
       } else {
         records.push({ table, key, action: 'conflict', backupRow, onlineRow, reason: 'same_timestamp_diff_content' })
         summary.conflicts += 1
@@ -225,7 +344,11 @@ export function applyMergePlanToSnapshot(onlineTables, plan, conflictResolutions
         break
       case 'unchanged':
       case 'keep_online':
+        break
       case 'delete_conflict':
+        if (resolution === 'backup') {
+          map.delete(item.key)
+        }
         break
       default:
         break

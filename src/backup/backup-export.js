@@ -1,26 +1,17 @@
-import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate'
 import {
-  BACKUP_MANIFEST_PATH,
   BACKUP_TABLES,
   emptyDeletionsMap
 } from './constants.js'
 import {
   createManifest,
   validateManifest,
-  tableDataPath,
   sanitizeTableForBackup,
-  suggestBackupFilename,
-  BackupFormatError
+  suggestBackupFilename
 } from './backup-format.js'
 import { BACKUP_TABLE_CONFIG } from './backup-tables.js'
 import { fetchAllRows, fetchAllRowsWithFallback, fetchAppSettings } from './supabase-fetch.js'
 import { fetchPendingDeletions, clearDeletionLogEntries } from './deletion-log.js'
-import {
-  CUSTOMER_DETAIL_SELECT,
-  FOLLOWUP_SELECT,
-  REFUND_SELECT,
-  OWNERSHIP_TRANSFER_SELECT
-} from '../data.js'
+import { buildBackupZip, parseBackupZip } from './backup-zip.js'
 
 /**
  * @typedef {import('./backup-format.js').BackupManifest} BackupManifest
@@ -181,26 +172,6 @@ export async function collectFullBackupFromSupabase(opts = {}) {
 }
 
 /**
- * Build a `.carno-backup` ZIP from manifest + table payloads.
- * @param {BackupManifest} manifest
- * @param {Record<string, Record<string, unknown>[]>} tables
- * @returns {Uint8Array}
- */
-export function buildBackupZip(manifest, tables) {
-  /** @type {Record<string, Uint8Array>} */
-  const files = {}
-
-  files[BACKUP_MANIFEST_PATH] = strToU8(JSON.stringify(manifest))
-
-  for (const table of BACKUP_TABLES) {
-    const rows = sanitizeTableForBackup(table, tables[table] || [])
-    files[tableDataPath(table)] = strToU8(JSON.stringify(rows))
-  }
-
-  return zipSync(files, { level: 6 })
-}
-
-/**
  * @param {BackupManifest} manifest
  * @param {Record<string, Record<string, unknown>[]>} tables
  * @returns {{ bytes: Uint8Array, filename: string }}
@@ -253,59 +224,7 @@ export function downloadBackupFile(bytes, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 5000)
 }
 
-/**
- * Parse in-memory backup (for tests or restore preview).
- * @param {Uint8Array} bytes
- * @returns {{ manifest: BackupManifest, tables: Record<string, Record<string, unknown>[]> }}
- */
-export function parseBackupZip(bytes) {
-  if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
-    throw new BackupFormatError('فایل پشتیبان خالی است.')
-  }
-
-  let unzipped
-  try {
-    unzipped = unzipSync(bytes)
-  } catch {
-    throw new BackupFormatError('فایل ZIP نامعتبر است.')
-  }
-
-  const manifestRaw = unzipped[BACKUP_MANIFEST_PATH]
-  if (!manifestRaw) {
-    throw new BackupFormatError('manifest.json در فایل پشتیبان یافت نشد.')
-  }
-
-  let manifest
-  try {
-    manifest = validateManifest(JSON.parse(strFromU8(manifestRaw)))
-  } catch (e) {
-    if (e instanceof BackupFormatError) throw e
-    throw new BackupFormatError('manifest.json قابل خواندن نیست.')
-  }
-
-  /** @type {Record<string, Record<string, unknown>[]>} */
-  const tables = {}
-  for (const table of BACKUP_TABLES) {
-    const path = tableDataPath(table)
-    const raw = unzipped[path]
-    if (!raw) {
-      tables[table] = []
-      continue
-    }
-    try {
-      const parsed = JSON.parse(strFromU8(raw))
-      if (!Array.isArray(parsed)) {
-        throw new BackupFormatError(`داده جدول ${table} باید آرایه باشد.`)
-      }
-      tables[table] = parsed
-    } catch (e) {
-      if (e instanceof BackupFormatError) throw e
-      throw new BackupFormatError(`فایل ${path} قابل خواندن نیست.`)
-    }
-  }
-
-  return { manifest, tables }
-}
+export { buildBackupZip, parseBackupZip } from './backup-zip.js'
 
 /**
  * @param {File|Blob} file

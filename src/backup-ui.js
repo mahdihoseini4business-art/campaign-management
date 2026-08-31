@@ -13,6 +13,7 @@ import {
 } from './utils.js'
 import { loadData } from './data.js'
 import { loadGroupsData } from './groups.js'
+import { diffRowFields, formatDiffValue, listMergeConflicts } from './backup/backup-merge.js'
 
 /** @type {import('./backup/backup-format.js').BackupManifest | null} */
 let _restoreManifest = null
@@ -214,13 +215,16 @@ function renderRestoreModal() {
   }
 
   const t = _restorePlan.totals
-  const conflicts = backupModuleListConflicts()
+  const conflicts = listMergeConflicts(_restorePlan)
   const unresolved = conflicts.filter(c => !_restoreResolutions[`${c.table}\0${c.key}`])
 
   let html = `
     <div class="backup-restore-summary">
       <p><strong>منبع بکاپ:</strong> ${_restoreManifest.source === 'offline' ? 'نسخه آفلاین' : 'نسخه آنلاین'}</p>
       <p><strong>تاریخ بکاپ:</strong> ${escapeHtml(formatBackupDate(_restoreManifest.exportedAt))}</p>
+      ${_restoreManifest.exportedBy?.displayName || _restoreManifest.exportedBy?.username
+        ? `<p><strong>صادرکننده:</strong> ${escapeHtml(_restoreManifest.exportedBy.displayName || _restoreManifest.exportedBy.username)}</p>`
+        : ''}
       <ul class="backup-restore-stats">
         <li><span class="backup-stat-insert">${formatNumber(t.inserts)}</span> رکورد جدید</li>
         <li><span class="backup-stat-update">${formatNumber(t.updates)}</span> به‌روزرسانی</li>
@@ -232,8 +236,19 @@ function renderRestoreModal() {
     </div>
   `
 
+  html += renderTableBreakdown(_restorePlan)
+
   if (conflicts.length) {
-    html += `<div class="backup-restore-conflicts"><h4 style="margin:12px 0 8px;font-size:14px;">تعارض‌ها — نسخه برنده را انتخاب کنید</h4>`
+    html += `
+      <div class="backup-restore-conflicts">
+        <div class="backup-conflicts-toolbar">
+          <h4 style="margin:12px 0 8px;font-size:14px;">تعارض‌ها — نسخه برنده را انتخاب کنید</h4>
+          <div class="backup-conflicts-bulk">
+            <button type="button" class="btn btn-sm" onclick="app.resolveAllBackupConflicts('backup')">همه از بکاپ</button>
+            <button type="button" class="btn btn-sm" onclick="app.resolveAllBackupConflicts('online')">همه از آنلاین</button>
+          </div>
+        </div>
+    `
     html += conflicts.map(c => renderConflictRow(c)).join('')
     html += '</div>'
   } else {
@@ -251,15 +266,82 @@ function renderRestoreModal() {
   }
 }
 
-function backupModuleListConflicts() {
-  if (!_restorePlan) return []
-  const conflicts = []
-  for (const item of _restorePlan.records) {
-    if (item.action === 'conflict' || item.action === 'delete_conflict') {
-      conflicts.push(item)
-    }
+function renderTableBreakdown(plan) {
+  const rows = []
+  for (const [table, summary] of Object.entries(plan.byTable || {})) {
+    const total = summary.inserts + summary.updates + summary.conflicts + summary.deleteConflicts
+      + summary.deletes + summary.keepOnline
+    if (!total) continue
+    const label = TABLE_LABELS[table] || table
+    rows.push(`
+      <tr>
+        <td>${escapeHtml(label)}</td>
+        <td>${formatNumber(summary.inserts)}</td>
+        <td>${formatNumber(summary.updates)}</td>
+        <td>${formatNumber(summary.conflicts + summary.deleteConflicts)}</td>
+        <td>${formatNumber(summary.deletes)}</td>
+      </tr>
+    `)
   }
-  return conflicts
+  if (!rows.length) return ''
+  return `
+    <details class="backup-table-breakdown" style="margin-top:12px;">
+      <summary style="cursor:pointer;font-size:13px;font-weight:600;">جزئیات به تفکیک جدول</summary>
+      <table class="backup-breakdown-table">
+        <thead>
+          <tr>
+            <th>جدول</th>
+            <th>جدید</th>
+            <th>به‌روز</th>
+            <th>تعارض</th>
+            <th>حذف</th>
+          </tr>
+        </thead>
+        <tbody>${rows.join('')}</tbody>
+      </table>
+    </details>
+  `
+}
+
+function renderConflictDiff(item) {
+  if (item.action === 'delete_conflict') {
+    const onlineAt = item.onlineRow?.updated_at || item.onlineRow?.created_at || '—'
+    return `
+      <div class="backup-conflict-diff">
+        <p class="backup-conflict-diff-note">این رکورد در بکاپ حذف شده، اما در آنلاین بعد از تاریخ بکاپ تغییر کرده است.</p>
+        <p><strong>آخرین تغییر آنلاین:</strong> <code dir="ltr">${escapeHtml(String(onlineAt))}</code></p>
+      </div>
+    `
+  }
+
+  const diffs = diffRowFields(item.onlineRow, item.backupRow)
+  if (!diffs.length) {
+    return '<p class="backup-conflict-diff-note">تفاوت جزئی — جزئیات در دسترس نیست.</p>'
+  }
+
+  const rows = diffs.map(d => `
+    <tr>
+      <td><code>${escapeHtml(d.field)}</code></td>
+      <td class="backup-diff-online"><pre>${escapeHtml(formatDiffValue(d.online))}</pre></td>
+      <td class="backup-diff-backup"><pre>${escapeHtml(formatDiffValue(d.backup))}</pre></td>
+    </tr>
+  `).join('')
+
+  return `
+    <details class="backup-conflict-diff">
+      <summary>مشاهده تفاوت فیلدها (${formatNumber(diffs.length)})</summary>
+      <table class="backup-diff-table">
+        <thead>
+          <tr>
+            <th>فیلد</th>
+            <th>آنلاین</th>
+            <th>بکاپ</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </details>
+  `
 }
 
 function renderConflictRow(item) {
@@ -275,6 +357,7 @@ function renderConflictRow(item) {
         <span class="backup-conflict-kind">${escapeHtml(kind)}</span>
         <code dir="ltr">${escapeHtml(item.key)}</code>
       </div>
+      ${renderConflictDiff(item)}
       <div class="backup-conflict-actions">
         <label class="backup-conflict-choice${chosen === 'backup' ? ' is-selected' : ''}">
           <input type="radio" name="conflict-${escapeAttr(resKey)}" value="backup"
@@ -299,11 +382,19 @@ export function setBackupConflictResolution(resKey, choice) {
   renderRestoreModal()
 }
 
+export function resolveAllBackupConflicts(choice) {
+  if (!_restorePlan || (choice !== 'backup' && choice !== 'online')) return
+  for (const item of listMergeConflicts(_restorePlan)) {
+    _restoreResolutions[`${item.table}\0${item.key}`] = choice
+  }
+  renderRestoreModal()
+}
+
 export async function applyBackupRestore() {
   if (!requireMainAdmin()) return
   if (!_restorePlan || _restoreBusy) return
 
-  const conflicts = backupModuleListConflicts()
+  const conflicts = listMergeConflicts(_restorePlan)
   const unresolved = conflicts.filter(c => !_restoreResolutions[`${c.table}\0${c.key}`])
   if (unresolved.length) {
     showToast('ابتدا همه تعارض‌ها را حل کنید', 'error')

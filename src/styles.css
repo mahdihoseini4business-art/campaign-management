@@ -7072,3 +7072,67 @@
 .backup-conflict-choice.is-selected {
   font-weight: 600;
 }
+
+.backup-conflicts-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.backup-conflicts-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.backup-breakdown-table,
+.backup-diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.backup-breakdown-table th,
+.backup-breakdown-table td,
+.backup-diff-table th,
+.backup-diff-table td {
+  border: 1px solid var(--border, #e5e7eb);
+  padding: 6px 8px;
+  text-align: right;
+  vertical-align: top;
+}
+
+.backup-breakdown-table th,
+.backup-diff-table th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+
+.backup-conflict-diff {
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.backup-conflict-diff-note {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+}
+
+.backup-diff-table pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.backup-diff-online {
+  background: #eff6ff;
+}
+
+.backup-diff-backup {
+  background: #ecfdf5;
+}
