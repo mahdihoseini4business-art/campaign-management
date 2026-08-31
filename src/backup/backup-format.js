@@ -1,5 +1,7 @@
 import {
   BACKUP_FORMAT_VERSION,
+  BACKUP_FORMAT_VERSION_MIN,
+  BACKUP_KINDS,
   BACKUP_SOURCES,
   BACKUP_TABLES,
   BACKUP_DATA_PREFIX,
@@ -27,6 +29,14 @@ export class BackupFormatError extends Error {
  */
 
 /**
+ * @typedef {Object} BackupScope
+ * @property {string} username
+ * @property {string} phone
+ * @property {string[]} advisorPhones
+ * @property {boolean} [includesTeam]
+ */
+
+/**
  * @typedef {Object} BackupManifest
  * @property {number} formatVersion
  * @property {string} exportedAt
@@ -34,10 +44,13 @@ export class BackupFormatError extends Error {
  * @property {'online'|'offline'} source
  * @property {Record<string, number>} tableCounts
  * @property {Record<string, string[]>} deletions
+ * @property {'full'|'scoped'} [backupKind]
+ * @property {BackupScope} [scope]
+ * @property {string} [parentExportId]
  */
 
 /**
- * @param {Partial<BackupManifest> & { exportedBy?: BackupExportedBy, source?: string }} opts
+ * @param {Partial<BackupManifest> & { exportedBy?: BackupExportedBy, source?: string, backupKind?: string, scope?: BackupScope, parentExportId?: string }} opts
  * @returns {BackupManifest}
  */
 export function createManifest(opts = {}) {
@@ -46,7 +59,9 @@ export function createManifest(opts = {}) {
     tableCounts[table] = 0
   }
 
-  return {
+  const backupKind = opts.backupKind === 'scoped' ? 'scoped' : 'full'
+  /** @type {BackupManifest} */
+  const manifest = {
     formatVersion: BACKUP_FORMAT_VERSION,
     exportedAt: opts.exportedAt || new Date().toISOString(),
     exportedBy: {
@@ -57,8 +72,34 @@ export function createManifest(opts = {}) {
     },
     source: opts.source === 'offline' ? 'offline' : 'online',
     tableCounts: { ...tableCounts, ...(opts.tableCounts || {}) },
-    deletions: normalizeDeletions(opts.deletions)
+    deletions: normalizeDeletions(opts.deletions),
+    backupKind
   }
+
+  if (backupKind === 'scoped' && opts.scope) {
+    manifest.scope = {
+      username: opts.scope.username || '',
+      phone: opts.scope.phone || '',
+      advisorPhones: Array.isArray(opts.scope.advisorPhones)
+        ? opts.scope.advisorPhones.map(p => String(p)).filter(Boolean)
+        : [],
+      includesTeam: !!opts.scope.includesTeam
+    }
+  }
+  if (opts.parentExportId) {
+    manifest.parentExportId = String(opts.parentExportId)
+  }
+
+  return manifest
+}
+
+/**
+ * @param {unknown} manifest
+ * @returns {boolean}
+ */
+export function isScopedBackupManifest(manifest) {
+  if (!manifest || typeof manifest !== 'object') return false
+  return /** @type {BackupManifest} */ (manifest).backupKind === 'scoped'
 }
 
 /**
@@ -89,12 +130,19 @@ export function validateManifest(manifest) {
 
   const m = /** @type {Record<string, unknown>} */ (manifest)
 
-  if (m.formatVersion !== BACKUP_FORMAT_VERSION) {
+  const version = Number(m.formatVersion)
+  if (!Number.isFinite(version) || version < BACKUP_FORMAT_VERSION_MIN || version > BACKUP_FORMAT_VERSION) {
     throw new BackupFormatError(
       `نسخه فرمت پشتیبان پشتیبانی نمی‌شود (نسخه فایل: ${m.formatVersion}، نسخه برنامه: ${BACKUP_FORMAT_VERSION}).`,
       'UNSUPPORTED_VERSION'
     )
   }
+
+  const backupKind = m.backupKind == null ? 'full' : String(m.backupKind)
+  if (!BACKUP_KINDS.includes(/** @type {'full'|'scoped'} */ (backupKind))) {
+    throw new BackupFormatError('فیلد backupKind در manifest نامعتبر است.')
+  }
+  m.backupKind = backupKind
 
   if (typeof m.exportedAt !== 'string' || !m.exportedAt) {
     throw new BackupFormatError('فیلد exportedAt در manifest وجود ندارد.')
@@ -154,5 +202,19 @@ export function suggestBackupFilename(manifest) {
     .replace(/[:.]/g, '-')
     .slice(0, 19)
   const source = manifest.source === 'offline' ? 'offline' : 'online'
+  if (manifest.backupKind === 'scoped' && manifest.scope?.username) {
+    const user = String(manifest.scope.username).replace(/[^\w.-]+/g, '_')
+    return `carno-backup-scoped-${user}-${ts}.carno-backup`
+  }
   return `carno-backup-${source}-${ts}.carno-backup`
+}
+
+/**
+ * @param {string} [exportedAt]
+ */
+export function suggestDistributionFilename(exportedAt) {
+  const ts = (exportedAt || new Date().toISOString())
+    .replace(/[:.]/g, '-')
+    .slice(0, 19)
+  return `carno-offline-distribution-${ts}.zip`
 }

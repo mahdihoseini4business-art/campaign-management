@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:merge": "node scripts/test-backup-merge.mjs"
+    "test:merge": "node scripts/test-backup-merge.mjs",
+    "test:split": "node scripts/test-backup-split.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

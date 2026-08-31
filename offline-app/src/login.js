@@ -1,5 +1,5 @@
 import { BACKUP_FORMAT_VERSION, BACKUP_TABLES, BACKUP_MANIFEST_PATH } from '@backup/constants.js'
-import { validateManifest, BackupFormatError } from '@backup/backup-format.js'
+import { validateManifest, BackupFormatError, isScopedBackupManifest } from '@backup/backup-format.js'
 import { unzipSync, strFromU8 } from 'fflate'
 import { setCurrentUser, toEnDigits } from '@online-src/utils.js'
 
@@ -79,6 +79,10 @@ async function handleImport() {
       .join(' · ')
 
     status.textContent = `ایمپورت موفق — ${summary}`
+    if (isScopedBackupManifest(manifest)) {
+      const scopedUser = manifest.scope?.username || '—'
+      showNotice(`بکاپ شخصی (${scopedUser}) — نام کاربری همان آنلاین است؛ از «تنظیم رمز آفلاین» یک رمز جدید بگذارید.`)
+    }
     await initState()
   } catch (err) {
     status.hidden = false

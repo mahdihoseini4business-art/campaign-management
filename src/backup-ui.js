@@ -104,6 +104,45 @@ export async function exportFullBackup() {
   }
 }
 
+export async function exportSplitDistribution() {
+  if (!requireMainAdmin()) return
+  if (_restoreBusy) return
+
+  _restoreBusy = true
+  setBackupProgress('در حال آماده‌سازی snapshot…')
+
+  try {
+    const user = getCurrentUser()
+    const backup = await import('./backup/index.js')
+    const { bytes, filename, splitIndex } = await backup.exportSplitDistributionFromSupabase({
+      exportedBy: {
+        phone: user?.phone || '',
+        role: user?.role || '',
+        displayName: user?.displayName || '',
+        username: user?.username || ''
+      },
+      source: 'online',
+      onProgress: ({ table, done, total }) => {
+        const label = TABLE_LABELS[table] || table
+        setBackupProgress(`خواندن ${label}… (${done}/${total})`)
+      },
+      onUserProgress: ({ username, done, total }) => {
+        setBackupProgress(`ساخت بکاپ ${username}… (${done}/${total})`)
+      }
+    })
+
+    await backup.downloadDistributionFile(bytes, filename)
+    const userCount = splitIndex?.userCount ?? 0
+    showToast(`بسته توزیع آفلاین دانلود شد (${userCount} کاربر)`)
+  } catch (e) {
+    console.error('exportSplitDistribution error:', e)
+    showToast(e?.message || 'خطا در ایجاد بسته توزیع', 'error')
+  } finally {
+    _restoreBusy = false
+    setBackupProgress('', false)
+  }
+}
+
 export function openBackupRestoreModal() {
   if (!requireMainAdmin()) return
   resetRestoreState()
@@ -149,6 +188,13 @@ async function onBackupRestoreFileSelected(file) {
   try {
     const backup = await import('./backup/index.js')
     const { manifest, tables: backupTables } = await backup.parseBackupFile(file)
+
+    if (backup.isScopedBackupManifest(manifest)) {
+      showToast('بکاپ شخصی (scoped) قابل بازیابی در نسخه آنلاین نیست. از بکاپ کامل استفاده کنید.', 'error')
+      resetRestoreState()
+      renderRestoreModal()
+      return
+    }
 
     setRestoreProgress('در حال مقایسه با داده‌های آنلاین…')
     const { tables: onlineTables } = await backup.collectFullBackupFromSupabase({

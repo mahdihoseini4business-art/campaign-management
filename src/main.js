@@ -59,6 +59,7 @@ import {
 } from './browser-notifications.js'
 import {
   exportFullBackup,
+  exportSplitDistribution,
   openBackupRestoreModal,
   closeBackupRestoreModal,
   applyBackupRestore,
@@ -348,6 +349,7 @@ const app = {
   saveSmsPanelSettings,
   resetSmsMessageTemplate,
   exportFullBackup,
+  exportSplitDistribution,
   openBackupRestoreModal,
   closeBackupRestoreModal,
   applyBackupRestore,

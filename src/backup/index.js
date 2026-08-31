@@ -7,9 +7,11 @@
 
 export {
   BACKUP_FORMAT_VERSION,
+  BACKUP_FORMAT_VERSION_MIN,
   BACKUP_FILE_EXTENSION,
   BACKUP_TABLES,
   BACKUP_SOURCES,
+  BACKUP_KINDS,
   emptyDeletionsMap
 } from './constants.js'
 
@@ -29,7 +31,9 @@ export {
   tableDataPath,
   sanitizeUsersForBackup,
   sanitizeTableForBackup,
-  suggestBackupFilename
+  suggestBackupFilename,
+  suggestDistributionFilename,
+  isScopedBackupManifest
 } from './backup-format.js'
 
 export {
@@ -73,3 +77,19 @@ export {
 } from './backup-import.js'
 
 export { applyMergePlanToSupabase } from './backup-apply.js'
+
+export {
+  resolveAdvisorPhones,
+  resolveBackupScope,
+  filterTablesForUser,
+  countTableRows,
+  canViewOrgWideDataForUser,
+  customerVisibleToUser,
+  normalizePhone as scopeNormalizePhone
+} from './backup-scope.js'
+
+export {
+  buildSplitDistributionZip,
+  exportSplitDistributionFromSupabase,
+  downloadDistributionFile
+} from './backup-split.js'

@@ -472,8 +472,10 @@
             </div>
             <div class="form-row settings-add-row" style="justify-content:flex-start;gap:8px;flex-wrap:wrap;">
               <button type="button" class="btn btn-primary" onclick="app.exportFullBackup()">بکاپ کامل (دانلود)</button>
+              <button type="button" class="btn btn-primary" onclick="app.exportSplitDistribution()">بسته توزیع آفلاین</button>
               <button type="button" class="btn" onclick="app.openBackupRestoreModal()">بازیابی از بکاپ…</button>
             </div>
+            <p class="settings-pane-desc" style="margin-top:8px;font-size:12px;">بسته توزیع: یک ZIP شامل بکاپ کامل + یک فایل per user برای import در نسخه آفلاین. بکاپ شخصی قابل merge آنلاین <strong>نیست</strong>.</p>
             <p id="backupProgress" class="settings-pane-desc backup-progress" hidden></p>
           </div>
         </section>

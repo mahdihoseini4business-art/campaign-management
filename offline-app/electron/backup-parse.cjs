@@ -1,6 +1,8 @@
 const { unzipSync, strFromU8 } = require('fflate')
 
-const BACKUP_FORMAT_VERSION = 1
+const BACKUP_FORMAT_VERSION = 2
+const BACKUP_FORMAT_VERSION_MIN = 1
+const BACKUP_KINDS = ['full', 'scoped']
 const BACKUP_MANIFEST_PATH = 'manifest.json'
 const BACKUP_DATA_PREFIX = 'data/'
 const BACKUP_TABLES = [
@@ -37,12 +39,18 @@ function validateManifest(manifest) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
     throw new BackupFormatError('manifest.json نامعتبر است.')
   }
-  if (manifest.formatVersion !== BACKUP_FORMAT_VERSION) {
+  const version = Number(manifest.formatVersion)
+  if (!Number.isFinite(version) || version < BACKUP_FORMAT_VERSION_MIN || version > BACKUP_FORMAT_VERSION) {
     throw new BackupFormatError(
       `نسخه فرمت پشتیبان پشتیبانی نمی‌شود (نسخه فایل: ${manifest.formatVersion}).`,
       'UNSUPPORTED_VERSION'
     )
   }
+  const backupKind = manifest.backupKind == null ? 'full' : String(manifest.backupKind)
+  if (!BACKUP_KINDS.includes(backupKind)) {
+    throw new BackupFormatError('فیلد backupKind در manifest نامعتبر است.')
+  }
+  manifest.backupKind = backupKind
   if (typeof manifest.exportedAt !== 'string' || !manifest.exportedAt) {
     throw new BackupFormatError('فیلد exportedAt در manifest وجود ندارد.')
   }

@@ -1,5 +1,11 @@
 /** Current `.carno-backup` format version (bump when schema changes). */
-export const BACKUP_FORMAT_VERSION = 1
+export const BACKUP_FORMAT_VERSION = 2
+
+/** Minimum supported format version for import. */
+export const BACKUP_FORMAT_VERSION_MIN = 1
+
+/** Allowed backupKind values in manifest. */
+export const BACKUP_KINDS = Object.freeze(['full', 'scoped'])
 
 /** File extension for full backups (ZIP archive). */
 export const BACKUP_FILE_EXTENSION = '.carno-backup'
