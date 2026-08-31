@@ -1,0 +1,12 @@
+.offline-mode-banner {
+  position: sticky;
+  top: 0;
+  z-index: 12000;
+  background: linear-gradient(90deg, #0b3d91, #0155d2);
+  color: #fff;
+  text-align: center;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(1, 85, 210, 0.25);
+}

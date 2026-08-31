@@ -16,6 +16,8 @@ const {
   fetchAllTables
 } = require('./storage.cjs')
 const { login, setOfflinePassword, getUserPublic } = require('./auth-local.cjs')
+const { executeDbRequest, setCurrentActorPhone } = require('./storage-query.cjs')
+const { buildOfflineBackupZip } = require('./backup-export.cjs')
 
 function registerIpcHandlers() {
   ipcMain.handle('offline:getInfo', () => getAppInfo(defaultDbPath()))
@@ -28,6 +30,34 @@ function registerIpcHandlers() {
     hasData: hasAnyData(),
     userCount: countUsers()
   }))
+
+  ipcMain.handle('offline:dbRequest', (_event, req) => executeDbRequest(req || {}))
+
+  ipcMain.handle('offline:setActorPhone', (_event, phone) => {
+    setCurrentActorPhone(phone || '')
+    return true
+  })
+
+  ipcMain.handle('offline:exportBackup', async (_event, opts = {}) => {
+    const { bytes, filename, deletionCount } = buildOfflineBackupZip({
+      exportedBy: opts.exportedBy || {}
+    })
+    const result = await dialog.showSaveDialog({
+      title: 'ذخیره بکاپ آفلاین',
+      defaultPath: filename,
+      filters: [
+        { name: 'CARNO Backup', extensions: ['carno-backup'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    })
+    if (result.canceled || !result.filePath) {
+      return { canceled: true }
+    }
+    fs.writeFileSync(result.filePath, Buffer.from(bytes))
+    const { clearDeletionLog } = require('./backup-export.cjs')
+    clearDeletionLog()
+    return { canceled: false, path: result.filePath, filename, deletionCount }
+  })
 
   ipcMain.handle('offline:pickBackupFile', async () => {
     const result = await dialog.showOpenDialog({
@@ -66,7 +96,11 @@ function registerIpcHandlers() {
   ipcMain.handle('offline:login', async (_event, payload) => {
     const username = String(payload?.username || '').trim()
     const password = String(payload?.password || '')
-    return login(username, password)
+    const result = await login(username, password)
+    if (result.ok && result.user?.phone) {
+      setCurrentActorPhone(result.user.phone)
+    }
+    return result
   })
 
   ipcMain.handle('offline:setOfflinePassword', async (_event, payload) => {

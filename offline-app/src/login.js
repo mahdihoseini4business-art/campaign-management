@@ -1,7 +1,7 @@
 import { BACKUP_FORMAT_VERSION, BACKUP_TABLES, BACKUP_MANIFEST_PATH } from '@backup/constants.js'
 import { validateManifest, BackupFormatError } from '@backup/backup-format.js'
 import { unzipSync, strFromU8 } from 'fflate'
-import { setCurrentUser, toEnDigits } from './session.js'
+import { setCurrentUser, toEnDigits } from '@online-src/utils.js'
 
 const TABLE_LABELS = {
   customers: 'مشتری',
@@ -110,7 +110,7 @@ async function handleLogin(event) {
   }
 
   await setCurrentUser(result.user)
-  window.location.href = './index.html'
+  window.location.href = './app.html'
 }
 
 async function handleSetupPassword(event) {

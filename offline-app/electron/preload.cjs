@@ -11,5 +11,8 @@ contextBridge.exposeInMainWorld('offlineApi', {
   login: (payload) => ipcRenderer.invoke('offline:login', payload),
   setOfflinePassword: (payload) => ipcRenderer.invoke('offline:setOfflinePassword', payload),
   getUserPublic: (username) => ipcRenderer.invoke('offline:getUserPublic', username),
-  fetchAllTables: () => ipcRenderer.invoke('offline:fetchAllTables')
+  fetchAllTables: () => ipcRenderer.invoke('offline:fetchAllTables'),
+  dbRequest: (req) => ipcRenderer.invoke('offline:dbRequest', req),
+  setActorPhone: (phone) => ipcRenderer.invoke('offline:setActorPhone', phone),
+  exportBackup: (opts) => ipcRenderer.invoke('offline:exportBackup', opts)
 })

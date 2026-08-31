@@ -3,6 +3,29 @@ import path from 'node:path'
 import fs from 'node:fs'
 
 const repoRoot = path.resolve(__dirname, '..')
+const onlineSrc = path.resolve(repoRoot, 'src')
+const shimDir = path.resolve(__dirname, 'src/shims')
+
+const SHIM_MAP = {
+  'supabase.js': 'supabase-shim.js',
+  'live-sync.js': 'live-sync-stub.js',
+  'app-update.js': 'app-update-stub.js',
+  'sms.js': 'sms-stub.js',
+  'sale-toasts.js': 'sale-toasts-stub.js',
+  'browser-notifications.js': 'browser-notifications-stub.js',
+  'config.js': 'config-shim.js',
+  'backup-ui.js': 'backup-ui-shim.js'
+}
+
+function resolveOnlineShim(source, importer) {
+  if (!importer) return null
+  const normalized = importer.replace(/\\/g, '/')
+  if (!normalized.includes('/src/')) return null
+  const base = path.basename(source)
+  const shimFile = SHIM_MAP[base]
+  if (!shimFile) return null
+  return path.resolve(shimDir, shimFile)
+}
 
 /** Serve shared static assets (fonts, icons) from the online app root in dev/build. */
 function sharedStaticPlugin() {
@@ -58,14 +81,64 @@ function sharedStaticPlugin() {
   }
 }
 
+function onlineAppHtmlPlugin() {
+  let appHtml = ''
+  return {
+    name: 'offline-app-html',
+    buildStart() {
+      const onlineHtml = fs.readFileSync(path.join(repoRoot, 'index.html'), 'utf8')
+      appHtml = onlineHtml
+        .replace(
+          '<script type="module" src="/src/main.js"></script>',
+          '<script type="module" src="/src/app-main.js"></script>'
+        )
+        .replace(/<script src="\/vendor\/jalalidatepicker.min.js"><\/script>\s*/g, '')
+        .replace(/<title>[^<]+<\/title>/, '<title>CARNO — نسخه آفلاین</title>')
+    },
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html, ctx) {
+        if (ctx.path && ctx.path.endsWith('app.html')) {
+          return appHtml || html
+        }
+        return html
+      }
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.split('?')[0] === '/app.html') {
+          res.setHeader('Content-Type', 'text/html; charset=utf-8')
+          res.end(appHtml)
+          return
+        }
+        next()
+      })
+    },
+    closeBundle() {
+      const outDir = path.resolve(__dirname, 'dist')
+      fs.writeFileSync(path.join(outDir, 'app.html'), appHtml, 'utf8')
+    }
+  }
+}
+
 export default defineConfig({
   root: __dirname,
   base: './',
-  plugins: [sharedStaticPlugin()],
+  plugins: [
+    {
+      name: 'offline-online-shims',
+      enforce: 'pre',
+      resolveId(source, importer) {
+        return resolveOnlineShim(source, importer)
+      }
+    },
+    sharedStaticPlugin(),
+    onlineAppHtmlPlugin()
+  ],
   resolve: {
     alias: {
       '@backup': path.resolve(repoRoot, 'src/backup'),
-      '@online-src': path.resolve(repoRoot, 'src')
+      '@online-src': onlineSrc
     }
   },
   build: {
@@ -73,13 +146,16 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        main: path.resolve(__dirname, 'index.html'),
-        login: path.resolve(__dirname, 'login.html')
+        login: path.resolve(__dirname, 'login.html'),
+        app: path.resolve(__dirname, 'app.html')
       }
     }
   },
   server: {
     port: 5174,
-    strictPort: true
+    strictPort: true,
+    fs: {
+      allow: [repoRoot]
+    }
   }
 })

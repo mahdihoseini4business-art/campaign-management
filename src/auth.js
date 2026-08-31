@@ -21,6 +21,14 @@ import {
   clearUserViewPhones
 } from './groups.js'
 
+function loginPageHref() {
+  return typeof window !== 'undefined' && window.__CARNO_OFFLINE__ ? './login.html' : '/login.html'
+}
+
+function appPageHref() {
+  return typeof window !== 'undefined' && window.__CARNO_OFFLINE__ ? './app.html' : '/index.html'
+}
+
 // ============================================
 // Password Hashing (PBKDF2)
 // ============================================
@@ -292,12 +300,12 @@ export async function doLogin() {
     groupName: groupInfo.groupName,
     isGroupManager: groupInfo.isGroupManager
   })
-  window.location.href = '/index.html'
+  window.location.href = appPageHref()
 }
 
 export function doLogout() {
   clearCurrentUser()
-  window.location.href = '/login.html'
+  window.location.href = loginPageHref()
 }
 
 /**
@@ -307,15 +315,19 @@ export function doLogout() {
 export async function checkSession() {
   const localUser = await restoreSession()
   if (!localUser) {
-    window.location.href = '/login.html'
+    window.location.href = loginPageHref()
     return null
   }
 
   const refreshed = await refreshSessionFromServer(localUser)
   if (!refreshed) {
     clearCurrentUser()
-    window.location.href = '/login.html'
+    window.location.href = loginPageHref()
     return null
+  }
+
+  if (typeof window !== 'undefined' && window.__CARNO_OFFLINE__ && refreshed.phone && window.offlineApi?.setActorPhone) {
+    await window.offlineApi.setActorPhone(refreshed.phone)
   }
 
   return refreshed

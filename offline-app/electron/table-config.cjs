@@ -74,10 +74,42 @@ const BOOL_COLUMNS = {
 
 const CLEAR_ORDER = [...IMPORT_ORDER].reverse()
 
+/** Stable record id for deletion_log (matches online backup merge). */
+const PRIMARY_KEYS = {
+  customers: 'id',
+  followups: 'id',
+  refunds: 'id',
+  ownership_transfers: 'id',
+  ownership_transfer_acks: 'id',
+  users: 'username',
+  groups: 'id',
+  group_members: ['group_id', 'user_phone'],
+  app_settings: 'key',
+  notifications: 'id',
+  notification_reads: ['user_phone', 'notification_id']
+}
+
+const AUTO_ID_TABLES = new Set([
+  'followups', 'refunds', 'ownership_transfers', 'ownership_transfer_acks', 'notifications'
+])
+
+function recordKey(table, row) {
+  if (!row || typeof row !== 'object') return ''
+  const pk = PRIMARY_KEYS[table]
+  if (!pk) return ''
+  if (Array.isArray(pk)) {
+    return pk.map(k => String(row[k] ?? '')).join('\0')
+  }
+  return String(row[pk] ?? '')
+}
+
 module.exports = {
   IMPORT_ORDER,
   CLEAR_ORDER,
   TABLE_COLUMNS,
   JSON_COLUMNS,
-  BOOL_COLUMNS
+  BOOL_COLUMNS,
+  PRIMARY_KEYS,
+  AUTO_ID_TABLES,
+  recordKey
 }

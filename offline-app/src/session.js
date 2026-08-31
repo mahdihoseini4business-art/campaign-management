@@ -1,4 +1,4 @@
-const SESSION_KEY = 'carno_offline_session'
+const SESSION_KEY = 'campaign_manager_session'
 const SESSION_EXPIRY_HOURS = 24 * 7
 const SESSION_SECRET = import.meta.env.VITE_HASH_SECRET || 'c4mp_m4n4g3r_s3cr3t_k3y_2024'
 

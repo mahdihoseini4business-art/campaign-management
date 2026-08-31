@@ -10,8 +10,12 @@
     "start": "electron ."
   },
   "dependencies": {
+    "chart.js": "^4.5.1",
+    "dompurify": "^3.4.13",
     "fflate": "^0.8.3",
-    "sql.js": "^1.13.0"
+    "marked": "^18.0.9",
+    "sql.js": "^1.13.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
