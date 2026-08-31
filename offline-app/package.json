@@ -1,0 +1,22 @@
+{
+  "name": "carno-offline",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CARNO emergency offline desktop app (Electron + SQLite)",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k \"vite --port 5174 --strictPort\" \"wait-on http://127.0.0.1:5174 && electron .\"",
+    "build:renderer": "vite build",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "fflate": "^0.8.3",
+    "sql.js": "^1.13.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "electron": "^33.4.11",
+    "vite": "^5.4.19",
+    "wait-on": "^8.0.4"
+  }
+}

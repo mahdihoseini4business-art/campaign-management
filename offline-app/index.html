@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0155d2">
+  <title>CARNO — نسخه آفلاین</title>
+  <link rel="icon" type="image/webp" href="/icon.webp">
+  <link rel="stylesheet" href="/fonts/vazirmatn.css">
+  <link rel="stylesheet" href="/src/shell.css">
+  <script type="module" src="/src/main.js"></script>
+</head>
+<body>
+  <div class="offline-shell">
+    <header class="offline-header">
+      <img src="/icon.webp" alt="" width="40" height="40" class="offline-logo">
+      <div>
+        <h1>CARNO — نسخه آفلاین اضطراری</h1>
+        <p class="offline-subtitle">ذخیره‌سازی محلی SQLite — بدون نیاز به اینترنت</p>
+      </div>
+      <span class="offline-badge">آفلاین</span>
+    </header>
+
+    <main class="offline-main">
+      <section class="offline-card" id="statusCard">
+        <h2>وضعیت سیستم</h2>
+        <dl class="offline-dl" id="statusList">
+          <div><dt>در حال بارگذاری…</dt><dd></dd></div>
+        </dl>
+      </section>
+
+      <section class="offline-card">
+        <h2>جداول پایگاه داده</h2>
+        <p class="offline-hint">پس از ایمپورت بکاپ آنلاین، تعداد رکوردها اینجا نمایش داده می‌شود.</p>
+        <div class="offline-table-grid" id="tableCounts"></div>
+      </section>
+
+      <section class="offline-card offline-card-muted">
+        <h2>مرحله بعدی (فاز ۵)</h2>
+        <ul class="offline-steps">
+          <li>ایمپورت فایل <code>.carno-backup</code> از نسخه آنلاین</li>
+          <li>ورود محلی با همان کاربران بکاپ</li>
+          <li>کار روزمره روی داده‌های محلی</li>
+          <li>خروجی بکاپ برای ادغام هوشمند در نسخه آنلاین</li>
+        </ul>
+        <div class="offline-actions">
+          <button type="button" class="btn btn-primary" id="pickBackupBtn" disabled>انتخاب فایل بکاپ…</button>
+          <button type="button" class="btn" id="refreshBtn">بروزرسانی وضعیت</button>
+        </div>
+        <p id="backupPreview" class="offline-preview" hidden></p>
+      </section>
+    </main>
+
+    <footer class="offline-footer">
+      <span id="backupModuleInfo"></span>
+    </footer>
+  </div>
+</body>
+</html>

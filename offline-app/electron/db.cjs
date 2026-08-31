@@ -1,0 +1,139 @@
+const fs = require('node:fs')
+const path = require('node:path')
+const initSqlJs = require('sql.js')
+
+const SCHEMA_VERSION = readSchemaVersion()
+const BACKUP_TABLES = [
+  'customers',
+  'followups',
+  'refunds',
+  'ownership_transfers',
+  'ownership_transfer_acks',
+  'users',
+  'groups',
+  'group_members',
+  'app_settings',
+  'notifications',
+  'notification_reads'
+]
+
+/** @type {import('sql.js').Database | null} */
+let db = null
+/** @type {string} */
+let dbPath = ''
+
+function readSchemaVersion() {
+  try {
+    const raw = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema-version.txt'), 'utf8')
+    const n = parseInt(String(raw).trim(), 10)
+    return Number.isFinite(n) ? n : 1
+  } catch {
+    return 1
+  }
+}
+
+function defaultDbPath() {
+  const { app } = require('electron')
+  return path.join(app.getPath('userData'), 'carno-offline.db')
+}
+
+function persistDatabase() {
+  if (!db || !dbPath) return
+  const dir = path.dirname(dbPath)
+  fs.mkdirSync(dir, { recursive: true })
+  const data = db.export()
+  fs.writeFileSync(dbPath, Buffer.from(data))
+}
+
+async function openDatabase(targetPath = defaultDbPath()) {
+  if (db) return db
+  dbPath = targetPath
+  const SQL = await initSqlJs({
+    locateFile: (file) => path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist', file)
+  })
+
+  if (fs.existsSync(dbPath)) {
+    const fileBuffer = fs.readFileSync(dbPath)
+    db = new SQL.Database(fileBuffer)
+  } else {
+    db = new SQL.Database()
+  }
+
+  db.run('PRAGMA foreign_keys = ON')
+  return db
+}
+
+function getDatabase() {
+  if (!db) throw new Error('Database is not open')
+  return db
+}
+
+function closeDatabase() {
+  if (!db) return
+  persistDatabase()
+  db.close()
+  db = null
+}
+
+function initSchema() {
+  const database = getDatabase()
+  const schemaPath = path.join(__dirname, '..', 'db', 'schema.sql')
+  const sql = fs.readFileSync(schemaPath, 'utf8')
+  database.run(sql)
+
+  database.run(`
+    INSERT INTO app_meta (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `, ['schema_version', String(SCHEMA_VERSION)])
+
+  database.run(`
+    INSERT INTO app_meta (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `, ['initialized_at', new Date().toISOString()])
+
+  persistDatabase()
+  return { schemaVersion: SCHEMA_VERSION }
+}
+
+function getTableCounts() {
+  const database = getDatabase()
+  /** @type {Record<string, number>} */
+  const counts = {}
+  for (const table of BACKUP_TABLES) {
+    const result = database.exec(`SELECT COUNT(*) AS c FROM ${table}`)
+    const value = result?.[0]?.values?.[0]?.[0]
+    counts[table] = Number(value || 0)
+  }
+  const delResult = database.exec('SELECT COUNT(*) AS c FROM deletion_log')
+  counts.deletion_log = Number(delResult?.[0]?.values?.[0]?.[0] || 0)
+  return counts
+}
+
+function getAppInfo(resolvedPath = dbPath || defaultDbPath()) {
+  const database = getDatabase()
+  const result = database.exec(
+    "SELECT value FROM app_meta WHERE key = 'schema_version'"
+  )
+  const schemaValue = result?.[0]?.values?.[0]?.[0]
+  return {
+    mode: 'offline',
+    dbPath: resolvedPath,
+    schemaVersion: Number(schemaValue || SCHEMA_VERSION),
+    backupFormatVersion: 1,
+    tables: BACKUP_TABLES,
+    engine: 'sql.js'
+  }
+}
+
+module.exports = {
+  SCHEMA_VERSION,
+  BACKUP_TABLES,
+  defaultDbPath,
+  openDatabase,
+  getDatabase,
+  closeDatabase,
+  persistDatabase,
+  initSchema,
+  getTableCounts,
+  getAppInfo
+}

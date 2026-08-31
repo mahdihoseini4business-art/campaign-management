@@ -10,6 +10,11 @@ DESIGN.md
 OTP-SETUP-GUIDE.md
 .*
 
+# Offline desktop app build artifacts
+offline-app/node_modules
+offline-app/dist
+offline-app/out
+
 # Secrets — never commit real credentials (SEC-M4)
 .env
 .env.*
