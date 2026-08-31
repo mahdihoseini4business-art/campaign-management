@@ -731,6 +731,7 @@ async function init() {
         return
       }
       if (top.id === 'settingsModal') closeSettingsModal()
+      else if (top.id === 'backupRestoreModal') closeBackupRestoreModal()
       else top.classList.remove('active')
     }
     closeNotificationMenu()

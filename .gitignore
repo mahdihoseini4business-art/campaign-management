@@ -26,3 +26,4 @@ supabase/**/.env
 supabase/**/node_modules/
 supabase/**/.deno/
 !.npmrc
+package-lock.json
