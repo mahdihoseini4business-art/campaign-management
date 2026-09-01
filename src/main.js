@@ -19,7 +19,7 @@ import {
   onRefundsSearchInput, sortRefundsRejected, sortRefundsArchived
 } from './refunds.js'
 import { renderDashboard, toggleDashSection, applyDashFilter, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareMetricChange, onProductChartMetricChange, onDashTargetsScopeChange, renderSalesTargetBand, onAovMaControlsChange, exportDashboardForAi, copyDashboardExport, sortDashOverdue, sortDashSoon, sortDashTransfer } from './dashboard.js'
-import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners, openMatrixImportModal, closeMatrixImportModal, doMatrixImport, dryRunMatrixImport, setMatrixImportMapping, setMatrixProductValueMap, setMatrixProductPriceMap, downloadMatrixImportProblems, initMatrixImportListeners } from './import-export.js'
+import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, dryRunCustomerImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners, openMatrixImportModal, closeMatrixImportModal, doMatrixImport, dryRunMatrixImport, setMatrixImportMapping, setMatrixProductValueMap, setMatrixProductPriceMap, downloadMatrixImportProblems, initMatrixImportListeners } from './import-export.js'
 import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection, openBulkTransferModal, closeBulkTransferModal, confirmBulkTransfer, refreshCustomerBulkOptions, updateBulkTransferPreview, filterBulkTransferOptions } from './bulk.js'
 import {
   openTransferInbox,
@@ -258,6 +258,7 @@ const app = {
   openImportModal,
   closeImportModal,
   doImport,
+  dryRunCustomerImport,
   setImportMapping,
   setFollowupImportMapping,
   openSalesImportModal,

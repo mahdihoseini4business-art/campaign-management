@@ -811,10 +811,12 @@ let importData = {
 
 export function openImportModal() {
   if (!requirePermission('customers_import')) return
-  importData = { headers: [], rows: [], mapping: {}, autoMapping: {}, followups: null, mode: 'customers' }
+  importData = { headers: [], rows: [], mapping: {}, autoMapping: {}, followups: null, mode: 'customers', dryRun: null }
   document.getElementById('importStep1').style.display = ''
   document.getElementById('importStep2').style.display = 'none'
   document.getElementById('importBtn').style.display = 'none'
+  const dryBtn = document.getElementById('importDryRunBtn')
+  if (dryBtn) dryBtn.style.display = 'none'
   document.getElementById('importFileInput').value = ''
   document.getElementById('importMapping').innerHTML = ''
   document.getElementById('importPreview').textContent = ''
@@ -897,6 +899,8 @@ function renderImportMapping() {
   document.getElementById('importStep1').style.display = 'none'
   document.getElementById('importStep2').style.display = ''
   document.getElementById('importBtn').style.display = ''
+  const dryBtn = document.getElementById('importDryRunBtn')
+  if (dryBtn) dryBtn.style.display = ''
 
   const fu = importData.followups
   const fuCount = fu ? fu.rows.length : 0
@@ -1029,6 +1033,223 @@ function applyMappedCustomerFields(customer, { mapping, getValue, users, phones,
   } else if (isCreate) {
     customer.customerCode = ''
   }
+}
+
+function previewFollowupRows({ headers, rows, mapping }, { syncCustomerNextDate = false, knownCustomerIds = null } = {}) {
+  const data = getData()
+  const map = mapping || autoMapColumns(headers, FOLLOWUP_IMPORT_FIELDS)
+  if (map.customerId === undefined || map.customerId === null) {
+    return { created: 0, updated: 0, skipped: 0, missingCustomer: 0, customersUpdated: 0 }
+  }
+
+  let created = 0, updated = 0, skipped = 0, missingCustomer = 0, customersUpdated = 0
+  const byFingerprint = new Map()
+  for (const f of data.followups) {
+    byFingerprint.set(followupFingerprint(f), f)
+  }
+  const customerIdSet = knownCustomerIds || new Set(data.customers.map(c => c.id))
+  const nextDateMapped = map.nextDate !== undefined && map.nextDate !== null
+
+  for (const row of rows) {
+    const getValue = (fieldKey) => {
+      const colIdx = map[fieldKey]
+      if (colIdx === undefined || colIdx === null) return ''
+      return String(row[colIdx] || '').trim()
+    }
+
+    const customerId = getValue('customerId')
+    const notes = getValue('notes')
+    const date = toEnDigits(getValue('date'))
+    const type = getValue('type') || 'یادداشت'
+    if (!customerId || (!notes && !date && !(syncCustomerNextDate && nextDateMapped))) {
+      skipped++
+      continue
+    }
+
+    if (!customerIdSet.has(customerId)) {
+      missingCustomer++
+      continue
+    }
+
+    const nextDate = toEnDigits(getValue('nextDate'))
+    const result = getValue('result') || ''
+    const done = isDoneFollowupType(type)
+    const followup = {
+      customerId,
+      date: date || '',
+      type,
+      result,
+      nextDate: nextDate || '',
+      notes: notes || '',
+      status: done ? 'done' : 'pending',
+    }
+
+    const fp = followupFingerprint(followup)
+    const existing = byFingerprint.get(fp)
+    let noteTouched = false
+    if (existing) {
+      const noteChanged =
+        (existing.nextDate || '') !== (followup.nextDate || '') ||
+        (existing.result || '') !== (followup.result || '')
+      if (noteChanged) {
+        updated++
+        noteTouched = true
+      }
+    } else if (notes || date) {
+      byFingerprint.set(fp, followup)
+      created++
+      noteTouched = true
+    }
+
+    let customerTouched = false
+    if (syncCustomerNextDate && nextDateMapped) {
+      const customer = data.customers.find(c => c.id === customerId)
+      const normalizedNext = nextDate || ''
+      if (customer && (customer.nextFollowupDate || '') !== normalizedNext) {
+        customersUpdated++
+        customerTouched = true
+      }
+    }
+
+    if (!noteTouched && !customerTouched) skipped++
+  }
+
+  return { created, updated, skipped, missingCustomer, customersUpdated }
+}
+
+function analyzeCustomerImportRows(rows, mapping, data) {
+  let created = 0, updated = 0, skipped = 0
+  const knownIds = new Set(data.customers.map(c => c.id))
+
+  for (const row of rows) {
+    const getValue = (fieldKey) => {
+      const colIdx = mapping[fieldKey]
+      if (colIdx === undefined || colIdx === null) return ''
+      return String(row[colIdx] || '').trim()
+    }
+
+    const phone = toEnDigits(getValue('phone'))
+    const phone2 = toEnDigits(getValue('phone2'))
+    const phone3 = toEnDigits(getValue('phone3'))
+    const phones = normalizeCustomerPhones([phone, phone2, phone3])
+    const importId = getValue('id')
+    const platformIdRaw = getValue('platformId')
+    const name = getValue('name')
+
+    if (!importId && !platformIdRaw && !name && !phones.length) {
+      skipped++
+      continue
+    }
+
+    let existing = null
+    if (importId) existing = data.customers.find(c => c.id === importId) || null
+    if (!existing && phones.length) {
+      for (const p of phones) {
+        existing = findCustomerByPhone(p, data.customers)
+        if (existing) break
+      }
+    }
+    if (!existing && platformIdRaw) {
+      existing = data.customers.find(c =>
+        (c.platformId || '').toLowerCase() === platformIdRaw.toLowerCase()
+      ) || null
+    }
+
+    if (existing) {
+      updated++
+    } else {
+      const id = importId || `__preview_${created}`
+      if (knownIds.has(id)) {
+        skipped++
+        continue
+      }
+      knownIds.add(id)
+      created++
+    }
+  }
+
+  return { created, updated, skipped, knownIds }
+}
+
+async function previewCustomerImport() {
+  if (importData.mode === 'followups') {
+    const fu = importData.followups
+    if (!fu?.rows?.length) return null
+    return {
+      mode: 'followups',
+      followups: previewFollowupRows(fu, { syncCustomerNextDate: true })
+    }
+  }
+
+  const mapping = importData.mapping
+  if (Object.keys(mapping).length === 0) return null
+
+  const data = getData()
+  const stats = analyzeCustomerImportRows(importData.rows, mapping, data)
+
+  let followups = null
+  if (importData.followups?.rows?.length) {
+    followups = previewFollowupRows(importData.followups, {
+      syncCustomerNextDate: false,
+      knownCustomerIds: stats.knownIds
+    })
+  }
+
+  return {
+    mode: 'customers',
+    totalRows: importData.rows.length,
+    created: stats.created,
+    updated: stats.updated,
+    skipped: stats.skipped,
+    followups
+  }
+}
+
+function renderCustomerImportPreview(stats) {
+  const preview = document.getElementById('importPreview')
+  if (!preview || !stats) return
+
+  if (stats.mode === 'followups') {
+    const fu = stats.followups
+    preview.innerHTML = [
+      '<b>پیش‌نمایش:</b>',
+      fu.customersUpdated ? `${fu.customersUpdated} تاریخ پیگیری مشتری` : '',
+      fu.updated ? `${fu.updated} یادداشت به‌روزرسانی` : '',
+      fu.created ? `${fu.created} یادداشت ایجاد` : '',
+      fu.skipped ? `${fu.skipped} بدون تغییر` : '',
+      fu.missingCustomer ? `${fu.missingCustomer} بدون مشتری` : ''
+    ].filter(Boolean).join(' — ') || '<b>پیش‌نمایش:</b> هیچ تغییری اعمال نمی‌شود'
+    return
+  }
+
+  const parts = [
+    `<b>پیش‌نمایش:</b> ${stats.totalRows} ردیف`,
+    stats.created ? `${stats.created} مشتری جدید` : '',
+    stats.updated ? `${stats.updated} مشتری به‌روزرسانی` : '',
+    stats.skipped ? `${stats.skipped} رد شده` : ''
+  ]
+
+  const fu = stats.followups
+  if (fu) {
+    if (fu.created) parts.push(`${fu.created} یادداشت جدید`)
+    if (fu.updated) parts.push(`${fu.updated} یادداشت به‌روزرسانی`)
+    if (fu.skipped) parts.push(`${fu.skipped} یادداشت بدون تغییر`)
+    if (fu.missingCustomer) parts.push(`${fu.missingCustomer} یادداشت بدون مشتری`)
+  }
+
+  preview.innerHTML = parts.filter(Boolean).join(' — ')
+}
+
+export async function dryRunCustomerImport() {
+  if (!requirePermission('customers_import')) return
+  const stats = await previewCustomerImport()
+  if (!stats) {
+    showToast('حداقل یک ستون را نقشه\u200cبرداری کنید')
+    return
+  }
+  importData.dryRun = stats
+  renderCustomerImportPreview(stats)
+  showToast('پیش‌نمایش آماده است — در دیتابیس تغییری ذخیره نشد')
 }
 
 export async function doImport() {
