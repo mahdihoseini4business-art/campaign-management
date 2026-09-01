@@ -1104,6 +1104,7 @@ export const ALL_PERMISSIONS = {
   customers_ld: 'مشاهده لیدها (LD)',
   customers_cs: 'مشاهده مشتریان با شماره (CS)',
   customers_add: 'افزودن و ویرایش مشتری',
+  customers_edit_others: 'ویرایش مشتریان دیگران (بدون تغییر کارشناس)',
   customers_delete: 'حذف مشتری',
   customers_transfer: 'انتقال مالکیت مشتری',
   customers_import: 'ایمپورت اکسل مشتریان',
@@ -1133,7 +1134,7 @@ export const REFUND_PERMISSION_KEYS = ['refunds_view', 'refunds_request', 'refun
 
 export const PERMISSION_GROUPS = [
   { label: 'داشبورد', keys: ['dashboard'] },
-  { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_delete', 'customers_transfer', 'customers_import', 'customers_export'] },
+  { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_edit_others', 'customers_delete', 'customers_transfer', 'customers_import', 'customers_export'] },
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_add_others', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_add_others', 'sales_import', 'sales_export'] },
   { label: 'محصولات', keys: ['products_matrix', 'matrix_historical_import'] },
@@ -1734,6 +1735,7 @@ export function getDefaultPermissions() {
   p.customers_delete = false
   p.followups_delete = false
   p.followups_add_others = false
+  p.customers_edit_others = false
   p.sales_add_others = false
   p.accounting = false
   p.accounting_org_wide_dashboard = false
@@ -1968,6 +1970,28 @@ export function canManageCustomer(customer, user = getCurrentUser()) {
   if (!canViewCustomer(customer, user)) return false
   if (user.role === 'admin') return true
   return ownsCustomer(customer, user)
+}
+
+/**
+ * Edit customer profile (name, phones, status, …).
+ * Owner with customers_add, or customers_edit_others for another advisor's customers.
+ */
+export function canEditCustomerInfo(customer, user = getCurrentUser()) {
+  if (!customer || !canViewCustomer(customer, user)) return false
+  if (user?.role === 'admin') return true
+  if (!hasPermission('customers_add')) return false
+  if (canManageCustomer(customer, user)) return true
+  if (!hasPermission('customers_edit_others')) return false
+  const ownerPhone = normalizePhone(customer.advisorPhone)
+  if (!ownerPhone || ownsCustomer(customer, user)) return false
+  return canViewScopedCustomer(customer, user, 'customers')
+}
+
+/** Change customer advisor from the edit form (ownership). */
+export function canChangeCustomerAdvisor(customer, user = getCurrentUser()) {
+  if (!customer || !canViewCustomer(customer, user)) return false
+  if (user?.role === 'admin') return true
+  return canManageCustomer(customer, user)
 }
 
 /**

@@ -5,7 +5,7 @@ import { updateTransferInboxBadge } from './transfers.js'
 import { broadcastSaleToast, buildSaleToastPayload, broadcastAppSetting } from './sale-toasts.js'
 import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
-  canViewCustomer, canManageCustomer, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
+  canViewCustomer, canManageCustomer, canEditCustomerInfo, canChangeCustomerAdvisor, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
   getTodayJalaliStr, jalaliAddDays, ownsCustomer, isAdmin, canViewOrgWideData,
   canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canScheduleFollowupOnCustomer, canDeleteSalePayment, matchesTabSearch, getCustomerSearchExtras,
   canClaimUnassignedCustomer, canRevealUnassignedByPhoneSearch, isHistoricalImportSale,
@@ -1224,17 +1224,24 @@ async function applyCustomerEdit(editId, fields) {
   if (idx === -1) throw new Error('مشتری یافت نشد')
 
   const oldCustomer = data.customers[idx]
-  if (!canManageCustomer(oldCustomer)) {
-    throw new Error('فقط کارشناس مسئول می‌تواند این مشتری را ویرایش کند')
+  if (!canEditCustomerInfo(oldCustomer)) {
+    throw new Error('شما مجاز به ویرایش این مشتری نیستید')
   }
 
+  const canChangeAdvisor = canChangeCustomerAdvisor(oldCustomer)
   const wasLD = oldCustomer.id.startsWith('LD')
   const nowHasPhone = phones.length > 0
-  const advisorChanged = normalizePhone(oldCustomer.advisorPhone) !== normalizePhone(advisorPhone)
+  const advisorChanged = canChangeAdvisor
+    && normalizePhone(oldCustomer.advisorPhone) !== normalizePhone(advisorPhone)
+  const lockedAdvisorFields = {
+    advisor: oldCustomer.advisor,
+    advisorPhone: oldCustomer.advisorPhone
+  }
+  const effectiveAdvisorFields = canChangeAdvisor ? advisorFields : lockedAdvisorFields
   // Keep previous owner until after conversion; reassign logs the handoff separately
   const baseFields = advisorChanged
-    ? { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, customerCode: customerCode || '', advisor: oldCustomer.advisor, advisorPhone: oldCustomer.advisorPhone }
-    : { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, customerCode: customerCode || '', ...advisorFields }
+    ? { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, customerCode: customerCode || '', ...lockedAdvisorFields }
+    : { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, customerCode: customerCode || '', ...effectiveAdvisorFields }
 
   let resultId = editId
   let toast = 'اطلاعات مشتری ذخیره شد'
@@ -2192,8 +2199,8 @@ export async function saveCustomerDetail(customerId) {
   const isNew = !customerId
   const data = getData()
   const customer = isNew ? null : data.customers.find(c => c.id === customerId)
-  if (!isNew && (!customer || !canManageCustomer(customer))) {
-    showToast('فقط کارشناس مسئول می‌تواند این مشتری را ویرایش کند')
+  if (!isNew && (!customer || !canEditCustomerInfo(customer))) {
+    showToast('شما مجاز به ویرایش این مشتری نیستید')
     return
   }
 
@@ -2313,7 +2320,8 @@ export async function openCustomerDetail(id, options = {}) {
       }
     : data.customers.find(x => x.id === id)
 
-  const canEdit = isNew || (hasPermission('customers_add') && canManageCustomer(c))
+  const canEdit = isNew || canEditCustomerInfo(c)
+  const canChangeAdvisor = isNew || canChangeCustomerAdvisor(c)
   const canTransfer = !isNew && canTransferCustomer(c)
   const canDelete = !isNew && hasPermission('customers_delete') && canManageCustomer(c)
   const canClaim = !isNew && canClaimUnassignedCustomer(c)
@@ -2362,10 +2370,12 @@ export async function openCustomerDetail(id, options = {}) {
     return `<option value="${escapeAttr(phone)}" ${selected}>${escapeHtml(userDisplayName(u))}</option>`
   }).join('')
 
-  // Editable when managing; transfer-only users get an immediate onchange select
+  // Editable when managing; edit-others users see read-only advisor; transfer-only get onchange select
   let advisorHtml
-  if (canEdit) {
+  if (canEdit && canChangeAdvisor) {
     advisorHtml = `<select class="form-select" id="detailAdvisor">${advisorOptions}</select>`
+  } else if (canEdit) {
+    advisorHtml = escapeHtml(c.advisor || '—')
   } else if (canTransfer) {
     advisorHtml = `<select class="form-select" id="detailAdvisor" onchange="app.updateCustomerAdvisor('${escapeAttr(c.id)}', this.value)">${advisorOptions}</select>
       <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">با تغییر، مالکیت فوراً منتقل می‌شود</div>`
