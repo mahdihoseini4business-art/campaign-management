@@ -29,6 +29,12 @@ export async function exportFullBackup() {
   }
 }
 
+export async function exportSplitDistribution() {
+  import('@online-src/utils.js').then(({ showToast }) => {
+    showToast('بسته توزیع آفلاین فقط از نسخه آنلاین (مدیر اصلی) قابل ساخت است.')
+  })
+}
+
 export function openBackupRestoreModal() {
   import('@online-src/utils.js').then(({ showToast }) => {
     showToast('بازیابی به سرور آنلاین فقط در نسخه وب انجام می‌شود. از «بکاپ کامل» برای انتقال به آنلاین استفاده کنید.')
