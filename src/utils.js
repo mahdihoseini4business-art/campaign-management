@@ -141,6 +141,13 @@ export function syncToolbarActionsMenus() {
   }
 }
 
+/** True when the query is only digits and common phone separators (no letters or other chars). */
+export function isPhoneLikeSearch(q) {
+  const s = toEnDigits(String(q || '')).trim()
+  if (!s) return false
+  return /^[\d\s\-+()]+$/.test(s)
+}
+
 /**
  * Shared list-search (same behavior as accounting tab).
  * Matches query against any of the provided field values (id, name, phone, advisor, product, depositor, …).
@@ -148,7 +155,7 @@ export function syncToolbarActionsMenus() {
 export function matchesTabSearch(search, fields = []) {
   const q = toEnDigits(String(search || '')).trim().toLowerCase()
   if (!q) return true
-  const phoneQ = q.replace(/\D/g, '')
+  const phoneQ = isPhoneLikeSearch(q) ? q.replace(/\D/g, '') : ''
   return fields.some(raw => {
     const s = toEnDigits(String(raw ?? '')).trim().toLowerCase()
     if (!s) return false
@@ -1922,6 +1929,8 @@ export function canRevealUnassignedByPhoneSearch(customer, search, user = getCur
   if (!customer) return false
   if (canViewOrgWideData('customers', user)) return true
   if (normalizePhone(customer.advisorPhone)) return true
+  const raw = toEnDigits(String(search || '')).trim()
+  if (!isPhoneLikeSearch(raw)) return false
   const phoneQ = normalizePhone(search)
   if (!phoneQ || !/^09\d{9}$/.test(phoneQ)) return false
   const phones = getCustomerPhones(customer)
