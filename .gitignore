@@ -32,4 +32,5 @@ supabase/**/.env
 supabase/**/node_modules/
 supabase/**/.deno/
 !.npmrc
+!.liaraignore
 package-lock.json
