@@ -29,7 +29,6 @@ import {
 } from './derived-cache.js'
 import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
 import { getPage } from './pagination.js'
-import { blockUntilProductsReady } from './products-load.js'
 
 let salesSortState = { field: null, asc: true }
 
@@ -475,7 +474,6 @@ export function onSalesSearchInput() {
 
 export async function renderSales() {
   const tbody = document.getElementById('salesBody')
-  if (blockUntilProductsReady(tbody, 12)) return
   const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
   const cacheKey = `${search}|${sortSig(salesSortState)}|${tabPageKey('sales', getPage('sales'))}`
   if (shouldSkipTabRender('sales', cacheKey)) return

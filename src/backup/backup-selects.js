@@ -1,18 +1,15 @@
 /** Shared SELECT lists for full backup export (used by data.js and backup-tables.js). */
 
-/** List load omits heavy `notes` (detail) and `products` (background batch). */
+/** List load omits heavy `notes` (fetched on detail open). */
 export const CUSTOMER_LIST_SELECT = [
   'id', 'platform_id', 'platform', 'name', 'phone', 'phones', 'addresses',
-  'status', 'advisor', 'advisor_phone', 'next_followup_date', 'product_count',
+  'status', 'advisor', 'advisor_phone', 'next_followup_date', 'products',
   'created_at', 'updated_at', 'customer_level', 'customer_level_locked', 'referred_by_phone',
   'customer_code'
 ].join(',')
 
-/** Batch / per-customer products fetch (startup phase B). */
-export const CUSTOMER_PRODUCTS_SELECT = 'id,products,updated_at,product_count'
-
-/** Full customer row including notes + products for detail panel / backup. */
-export const CUSTOMER_DETAIL_SELECT = CUSTOMER_LIST_SELECT + ',products,notes'
+/** Full customer row including notes for detail panel / backup. */
+export const CUSTOMER_DETAIL_SELECT = CUSTOMER_LIST_SELECT + ',notes'
 
 export const FOLLOWUP_SELECT = [
   'id', 'customer_id', 'date', 'type', 'result', 'next_date', 'notes',

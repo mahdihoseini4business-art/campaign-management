@@ -16,7 +16,6 @@ import { renderProducts } from './customers.js'
 import { debouncedSearchInput } from './search-debounce.js'
 import { SEARCH_HOST } from './search-overlay.js'
 import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
-import { blockUntilProductsReady } from './products-load.js'
 
 let shipmentsFilter = 'pending' // pending | shipped
 let shipmentsSortState = { field: null, asc: true }
@@ -143,7 +142,6 @@ export function onShipmentsSearchInput() {
 export async function renderShipments() {
   const tbody = document.getElementById('shipmentsBody')
   if (!tbody) return
-  if (blockUntilProductsReady(tbody, 11, 'در حال بارگذاری ارسال‌ها…')) return
 
   const canManage = hasPermission('shipments_manage')
   renderShipmentsHeader(canManage)

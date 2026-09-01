@@ -22,7 +22,6 @@ import { toggleSortField, sortRecords, syncSortHeaders, sortSig, sortThHtml } fr
 import { debouncedSearchInput } from './search-debounce.js'
 import { SEARCH_HOST } from './search-overlay.js'
 import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
-import { areProductsReady, getProductsLoadState } from './data.js'
 
 const MARK_YES = '✅'
 const NONE_KEY = '__none__'
@@ -286,14 +285,6 @@ export async function renderProductMatrix() {
   const thead = document.getElementById('productMatrixHead')
   const tbody = document.getElementById('productMatrixBody')
   if (!thead || !tbody) return
-
-  if (!areProductsReady()) {
-    const st = getProductsLoadState()
-    const pct = st.percent > 0 ? ` (${st.percent}٪)` : ''
-    thead.innerHTML = ''
-    tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state"><h3>در حال بارگذاری ماتریس محصولات…${pct}</h3></div></td></tr>`
-    return
-  }
 
   await ensureAdvisorOptions()
 

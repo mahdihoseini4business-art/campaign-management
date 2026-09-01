@@ -1,4 +1,4 @@
-import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, ensureCustomerProductsLoaded, areProductsReady, invalidateProductSalesCountCache } from './data.js'
+import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, invalidateProductSalesCountCache } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
@@ -759,19 +759,14 @@ export function updateStats(followupsByCustomerOverride = null) {
     : scoped.filter(c => c.id.startsWith('CS')).length
 
   let totalPaid = 0
-  const revenueEl = document.getElementById('stat-revenue')
-  if (!areProductsReady()) {
-    if (revenueEl) revenueEl.textContent = '…'
-  } else {
-    scoped.forEach(c => {
-      ;(c.products || []).forEach(p => {
-        ensureProductPayments(p)
-        syncProductStatus(p)
-        totalPaid += getApprovedPaid(p)
-      })
+  scoped.forEach(c => {
+    ;(c.products || []).forEach(p => {
+      ensureProductPayments(p)
+      syncProductStatus(p)
+      totalPaid += getApprovedPaid(p)
     })
-    if (revenueEl) revenueEl.textContent = formatNumber(totalPaid) + ' ریال'
-  }
+  })
+  document.getElementById('stat-revenue').textContent = formatNumber(totalPaid) + ' ریال'
 }
 
 // ============================================
@@ -2294,10 +2289,7 @@ export async function openCustomerDetail(id, options = {}) {
       clearPendingCreateCompletion(id)
     }
     try {
-      await Promise.all([
-        ensureCustomerDetailsLoaded(id),
-        ensureCustomerProductsLoaded(id)
-      ])
+      await ensureCustomerDetailsLoaded(id)
     } catch (e) {
       console.warn('ensureCustomerDetailsLoaded:', e?.message || e)
     }
@@ -3282,6 +3274,8 @@ export async function setProducts(customerId, products) {
   }
   products.forEach(p => syncProductStatus(p))
   data.customers[idx].products = products
+  data.customers[idx]._productsLoaded = true
+  data.customers[idx].productCount = products.length
   invalidateProductSalesCountCache()
   syncCustomerLevel(data.customers[idx], data.customers, data.followups)
   await saveCustomerToDB(data.customers[idx])

@@ -246,7 +246,6 @@ export function normalizeCustomerId(id) {
 import {
   CUSTOMER_LIST_SELECT,
   CUSTOMER_DETAIL_SELECT,
-  CUSTOMER_PRODUCTS_SELECT,
   FOLLOWUP_SELECT,
   REFUND_SELECT,
   OWNERSHIP_TRANSFER_SELECT,
@@ -256,16 +255,11 @@ import {
 export {
   CUSTOMER_LIST_SELECT,
   CUSTOMER_DETAIL_SELECT,
-  CUSTOMER_PRODUCTS_SELECT,
   FOLLOWUP_SELECT,
   REFUND_SELECT,
   OWNERSHIP_TRANSFER_SELECT,
   OWNERSHIP_ACK_SELECT
 } from './backup/backup-selects.js'
-
-function isOfflineApp() {
-  return typeof window !== 'undefined' && !!window.__CARNO_OFFLINE__
-}
 
 function normalizeProductsFromDb(products) {
   if (!Array.isArray(products)) return []
@@ -575,11 +569,6 @@ export async function loadData() {
   dataLoadState = { status: 'loading', error: null }
   try {
     await loadDataInner()
-    if (isOfflineApp()) {
-      await loadAllCustomerProductsBatched()
-    } else {
-      initProductsLoadStateAfterListLoad()
-    }
     dataLoadState = { status: 'ready', error: null }
   } catch (e) {
     dataLoadState = { status: 'error', error: e?.message || String(e) }
@@ -612,13 +601,6 @@ async function loadDataInner() {
   if (customersRes.error && /customer_code/i.test(customersRes.error.message || '')) {
     customersRes = await fetchAllRows('customers', {
       select: CUSTOMER_LIST_SELECT.replace(/,?customer_code/, ''),
-      orderCol: 'id'
-    })
-  }
-  // Fallback before migration 026 (product_count)
-  if (customersRes.error && /product_count/i.test(customersRes.error.message || '')) {
-    customersRes = await fetchAllRows('customers', {
-      select: CUSTOMER_LIST_SELECT.replace(/,?product_count/, ''),
       orderCol: 'id'
     })
   }
@@ -803,7 +785,6 @@ export async function syncDataIncremental() {
   }
 
   for (const row of customersRes.data || []) upsertCustomerInCache(row)
-  resumeProductsBatchIfNeeded()
   for (const row of followupsRes.data || []) upsertFollowupInCache(row)
   for (const row of refundsRes.data || []) upsertRefundInCache(row)
 
@@ -1847,233 +1828,6 @@ let dataLoadState = { status: 'idle', error: null }
 
 export function getDataLoadState() {
   return { status: dataLoadState.status, error: dataLoadState.error }
-}
-
-/** idle | loading | ready | error */
-let productsLoadState = { status: 'idle', loaded: 0, total: 0, error: null }
-/** @type {Set<() => void>} */
-const productsLoadListeners = new Set()
-let productsBatchPromise = null
-
-export function getProductsLoadState() {
-  if (isOfflineApp()) {
-    return { status: 'ready', loaded: 0, total: 0, percent: 100, error: null }
-  }
-  const { status, loaded, total, error } = productsLoadState
-  const percent = total > 0
-    ? Math.min(100, Math.round((loaded / total) * 100))
-    : (status === 'ready' ? 100 : 0)
-  return { status, loaded, total, percent, error }
-}
-
-export function areProductsReady() {
-  if (isOfflineApp()) return true
-  return productsLoadState.status === 'ready'
-}
-
-export function subscribeProductsLoadState(listener) {
-  if (typeof listener !== 'function') return () => {}
-  productsLoadListeners.add(listener)
-  return () => productsLoadListeners.delete(listener)
-}
-
-function notifyProductsLoadState() {
-  for (const fn of productsLoadListeners) {
-    try { fn(getProductsLoadState()) } catch (e) { console.error('productsLoad listener:', e) }
-  }
-}
-
-function initProductsLoadStateAfterListLoad() {
-  const total = data.customers.length
-  const loaded = data.customers.filter(c => c._productsLoaded).length
-  productsLoadState = {
-    status: loaded >= total ? 'ready' : 'loading',
-    loaded,
-    total,
-    error: null
-  }
-  notifyProductsLoadState()
-}
-
-function patchCustomerProductsInCache(dbRow) {
-  const id = normalizeCustomerId(dbRow?.id)
-  if (!id || !Object.prototype.hasOwnProperty.call(dbRow || {}, 'products')) return false
-  const idx = data.customers.findIndex(c => normalizeCustomerId(c.id) === id)
-  if (idx < 0) return false
-  const existing = data.customers[idx]
-  const products = normalizeProductsFromDb(dbRow.products)
-  existing.products = products
-  existing._productsLoaded = true
-  if (dbRow.product_count != null) {
-    existing.productCount = Number(dbRow.product_count) || 0
-  } else {
-    existing.productCount = products.length
-  }
-  if (dbRow.updated_at) existing.updatedAt = dbRow.updated_at
-  return true
-}
-
-async function fetchCustomerProductsByIds(ids) {
-  if (!ids.length) return { data: [], error: null }
-  let select = CUSTOMER_PRODUCTS_SELECT
-  let { data: rows, error } = await supabase.from('customers').select(select).in('id', ids)
-  if (error && /product_count/i.test(error.message || '')) {
-    select = 'id,products,updated_at'
-    ;({ data: rows, error } = await supabase.from('customers').select(select).in('id', ids))
-  }
-  return { data: rows || [], error }
-}
-
-/**
- * Background batch load of customer products (startup phase B).
- * Offline: awaited during loadData (local SQLite is fast).
- */
-export async function loadAllCustomerProductsBatched(opts = {}) {
-  if (isOfflineApp()) {
-    const pendingIds = data.customers.filter(c => !c._productsLoaded).map(c => c.id)
-    const total = data.customers.length
-    const chunkSize = Math.max(50, Number(opts.chunkSize) || 500)
-    let loaded = total - pendingIds.length
-    productsLoadState = { status: pendingIds.length ? 'loading' : 'ready', loaded, total, error: null }
-    notifyProductsLoadState()
-    for (let i = 0; i < pendingIds.length; i += chunkSize) {
-      const chunkIds = pendingIds.slice(i, i + chunkSize)
-      const { data: rows, error } = await fetchCustomerProductsByIds(chunkIds)
-      if (error) throw error
-      for (const row of rows) patchCustomerProductsInCache(row)
-      loaded += chunkIds.length
-      productsLoadState = { status: 'loading', loaded, total, error: null }
-      notifyProductsLoadState()
-    }
-    productsLoadState = { status: 'ready', loaded: total, total, error: null }
-    productSalesCountCache = null
-    invalidateDerivedCache('products')
-    notifyProductsLoadState()
-    return { loaded: total, total }
-  }
-  if (productsLoadState.status === 'ready') {
-    return { loaded: productsLoadState.loaded, total: productsLoadState.total }
-  }
-  if (productsBatchPromise) return productsBatchPromise
-
-  const chunkSize = Math.max(50, Number(opts.chunkSize) || 200)
-  productsBatchPromise = (async () => {
-    const pendingIds = data.customers
-      .filter(c => !c._productsLoaded)
-      .map(c => c.id)
-    const total = data.customers.length
-    let loaded = total - pendingIds.length
-    productsLoadState = { status: pendingIds.length ? 'loading' : 'ready', loaded, total, error: null }
-    notifyProductsLoadState()
-
-    if (!pendingIds.length) {
-      productsLoadState.status = 'ready'
-      notifyProductsLoadState()
-      return { loaded, total }
-    }
-
-    try {
-      for (let i = 0; i < pendingIds.length; i += chunkSize) {
-        const chunkIds = pendingIds.slice(i, i + chunkSize)
-        const { data: rows, error } = await fetchCustomerProductsByIds(chunkIds)
-        if (error) throw error
-        let changed = false
-        for (const row of rows) {
-          if (patchCustomerProductsInCache(row)) changed = true
-        }
-        loaded += chunkIds.length
-        productsLoadState = { status: 'loading', loaded, total, error: null }
-        if (changed) {
-          productSalesCountCache = null
-          invalidateDerivedCache('products')
-        }
-        notifyProductsLoadState()
-      }
-      productsLoadState = { status: 'ready', loaded: total, total, error: null }
-      productSalesCountCache = null
-      invalidateDerivedCache('products')
-      notifyProductsLoadState()
-      return { loaded: total, total }
-    } catch (e) {
-      const msg = e?.message || String(e)
-      productsLoadState = { ...productsLoadState, status: 'error', error: msg }
-      notifyProductsLoadState()
-      throw e
-    } finally {
-      productsBatchPromise = null
-    }
-  })()
-
-  return productsBatchPromise
-}
-
-/** Fetch products for one customer when opening detail / sales tab. */
-export async function ensureCustomerProductsLoaded(id) {
-  const nid = normalizeCustomerId(id)
-  if (!nid) return null
-  const existing = data.customers.find(c => normalizeCustomerId(c.id) === nid)
-  if (!existing) return null
-  if (existing._productsLoaded) return existing
-
-  let select = CUSTOMER_PRODUCTS_SELECT
-  let { data: row, error } = await supabase
-    .from('customers')
-    .select(select)
-    .eq('id', nid)
-    .maybeSingle()
-
-  if (error && /product_count/i.test(error.message || '')) {
-    select = 'id,products,updated_at'
-    ;({ data: row, error } = await supabase.from('customers').select(select).eq('id', nid).maybeSingle())
-  }
-  if (error) throw new Error('خطا در بارگذاری فروش‌های مشتری: ' + error.message)
-  if (!row) return existing
-  patchCustomerProductsInCache(row)
-  productSalesCountCache = null
-  invalidateDerivedCache('products')
-  productsLoadState.loaded = Math.min(
-    productsLoadState.total,
-    (productsLoadState.loaded || 0) + 1
-  )
-  if (data.customers.every(c => c._productsLoaded)) {
-    productsLoadState.status = 'ready'
-  }
-  notifyProductsLoadState()
-  return data.customers.find(c => normalizeCustomerId(c.id) === nid) || existing
-}
-
-export function startProductsBatchLoad() {
-  if (isOfflineApp()) return Promise.resolve(getProductsLoadState())
-  return loadAllCustomerProductsBatched().catch(e => {
-    console.error('products batch load error:', e)
-    return getProductsLoadState()
-  })
-}
-
-function resumeProductsBatchIfNeeded() {
-  if (isOfflineApp()) return
-  const pending = data.customers.filter(c => !c._productsLoaded).length
-  if (!pending) {
-    if (productsLoadState.status !== 'ready') {
-      productsLoadState = {
-        status: 'ready',
-        loaded: data.customers.length,
-        total: data.customers.length,
-        error: null
-      }
-      notifyProductsLoadState()
-    }
-    return
-  }
-  const total = data.customers.length
-  productsLoadState = {
-    status: 'loading',
-    loaded: total - pending,
-    total,
-    error: productsLoadState.error
-  }
-  notifyProductsLoadState()
-  if (!productsBatchPromise) startProductsBatchLoad()
 }
 
 // ============================================
