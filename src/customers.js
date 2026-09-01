@@ -30,7 +30,6 @@ import {
   getPaymentRefundBadge, getProductRefundBadge, getProductRefundRecords, getProductPendingRefundLabel,
   REFUND_STATUS, requireMainAdmin
 } from './utils.js'
-import { paginateList, renderPaginationBar } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig, compareSortValues } from './table-sort.js'
 import { restoreSelection } from './bulk.js'
 import { showSearchOverlay, hideSearchOverlay, runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
@@ -38,15 +37,18 @@ import { debouncedSearchInput, cancelDebouncedSearch } from './search-debounce.j
 import {
   buildFollowupsByCustomerMap,
   getFollowupsByCustomerId,
-  getReferralCountForCustomer
+  getReferralCountForCustomer,
+  getCustomerById
 } from './derived-cache.js'
+import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
+import { paginateList, renderPaginationBar, getPage } from './pagination.js'
 
 export { buildFollowupsByCustomerMap } from './derived-cache.js'
 
 const LEVEL_ORDER = Object.keys(CUSTOMER_LEVELS)
+const DETAIL_FOLLOWUPS_LIMIT = 20
 let customerSortState = { field: null, asc: true }
 
-/** 0 overdue, 1 soon (today through +3 days), 2 other / none */
 function nextFollowupUrgency(c, bounds) {
   const date = String(c?.nextFollowupDate || '').trim()
   if (!date) return 2
@@ -530,6 +532,9 @@ export async function renderCustomers() {
   const data = getData()
   const filters = getCustomerFilterState()
   const { search, advisor: advisorFilter, platform: platformFilter, status: statusFilter, level: levelFilter, transfer: transferFilter } = filters
+  const filterSig = `${search}|${advisorFilter}|${platformFilter}|${statusFilter}|${levelFilter}|${transferFilter}|${filters.quick}|${sortSig(customerSortState)}`
+  const cacheKey = `${filterSig}|${tabPageKey('customers', getPage('customers'))}`
+  if (shouldSkipTabRender('customers', cacheKey)) return
 
   populateCustomerFilterDropdowns()
 
@@ -571,10 +576,10 @@ export async function renderCustomers() {
     updateStats(getFollowupsByCustomerId())
     updateAdvisorDropdown()
     syncSortHeaders('#sheet-customers', customerSortState)
+    markTabRendered('customers', cacheKey)
     return
   }
 
-  const filterSig = `${search}|${advisorFilter}|${platformFilter}|${statusFilter}|${levelFilter}|${transferFilter}|${filters.quick}|${sortSig(customerSortState)}`
   const page = paginateList('customers', filtered, filterSig)
   const followupsByCustomer = buildFollowupsByCustomerMap(data.followups)
   syncSortHeaders('#sheet-customers', customerSortState)
@@ -653,11 +658,11 @@ export async function renderCustomers() {
       ? '<span style="color:var(--text-muted)">—</span>'
       : `<span class="customer-level-badge">${escapeHtml(levelLabel)}</span>`
 
-    rowHtml.push(`<tr class="clickable-row ${nextFollowupClass}${isMine ? '' : ' row-other-owner'}${transferredIn ? ' row-transferred-in' : ''}${transferredOut ? ' row-transferred-out' : ''}" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
+    rowHtml.push(`<tr class="clickable-row ${nextFollowupClass}${isMine ? '' : ' row-other-owner'}${transferredIn ? ' row-transferred-in' : ''}${transferredOut ? ' row-transferred-out' : ''}" data-customer-id="${escapeAttr(c.id)}" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
       ${selectCell}
       <td>${platformIdHtml}</td>
       <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>
-      <td>${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}${nameBadges}</td>
+      <td class="customer-name-cell">${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}${nameBadges}</td>
       <td>${levelCell}</td>
       <td style="font-family: monospace; direction: ltr; text-align: right;">${(() => {
         const disp = formatPhonesDisplay(c)
@@ -671,7 +676,7 @@ export async function renderCustomers() {
       <td style="font-size:12px;">${escapeHtml(c.advisor) || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td style="text-align:center;"><span class="followup-count ${countClass}">${followupCount}</span></td>
       <td style="font-size:13px;color:var(--text-muted);font-family:'Vazirmatn',sans-serif;direction:ltr;text-align:right;">${escapeHtml(lastDate)}</td>
-      <td style="font-size:12px;">${nextFollowupHtml}</td>
+      <td style="font-size:12px;" class="customer-next-followup">${nextFollowupHtml}</td>
       <td class="notes-cell" title="${escapeAttr(noteSource ? `${noteSource}: ${noteText}` : '')}">${escapeHtml(noteText) || '<span style="color:var(--text-muted)">—</span>'}</td>
     </tr>`)
 
@@ -686,6 +691,7 @@ export async function renderCustomers() {
   updateStats(followupsByCustomer)
   // Update advisor dropdown in background (non-blocking)
   updateAdvisorDropdown()
+  markTabRendered('customers', cacheKey)
   } catch (e) {
     console.error('renderCustomers error:', e)
     const colCount = 12
@@ -1624,8 +1630,106 @@ async function mergeLdIntoPhoneOwner({ sourceId, survivorId, fields }) {
 const DETAIL_TABS = ['info', 'sales', 'followups']
 const DETAIL_TAB_LABELS = { info: 'اطلاعات', sales: 'فروش‌ها', followups: 'پیگیری‌ها' }
 
-/** @type {{ customerId: string|null, tab: 'info'|'sales'|'followups', canEdit?: boolean, canDelete?: boolean }} */
+/** @type {{ customerId: string|null, tab: 'info'|'sales'|'followups', canEdit?: boolean, canDelete?: boolean, canClaim?: boolean }} */
 let detailPanelState = { customerId: null, tab: 'info', canEdit: false, canDelete: false, canClaim: false }
+/** Per-customer: show full followups timeline in detail panel */
+const detailFollowupsShowAll = new Set()
+
+function isDetailFormEditing() {
+  const root = document.getElementById('detailBody')
+  if (!root) return false
+  const active = document.activeElement
+  if (active && root.contains(active) && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return true
+  return !!root.querySelector('input[data-dirty="1"], textarea[data-dirty="1"]')
+}
+
+function setDetailTabCount(tab, count) {
+  const btn = document.getElementById(`detailTabBtn-${tab}`)
+  if (!btn) return
+  let badge = btn.querySelector('.detail-tab-count')
+  if (count == null) {
+    badge?.remove()
+    return
+  }
+  if (!badge) {
+    badge = document.createElement('span')
+    badge.className = 'detail-tab-count'
+    btn.appendChild(badge)
+  }
+  badge.textContent = formatNumber(count)
+}
+
+function patchDetailLrfm(customer, followups) {
+  const lrfm = computeCustomerLrfm(customer, followups)
+  const fmtDays = (n) => (n == null ? '—' : `${formatNumber(n)} روز`)
+  const fmtMoney = (n) => `${formatNumber(n || 0)} ریال`
+  const table = document.querySelector('#detailTab-info .rfm-table tbody tr')
+  if (!table) return
+  const cells = table.querySelectorAll('.rfm-metric-value')
+  if (cells.length < 4) return
+  cells[0].textContent = fmtDays(lrfm.L)
+  cells[1].textContent = lrfm.R || '—'
+  cells[2].textContent = fmtDays(lrfm.F)
+  cells[3].textContent = fmtMoney(lrfm.M)
+}
+
+/** Customer id when detail modal is open, else null. */
+export function getOpenDetailCustomerId() {
+  if (!document.getElementById('detailModal')?.classList.contains('active')) return null
+  return detailPanelState.customerId || document.getElementById('detailEditCustomerId')?.value?.trim() || null
+}
+
+/** Patch read-only detail fields after remote sync — preserves dirty inputs. */
+export function patchDetailReadOnlyFields(customerId) {
+  if (!customerId || !document.getElementById('detailModal')?.classList.contains('active')) return
+  if (detailPanelState.customerId !== customerId) return
+
+  const c = getCustomerById(customerId) || getData().customers.find(x => x.id === customerId)
+  if (!c) return
+
+  const titleEl = document.getElementById('detailTitle')
+  if (titleEl) titleEl.textContent = `پنل مشتری — ${c.name || c.platformId || c.id}`
+
+  setDetailTabCount('sales', (c.products || []).length)
+  const followups = getFollowupsByCustomerId().get(c.id) || []
+  setDetailTabCount('followups', followups.length)
+
+  const statusVal = document.querySelector('.detail-next-followup-status-value')
+  if (statusVal && !isDetailFormEditing()) {
+    statusVal.textContent = c.nextFollowupDate || 'تنظیم نشده'
+    statusVal.classList.toggle('is-set', !!c.nextFollowupDate)
+  }
+
+  if (detailPanelState.tab === 'info' && !isDetailFormEditing()) {
+    patchDetailLrfm(c, followups)
+    const levelDisplay = document.querySelector('#detailTab-info .customer-level-badge')
+    if (levelDisplay && !document.getElementById('detailCustomerLevel')) {
+      levelDisplay.textContent = formatCustomerLevel(resolveCustomerLevel(c, getData().customers, followups))
+    }
+  }
+}
+
+/** Update one customer row in the list when detail is open (customers tab). */
+export function patchCustomerListRow(customerId) {
+  const row = document.querySelector(`#customerBody tr.clickable-row[data-customer-id="${CSS.escape(customerId)}"]`)
+  if (!row) return
+  const c = getCustomerById(customerId)
+  if (!c) return
+  const nameCell = row.querySelector('.customer-name-cell')
+  if (nameCell) nameCell.textContent = c.name || c.platformId || c.id
+  const nextCell = row.querySelector('.customer-next-followup')
+  if (nextCell) {
+    nextCell.textContent = c.nextFollowupDate || '—'
+    nextCell.classList.toggle('is-overdue', !!c.nextFollowupDate && jalaliToNum(c.nextFollowupDate) < jalaliToNum(getTodayJalaliStr()))
+  }
+}
+
+export function showMoreDetailFollowups(customerId) {
+  if (customerId) detailFollowupsShowAll.add(customerId)
+  if (detailPanelState.customerId === customerId) {
+    openCustomerDetail(customerId, { tab: 'followups', refreshTabOnly: true })
+  }
+}
 
 /** Session-tracked creates that still need follow-up date OR a committed sale before the panel can close. */
 const PENDING_CREATE_STORAGE_KEY = 'cm_pending_create_completion_ids'
@@ -1758,19 +1862,14 @@ function applyDetailTab(tab) {
   }
 }
 
-/** Switch tab inside the open customer detail modal. */
-export function switchDetailTab(tab) {
+/** Switch tab inside the open customer detail modal — always re-render from fresh cache. */
+export async function switchDetailTab(tab) {
   if (!document.getElementById('detailModal')?.classList.contains('active')) return
-  if (!document.getElementById(`detailTab-${normalizeDetailTab(tab)}`)) return
-  applyDetailTab(tab)
-  renderDetailFooter({
-    isNew: false,
-    canEdit: !!detailPanelState.canEdit,
-    canDelete: !!detailPanelState.canDelete,
-    canClaim: !!detailPanelState.canClaim,
-    customerId: detailPanelState.customerId,
-    tab: detailPanelState.tab
-  })
+  const next = normalizeDetailTab(tab)
+  if (!document.getElementById(`detailTab-${next}`)) return
+  const customerId = detailPanelState.customerId
+  if (!customerId) return
+  await openCustomerDetail(customerId, { tab: next, refreshTabOnly: true })
 }
 
 /** Open customer panel on row click, unless the click was on an interactive control. */
@@ -2442,7 +2541,11 @@ export async function openCustomerDetail(id, options = {}) {
       const canEditNote = hasPermission('followups_add')
       const canDeleteNote = hasPermission('followups_delete')
       timelineHtml = `<div class="timeline">`
-      customerFollowups.forEach(f => {
+      const showAllFollowups = detailFollowupsShowAll.has(c.id)
+      const visibleFollowups = showAllFollowups
+        ? customerFollowups
+        : customerFollowups.slice(0, DETAIL_FOLLOWUPS_LIMIT)
+      visibleFollowups.forEach(f => {
         const nextHtml = f.nextDate ? `<div class="timeline-next">پیگیری بعدی: ${f.nextDate}</div>` : ''
         const authorName = resolveUserNameByPhone(f.createdByPhone, detailUsers)
         const authorHtml = authorName
@@ -2478,6 +2581,13 @@ export async function openCustomerDetail(id, options = {}) {
         `
       })
       timelineHtml += `</div>`
+      if (!showAllFollowups && customerFollowups.length > DETAIL_FOLLOWUPS_LIMIT) {
+        timelineHtml += `<div style="text-align:center;margin-top:12px;">
+          <button type="button" class="btn btn-sm" onclick="app.showMoreDetailFollowups('${escapeAttr(c.id)}')">
+            نمایش ${formatNumber(customerFollowups.length - DETAIL_FOLLOWUPS_LIMIT)} پیگیری دیگر
+          </button>
+        </div>`
+      }
     }
 
     const nextDateStatusHtml = `
@@ -2594,17 +2704,18 @@ export async function openCustomerDetail(id, options = {}) {
         ${tabBtn('followups', customerFollowups.length)}
       </div>
       <div class="detail-tab-panel${activeTab === 'info' ? ' is-active' : ''}" role="tabpanel" id="detailTab-info" aria-labelledby="detailTabBtn-info" ${activeTab === 'info' ? '' : 'hidden'}>
-        ${infoPanelHtml}
+        ${activeTab === 'info' ? infoPanelHtml : ''}
       </div>
       <div class="detail-tab-panel${activeTab === 'sales' ? ' is-active' : ''}" role="tabpanel" id="detailTab-sales" aria-labelledby="detailTabBtn-sales" ${activeTab === 'sales' ? '' : 'hidden'}>
-        ${salesPanelHtml}
+        ${activeTab === 'sales' ? salesPanelHtml : ''}
       </div>
       <div class="detail-tab-panel${activeTab === 'followups' ? ' is-active' : ''}" role="tabpanel" id="detailTab-followups" aria-labelledby="detailTabBtn-followups" ${activeTab === 'followups' ? '' : 'hidden'}>
-        ${followupsPanelHtml}
+        ${activeTab === 'followups' ? followupsPanelHtml : ''}
       </div>
     `
   }
 
+  const prevPanelState = { ...detailPanelState }
   detailPanelState = {
     customerId: isNew ? null : c.id,
     tab: activeTab,
@@ -2613,11 +2724,23 @@ export async function openCustomerDetail(id, options = {}) {
     canClaim
   }
 
-  document.getElementById('detailBody').innerHTML = html
-  renderDetailFooter({ isNew, canEdit, canDelete, canClaim, customerId: c.id, tab: activeTab })
-  document.getElementById('detailModal').classList.add('active')
+  const tabOnlyRefresh = !!options.refreshTabOnly && !isNew && prevPanelState.customerId === id
+  const panelHtmlByTab = { info: infoPanelHtml, sales: salesPanelHtml, followups: followupsPanelHtml }
 
-  if (canEdit) {
+  if (tabOnlyRefresh) {
+    const panel = document.getElementById(`detailTab-${activeTab}`)
+    if (panel) panel.innerHTML = panelHtmlByTab[activeTab] || ''
+    setDetailTabCount('sales', salesCount)
+    setDetailTabCount('followups', customerFollowups.length)
+    applyDetailTab(activeTab)
+    renderDetailFooter({ isNew, canEdit, canDelete, canClaim, customerId: c.id, tab: activeTab })
+  } else {
+    document.getElementById('detailBody').innerHTML = html
+    renderDetailFooter({ isNew, canEdit, canDelete, canClaim, customerId: c.id, tab: activeTab })
+    document.getElementById('detailModal').classList.add('active')
+  }
+
+  if (canEdit && activeTab === 'info') {
     phoneFormMode = 'detail'
     phoneFieldState = { status: 'ok', customer: null, lastActivity: null, index: 0 }
     const existingPhones = isNew ? [] : getCustomerPhones(c)
@@ -2642,7 +2765,7 @@ export async function openCustomerDetail(id, options = {}) {
     if (activeTab === 'info') document.getElementById('detailPlatformId')?.focus()
   }
 
-  if (!isNew) {
+  if (!isNew && activeTab === 'sales') {
     await pruneEmptySaleDrafts(c.id)
     renderProducts(c.id, detailUsers)
   }

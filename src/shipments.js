@@ -10,11 +10,12 @@ import {
   isPhysicalSaleLine, isEligibleForShipment, isGiftSale, getGiftAccountingStatus,
   getShipmentStatus, SHIPMENT_STATUS, renderCopyableCell, getPrimaryCustomerAddress
 } from './utils.js'
-import { paginateList, renderPaginationBar } from './pagination.js'
+import { paginateList, renderPaginationBar, getPage } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig, sortThHtml } from './table-sort.js'
 import { renderProducts } from './customers.js'
 import { debouncedSearchInput } from './search-debounce.js'
 import { SEARCH_HOST } from './search-overlay.js'
+import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
 
 let shipmentsFilter = 'pending' // pending | shipped
 let shipmentsSortState = { field: null, asc: true }
@@ -146,6 +147,10 @@ export async function renderShipments() {
   renderShipmentsHeader(canManage)
 
   const search = toEnDigits(document.getElementById('searchShipments')?.value || '').toLowerCase()
+  const myPhone = normalizePhone(getCurrentUser()?.phone || '')
+  const cacheKey = `${shipmentsFilter}|${search}|${canManage ? 1 : 0}|${myPhone}|${sortSig(shipmentsSortState)}|${tabPageKey('shipments', getPage('shipments'))}`
+  if (shouldSkipTabRender('shipments', cacheKey)) return
+
   const allShipments = getAllShipments()
 
   try {
@@ -208,7 +213,6 @@ export async function renderShipments() {
     return
   }
 
-  const myPhone = normalizePhone(getCurrentUser()?.phone || '')
   const filterSig = `${shipmentsFilter}|${search}|${canManage ? 1 : 0}|${myPhone}|${sortSig(shipmentsSortState)}`
   const page = paginateList('shipments', shipments, filterSig)
 
@@ -256,6 +260,7 @@ export async function renderShipments() {
   }).join('')
 
   renderPaginationBar('shipmentsPagination', 'shipments', page)
+  markTabRendered('shipments', cacheKey)
 }
 
 function shipmentsSortValue(s, field) {

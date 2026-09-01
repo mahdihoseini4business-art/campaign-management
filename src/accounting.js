@@ -9,13 +9,14 @@ import {
   isGiftSale, getGiftAccountingStatus, getShipmentStatus, SHIPMENT_STATUS,
   getCurrentJalaliMonthInfo, isInJalaliMonth, userDisplayName
 } from './utils.js'
-import { paginateList, renderPaginationBar } from './pagination.js'
+import { paginateList, renderPaginationBar, getPage } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig } from './table-sort.js'
 import { renderSales } from './sales.js'
 import { renderProducts } from './customers.js'
 import { broadcastPaymentRejectToast } from './sale-toasts.js'
 import { debouncedSearchInput } from './search-debounce.js'
 import { SEARCH_HOST } from './search-overlay.js'
+import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
 
 let accountingFilter = 'pending' // pending | approved | rejected | gifts
 let accountingSortState = { field: null, asc: true }
@@ -200,6 +201,9 @@ export async function renderAccounting() {
   }
 
   const search = toEnDigits(document.getElementById('searchAccounting')?.value || '').toLowerCase()
+  const cacheKey = `${accountingFilter}|${search}|${sortSig(accountingSortState)}|${tabPageKey('accounting', getPage('accounting'))}`
+  if (shouldSkipTabRender('accounting', cacheKey)) return
+
   const allPayments = getAllPayments()
 
   try {
@@ -329,6 +333,7 @@ export async function renderAccounting() {
 
   renderPaginationBar('accountingPagination', 'accounting', page)
   syncSortHeaders('#sheet-accounting', accountingSortState)
+  markTabRendered('accounting', cacheKey)
 }
 
 function accountingSortValue(p, field) {

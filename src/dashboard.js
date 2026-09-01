@@ -15,6 +15,7 @@ import {
 import { sumCompletedRefundsForDash, countPendingRefundsForDash } from './refunds.js'
 import { toggleSortField, sortRecords, syncSortHeaders } from './table-sort.js'
 import { getCustomersById } from './derived-cache.js'
+import { shouldSkipTabRender, markTabRendered } from './tab-cache.js'
 
 let ChartLib = null
 
@@ -174,6 +175,9 @@ function advisorNameForCustomer(customer) {
 let dashOverdueCache = []
 let dashSoonCache = []
 let dashTransferCache = []
+const DASH_TABLE_LIMIT = 50
+let dashOverdueShowAll = false
+let dashSoonShowAll = false
 const dashOverdueSort = { field: null, asc: true }
 const dashSoonSort = { field: null, asc: true }
 const dashTransferSort = { field: null, asc: true }
@@ -194,7 +198,7 @@ function dashTransferSortValue(r, field) {
   return { value: r[field] ?? '', type: 'text' }
 }
 
-function paintDashFollowupTable(bodyEl, list, sortState, headerRoot, emptyMsg, rowBg, badgeClass) {
+function paintDashFollowupTable(bodyEl, list, sortState, headerRoot, emptyMsg, rowBg, badgeClass, opts = {}) {
   if (!bodyEl) return
   const sorted = sortState.field
     ? sortRecords(list, sortState, dashFollowupSortValue)
@@ -204,7 +208,10 @@ function paintDashFollowupTable(bodyEl, list, sortState, headerRoot, emptyMsg, r
     bodyEl.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">${emptyMsg}</td></tr>`
     return
   }
-  bodyEl.innerHTML = sorted.map(c => {
+  const showAll = !!opts.showAll
+  const limit = showAll ? sorted.length : Math.min(DASH_TABLE_LIMIT, sorted.length)
+  const visible = sorted.slice(0, limit)
+  const rowsHtml = visible.map(c => {
     const disp = formatPhonesDisplay(c)
     const phoneHtml = disp.text
       ? `${escapeHtml(disp.text)}${disp.extra > 0 ? ` <span style="color:var(--text-muted);font-size:11px;">+${disp.extra}</span>` : ''}`
@@ -217,6 +224,20 @@ function paintDashFollowupTable(bodyEl, list, sortState, headerRoot, emptyMsg, r
       <td style="text-align:center;">${(c.products || []).length}</td>
     </tr>`
   }).join('')
+  const moreHtml = (!showAll && sorted.length > DASH_TABLE_LIMIT)
+    ? `<tr><td colspan="5" style="text-align:center;padding:12px;">
+        <button type="button" class="btn btn-sm" onclick="app.showMoreDashFollowups('${escapeAttr(opts.tableKey || '')}')">
+          نمایش ${formatNumber(sorted.length - DASH_TABLE_LIMIT)} مورد دیگر
+        </button>
+      </td></tr>`
+    : ''
+  bodyEl.innerHTML = rowsHtml + moreHtml
+}
+
+export function showMoreDashFollowups(tableKey) {
+  if (tableKey === 'overdue') dashOverdueShowAll = true
+  else if (tableKey === 'soon') dashSoonShowAll = true
+  renderDashboard()
 }
 
 function paintDashTransferTable() {
@@ -251,7 +272,8 @@ export function sortDashOverdue(field) {
     '#dash-overdue-body',
     'پیگیری عقب افتاده‌ای وجود ندارد',
     '#fff8f0',
-    'settlement-overdue-badge'
+    'settlement-overdue-badge',
+    { showAll: dashOverdueShowAll, tableKey: 'overdue' }
   )
 }
 
@@ -264,7 +286,8 @@ export function sortDashSoon(field) {
     '#dash-soon-body',
     'پیگیری نزدیکی وجود ندارد',
     '#f0fff4',
-    'settlement-soon-badge'
+    'settlement-soon-badge',
+    { showAll: dashSoonShowAll, tableKey: 'soon' }
   )
 }
 
@@ -1295,6 +1318,12 @@ export function toggleDashSection(section) {
 }
 
 export async function renderDashboard() {
+  const dateFrom = document.getElementById('dashDateFrom')?.value.trim() || ''
+  const dateTo = document.getElementById('dashDateTo')?.value.trim() || ''
+  const userSig = selectedAdvisorPhones ? [...selectedAdvisorPhones].sort().join(',') : 'all'
+  const cacheKey = `${dateFrom}|${dateTo}|${userSig}|${dashFilterApplied ? 1 : 0}|${dashOverdueShowAll ? 1 : 0}|${dashSoonShowAll ? 1 : 0}|${dashOverdueSort.field}:${dashOverdueSort.asc}|${dashSoonSort.field}:${dashSoonSort.asc}`
+  if (shouldSkipTabRender('dashboard', cacheKey)) return
+
   const data = getData()
   const customersById = getCustomersById()
   await ensureUserFilterUI()
@@ -1302,8 +1331,6 @@ export async function renderDashboard() {
   ensureSalesChartDefaults()
   syncSalesChartTimeframeOptions()
 
-  const dateFrom = document.getElementById('dashDateFrom')?.value.trim() || ''
-  const dateTo = document.getElementById('dashDateTo')?.value.trim() || ''
   const dateFromNum = dateFrom ? jalaliToNum(dateFrom) : 0
   const dateToNum = dateTo ? jalaliToNum(dateTo) : 99999999
   const todayNum = getTodayJalaliNum()
@@ -1445,7 +1472,8 @@ export async function renderDashboard() {
     '#dash-overdue-body',
     'پیگیری عقب افتاده‌ای وجود ندارد',
     '#fff8f0',
-    'settlement-overdue-badge'
+    'settlement-overdue-badge',
+    { showAll: dashOverdueShowAll, tableKey: 'overdue' }
   )
 
   const soonBody = document.getElementById('dashSoonBody')
@@ -1457,7 +1485,8 @@ export async function renderDashboard() {
     '#dash-soon-body',
     'پیگیری نزدیکی وجود ندارد',
     '#f0fff4',
-    'settlement-soon-badge'
+    'settlement-soon-badge',
+    { showAll: dashSoonShowAll, tableKey: 'soon' }
   )
 
   try {
@@ -1465,6 +1494,8 @@ export async function renderDashboard() {
   } catch (e) {
     console.error('renderDashCharts error:', e)
   }
+
+  markTabRendered('dashboard', cacheKey)
 }
 
 function destroyDashChart(keyOrCanvas) {

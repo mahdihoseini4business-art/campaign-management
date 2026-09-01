@@ -17,10 +17,11 @@ import {
   normalizePhone,
   userDisplayName
 } from './utils.js'
-import { paginateList, renderPaginationBar } from './pagination.js'
+import { paginateList, renderPaginationBar, getPage } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig, sortThHtml } from './table-sort.js'
 import { debouncedSearchInput } from './search-debounce.js'
 import { SEARCH_HOST } from './search-overlay.js'
+import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
 
 const MARK_YES = '✅'
 const NONE_KEY = '__none__'
@@ -293,6 +294,9 @@ export async function renderProductMatrix() {
     ? [...selectedAdvisorPhones].sort().join(',')
     : ''
   const filterSig = `${search}|${JSON.stringify(productFilterState)}|${advisorSig}|${sortSig(productMatrixSortState)}`
+  const cacheKey = `${filterSig}|${tabPageKey('productMatrix', getPage('productMatrix'))}`
+  if (shouldSkipTabRender('products', cacheKey)) return
+
   const customers = getFilteredProductMatrixCustomers()
 
   const noneMode = getFilterMode(NONE_KEY)
@@ -371,6 +375,7 @@ export async function renderProductMatrix() {
   }).join('')
 
   renderPaginationBar('productMatrixPagination', 'productMatrix', page)
+  markTabRendered('products', cacheKey)
 }
 
 /** Headers + rows for matrix export (بله / خالی). */

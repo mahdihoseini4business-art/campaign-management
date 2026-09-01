@@ -17,7 +17,7 @@ import {
   isDataLocalWriteSuppressed
 } from './data.js'
 import { refreshNotifications, updateNotificationBadge } from './notifications.js'
-import { renderCustomers, updateStats } from './customers.js'
+import { renderCustomers, updateStats, patchDetailReadOnlyFields, patchCustomerListRow, getOpenDetailCustomerId } from './customers.js'
 import { renderFollowups, updateFollowupBadge } from './followups.js'
 import { renderSales } from './sales.js'
 import { renderProductMatrix } from './product-matrix.js'
@@ -125,8 +125,21 @@ async function refreshActiveViews() {
     console.error('refreshActiveViews error:', e)
   }
 
-  // If detail is open, leave form as-is (avoid wiping in-progress edits)
-  if (isDetailModalOpen()) return
+  // When detail is open: patch read-only fields + list row; preserve in-progress edits
+  if (isDetailModalOpen()) {
+    const customerId = getOpenDetailCustomerId()
+    if (customerId) {
+      try { patchDetailReadOnlyFields(customerId) } catch (e) {
+        console.error('patchDetailReadOnlyFields error:', e)
+      }
+    }
+    if (getActiveSheet() === 'customers' && customerId) {
+      try { patchCustomerListRow(customerId) } catch (e) {
+        console.error('patchCustomerListRow error:', e)
+      }
+    }
+    return
+  }
 }
 
 function scheduleUiRefresh() {

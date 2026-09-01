@@ -6,7 +6,9 @@ import { paginateList, renderPaginationBar } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig } from './table-sort.js'
 import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 import { debouncedSearchInput, cancelDebouncedSearch } from './search-debounce.js'
-import { getCustomersById, getFollowupsByCustomerId } from './derived-cache.js'
+import { getCustomersById, getFollowupsByCustomerId, getDataVersion } from './derived-cache.js'
+import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
+import { getPage } from './pagination.js'
 
 let followupFilter = 'today' // today | waiting | overdue | done
 let followupSortState = { field: null, asc: true }
@@ -404,32 +406,55 @@ export function getFollowupsForExport() {
 // Badge + Stats
 // ============================================
 
-export function updateFollowupBadge(lists = null) {
-  const { pending } = lists || buildFollowupLists(false)
-  const todayN = jalaliToNum(getTodayJalaliStr())
-  const todayCount = pending.filter(i => dateNum(i.nextDate) === todayN).length
-  const overdueCount = pending.filter(i => i.category === 'overdue').length
+let followupBadgeCountsCache = { version: -1, counts: null }
 
+function ensureFollowupBadgeCounts() {
+  const version = getDataVersion()
+  if (followupBadgeCountsCache.version === version && followupBadgeCountsCache.counts) {
+    return followupBadgeCountsCache.counts
+  }
+  const { pending, done } = buildFollowupLists(false)
+  const todayN = jalaliToNum(getTodayJalaliStr())
+  const counts = {
+    today: pending.filter(i => i.category === 'today').length,
+    todayDue: pending.filter(i => dateNum(i.nextDate) === todayN).length,
+    waiting: pending.filter(i => i.category === 'waiting').length,
+    overdue: pending.filter(i => i.category === 'overdue').length,
+    done: done.length
+  }
+  followupBadgeCountsCache = { version, counts }
+  return counts
+}
+
+export function updateFollowupBadge() {
+  const counts = ensureFollowupBadgeCounts()
   const tabBadge = document.getElementById('followupTabBadge')
   if (tabBadge) {
-    tabBadge.textContent = todayCount
-    tabBadge.style.display = todayCount > 0 ? 'inline-flex' : 'none'
+    tabBadge.textContent = counts.todayDue
+    tabBadge.style.display = counts.todayDue > 0 ? 'inline-flex' : 'none'
   }
 
   const overdueBadge = document.getElementById('followupOverdueBadge')
   if (overdueBadge) {
-    overdueBadge.textContent = overdueCount
-    overdueBadge.style.display = overdueCount > 0 ? 'inline-flex' : 'none'
+    overdueBadge.textContent = counts.overdue
+    overdueBadge.style.display = counts.overdue > 0 ? 'inline-flex' : 'none'
   }
 }
 
 function updateFollowupStats(lists = null) {
-  const { pending, done } = lists || buildFollowupLists(false)
+  const counts = lists
+    ? {
+        today: lists.pending.filter(i => i.category === 'today').length,
+        waiting: lists.pending.filter(i => i.category === 'waiting').length,
+        overdue: lists.pending.filter(i => i.category === 'overdue').length,
+        done: lists.done.length
+      }
+    : ensureFollowupBadgeCounts()
   const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v }
-  el('stat-followup-today', pending.filter(i => i.category === 'today').length)
-  el('stat-followup-waiting', pending.filter(i => i.category === 'waiting').length)
-  el('stat-followup-overdue', pending.filter(i => i.category === 'overdue').length)
-  el('stat-followup-done', done.length)
+  el('stat-followup-today', counts.today)
+  el('stat-followup-waiting', counts.waiting)
+  el('stat-followup-overdue', counts.overdue)
+  el('stat-followup-done', counts.done)
 }
 
 export function setFollowupFilter(filter) {
@@ -548,6 +573,10 @@ export async function renderFollowups() {
   const cards = document.getElementById('followupCards')
   if (!tbody) return
 
+  const search = toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
+  const cacheKey = `${followupFilter}|${search}|${sortSig(followupSortState)}|${tabPageKey('followups', getPage('followups'))}`
+  if (shouldSkipTabRender('followups', cacheKey)) return
+
   try {
     updateFollowupAdvisorDropdown()
     const lists = buildFollowupLists(true)
@@ -654,6 +683,7 @@ export async function renderFollowups() {
 
     renderPaginationBar('followupPagination', 'followups', page)
     syncSortHeaders('#sheet-followups', followupSortState)
+    markTabRendered('followups', cacheKey)
   } catch (e) {
     console.error('renderFollowups error:', e)
     const errHtml = `<div class="empty-state"><h3>خطا در نمایش فالوآپ‌ها</h3><p>${escapeHtml(e.message || String(e))}</p></div>`

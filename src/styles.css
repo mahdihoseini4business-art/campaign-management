@@ -1284,7 +1284,16 @@
     content: '▼';
   }
 
-  tbody tr { border-bottom: 1px solid #F5F5F4; transition: background 0.15s ease; }
+  tbody tr {
+    border-bottom: 1px solid #F5F5F4;
+    transition: background 0.15s ease;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 48px;
+  }
+  .followup-card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 120px;
+  }
   tbody tr:hover { background: var(--row-hover); }
   tbody tr.clickable-row { cursor: pointer; }
   tbody td { padding: 14px 16px; vertical-align: middle; }

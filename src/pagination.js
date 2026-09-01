@@ -31,6 +31,10 @@ export function setPage(key, page) {
   pages[key] = Math.max(1, page)
 }
 
+export function getPage(key) {
+  return pages[key] || 1
+}
+
 function buildPageButtons(current, total) {
   if (total <= 1) return []
   if (total <= 7) {

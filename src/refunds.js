@@ -17,6 +17,7 @@ import { getUsersSafe } from './auth.js'
 import { renderProducts } from './customers.js'
 import { debouncedSearchInput } from './search-debounce.js'
 import { SEARCH_HOST } from './search-overlay.js'
+import { shouldSkipTabRender, markTabRendered } from './tab-cache.js'
 import { toggleSortField, sortRecords, syncSortHeaders } from './table-sort.js'
 
 let refundsView = 'kanban' // kanban | rejected | archived
@@ -31,6 +32,9 @@ let archiveBusyIds = new Set()
 const movingRefundIds = new Set()
 
 const REFUND_DRAG_THRESHOLD = 8
+const REFUND_KANBAN_LIMIT = 50
+/** @type {Set<string>} */
+const refundKanbanShowAll = new Set()
 let refundDrag = null
 
 const wizard = {
@@ -191,6 +195,10 @@ export async function renderRefunds() {
   if (!hasAnyRefundPermission()) return
   if (refundDrag?.active) return
 
+  const search = toEnDigits(document.getElementById('searchRefunds')?.value || '').trim().toLowerCase()
+  const cacheKey = `${refundsView}|${search}|${[...refundKanbanShowAll].sort().join(',')}|${rejectedSortState.field}:${rejectedSortState.asc}|${archivedSortState.field}:${archivedSortState.asc}`
+  if (shouldSkipTabRender('refunds', cacheKey)) return
+
   let users = []
   try {
     users = await getUsersSafe()
@@ -198,7 +206,6 @@ export async function renderRefunds() {
     users = []
   }
 
-  const search = toEnDigits(document.getElementById('searchRefunds')?.value || '').trim().toLowerCase()
   const all = getVisibleRefunds().filter(r => refundMatchesSearch(r, search, users))
   const canManage = canManageRefunds()
 
@@ -226,6 +233,7 @@ export async function renderRefunds() {
 
   if (refundsView === 'rejected') {
     renderRejectedTable(all.filter(r => r.status === REFUND_STATUS.rejected), users)
+    markTabRendered('refunds', cacheKey)
     return
   }
 
@@ -234,6 +242,7 @@ export async function renderRefunds() {
       all.filter(r => r.status === REFUND_STATUS.completed && isRefundArchived(r)),
       users
     )
+    markTabRendered('refunds', cacheKey)
     return
   }
 
@@ -244,18 +253,32 @@ export async function renderRefunds() {
       if (r.status !== status) return false
       if (status === REFUND_STATUS.completed && isRefundArchived(r)) return false
       return true
-    })
+    }).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
     const countEl = document.getElementById(`refundColCount-${status}`)
     if (countEl) countEl.textContent = formatNumber(items.length)
+    const showAll = refundKanbanShowAll.has(status)
+    const visible = showAll ? items : items.slice(0, REFUND_KANBAN_LIMIT)
+    const moreHtml = (!showAll && items.length > REFUND_KANBAN_LIMIT)
+      ? `<button type="button" class="btn btn-sm refund-col-more" onclick="app.showMoreRefundColumn('${escapeAttr(status)}')">
+          نمایش ${formatNumber(items.length - REFUND_KANBAN_LIMIT)} مورد دیگر
+        </button>`
+      : ''
     try {
       col.innerHTML = items.length
-        ? items.map(r => renderRefundCard(r, canManage, users)).join('')
+        ? visible.map(r => renderRefundCard(r, canManage, users)).join('') + moreHtml
         : `<div class="refund-col-empty">موردی نیست</div>`
     } catch (e) {
       console.error('renderRefundCard error:', e)
       col.innerHTML = `<div class="refund-col-empty">خطا در نمایش کارت‌ها</div>`
     }
   })
+  markTabRendered('refunds', cacheKey)
+}
+
+export function showMoreRefundColumn(status) {
+  if (!status) return
+  refundKanbanShowAll.add(status)
+  renderRefunds()
 }
 
 function renderRefundCard(r, canManage, users = []) {
@@ -513,6 +536,9 @@ export function sortRefundsArchived(field) {
   renderRefunds()
 }
 
+let refundsRejectedShowAll = false
+let refundsArchivedShowAll = false
+
 function renderRejectedTable(items, users = []) {
   const tbody = document.getElementById('refundsRejectedBody')
   if (!tbody) return
@@ -521,15 +547,19 @@ function renderRejectedTable(items, users = []) {
     _advisorName: resolveAdvisorName(r.advisorPhone, users),
     _createdByLabel: r.createdByName || resolveAdvisorName(r.createdByPhone, users)
   }))
-  const sorted = rejectedSortState.field
+  let sorted = rejectedSortState.field
     ? sortRecords(decorated, rejectedSortState, refundRejectedSortValue)
     : decorated
+  if (!rejectedSortState.field) {
+    sorted = [...sorted].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+  }
   syncSortHeaders('#refundsRejectedWrap', rejectedSortState)
   if (!sorted.length) {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted);">ردشده‌ای نیست</td></tr>`
     return
   }
-  tbody.innerHTML = sorted.map(r => `
+  const visible = refundsRejectedShowAll ? sorted : sorted.slice(0, REFUND_KANBAN_LIMIT)
+  const rowsHtml = visible.map(r => `
     <tr>
       <td>${escapeHtml(r.customerName || r.customerId)}</td>
       <td>${escapeHtml(r.productName || '—')}</td>
@@ -540,6 +570,19 @@ function renderRejectedTable(items, users = []) {
       <td style="font-size:12px;direction:ltr;">${escapeHtml(gregorianToJalaliStr(r.updatedAt) || '—')}</td>
     </tr>
   `).join('')
+  const moreHtml = (!refundsRejectedShowAll && sorted.length > REFUND_KANBAN_LIMIT)
+    ? `<tr><td colspan="7" style="text-align:center;padding:12px;">
+        <button type="button" class="btn btn-sm" onclick="app.showMoreRefundsRejected()">
+          نمایش ${formatNumber(sorted.length - REFUND_KANBAN_LIMIT)} مورد دیگر
+        </button>
+      </td></tr>`
+    : ''
+  tbody.innerHTML = rowsHtml + moreHtml
+}
+
+export function showMoreRefundsRejected() {
+  refundsRejectedShowAll = true
+  renderRefunds()
 }
 
 function renderArchivedTable(items, users = []) {
@@ -549,15 +592,19 @@ function renderArchivedTable(items, users = []) {
     ...r,
     _advisorName: resolveAdvisorName(r.advisorPhone, users)
   }))
-  const sorted = archivedSortState.field
+  let sorted = archivedSortState.field
     ? sortRecords(decorated, archivedSortState, refundArchivedSortValue)
     : decorated
+  if (!archivedSortState.field) {
+    sorted = [...sorted].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+  }
   syncSortHeaders('#refundsArchivedWrap', archivedSortState)
   if (!sorted.length) {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted);">بایگانی خالی است</td></tr>`
     return
   }
-  tbody.innerHTML = sorted.map(r => `
+  const visible = refundsArchivedShowAll ? sorted : sorted.slice(0, REFUND_KANBAN_LIMIT)
+  const rowsHtml = visible.map(r => `
     <tr>
       <td>${escapeHtml(r.customerName || r.customerId)}</td>
       <td>${escapeHtml(r.productName || '—')}</td>
@@ -568,6 +615,19 @@ function renderArchivedTable(items, users = []) {
       <td style="font-size:12px;direction:ltr;">${escapeHtml(gregorianToJalaliStr(r.archivedAt) || '—')}</td>
     </tr>
   `).join('')
+  const moreHtml = (!refundsArchivedShowAll && sorted.length > REFUND_KANBAN_LIMIT)
+    ? `<tr><td colspan="7" style="text-align:center;padding:12px;">
+        <button type="button" class="btn btn-sm" onclick="app.showMoreRefundsArchived()">
+          نمایش ${formatNumber(sorted.length - REFUND_KANBAN_LIMIT)} مورد دیگر
+        </button>
+      </td></tr>`
+    : ''
+  tbody.innerHTML = rowsHtml + moreHtml
+}
+
+export function showMoreRefundsArchived() {
+  refundsArchivedShowAll = true
+  renderRefunds()
 }
 
 export async function archiveRefund(id) {

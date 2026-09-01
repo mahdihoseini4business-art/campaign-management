@@ -27,6 +27,8 @@ import {
   setAllSalesCache,
   getReferralCountForCustomer
 } from './derived-cache.js'
+import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
+import { getPage } from './pagination.js'
 
 let salesSortState = { field: null, asc: true }
 
@@ -473,6 +475,8 @@ export function onSalesSearchInput() {
 export async function renderSales() {
   const tbody = document.getElementById('salesBody')
   const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
+  const cacheKey = `${search}|${sortSig(salesSortState)}|${tabPageKey('sales', getPage('sales'))}`
+  if (shouldSkipTabRender('sales', cacheKey)) return
 
   populateSalesFilterDropdowns()
 
@@ -576,6 +580,7 @@ export async function renderSales() {
   tbody.innerHTML = renderSalesRows(page.items)
   renderPaginationBar('salesPagination', 'sales', page)
   syncSortHeaders('#sheet-sales', salesSortState)
+  markTabRendered('sales', cacheKey)
 }
 
 function salesSortValue(s, field) {
