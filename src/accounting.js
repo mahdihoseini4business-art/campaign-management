@@ -14,7 +14,8 @@ import { toggleSortField, sortRecords, syncSortHeaders, sortSig } from './table-
 import { renderSales } from './sales.js'
 import { renderProducts } from './customers.js'
 import { broadcastPaymentRejectToast } from './sale-toasts.js'
-import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
+import { debouncedSearchInput } from './search-debounce.js'
+import { SEARCH_HOST } from './search-overlay.js'
 
 let accountingFilter = 'pending' // pending | approved | rejected | gifts
 let accountingSortState = { field: null, asc: true }
@@ -185,7 +186,7 @@ export function toggleAccountingBankBalances() {
 }
 
 export function onAccountingSearchInput() {
-  return runWithSearchOverlay(SEARCH_HOST.accounting, () => renderAccounting())
+  debouncedSearchInput(SEARCH_HOST.accounting, () => renderAccounting())
 }
 
 export async function renderAccounting() {

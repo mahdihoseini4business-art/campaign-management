@@ -34,6 +34,14 @@ import { paginateList, renderPaginationBar } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig, compareSortValues } from './table-sort.js'
 import { restoreSelection } from './bulk.js'
 import { showSearchOverlay, hideSearchOverlay, runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
+import { debouncedSearchInput, cancelDebouncedSearch } from './search-debounce.js'
+import {
+  buildFollowupsByCustomerMap,
+  getFollowupsByCustomerId,
+  getReferralCountForCustomer
+} from './derived-cache.js'
+
+export { buildFollowupsByCustomerMap } from './derived-cache.js'
 
 const LEVEL_ORDER = Object.keys(CUSTOMER_LEVELS)
 let customerSortState = { field: null, asc: true }
@@ -163,19 +171,6 @@ function sortFollowupsNewestFirst(list) {
   })
 }
 
-/** One pass: Map<customerId, followup[]>. */
-export function buildFollowupsByCustomerMap(followups) {
-  const map = new Map()
-  for (const f of followups || []) {
-    const id = f.customerId
-    if (!id) continue
-    const list = map.get(id)
-    if (list) list.push(f)
-    else map.set(id, [f])
-  }
-  return map
-}
-
 function formatFollowupHistoryAt(f) {
   return formatSoldAt24h(f?.doneAt || f?.date) || f?.date || ''
 }
@@ -291,28 +286,13 @@ export function applyCustomerStatFilter(key) {
   renderCustomers()
 }
 
-let customerSearchDebounceTimer = null
-const CUSTOMER_SEARCH_DEBOUNCE_MS = 250
-
 function cancelCustomerSearchDebounce() {
-  if (customerSearchDebounceTimer) {
-    clearTimeout(customerSearchDebounceTimer)
-    customerSearchDebounceTimer = null
-  }
+  cancelDebouncedSearch(SEARCH_HOST.customers)
 }
 
 /** Debounced search so typing does not rebuild the whole table on every keystroke. */
 export function onCustomerSearchInput() {
-  cancelCustomerSearchDebounce()
-  const gen = showSearchOverlay(SEARCH_HOST.customers)
-  customerSearchDebounceTimer = setTimeout(async () => {
-    customerSearchDebounceTimer = null
-    try {
-      await renderCustomers()
-    } finally {
-      hideSearchOverlay(SEARCH_HOST.customers, gen)
-    }
-  }, CUSTOMER_SEARCH_DEBOUNCE_MS)
+  debouncedSearchInput(SEARCH_HOST.customers, () => renderCustomers())
 }
 
 export function clearCustomerSearch() {
@@ -417,20 +397,6 @@ export function getFilteredCustomers() {
     : null
 
   const filtered = data.customers.filter(c => {
-    const extras = getCustomerSearchExtras(c)
-    const phones = getCustomerPhones(c)
-    const matchesSearch = matchesTabSearch(search, [
-      c.id,
-      c.name,
-      ...phones,
-      c.advisor,
-      c.platformId,
-      ...extras.products,
-      ...extras.depositors
-    ])
-
-    if (!matchesSearch) return false
-
     const isCS = c.id.startsWith('CS')
     const isLD = c.id.startsWith('LD')
     if (isCS && !hasPermission('customers_cs')) return false
@@ -448,8 +414,6 @@ export function getFilteredCustomers() {
         ? matchesTransferIn
         : false
 
-    // Normal scope, unless this row matches an active transfer filter (e.g. sender after handoff).
-    // Unassigned customers: non-org-wide users only see them via full phone-number search.
     if (!canViewScopedCustomer(c, currentUser, 'customers')) {
       if (transferFilter && matchesTransferFilter) {
         // ok — transfer filter override
@@ -467,7 +431,12 @@ export function getFilteredCustomers() {
     if (platformFilter && c.platform !== platformFilter) return false
     if (statusFilter && c.status !== statusFilter) return false
     if (levelFilter) {
-      const resolved = resolveCustomerLevel(c, data.customers, data.followups)
+      const resolved = resolveCustomerLevel(
+        c,
+        null,
+        data.followups,
+        getReferralCountForCustomer(c.id)
+      )
       if (resolved !== levelFilter) return false
     }
     if (transferFilter && !matchesTransferFilter) return false
@@ -479,6 +448,20 @@ export function getFilteredCustomers() {
       if (!list.length) return false
     }
     if (quickFilter === 'converted' && !isCS) return false
+
+    if (search) {
+      const extras = getCustomerSearchExtras(c)
+      const phones = getCustomerPhones(c)
+      if (!matchesTabSearch(search, [
+        c.id,
+        c.name,
+        ...phones,
+        c.advisor,
+        c.platformId,
+        ...extras.products,
+        ...extras.depositors
+      ])) return false
+    }
 
     return true
   })
@@ -585,7 +568,7 @@ export async function renderCustomers() {
     if (cards) cards.innerHTML = emptyHtml
     renderPaginationBar('customerPagination', 'customers', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
     restoreSelection('customers')
-    updateStats()
+    updateStats(getFollowupsByCustomerId())
     updateAdvisorDropdown()
     syncSortHeaders('#sheet-customers', customerSortState)
     return
@@ -593,9 +576,8 @@ export async function renderCustomers() {
 
   const filterSig = `${search}|${advisorFilter}|${platformFilter}|${statusFilter}|${levelFilter}|${transferFilter}|${filters.quick}|${sortSig(customerSortState)}`
   const page = paginateList('customers', filtered, filterSig)
-  syncSortHeaders('#sheet-customers', customerSortState)
   const followupsByCustomer = buildFollowupsByCustomerMap(data.followups)
-
+  syncSortHeaders('#sheet-customers', customerSortState)
   const rowHtml = []
   const cardHtml = []
 
@@ -701,7 +683,7 @@ export async function renderCustomers() {
 
   renderPaginationBar('customerPagination', 'customers', page)
   restoreSelection('customers')
-  updateStats()
+  updateStats(followupsByCustomer)
   // Update advisor dropdown in background (non-blocking)
   updateAdvisorDropdown()
   } catch (e) {
@@ -737,9 +719,10 @@ async function updateAdvisorDropdown() {
   }
 }
 
-export function updateStats() {
+export function updateStats(followupsByCustomerOverride = null) {
   const data = getData()
   const currentUser = getCurrentUser()
+  const followupsByCustomer = followupsByCustomerOverride ?? getFollowupsByCustomerId()
 
   function inScope(c) {
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return false
@@ -753,7 +736,6 @@ export function updateStats() {
   }
 
   const scoped = data.customers.filter(inScope)
-  const followupsByCustomer = buildFollowupsByCustomerMap(data.followups)
 
   // کل مخاطبین = همه ثبت‌شده‌ها در اسکوپ
   document.getElementById('stat-total').textContent = scoped.length

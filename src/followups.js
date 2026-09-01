@@ -5,6 +5,8 @@ import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFil
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig } from './table-sort.js'
 import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
+import { debouncedSearchInput, cancelDebouncedSearch } from './search-debounce.js'
+import { getCustomersById, getFollowupsByCustomerId } from './derived-cache.js'
 
 let followupFilter = 'today' // today | waiting | overdue | done
 let followupSortState = { field: null, asc: true }
@@ -187,9 +189,10 @@ function safeSearchExtras(customer) {
 }
 
 /** Pending actionable items = customers with a nextFollowupDate */
-function getPendingItems(applySearch = true) {
+function getPendingItems(applySearch = true, followupsByCustomer = null) {
   const data = getData()
   const currentUser = getCurrentUser()
+  const fMap = followupsByCustomer ?? getFollowupsByCustomerId()
   const search = applySearch
     ? toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
     : ''
@@ -202,7 +205,7 @@ function getPendingItems(applySearch = true) {
     const category = classifyDate(c.nextFollowupDate)
     if (!category) continue
 
-    const customerFollowups = data.followups.filter(f => f.customerId === c.id)
+    const customerFollowups = fMap.get(c.id) || []
     if (!canSeePendingCustomerInTab(c, currentUser, customerFollowups)) continue
     if (!matchesAdvisorScope(c, advisorScope)) continue
 
@@ -255,9 +258,10 @@ function getPendingItems(applySearch = true) {
 }
 
 /** Done items = followup notes marked as completed */
-function getDoneItems(applySearch = true) {
+function getDoneItems(applySearch = true, ctx = null) {
   const data = getData()
   const currentUser = getCurrentUser()
+  const customersById = ctx?.customersById ?? getCustomersById()
   const search = applySearch
     ? toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
     : ''
@@ -267,7 +271,7 @@ function getDoneItems(applySearch = true) {
   const items = []
   for (const f of data.followups) {
     if (!isDoneFollowup(f)) continue
-    const customer = data.customers.find(c => c.id === f.customerId)
+    const customer = customersById.get(f.customerId)
     if (!canSeeFollowupInTab(customer, currentUser, f.createdByPhone)) continue
     if (!matchesAdvisorScope(customer, advisorScope)) continue
 
@@ -337,10 +341,20 @@ export function sortFollowups(field) {
   renderFollowups()
 }
 
-/** Same rows as the follow-ups table (category + search + advisor). */
-export function getVisibleFollowupItems() {
-  const pending = getPendingItems(true)
-  const done = getDoneItems(true)
+/** Build pending + done lists once per render (shared maps). */
+function buildFollowupLists(applySearch = true) {
+  const followupsByCustomer = getFollowupsByCustomerId()
+  const customersById = getCustomersById()
+  return {
+    followupsByCustomer,
+    customersById,
+    pending: getPendingItems(applySearch, followupsByCustomer),
+    done: getDoneItems(applySearch, { customersById })
+  }
+}
+
+export function getVisibleFollowupItems(lists = null) {
+  const { pending, done } = lists || buildFollowupLists(true)
   const items = followupFilter === 'done'
     ? done
     : pending.filter(i => i.category === followupFilter)
@@ -348,13 +362,12 @@ export function getVisibleFollowupItems() {
 }
 
 export function getFilteredFollowups() {
-  // Kept for import-export / bulk compatibility: all raw followups with scope
-  const data = getData()
   const search = toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
   const currentUser = getCurrentUser()
+  const customersById = getCustomersById()
 
-  return data.followups.filter(f => {
-    const customer = data.customers.find(c => c.id === f.customerId)
+  return getData().followups.filter(f => {
+    const customer = customersById.get(f.customerId)
     const name = customer ? customer.name : ''
     if (!canSeeFollowupInTab(customer, currentUser, f.createdByPhone)) return false
     const extras = getCustomerSearchExtras(customer)
@@ -391,9 +404,8 @@ export function getFollowupsForExport() {
 // Badge + Stats
 // ============================================
 
-export function updateFollowupBadge() {
-  // Badges ignore search box — always show true pending counts
-  const pending = getPendingItems(false)
+export function updateFollowupBadge(lists = null) {
+  const { pending } = lists || buildFollowupLists(false)
   const todayN = jalaliToNum(getTodayJalaliStr())
   const todayCount = pending.filter(i => dateNum(i.nextDate) === todayN).length
   const overdueCount = pending.filter(i => i.category === 'overdue').length
@@ -411,9 +423,8 @@ export function updateFollowupBadge() {
   }
 }
 
-function updateFollowupStats() {
-  const pending = getPendingItems(false)
-  const done = getDoneItems(false)
+function updateFollowupStats(lists = null) {
+  const { pending, done } = lists || buildFollowupLists(false)
   const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v }
   el('stat-followup-today', pending.filter(i => i.category === 'today').length)
   el('stat-followup-waiting', pending.filter(i => i.category === 'waiting').length)
@@ -430,13 +441,14 @@ export function setFollowupFilter(filter) {
 }
 
 export function clearFollowupSearch() {
+  cancelDebouncedSearch(SEARCH_HOST.followups)
   const el = document.getElementById('searchFollowups')
   if (el) el.value = ''
   return runWithSearchOverlay(SEARCH_HOST.followups, () => renderFollowups())
 }
 
 export function onFollowupSearchInput() {
-  return runWithSearchOverlay(SEARCH_HOST.followups, () => renderFollowups())
+  debouncedSearchInput(SEARCH_HOST.followups, () => renderFollowups())
 }
 
 // ============================================
@@ -538,10 +550,11 @@ export async function renderFollowups() {
 
   try {
     updateFollowupAdvisorDropdown()
-    updateFollowupStats()
-    updateFollowupBadge()
+    const lists = buildFollowupLists(true)
+    updateFollowupStats(lists)
+    updateFollowupBadge(lists)
 
-    const filtered = getVisibleFollowupItems()
+    const filtered = getVisibleFollowupItems(lists)
 
     const showSelectCol = hasPermission('followups_delete') && followupFilter === 'done'
     const colCount = (hasPermission('followups_delete') ? 1 : 0) + 9
@@ -551,7 +564,7 @@ export async function renderFollowups() {
       const hasSearch = !!toEnDigits(searchRaw).toLowerCase()
       const overdueCount = hasSearch
         ? 0
-        : getPendingItems(false).filter(i => i.category === 'overdue').length
+        : lists.pending.filter(i => i.category === 'overdue').length
       const distantHint = 'پیگیری‌های بعد از ۳ روز اینجا نیست؛ از پنل مشتری ببینید.'
 
       let title = 'پیگیری‌ای یافت نشد'

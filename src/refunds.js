@@ -15,7 +15,8 @@ import {
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderProducts } from './customers.js'
-import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
+import { debouncedSearchInput } from './search-debounce.js'
+import { SEARCH_HOST } from './search-overlay.js'
 import { toggleSortField, sortRecords, syncSortHeaders } from './table-sort.js'
 
 let refundsView = 'kanban' // kanban | rejected | archived
@@ -183,7 +184,7 @@ export function setRefundsView(view) {
 }
 
 export function onRefundsSearchInput() {
-  return runWithSearchOverlay(SEARCH_HOST.refunds, () => renderRefunds())
+  debouncedSearchInput(SEARCH_HOST.refunds, () => renderRefunds())
 }
 
 export async function renderRefunds() {

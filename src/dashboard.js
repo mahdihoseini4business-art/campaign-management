@@ -1,4 +1,3 @@
-import Chart from 'chart.js/auto'
 import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
@@ -15,6 +14,17 @@ import {
 } from './utils.js'
 import { sumCompletedRefundsForDash, countPendingRefundsForDash } from './refunds.js'
 import { toggleSortField, sortRecords, syncSortHeaders } from './table-sort.js'
+import { getCustomersById } from './derived-cache.js'
+
+let ChartLib = null
+
+async function ensureChartLib() {
+  if (!ChartLib) {
+    const mod = await import('chart.js/auto')
+    ChartLib = mod.default
+  }
+  return ChartLib
+}
 
 let dashCharts = {}
 /** @type {Set<string>|null} null = not initialized yet (treat as all) */
@@ -774,7 +784,7 @@ function renderSalesTimelineChart(dateFromNum, dateToNum, currentUser) {
     })
   }
 
-  dashCharts.salesTimeline = new Chart(canvas, {
+  dashCharts.salesTimeline = new ChartLib(canvas, {
     type: 'bar',
     data: {
       labels: buckets.map(b => b.label),
@@ -1065,7 +1075,7 @@ function renderAovMaChart(dateFromNum, dateToNum) {
     _baseBorderColor: AOV_OVERALL_COLOR
   })
 
-  dashCharts.aovMa = new Chart(canvas, {
+  dashCharts.aovMa = new ChartLib(canvas, {
     type: 'line',
     data: { labels, datasets },
     options: {
@@ -1184,6 +1194,7 @@ function customerConvertedAfter(customer, transferAtMs, withinDays) {
 
 function renderTransferMetrics(dateFromNum, dateToNum) {
   const data = getData()
+  const customersById = getCustomersById()
   const transfers = (data.ownershipTransfers || []).filter(t =>
     transferInDateRange(t, dateFromNum, dateToNum) && transferTouchesSelected(t)
   )
@@ -1236,7 +1247,7 @@ function renderTransferMetrics(dateFromNum, dateToNum) {
     const at = new Date(t.createdAt).getTime()
     if (Number.isNaN(at)) continue
     convEligible++
-    const customer = data.customers.find(c => c.id === t.customerId)
+    const customer = customersById.get(t.customerId)
     if (customerConvertedAfter(customer, at, TRANSFER_CONVERSION_DAYS)) convHit++
   }
   if (convEl) {
@@ -1285,7 +1296,9 @@ export function toggleDashSection(section) {
 
 export async function renderDashboard() {
   const data = getData()
+  const customersById = getCustomersById()
   await ensureUserFilterUI()
+  await ensureChartLib()
   ensureSalesChartDefaults()
   syncSalesChartTimeframeOptions()
 
@@ -1328,7 +1341,7 @@ export async function renderDashboard() {
   document.getElementById('dash-total-leads').textContent = datedCustomers.filter(c => c.id.startsWith('LD')).length
   document.getElementById('dash-total-cs').textContent = datedCustomers.filter(c => c.id.startsWith('CS')).length
   const visibleFollowups = data.followups.filter(f => {
-    const customer = data.customers.find(c => c.id === f.customerId)
+    const customer = customersById.get(f.customerId)
     if (!customer || !inUserScope(customer)) return false
     if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
@@ -1464,8 +1477,8 @@ function destroyDashChart(keyOrCanvas) {
       }
       return
     }
-    if (keyOrCanvas && typeof Chart.getChart === 'function') {
-      const bound = Chart.getChart(keyOrCanvas)
+    if (keyOrCanvas && ChartLib && typeof ChartLib.getChart === 'function') {
+      const bound = ChartLib.getChart(keyOrCanvas)
       if (bound) bound.destroy()
     }
   } catch (_) { /* ignore */ }
@@ -1556,7 +1569,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
 
     const custCanvas = document.getElementById('chartCustomers')
     if (custCanvas) {
-      dashCharts.custStatus = new Chart(custCanvas, {
+      dashCharts.custStatus = new ChartLib(custCanvas, {
         type: 'doughnut',
         data: {
           labels: topStatuses.map(s => `${s.label} ${formatNumber(s.pct)}٪`),
@@ -1613,7 +1626,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
 
     const platformCanvas = document.getElementById('chartPlatforms')
     if (platformCanvas) {
-      dashCharts.platforms = new Chart(platformCanvas, {
+      dashCharts.platforms = new ChartLib(platformCanvas, {
         type: 'doughnut',
         data: {
           labels: platformEntries.map(p => `${p.label} ${formatNumber(p.pct)}٪`),
@@ -1684,7 +1697,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
         ...e,
         pct: salesStatusTotal > 0 ? Math.round((e.value / salesStatusTotal) * 100) : 0
       }))
-      dashCharts.salesStatus = new Chart(salesCanvas, {
+      dashCharts.salesStatus = new ChartLib(salesCanvas, {
         type: 'pie',
         data: {
           labels: salesStatusWithPct.map(e => `${e.label} ${formatNumber(e.pct)}٪`),
@@ -1745,7 +1758,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     let withSale = 0
     let withoutSale = 0
     customersWithActivity.forEach(customerId => {
-      const c = data.customers.find(x => x.id === customerId)
+      const c = customersById.get(customerId)
       if (!c) return
       if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
       if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
@@ -1772,7 +1785,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
           pct: total > 0 ? Math.round((withoutSale / total) * 100) : 0
         }
       ]
-      dashCharts.followupConversion = new Chart(convCanvas, {
+      dashCharts.followupConversion = new ChartLib(convCanvas, {
         type: 'pie',
         data: {
           labels: convEntries.map(e => `${e.label} ${formatNumber(e.pct)}٪`),
@@ -2793,7 +2806,7 @@ function renderProductSalesChart(productSales = null, productCounts = null) {
   destroyDashChart('products')
   destroyDashChart(canvas)
 
-  dashCharts.products = new Chart(canvas, {
+  dashCharts.products = new ChartLib(canvas, {
     type: 'bar',
     data: {
       labels,
@@ -2911,7 +2924,7 @@ function renderAdvisorCompareChart(dateFromNum, dateToNum) {
     }
   }
 
-  dashCharts.advisorCompare = new Chart(canvas, {
+  dashCharts.advisorCompare = new ChartLib(canvas, {
     type: 'bar',
     data: {
       labels,
@@ -3044,7 +3057,7 @@ function collectTransferMetricsForExport(dateFromNum, dateToNum) {
     const at = new Date(t.createdAt).getTime()
     if (Number.isNaN(at)) continue
     convEligible++
-    const customer = data.customers.find(c => c.id === t.customerId)
+    const customer = customersById.get(t.customerId)
     if (customerConvertedAfter(customer, at, TRANSFER_CONVERSION_DAYS)) convHit++
   }
 
@@ -3227,6 +3240,7 @@ function collectAovMaForExport(dateFromNum, dateToNum) {
  */
 export async function buildDashboardExportPayload() {
   const data = getData()
+  const customersById = getCustomersById()
   await ensureUserFilterUI()
   ensureSalesChartDefaults()
   syncSalesChartTimeframeOptions()
@@ -3264,7 +3278,7 @@ export async function buildDashboardExportPayload() {
   const datedCustomers = scopedCustomers.filter(customerCreatedInRange)
 
   const visibleFollowups = data.followups.filter(f => {
-    const customer = data.customers.find(c => c.id === f.customerId)
+    const customer = customersById.get(f.customerId)
     if (!customer || !inUserScope(customer)) return false
     if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
@@ -3447,7 +3461,7 @@ export async function buildDashboardExportPayload() {
   let convWithSale = 0
   let convWithoutSale = 0
   customersWithActivity.forEach(customerId => {
-    const c = data.customers.find(x => x.id === customerId)
+    const c = customersById.get(customerId)
     if (!c) return
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
     if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return

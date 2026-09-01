@@ -19,7 +19,8 @@ import {
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig, sortThHtml } from './table-sort.js'
-import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
+import { debouncedSearchInput } from './search-debounce.js'
+import { SEARCH_HOST } from './search-overlay.js'
 
 const MARK_YES = '✅'
 const NONE_KEY = '__none__'
@@ -274,7 +275,7 @@ function markCell(has) {
 }
 
 export function onProductMatrixSearchInput() {
-  return runWithSearchOverlay(SEARCH_HOST.products, () => renderProductMatrix())
+  debouncedSearchInput(SEARCH_HOST.products, () => renderProductMatrix())
 }
 
 export async function renderProductMatrix() {

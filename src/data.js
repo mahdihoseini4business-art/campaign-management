@@ -3,6 +3,7 @@
 // ============================================
 
 import { supabase } from './supabase.js'
+import { invalidateDerivedCache } from './derived-cache.js'
 
 const LOCAL_WRITE_SUPPRESS_MS = 2000
 let localWriteUntil = 0
@@ -380,6 +381,7 @@ export function upsertFollowupInCache(dbRow) {
   const idx = data.followups.findIndex(f => Number(f.id) === id)
   if (idx >= 0) data.followups[idx] = mapped
   else data.followups.push(mapped)
+  invalidateDerivedCache('followups')
   return true
 }
 
@@ -388,6 +390,7 @@ export function removeFollowupFromCache(id) {
   const nid = Number(id)
   const before = data.followups.length
   data.followups = data.followups.filter(f => Number(f.id) !== nid)
+  if (data.followups.length !== before) invalidateDerivedCache('followups')
   return data.followups.length !== before
 }
 
@@ -1099,6 +1102,7 @@ let productSalesCountCache = null
 
 export function invalidateProductSalesCountCache() {
   productSalesCountCache = null
+  invalidateDerivedCache('customers')
 }
 
 function buildProductSalesCountMap() {

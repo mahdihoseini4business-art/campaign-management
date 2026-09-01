@@ -13,7 +13,8 @@ import {
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig, sortThHtml } from './table-sort.js'
 import { renderProducts } from './customers.js'
-import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
+import { debouncedSearchInput } from './search-debounce.js'
+import { SEARCH_HOST } from './search-overlay.js'
 
 let shipmentsFilter = 'pending' // pending | shipped
 let shipmentsSortState = { field: null, asc: true }
@@ -134,7 +135,7 @@ function phonesCell(row) {
 }
 
 export function onShipmentsSearchInput() {
-  return runWithSearchOverlay(SEARCH_HOST.shipments, () => renderShipments())
+  debouncedSearchInput(SEARCH_HOST.shipments, () => renderShipments())
 }
 
 export async function renderShipments() {

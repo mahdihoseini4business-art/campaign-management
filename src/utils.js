@@ -621,13 +621,15 @@ export function countCustomerReferrals(customer, allCustomers = []) {
  * cip: ≥5 referred customers
  * Priority: cip > vip > gold > silver > bronze
  */
-export function computeAutoCustomerLevel(customer, allCustomers = [], followups = []) {
+export function computeAutoCustomerLevel(customer, allCustomers = [], followups = [], referralCountOverride = null) {
   if (!customer) return ''
   const purchases = countCustomerPurchases(customer)
   const days = computeCustomerLrfm(customer, followups).L
   const oneYear = days != null && days >= 365
   const inPerson = hasInPersonPurchase(customer)
-  const refs = countCustomerReferrals(customer, allCustomers)
+  const refs = referralCountOverride != null
+    ? referralCountOverride
+    : countCustomerReferrals(customer, allCustomers)
 
   if (refs >= 5) return 'cip'
   if (purchases >= 5 && inPerson && oneYear) return 'vip'
@@ -638,12 +640,12 @@ export function computeAutoCustomerLevel(customer, allCustomers = [], followups 
 }
 
 /** Effective level: locked manual/import value, else auto. */
-export function resolveCustomerLevel(customer, allCustomers = [], followups = []) {
+export function resolveCustomerLevel(customer, allCustomers = [], followups = [], referralCountOverride = null) {
   if (!customer) return ''
   if (customer.customerLevelLocked) {
     return parseCustomerLevel(customer.customerLevel) || customer.customerLevel || ''
   }
-  return computeAutoCustomerLevel(customer, allCustomers, followups)
+  return computeAutoCustomerLevel(customer, allCustomers, followups, referralCountOverride)
 }
 
 /** Update customer.customerLevel when not locked. Returns level. */
@@ -1830,13 +1832,27 @@ export function normalizeViewUserPhones(raw) {
 }
 
 /** Phones whose customer data this user may view: self + granted users (group manager grants). */
+let _visibleAdvisorPhonesCache = { key: '', set: null }
+
+export function invalidateVisibleAdvisorPhonesCache() {
+  _visibleAdvisorPhonesCache = { key: '', set: null }
+}
+
 export function getVisibleAdvisorPhones(user = getCurrentUser()) {
+  const raw = user?.viewUserPhones ?? user?.permissions?.viewUserPhones
+  const key = `${normalizePhone(user?.phone)}|${JSON.stringify(raw ?? '')}`
+  if (_visibleAdvisorPhonesCache.key === key && _visibleAdvisorPhonesCache.set) {
+    return _visibleAdvisorPhonesCache.set
+  }
   const phones = new Set()
-  if (!user) return phones
+  if (!user) {
+    _visibleAdvisorPhonesCache = { key, set: phones }
+    return phones
+  }
   const self = normalizePhone(user.phone)
   if (self) phones.add(self)
-  normalizeViewUserPhones(user.viewUserPhones ?? user.permissions?.viewUserPhones)
-    .forEach(p => phones.add(p))
+  normalizeViewUserPhones(raw).forEach(p => phones.add(p))
+  _visibleAdvisorPhonesCache = { key, set: phones }
   return phones
 }
 

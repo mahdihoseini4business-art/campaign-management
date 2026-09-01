@@ -20,6 +20,13 @@ import { paginateList, renderPaginationBar } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig, compareSortValues } from './table-sort.js'
 import { renderSalesTargetBand } from './dashboard.js'
 import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
+import { debouncedSearchInput } from './search-debounce.js'
+import {
+  getCustomersById,
+  getAllSalesFromCache,
+  setAllSalesCache,
+  getReferralCountForCustomer
+} from './derived-cache.js'
 
 let salesSortState = { field: null, asc: true }
 
@@ -43,6 +50,9 @@ export function parseSaleRowKey(key) {
 
 export function getAllSales() {
   collapseDuplicateCustomersInCache()
+  const cached = getAllSalesFromCache()
+  if (cached) return cached
+
   const data = getData()
   const sales = []
   const seenIds = new Set()
@@ -98,6 +108,7 @@ export function getAllSales() {
       })
     }
   })
+  setAllSalesCache(sales)
   return sales
 }
 
@@ -170,7 +181,10 @@ export function getFilteredSales(dateFilterOverride = null) {
   let allSales = getAllSales()
 
   const currentUser = getCurrentUser()
-  const data = getData()
+  const customersById = getCustomersById()
+  const advisorScopePhones = advisorFilter
+    ? phonesMatchingAdvisorFilter(advisorFilter, currentUser)
+    : null
 
   if (search) {
     allSales = allSales.filter(s =>
@@ -192,7 +206,7 @@ export function getFilteredSales(dateFilterOverride = null) {
   allSales = allSales.filter(s => {
     if (s.customerId.startsWith('LD') && !hasPermission('customers_ld')) return false
     if (s.customerId.startsWith('CS') && !hasPermission('customers_cs')) return false
-    const customer = data.customers.find(c => c.id === s.customerId)
+    const customer = customersById.get(s.customerId)
     const product = customer?.products?.[s.productIndex]
     const myPhone = normalizePhone(currentUser?.phone || '')
     const registeredByMe = !!(myPhone && (
@@ -210,7 +224,12 @@ export function getFilteredSales(dateFilterOverride = null) {
       return false
     }
     if (levelFilter && customer) {
-      const resolved = resolveCustomerLevel(customer, data.customers, data.followups)
+      const resolved = resolveCustomerLevel(
+        customer,
+        null,
+        getData().followups,
+        getReferralCountForCustomer(customer.id)
+      )
       if (resolved !== levelFilter) return false
     }
     if (codeFilter) {
@@ -218,7 +237,6 @@ export function getFilteredSales(dateFilterOverride = null) {
       if (code !== codeFilter) return false
     }
 
-    const advisorScopePhones = phonesMatchingAdvisorFilter(advisorFilter, currentUser)
     const matchesAdvisorPhone = (phone) => {
       if (!advisorScopePhones) return true
       const p = normalizePhone(phone)
@@ -449,7 +467,7 @@ async function updateSalesAdvisorFilter() {
 }
 
 export function onSalesSearchInput() {
-  return runWithSearchOverlay(SEARCH_HOST.sales, () => renderSales())
+  debouncedSearchInput(SEARCH_HOST.sales, () => renderSales())
 }
 
 export async function renderSales() {
@@ -459,6 +477,7 @@ export async function renderSales() {
   populateSalesFilterDropdowns()
 
   let allSales = getFilteredSales()
+  const customersById = getCustomersById()
 
   try {
     const users = await getUsersSafe()
@@ -488,10 +507,9 @@ export async function renderSales() {
 
   const countable = statsSales.filter(s => s.countable)
   const cashSales = countable.filter(s => s.status === 'تکمیل')
-  const data = getData()
 
   function productForSale(s) {
-    return data.customers.find(c => c.id === s.customerId)?.products?.[s.productIndex]
+    return customersById.get(s.customerId)?.products?.[s.productIndex]
   }
 
   // Open deposits only — refund-cancelled deals are locked and must not inflate بیعانه/مانده

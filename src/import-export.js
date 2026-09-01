@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx'
 import { getData, saveCustomerToDB, generateId, generateIdBatch, getStatuses, getCustomerCodes, saveFollowupToDB, updateFollowupInDB, getDestinationBanks, getSellableNames, putCustomerInCache, getProductCatalogNames, getCustomerOwnedProductNames, getPlatforms, coerceProductName } from './data.js'
 import {
   toEnDigits, showToast, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
@@ -16,6 +15,13 @@ import { renderCustomers, getFilteredCustomers } from './customers.js'
 import { getFollowupsForExport, hasActiveFollowupExportFilter, renderFollowups } from './followups.js'
 import { renderSales, getFilteredSales, getSalesDateFilter } from './sales.js'
 import { getProductMatrixExportAoa, hasActiveProductMatrixFilter, renderProductMatrix } from './product-matrix.js'
+
+let xlsxModule = null
+
+async function ensureXLSX() {
+  if (!xlsxModule) xlsxModule = await import('xlsx')
+  return xlsxModule
+}
 
 // ============================================
 // Helpers
@@ -79,7 +85,7 @@ function buildFollowupExportAoa(followups, customers) {
   return [FOLLOWUP_EXPORT_HEADERS, ...rows]
 }
 
-function sheetFromAoa(headers, rows) {
+function sheetFromAoa(XLSX, headers, rows) {
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
   const colWidths = headers.map((h, i) => {
     const maxLen = Math.max(h.length, ...rows.map(r => String(r[i] ?? '').length))
@@ -123,7 +129,7 @@ function hasActiveExportScopeFilter(tab) {
 }
 
 /** Force Excel to keep id/phone cells as text (leading zeros, no scientific notation). */
-function forceSheetTextColumns(ws, rowCount, colIndexes) {
+function forceSheetTextColumns(XLSX, ws, rowCount, colIndexes) {
   const textCols = new Set(colIndexes)
   for (let r = 0; r < rowCount; r++) {
     textCols.forEach(c => {
@@ -527,18 +533,19 @@ export async function exportTabXLSX(tab) {
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
 
+  const XLSX = await ensureXLSX()
   const rows = tab === 'sales' ? await buildSalesExportRows() : cfg.getRows()
-  const ws = sheetFromAoa(cfg.headers, rows)
+  const ws = sheetFromAoa(XLSX, cfg.headers, rows)
 
   // Keep phone / id columns as text so Excel doesn't drop leading zeros
   if (tab === 'customers') {
-    forceSheetTextColumns(ws, rows.length, [0, 1, 4, 5, 6, 10]) // شناسه، ایدی، شماره‌ها، معرف
+    forceSheetTextColumns(XLSX, ws, rows.length, [0, 1, 4, 5, 6, 10]) // شناسه، ایدی، شماره‌ها، معرف
   } else if (tab === 'followups') {
-    forceSheetTextColumns(ws, rows.length, [0, 2, 9]) // شناسه مشتری، شماره مشتری، ثبت‌کننده
+    forceSheetTextColumns(XLSX, ws, rows.length, [0, 2, 9]) // شناسه مشتری، شماره مشتری، ثبت‌کننده
   } else if (tab === 'sales') {
-    forceSheetTextColumns(ws, rows.length, [0, 2]) // شناسه مشتری، شماره موبایل
+    forceSheetTextColumns(XLSX, ws, rows.length, [0, 2]) // شناسه مشتری، شماره موبایل
   } else if (tab === 'products') {
-    forceSheetTextColumns(ws, rows.length, [1]) // شماره
+    forceSheetTextColumns(XLSX, ws, rows.length, [1]) // شماره
   }
 
   const wb = XLSX.utils.book_new()
@@ -562,8 +569,8 @@ export async function exportTabXLSX(tab) {
     followupCount = followups.length
     const fAoa = buildFollowupExportAoa(followups, data.customers)
     const fuRows = fAoa.slice(1)
-    const wsFollowups = sheetFromAoa(fAoa[0], fuRows)
-    forceSheetTextColumns(wsFollowups, fuRows.length, [0, 2, 9]) // شناسه، شماره مشتری، ثبت‌کننده
+    const wsFollowups = sheetFromAoa(XLSX, fAoa[0], fuRows)
+    forceSheetTextColumns(XLSX, wsFollowups, fuRows.length, [0, 2, 9]) // شناسه، شماره مشتری، ثبت‌کننده
     XLSX.utils.book_append_sheet(wb, wsFollowups, 'پیگیری‌ها')
   }
 
@@ -620,7 +627,7 @@ const FOLLOWUP_IMPORT_FIELDS = [
   { key: 'createdByPhone', label: 'ثبت‌کننده', aliases: ['ایجادکننده'] },
 ]
 
-function parseSheetAoA(ws) {
+function parseSheetAoA(XLSX, ws) {
   const json = XLSX.utils.sheet_to_json(ws, { header: 1 })
   if (!json.length) return null
   const headers = (json[0] || []).map(h => String(h || '').trim())
@@ -650,25 +657,25 @@ function sheetLooksLikeCustomers(headers) {
   return hasPlatformId || (hasPhone && hasName)
 }
 
-function findFollowupsSheetName(wb) {
+function findFollowupsSheetName(XLSX, wb) {
   const names = wb.SheetNames || []
   const exact = names.find(n => String(n).trim() === 'پیگیری‌ها')
   if (exact) return exact
   const fuzzy = names.find(n => String(n).includes('پیگیری'))
   if (fuzzy) return fuzzy
   for (const name of names) {
-    const parsed = parseSheetAoA(wb.Sheets[name])
+    const parsed = parseSheetAoA(XLSX, wb.Sheets[name])
     if (parsed && sheetLooksLikeFollowups(parsed.headers)) return name
   }
   return null
 }
 
-function findCustomersSheetName(wb) {
+function findCustomersSheetName(XLSX, wb) {
   const names = wb.SheetNames || []
   const exact = names.find(n => String(n).trim() === 'مشتریان')
   if (exact) return exact
   for (const name of names) {
-    const parsed = parseSheetAoA(wb.Sheets[name])
+    const parsed = parseSheetAoA(XLSX, wb.Sheets[name])
     if (parsed && sheetLooksLikeCustomers(parsed.headers)) return name
   }
   return names[0] || null
@@ -833,16 +840,17 @@ export function initImportListeners() {
     if (!file) return
 
     const reader = new FileReader()
-    reader.onload = function (ev) {
+    reader.onload = async function (ev) {
       try {
+        const XLSX = await ensureXLSX()
         const wb = XLSX.read(ev.target.result, { type: 'array' })
-        const followupsSheetName = findFollowupsSheetName(wb)
-        const customersSheetName = findCustomersSheetName(wb)
+        const followupsSheetName = findFollowupsSheetName(XLSX, wb)
+        const customersSheetName = findCustomersSheetName(XLSX, wb)
         const followupsParsed = followupsSheetName
-          ? parseSheetAoA(wb.Sheets[followupsSheetName])
+          ? parseSheetAoA(XLSX, wb.Sheets[followupsSheetName])
           : null
         const customersParsed = customersSheetName
-          ? parseSheetAoA(wb.Sheets[customersSheetName])
+          ? parseSheetAoA(XLSX, wb.Sheets[customersSheetName])
           : null
 
         const onlyFollowups = followupsParsed
@@ -1726,6 +1734,7 @@ export function initSalesImportListeners() {
     const reader = new FileReader()
     reader.onload = async function (ev) {
       try {
+        const XLSX = await ensureXLSX()
         const wb = XLSX.read(ev.target.result, { type: 'array' })
         const ws = wb.Sheets[wb.SheetNames[0]]
         const json = XLSX.utils.sheet_to_json(ws, { header: 1 })
@@ -1963,15 +1972,16 @@ function renderSalesImportResult({ imported, created, skipped, failed, problemCo
   `
 }
 
-export function downloadSalesImportProblems() {
+export async function downloadSalesImportProblems() {
   const pack = salesImportData.problemExport
   if (!pack?.rows?.length) {
     showToast('ردیفی برای دانلود نیست')
     return
   }
+  const XLSX = await ensureXLSX()
   const headers = [...pack.headers, 'علت رد']
   const rows = pack.rows.map((r, i) => [...padImportRow(r, pack.headers.length), pack.reasons[i] || ''])
-  const ws = sheetFromAoa(headers, rows)
+  const ws = sheetFromAoa(XLSX, headers, rows)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'ردیف‌های مشکل‌دار')
   XLSX.writeFile(wb, `فروش_مشکل‌دار_${new Date().toISOString().slice(0, 10)}.xlsx`)
@@ -2658,8 +2668,9 @@ export function initMatrixImportListeners() {
     const file = e.target.files[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
+        const XLSX = await ensureXLSX()
         const wb = XLSX.read(ev.target.result, { type: 'array' })
         const ws = wb.Sheets[wb.SheetNames[0]]
         const json = XLSX.utils.sheet_to_json(ws, { header: 1 })
@@ -2709,15 +2720,16 @@ export function dryRunMatrixImport() {
   showToast('پیش‌نمایش آماده است — در دیتابیس تغییری ذخیره نشد')
 }
 
-export function downloadMatrixImportProblems() {
+export async function downloadMatrixImportProblems() {
   const pack = matrixImportData.problemExport
   if (!pack?.rows?.length) {
     showToast('ردیفی برای دانلود نیست')
     return
   }
+  const XLSX = await ensureXLSX()
   const headers = [...pack.headers, 'علت رد']
   const rows = pack.rows.map((r, i) => [...padImportRow(r, pack.headers.length), pack.reasons[i] || ''])
-  const ws = sheetFromAoa(headers, rows)
+  const ws = sheetFromAoa(XLSX, headers, rows)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'ردیف‌های مشکل‌دار')
   XLSX.writeFile(wb, `ماتریس_تاریخی_مشکل‌دار_${new Date().toISOString().slice(0, 10)}.xlsx`)
