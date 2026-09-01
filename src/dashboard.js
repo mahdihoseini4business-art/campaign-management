@@ -26,6 +26,32 @@ let salesChartDefaultsReady = false
 let dashFilterApplied = false
 /** Cached aggregates for product chart metric toggle */
 let productChartCache = { amounts: {}, counts: {} }
+const PRODUCT_CHART_TOP_N = 5
+const PRODUCT_CHART_OTHER_LABEL = 'سایر'
+
+/** Top N products by value; remaining products roll up into «سایر». */
+function buildTopProductsChartSeries(source, topN = PRODUCT_CHART_TOP_N) {
+  const entries = Object.entries(source || {})
+    .map(([name, value]) => ({ name, value: Number(value) || 0 }))
+    .filter(e => e.value > 0)
+    .sort((a, b) => b.value - a.value)
+
+  const top = entries.slice(0, topN)
+  const rest = entries.slice(topN)
+  const labels = top.map(e => e.name)
+  const values = top.map(e => e.value)
+
+  if (rest.length > 0) {
+    labels.push(PRODUCT_CHART_OTHER_LABEL)
+    values.push(rest.reduce((s, e) => s + e.value, 0))
+  }
+
+  return {
+    labels,
+    values,
+    rows: labels.map((name, i) => ({ name, value: values[i] }))
+  }
+}
 
 /** Safari/WebKit often lays out chart parents a frame late; force one resize after paint. */
 function scheduleDashChartsResize() {
@@ -2754,9 +2780,12 @@ function renderProductSalesChart(productSales = null, productCounts = null) {
 
   const metric = document.getElementById('productChartMetric')?.value === 'count' ? 'count' : 'amount'
   const source = metric === 'count' ? productChartCache.counts : productChartCache.amounts
-  const labels = Object.keys(source || {})
-  const values = Object.values(source || {})
+  const { labels, values } = buildTopProductsChartSeries(source)
   const label = metric === 'count' ? 'تعداد فروش' : 'مبلغ فروش'
+  const valueSuffix = metric === 'count' ? '' : ' ریال'
+  const barColors = labels.map(name =>
+    name === PRODUCT_CHART_OTHER_LABEL ? '#adb5bd' : '#0d6efd'
+  )
 
   const canvas = document.getElementById('chartProducts')
   if (!canvas) return
@@ -2768,11 +2797,22 @@ function renderProductSalesChart(productSales = null, productCounts = null) {
     type: 'bar',
     data: {
       labels,
-      datasets: [{ label, data: values, backgroundColor: '#0d6efd', borderRadius: 6 }]
+      datasets: [{ label, data: values, backgroundColor: barColors, borderRadius: 6 }]
     },
     options: {
       ...CHART_RESPONSIVE,
-      plugins: { legend: { display: false } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              const v = ctx.parsed?.y
+              if (v == null) return ''
+              return ` ${formatNumber(v)}${valueSuffix}`
+            }
+          }
+        }
+      },
       scales: {
         x: {
           ticks: {
@@ -3437,9 +3477,9 @@ export async function buildDashboardExportPayload() {
   const productSource = productMetric === 'count' ? productCounts : productSales
   const productsChart = {
     metric: productMetric,
-    rows: Object.keys(productSource || {})
-      .map(name => ({ name, value: productSource[name] || 0 }))
-      .sort((a, b) => b.value - a.value)
+    topN: PRODUCT_CHART_TOP_N,
+    otherLabel: PRODUCT_CHART_OTHER_LABEL,
+    rows: buildTopProductsChartSeries(productSource).rows
   }
 
   const advisorMetric = document.getElementById('advisorCompareMetric')?.value === 'gross' ? 'gross' : 'net'
