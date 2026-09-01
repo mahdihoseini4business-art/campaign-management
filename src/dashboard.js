@@ -16,6 +16,8 @@ import { sumCompletedRefundsForDash, countPendingRefundsForDash } from './refund
 import { toggleSortField, sortRecords, syncSortHeaders } from './table-sort.js'
 import { getCustomersById } from './derived-cache.js'
 import { shouldSkipTabRender, markTabRendered } from './tab-cache.js'
+import { areProductsReady } from './data.js'
+import { getProductsLoadingBannerHtml } from './products-load.js'
 
 let ChartLib = null
 
@@ -1321,8 +1323,15 @@ export async function renderDashboard() {
   const dateFrom = document.getElementById('dashDateFrom')?.value.trim() || ''
   const dateTo = document.getElementById('dashDateTo')?.value.trim() || ''
   const userSig = selectedAdvisorPhones ? [...selectedAdvisorPhones].sort().join(',') : 'all'
-  const cacheKey = `${dateFrom}|${dateTo}|${userSig}|${dashFilterApplied ? 1 : 0}|${dashOverdueShowAll ? 1 : 0}|${dashSoonShowAll ? 1 : 0}|${dashOverdueSort.field}:${dashOverdueSort.asc}|${dashSoonSort.field}:${dashSoonSort.asc}`
+  const productsReady = areProductsReady()
+  const cacheKey = `${dateFrom}|${dateTo}|${userSig}|${dashFilterApplied ? 1 : 0}|${dashOverdueShowAll ? 1 : 0}|${dashSoonShowAll ? 1 : 0}|${dashOverdueSort.field}:${dashOverdueSort.asc}|${dashSoonSort.field}:${dashSoonSort.asc}|${productsReady ? 1 : 0}`
   if (shouldSkipTabRender('dashboard', cacheKey)) return
+
+  const bannerHost = document.getElementById('dashProductsLoadBanner')
+  if (bannerHost) {
+    bannerHost.innerHTML = getProductsLoadingBannerHtml('در حال بارگذاری داده‌های فروش برای داشبورد…')
+  }
+  if (!productsReady) return
 
   const data = getData()
   const customersById = getCustomersById()

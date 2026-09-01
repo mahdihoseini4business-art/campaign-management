@@ -1,4 +1,4 @@
-import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, invalidateProductSalesCountCache } from './data.js'
+import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, ensureCustomerProductsLoaded, areProductsReady, invalidateProductSalesCountCache } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
@@ -261,6 +261,7 @@ export function getCustomerFilterState() {
 let customerQuickFilter = ''
 
 function customerHasPurchase(c) {
+  if (!c._productsLoaded && c.productCount != null) return c.productCount > 0
   return (c.products || []).some(p => {
     ensureProductPayments(p)
     return isProductCountableInSales(p)
@@ -738,6 +739,7 @@ export function updateStats(followupsByCustomerOverride = null) {
   }
 
   function hasPurchase(c) {
+    if (!c._productsLoaded && c.productCount != null) return c.productCount > 0
     return customerHasPurchase(c)
   }
 
@@ -757,14 +759,19 @@ export function updateStats(followupsByCustomerOverride = null) {
     : scoped.filter(c => c.id.startsWith('CS')).length
 
   let totalPaid = 0
-  scoped.forEach(c => {
-    ;(c.products || []).forEach(p => {
-      ensureProductPayments(p)
-      syncProductStatus(p)
-      totalPaid += getApprovedPaid(p)
+  const revenueEl = document.getElementById('stat-revenue')
+  if (!areProductsReady()) {
+    if (revenueEl) revenueEl.textContent = '…'
+  } else {
+    scoped.forEach(c => {
+      ;(c.products || []).forEach(p => {
+        ensureProductPayments(p)
+        syncProductStatus(p)
+        totalPaid += getApprovedPaid(p)
+      })
     })
-  })
-  document.getElementById('stat-revenue').textContent = formatNumber(totalPaid) + ' ریال'
+    if (revenueEl) revenueEl.textContent = formatNumber(totalPaid) + ' ریال'
+  }
 }
 
 // ============================================
@@ -2277,7 +2284,10 @@ export async function openCustomerDetail(id, options = {}) {
       clearPendingCreateCompletion(id)
     }
     try {
-      await ensureCustomerDetailsLoaded(id)
+      await Promise.all([
+        ensureCustomerDetailsLoaded(id),
+        ensureCustomerProductsLoaded(id)
+      ])
     } catch (e) {
       console.warn('ensureCustomerDetailsLoaded:', e?.message || e)
     }

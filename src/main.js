@@ -1,6 +1,6 @@
 import './styles.css'
 import { toEnDigits, initDigitConversion, hasPermission, hasAnyRefundPermission, showToast, escapeAttr, toggleToolbarActions, closeAllToolbarActions, initToolbarActionsMenus, copyToClipboard } from './utils.js'
-import { loadData, backfillAdvisorPhones, cleanupConversionOrphans } from './data.js'
+import { loadData, backfillAdvisorPhones, cleanupConversionOrphans, startProductsBatchLoad, subscribeProductsLoadState } from './data.js'
 import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal as openSettingsModalBase, closeSettingsModal, addUser, deleteUser, startEditUserInfo, cancelEditUserInfo, saveEditUserInfo, saveUserPermissions, togglePermCheckbox, togglePermGroup, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, selectSettingsUser, filterSettingsUsers, backToUsersList, markPermissionsDirty, switchSettingsSection, filterSettingsNav, addDestinationBank, removeDestinationBank, startDestinationBankEdit, cancelDestinationBankEdit, saveDestinationBankEdit, addProductCatalogItem, removeProductCatalogItem, startProductCatalogEdit, cancelProductCatalogEdit, saveProductCatalogEdit, onNewProductKindChange, onEditProductKindChange, onNewProductProfitModeChange, onEditProductProfitModeChange, startProductBundleEdit, cancelProductBundleEdit, saveProductBundleForm, removeProductBundle, runCatalogToBundleMigration, filterViewUserOptions, changeUserGroupAssignment, createSettingsGroup, renameSettingsGroup, deleteSettingsGroup, selectSettingsGroup, backToGroupsList, addSettingsGroupMember, removeSettingsGroupMember, makeGroupManager, addPlatform, removePlatform, updatePlatformField, editPlatform, cancelPlatformEdit, savePlatformEdit, addStatus, removeStatus, updateStatusField, editStatus, cancelStatusEdit, saveStatusEdit, onStatusDragStart, onStatusDragOver, onStatusDrop, addCustomerCode, removeCustomerCode, editCustomerCode, cancelCustomerCodeEdit, saveCustomerCodeEdit, onCustomerCodeDragStart, onCustomerCodeDragOver, onCustomerCodeDrop, onSalesTargetMetricChange, onSalesTargetAllocationChange, onSalesTargetDeadlineChange, onDeadlineUrgencyFieldChange, addSalesTargetFormStage, removeSalesTargetFormStage, onSalesTargetFormStageChange, addDeadlineUrgencyStage, removeDeadlineUrgencyStage, saveDeadlineUrgencySettings, startSalesTargetEdit, cancelSalesTargetEdit, saveSalesTargetForm, removeSalesTarget, renderSalesTargetsSettings, addSalesTargetBarToDraft, removeSalesTargetBarFromDraft, startSalesTargetBarEdit, cancelSalesTargetBarEdit, saveSmsPanelSettings, resetSmsMessageTemplate } from './auth.js'
 import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, switchDetailTab, showMoreDetailFollowups, setNextFollowup, clearNextFollowup, addQuickNote, updateCustomerAdvisor, claimUnassignedCustomer, updateCustomerLevel, addProductRow, removeProduct, onCustomerPhoneInput, onCustomerPlatformIdInput, selectCustomerPhoneSuggest, onCustomerPhoneSuggestBlur, onCustomerPhoneKeydown, addCustomerPhoneSlot, removeCustomerPhoneSlot, onCustomerAddressInput, onCustomerAddressPriorityChange, addCustomerAddressSlot, removeCustomerAddressSlot, addProductPayment, removeProductPayment, onDestinationBankSelect, commitSalePayment, commitSaleProductDetails, updateSaleTotalPrice, commitGiftSale, onSaleProductNameChange, onSalePriceInput, markSalePaymentTouched, toggleClosedProductBlock, openStartSaleModal, closeStartSaleModal, confirmStartSale, filterStartSaleCustomers, closeMergeCustomerModal, confirmMergeCustomers, clearCustomerSearch, clearCustomerFilters, onCustomerSearchInput, applyCustomerStatFilter, toggleRequireFollowupOnCreate, syncRequireFollowupOnCreateUi, cancelPendingCustomerCreate, sortCustomers } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, clearFollowupSearch, onFollowupSearchInput, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, openFollowupDonePicker, closeFollowupDonePicker, filterFollowupDonePick, confirmFollowupDonePick, setFollowupDoneNextShortcut, isFollowupDoneNoteDirty, updateFollowupBadge, updateFollowupAdvisorDropdown, sortFollowups } from './followups.js'
@@ -662,6 +662,47 @@ function initModalFocusTrap() {
 }
 
 // ============================================
+// Products batch load progress
+// ============================================
+
+function updateProductsLoadProgressUI(state) {
+  const wrap = document.getElementById('productsLoadProgress')
+  const bar = document.getElementById('productsLoadProgressBar')
+  const pctEl = document.getElementById('productsLoadProgressPct')
+  if (!wrap || !bar || !pctEl) return
+  if (!state || state.status === 'ready' || state.status === 'idle') {
+    wrap.hidden = true
+    bar.style.width = '0%'
+    return
+  }
+  wrap.hidden = false
+  const pct = state.percent || 0
+  bar.style.width = `${pct}%`
+  pctEl.textContent = `${pct}٪`
+}
+
+function refreshProductDependentViews() {
+  try { updateStats() } catch (e) { console.error('updateStats error:', e) }
+  const activeSheet = document.querySelector('.sheet.active')?.id?.replace(/^sheet-/, '')
+  if (!activeSheet) return
+  try {
+    if (activeSheet === 'dashboard') renderDashboard()
+    else if (activeSheet === 'sales') renderSales()
+    else if (activeSheet === 'accounting') renderAccounting()
+    else if (activeSheet === 'shipments') renderShipments()
+    else if (activeSheet === 'products') renderProductMatrix()
+  } catch (e) {
+    console.error('refreshProductDependentViews error:', e)
+  }
+}
+
+function onProductsLoadStateChange(state) {
+  updateProductsLoadProgressUI(state)
+  if (state?.status === 'ready') refreshProductDependentViews()
+  else if (state?.status === 'loading') refreshProductDependentViews()
+}
+
+// ============================================
 // Init
 // ============================================
 
@@ -675,6 +716,7 @@ async function init() {
   initMatrixImportListeners()
   initBackupRestoreListeners()
   initAppUpdate().catch(e => console.error('app update init error:', e))
+  subscribeProductsLoadState(onProductsLoadStateChange)
 
   // Show loading overlay
   const loadingOverlay = document.getElementById('loadingOverlay')
@@ -711,6 +753,9 @@ async function init() {
 
   // Hide loading overlay
   if (loadingOverlay) loadingOverlay.style.display = 'none'
+
+  // Phase B: background products batch (non-blocking)
+  startProductsBatchLoad()
 
   try { applyPermissions() } catch (e) { console.error('applyPermissions error:', e) }
   try { openDefaultAccessibleTab() } catch (e) { console.error('openDefaultAccessibleTab error:', e) }

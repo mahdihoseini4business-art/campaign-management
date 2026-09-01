@@ -17,6 +17,7 @@ import { broadcastPaymentRejectToast } from './sale-toasts.js'
 import { debouncedSearchInput } from './search-debounce.js'
 import { SEARCH_HOST } from './search-overlay.js'
 import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
+import { blockUntilProductsReady } from './products-load.js'
 
 let accountingFilter = 'pending' // pending | approved | rejected | gifts
 let accountingSortState = { field: null, asc: true }
@@ -195,6 +196,11 @@ export async function renderAccounting() {
   if (!tbody) return
   if (!hasPermission('accounting')) {
     tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><h3>دسترسی ندارید</h3></div></td></tr>`
+    const wrap = document.getElementById('accountingBankBalances')
+    if (wrap) wrap.innerHTML = ''
+    return
+  }
+  if (blockUntilProductsReady(tbody, 10, 'در حال بارگذاری پرداخت‌ها…')) {
     const wrap = document.getElementById('accountingBankBalances')
     if (wrap) wrap.innerHTML = ''
     return

@@ -21,11 +21,15 @@ export function bumpDataVersion() {
   dataVersion += 1
 }
 
-/** @param {'all'|'customers'|'followups'|'sales'} [scope] */
+/** @param {'all'|'customers'|'followups'|'sales'|'products'} [scope] */
 export function invalidateDerivedCache(scope = 'all') {
   bumpDataVersion()
   if (scope === 'followups') {
     followupsByCustomerId = null
+    return
+  }
+  if (scope === 'products') {
+    allSalesFlat = null
     return
   }
   customersById = null
