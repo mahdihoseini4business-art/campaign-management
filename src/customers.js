@@ -11,7 +11,7 @@ import {
   canClaimUnassignedCustomer, canRevealUnassignedByPhoneSearch, isHistoricalImportSale,
   resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
   getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
-  findCustomersByPhonePrefix,
+  findCustomerByPlatformId, findCustomersByPhonePrefix,
   getCustomerPhones, normalizeCustomerPhones, getPrimaryPhone, formatPhonesDisplay,
   MAX_CUSTOMER_PHONES, MAX_CUSTOMER_ADDRESSES,
   getCustomerAddresses, normalizeCustomerAddresses, appendCustomerAddressIfNew,
@@ -831,19 +831,19 @@ function isCreatePhoneForm() {
 }
 
 /** Open an existing customer inside the already-open detail modal (no overlay flash). */
-let openingFromPhoneMatch = false
-async function openExistingCustomerFromPhone(customer, { toast = true } = {}) {
-  if (!customer?.id || openingFromPhoneMatch) return
+let openingFromFieldMatch = false
+async function openExistingCustomerFromMatch(customer, { toast = true } = {}) {
+  if (!customer?.id || openingFromFieldMatch) return
   const modalOpen = document.getElementById('detailModal')?.classList.contains('active')
   if (modalOpen && detailPanelState.customerId === customer.id) return
 
-  openingFromPhoneMatch = true
+  openingFromFieldMatch = true
   hideCustomerPhoneSuggest()
   try {
     await openCustomerDetail(customer.id)
     if (toast) showToast(`پنل مشتری موجود (${customer.id}) باز شد`)
   } finally {
-    openingFromPhoneMatch = false
+    openingFromFieldMatch = false
   }
 }
 
@@ -892,7 +892,24 @@ export function selectCustomerPhoneSuggest(customerId) {
     showToast('شما به این مشتری دسترسی ندارید')
     return
   }
-  openExistingCustomerFromPhone(c)
+  openExistingCustomerFromMatch(c)
+}
+
+export function onCustomerPlatformIdInput() {
+  if (!isCreatePhoneForm()) return
+
+  const platformId = document.getElementById('detailPlatformId')?.value.trim() || ''
+  if (!platformId) return
+
+  const existing = findCustomerByPlatformId(platformId, getData().customers)
+  if (!existing) return
+
+  if (!canViewCustomer(existing)) {
+    showToast(`مشتری با این آیدی وجود دارد ولی به آن دسترسی ندارید (${existing.id})`)
+    return
+  }
+
+  openExistingCustomerFromMatch(existing)
 }
 
 export function onCustomerPhoneSuggestBlur() {
@@ -1139,7 +1156,7 @@ function validateCustomerPhones() {
     phoneFieldState.customer = existing
     hideCustomerPhoneSuggest()
     updatePreviewId()
-    openExistingCustomerFromPhone(existing)
+    openExistingCustomerFromMatch(existing)
     return
   }
 
@@ -2098,7 +2115,7 @@ async function createCustomerFromDetail(fields) {
   }
   // Safety: phone match should already have switched the panel while typing
   if (phoneFieldState.status === 'own' && phoneFieldState.customer) {
-    await openExistingCustomerFromPhone(phoneFieldState.customer)
+    await openExistingCustomerFromMatch(phoneFieldState.customer)
     return null
   }
 
@@ -2433,7 +2450,7 @@ export async function openCustomerDetail(id, options = {}) {
       </div>
       <div class="detail-field">
         <span class="detail-label">ایدی پلتفرم</span>
-        <input type="text" class="form-input" id="detailPlatformId" value="${escapeAttr(c.platformId || '')}" placeholder="${isNew ? 'در صورت نبود شماره، الزامی' : 'اختیاری'}" style="font-family:'Vazirmatn',sans-serif;">
+        <input type="text" class="form-input" id="detailPlatformId" value="${escapeAttr(c.platformId || '')}" placeholder="${isNew ? 'در صورت نبود شماره، الزامی' : 'اختیاری'}" style="font-family:'Vazirmatn',sans-serif;" oninput="app.onCustomerPlatformIdInput()">
       </div>
       ${requireFollowupOnCreate ? `
       <div class="detail-field">

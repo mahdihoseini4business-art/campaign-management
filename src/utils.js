@@ -873,6 +873,16 @@ export function findCustomerByPhone(phone, customers, excludeId = null) {
   ) || null
 }
 
+/** Find customer by platform ID (case-insensitive). */
+export function findCustomerByPlatformId(platformId, customers, excludeId = null) {
+  const key = String(platformId || '').trim().toLowerCase()
+  if (!key) return null
+  return (customers || []).find(c =>
+    (!excludeId || c.id !== excludeId)
+    && String(c.platformId || '').trim().toLowerCase() === key
+  ) || null
+}
+
 /** Alias — same semantics as findCustomerByPhone after multi-phone upgrade. */
 export function findCustomerByAnyPhone(phone, customers, excludeId = null) {
   return findCustomerByPhone(phone, customers, excludeId)
