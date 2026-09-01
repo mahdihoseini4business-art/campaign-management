@@ -1,2 +1,34 @@
 # Desktop Electron app — not part of the Liara web deploy
 offline-app/
+
+# Let Liara configure npm mirror during build (custom .npmrc blocks it)
+.npmrc
+
+# Skip lockfile on deploy — Liara npm ci hits runflare mirror (402); npm install works
+package-lock.json
+
+# Build artifacts & local-only (from .gitignore — .liaraignore replaces .gitignore on deploy)
+dist
+.mimocode
+.vercel
+*.xlsx
+*-logs.txt
+sms-docs.md
+DESIGN.md
+OTP-SETUP-GUIDE.md
+
+# Secrets
+.env
+.env.*
+!.env.example
+.env.local
+.env.*.local
+
+# Supabase CLI ephemeral / local-only
+supabase/.temp/
+supabase/.branches/
+supabase/.env
+supabase/.env.*
+supabase/**/.env
+supabase/**/node_modules/
+supabase/**/.deno/
