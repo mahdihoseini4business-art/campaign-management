@@ -4677,6 +4677,19 @@
     margin-top: 2px;
   }
 
+  .settings-detail-head-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .settings-user-info-edit {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+
   .settings-admin-full {
     font-size: 13px;
     color: var(--accent);

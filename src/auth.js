@@ -120,6 +120,49 @@ export async function saveUser(user) {
   return true
 }
 
+async function cascadeUserPhoneChange(oldPhone, newPhone) {
+  const oldP = normalizePhone(oldPhone)
+  const newP = normalizePhone(newPhone)
+  if (!oldP || !newP || oldP === newP) return
+
+  const updates = [
+    supabase.from('customers').update({ advisor_phone: newP }).eq('advisor_phone', oldP),
+    supabase.from('group_members').update({ user_phone: newP }).eq('user_phone', oldP),
+    supabase.from('ownership_transfers').update({ from_advisor_phone: newP }).eq('from_advisor_phone', oldP),
+    supabase.from('ownership_transfers').update({ to_advisor_phone: newP }).eq('to_advisor_phone', oldP),
+    supabase.from('ownership_transfers').update({ acted_by_phone: newP }).eq('acted_by_phone', oldP),
+    supabase.from('ownership_transfer_acks').update({ user_phone: newP }).eq('user_phone', oldP),
+    supabase.from('notification_reads').update({ user_phone: newP }).eq('user_phone', oldP),
+    supabase.from('notifications').update({ created_by_phone: newP }).eq('created_by_phone', oldP),
+    supabase.from('followups').update({ created_by_phone: newP }).eq('created_by_phone', oldP),
+    supabase.from('refunds').update({ advisor_phone: newP }).eq('advisor_phone', oldP),
+    supabase.from('refunds').update({ created_by_phone: newP }).eq('created_by_phone', oldP),
+    supabase.from('refunds').update({ updated_by_phone: newP }).eq('updated_by_phone', oldP)
+  ]
+  const results = await Promise.all(updates)
+  results.forEach(({ error }, i) => {
+    if (error) console.error('cascadeUserPhoneChange update error:', i, error)
+  })
+
+  const users = await getUsersSafe()
+  for (const u of users) {
+    const phones = u.permissions?.viewUserPhones
+    if (!Array.isArray(phones) || !phones.some(p => normalizePhone(p) === oldP)) continue
+    const nextPhones = phones.map(p => normalizePhone(p) === oldP ? newP : normalizePhone(p))
+    const { error } = await supabase
+      .from('users')
+      .update({ permissions: { ...u.permissions, viewUserPhones: nextPhones } })
+      .eq('username', u.username)
+    if (error) console.error('cascadeUserPhoneChange viewUserPhones error:', error)
+  }
+
+  try {
+    await loadGroupsData()
+  } catch (e) {
+    console.error('cascadeUserPhoneChange loadGroupsData:', e)
+  }
+}
+
 export async function deleteUserFromDB(username) {
   const users = await getUsersSafe()
   const target = users.find(u => u.username === username)
@@ -406,6 +449,7 @@ let _settingsUsersCache = []
 let _selectedSettingsUser = null
 let _selectedSettingsGroup = null
 let _permissionsDirty = false
+let _editingUserInfo = null
 let _editingBankIdx = null
 let _editingProductIdx = null
 let _editingBundleId = null
@@ -476,11 +520,14 @@ function discardSalesTargetDraft() {
 
 export function switchSettingsSection(sectionId) {
   if (!SETTINGS_SECTIONS.some(s => s.id === sectionId)) return
-  if (_settingsSection === 'users' && sectionId !== 'users' && _permissionsDirty) {
+  if (_settingsSection === 'users' && sectionId !== 'users' && (_permissionsDirty || _editingUserInfo)) {
     openSettingsConfirm(
-      'تغییرات دسترسی ذخیره‌نشده دارید. ادامه می‌دهید؟',
+      _editingUserInfo
+        ? 'ویرایش اطلاعات کاربر ذخیره‌نشده است. ادامه می‌دهید؟'
+        : 'تغییرات دسترسی ذخیره‌نشده دارید. ادامه می‌دهید؟',
       () => {
         _permissionsDirty = false
+        _editingUserInfo = null
         applySettingsSection(sectionId)
       },
       'ادامه'
@@ -555,6 +602,7 @@ function openSettingsConfirm(message, onConfirm, confirmLabel = 'تأیید') {
 export async function openSettingsModal() {
   if (!requireMainAdmin()) return
   _permissionsDirty = false
+  _editingUserInfo = null
   _selectedSettingsUser = null
   _selectedSettingsGroup = null
   _editingBankIdx = null
@@ -631,11 +679,14 @@ function finishCloseSettingsModal() {
 }
 
 export function closeSettingsModal() {
-  if (_permissionsDirty) {
+  if (_permissionsDirty || _editingUserInfo) {
     openSettingsConfirm(
-      'تغییرات دسترسی ذخیره‌نشده دارید. بدون ذخیره ببندید؟',
+      _editingUserInfo
+        ? 'ویرایش اطلاعات کاربر ذخیره‌نشده است. بدون ذخیره ببندید؟'
+        : 'تغییرات دسترسی ذخیره‌نشده دارید. بدون ذخیره ببندید؟',
       () => {
         _permissionsDirty = false
+        _editingUserInfo = null
         finishCloseSettingsModal()
       },
       'بستن'
@@ -695,6 +746,168 @@ export async function addUser() {
   }
 }
 
+export function startEditUserInfo(username) {
+  if (!requireMainAdmin()) return
+  _editingUserInfo = username
+  renderSelectedUserDetail(false)
+  document.getElementById('editUserFirstName')?.focus()
+}
+
+export function cancelEditUserInfo() {
+  _editingUserInfo = null
+  renderSelectedUserDetail(false)
+}
+
+export async function saveEditUserInfo(username) {
+  if (!requireMainAdmin()) return
+  const cached = _settingsUsersCache.find(u => u.username === username)
+  if (!cached) { showToast('کاربر یافت نشد'); return }
+
+  const firstName = document.getElementById('editUserFirstName')?.value.trim() || ''
+  const lastName = document.getElementById('editUserLastName')?.value.trim() || ''
+  const phone = normalizePhone(document.getElementById('editUserPhone')?.value.trim() || '')
+  const roleEl = document.getElementById('editUserRole')
+  const role = cached.username === 'admin' ? 'admin' : (roleEl?.value || cached.role)
+
+  if (!firstName) { showToast('نام را وارد کنید'); return }
+  if (!lastName) { showToast('نام خانوادگی را وارد کنید'); return }
+  if (!phone || !/^09\d{9}$/.test(phone)) {
+    showToast('شماره موبایل صحیح نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹)'); return
+  }
+
+  const oldPhone = normalizePhone(cached.phone)
+  const displayName = `${firstName} ${lastName}`
+  const newUsername = username === 'admin' ? 'admin' : `user_${phone}`
+
+  if (phone !== oldPhone) {
+    try {
+      const users = await getUsers()
+      if (users.some(u => u.username !== username && normalizePhone(u.phone) === phone)) {
+        showToast('این شماره موبایل قبلاً ثبت شده')
+        return
+      }
+    } catch {
+      showToast('خطا در خواندن لیست کاربران')
+      return
+    }
+  }
+
+  const updatePayload = {
+    first_name: firstName,
+    last_name: lastName,
+    phone,
+    display_name: displayName,
+    role
+  }
+  if (newUsername !== username) updatePayload.username = newUsername
+
+  if (role === 'admin' && cached.role !== 'admin') {
+    updatePayload.permissions = null
+  } else if (role === 'user' && cached.role === 'admin' && username !== 'admin') {
+    updatePayload.permissions = getDefaultPermissions()
+  }
+
+  try {
+    if (phone !== oldPhone) {
+      await cascadeUserPhoneChange(oldPhone, phone)
+    }
+
+    const { error } = await supabase.from('users').update(updatePayload).eq('username', username)
+    if (error) throw error
+
+    if (displayName !== (cached.display_name || userDisplayName(cached))) {
+      const { error: custErr } = await supabase
+        .from('customers')
+        .update({ advisor: displayName })
+        .eq('advisor_phone', phone)
+      if (custErr) console.error('saveEditUserInfo advisor name update:', custErr)
+    }
+
+    _editingUserInfo = null
+    if (newUsername !== username) _selectedSettingsUser = newUsername
+
+    try {
+      _settingsUsersCache = await getUsers()
+    } catch {
+      Object.assign(cached, updatePayload)
+    }
+
+    const current = getCurrentUser()
+    const editedKey = newUsername !== username ? newUsername : username
+    if (current && (current.username === username || current.username === editedKey)) {
+      await refreshSessionFromServer(current)
+      applyPermissions()
+    }
+
+    renderUsersList()
+    showToast('اطلاعات کاربر ذخیره شد')
+  } catch (e) {
+    console.error('saveEditUserInfo error:', e)
+    showToast('خطا در ذخیره اطلاعات کاربر')
+  }
+}
+
+function renderUserInfoEditForm(u) {
+  const isMainAdmin = u.username === 'admin'
+  const roleDisabled = isMainAdmin ? 'disabled' : ''
+  return `
+    <div class="settings-user-info-edit">
+      <div class="form-row">
+        <div class="form-group">
+          <label>نام <span class="required">*</span></label>
+          <input type="text" class="form-input" id="editUserFirstName" value="${escapeAttr(u.first_name || '')}">
+        </div>
+        <div class="form-group">
+          <label>نام خانوادگی <span class="required">*</span></label>
+          <input type="text" class="form-input" id="editUserLastName" value="${escapeAttr(u.last_name || '')}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>شماره موبایل <span class="required">*</span></label>
+          <input type="tel" class="form-input" id="editUserPhone" value="${escapeAttr(u.phone || '')}" dir="ltr" style="text-align:left;">
+        </div>
+        <div class="form-group">
+          <label>سطح دسترسی</label>
+          <select class="form-select" id="editUserRole" ${roleDisabled}>
+            <option value="user"${u.role !== 'admin' ? ' selected' : ''}>کاربر عادی</option>
+            <option value="admin"${u.role === 'admin' ? ' selected' : ''}>مدیر سیستم</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row" style="gap:8px;margin-top:4px;">
+        <button type="button" class="btn btn-primary btn-sm" onclick="app.saveEditUserInfo('${escapeAttr(u.username)}')">ذخیره اطلاعات</button>
+        <button type="button" class="btn btn-sm" onclick="app.cancelEditUserInfo()">لغو</button>
+      </div>
+    </div>`
+}
+
+function renderUserInfoHead(u, isCurrentUser) {
+  const userDisplay = userDisplayName(u) || u.username
+  const userPhone = u.phone || '—'
+  const userRole = u.role === 'admin' ? 'مدیر' : 'کاربر'
+  const editing = _editingUserInfo === u.username
+
+  if (editing) {
+    return `
+      <div class="settings-detail-head">
+        <div class="user-name">ویرایش اطلاعات${isCurrentUser ? ' <span class="settings-you">(شما)</span>' : ''}</div>
+        ${renderUserInfoEditForm(u)}
+      </div>`
+  }
+
+  return `
+    <div class="settings-detail-head">
+      <div class="settings-detail-head-row">
+        <div>
+          <div class="user-name">${escapeHtml(userDisplay)}${isCurrentUser ? ' <span class="settings-you">(شما)</span>' : ''}</div>
+          <div class="user-role">${escapeHtml(userPhone)} · <span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${userRole}</span></div>
+        </div>
+        <button type="button" class="btn btn-sm" title="ویرایش اطلاعات" onclick="app.startEditUserInfo('${escapeAttr(u.username)}')">✏️ ویرایش</button>
+      </div>
+    </div>`
+}
+
 export async function deleteUser(username) {
   if (!requireMainAdmin()) return
   if (username === 'admin') { showToast('امکان حذف مدیر وجود ندارد'); return }
@@ -744,11 +957,14 @@ function updateUsersLayoutMode(showDetail) {
 }
 
 export function backToUsersList() {
-  if (_permissionsDirty) {
+  if (_permissionsDirty || _editingUserInfo) {
     openSettingsConfirm(
-      'تغییرات دسترسی ذخیره‌نشده دارید. ادامه می‌دهید؟',
+      _editingUserInfo
+        ? 'ویرایش اطلاعات کاربر ذخیره‌نشده است. ادامه می‌دهید؟'
+        : 'تغییرات دسترسی ذخیره‌نشده دارید. ادامه می‌دهید؟',
       () => {
         _permissionsDirty = false
+        _editingUserInfo = null
         updateUsersLayoutMode(false)
       },
       'ادامه'
@@ -826,11 +1042,14 @@ function renderUsersListMaster() {
 }
 
 export function selectSettingsUser(username) {
-  if (_permissionsDirty && _selectedSettingsUser && _selectedSettingsUser !== username) {
+  if ((_permissionsDirty || _editingUserInfo) && _selectedSettingsUser && _selectedSettingsUser !== username) {
     openSettingsConfirm(
-      'تغییرات دسترسی ذخیره‌نشده دارید. ادامه می‌دهید؟',
+      _editingUserInfo
+        ? 'ویرایش اطلاعات کاربر ذخیره‌نشده است. ادامه می‌دهید؟'
+        : 'تغییرات دسترسی ذخیره‌نشده دارید. ادامه می‌دهید؟',
       () => {
         _permissionsDirty = false
+        _editingUserInfo = null
         _selectedSettingsUser = username
         renderUsersListMaster()
         renderSelectedUserDetail(true)
@@ -841,6 +1060,7 @@ export function selectSettingsUser(username) {
   }
   _selectedSettingsUser = username
   _permissionsDirty = false
+  _editingUserInfo = null
   renderUsersListMaster()
   renderSelectedUserDetail(true)
 }
@@ -859,21 +1079,19 @@ function renderSelectedUserDetail(enterMobileDetail) {
 
   const currentUser = getCurrentUser()
   const isCurrentUser = u.username === currentUser?.username
-  const perms = u.permissions || getDefaultPermissions()
-  const userDisplay = userDisplayName(u) || u.username
-  const userPhone = u.phone || '—'
-  const userRole = u.role === 'admin' ? 'مدیر' : 'کاربر'
 
   if (u.role === 'admin') {
     detail.innerHTML = `
-      <div class="settings-detail-head">
-        <div class="user-name">${escapeHtml(userDisplay)}${isCurrentUser ? ' <span class="settings-you">(شما)</span>' : ''}</div>
-        <div class="user-role">${escapeHtml(userPhone)} · <span class="role-badge role-admin">${userRole}</span></div>
-      </div>
+      ${renderUserInfoHead(u, isCurrentUser)}
       <div class="settings-admin-full">دسترسی کامل (مدیر سیستم) — خارج از گروه‌های کاربری</div>
     `
+    if (_editingUserInfo === u.username) {
+      document.getElementById('editUserFirstName')?.focus()
+    }
     return
   }
+
+  const perms = u.permissions || getDefaultPermissions()
 
   const permsHtml = PERMISSION_GROUPS.map(g => {
     const allChecked = g.keys.every(k => !!perms[k])
@@ -933,10 +1151,7 @@ function renderSelectedUserDetail(enterMobileDetail) {
     </div>`
 
   detail.innerHTML = `
-    <div class="settings-detail-head">
-      <div class="user-name">${escapeHtml(userDisplay)}${isCurrentUser ? ' <span class="settings-you">(شما)</span>' : ''}</div>
-      <div class="user-role">${escapeHtml(userPhone)} · <span class="role-badge role-user">${userRole}</span></div>
-    </div>
+    ${renderUserInfoHead(u, isCurrentUser)}
     <div class="settings-user-perms">
       ${permsHtml}
       ${groupHtml}
@@ -946,6 +1161,9 @@ function renderSelectedUserDetail(enterMobileDetail) {
       <button type="button" class="btn btn-primary" id="settingsSavePermsBtn" disabled onclick="app.saveUserPermissions('${escapeAttr(u.username)}')">ذخیره دسترسی‌ها</button>
     </div>
   `
+  if (_editingUserInfo === u.username) {
+    document.getElementById('editUserFirstName')?.focus()
+  }
   syncPermissionsDirtyUi()
 }
 
