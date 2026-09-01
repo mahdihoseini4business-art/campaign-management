@@ -259,7 +259,7 @@ function getPendingItems(applySearch = true, followupsByCustomer = null) {
   return items
 }
 
-/** Done items = followup notes marked as completed */
+/** History items = every followup/note on a customer (timeline), not only «انجام شد» queue completions. */
 function getDoneItems(applySearch = true, ctx = null) {
   const data = getData()
   const currentUser = getCurrentUser()
@@ -272,7 +272,6 @@ function getDoneItems(applySearch = true, ctx = null) {
 
   const items = []
   for (const f of data.followups) {
-    if (!isDoneFollowup(f)) continue
     const customer = customersById.get(f.customerId)
     if (!canSeeFollowupInTab(customer, currentUser, f.createdByPhone)) continue
     if (!matchesAdvisorScope(customer, advisorScope)) continue
@@ -617,7 +616,7 @@ export async function renderFollowups() {
         title = 'در ۲–۳ روز آینده موردی نیست'
         detail = distantHint
       } else if (followupFilter === 'done') {
-        title = 'هنوز مورد تکمیل‌شده‌ای ثبت نشده'
+        title = 'هنوز یادداشتی ثبت نشده'
         detail = ''
       }
 
