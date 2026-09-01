@@ -2195,7 +2195,10 @@ async function createCustomerFromDetail(fields) {
 }
 
 export async function saveCustomerDetail(customerId) {
-  if (!requirePermission('customers_add')) return
+  if (!hasPermission('customers_add') && !hasPermission('customers_edit_others')) {
+    showToast('شما به این بخش دسترسی ندارید')
+    return
+  }
   const isNew = !customerId
   const data = getData()
   const customer = isNew ? null : data.customers.find(c => c.id === customerId)

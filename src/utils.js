@@ -1802,9 +1802,13 @@ export function canScheduleFollowupOnCustomer(customer, user = getCurrentUser())
 
 export function hasPermission(key) {
   const user = getCurrentUser()
+  return hasPermissionForUser(user, key)
+}
+
+export function hasPermissionForUser(user, key) {
   if (!user) return false
   if (user.role === 'admin') return true
-  return user.permissions && user.permissions[key] === true
+  return !!(user.permissions && user.permissions[key] === true)
 }
 
 /** True if the user has at least one permission in the refunds group. */
@@ -1973,18 +1977,37 @@ export function canManageCustomer(customer, user = getCurrentUser()) {
 }
 
 /**
+ * View access to a customer from any tab scope (customers / sales / dashboard / own+team).
+ */
+export function canViewCustomerAnyScope(customer, user = getCurrentUser()) {
+  if (!customer || !canViewCustomer(customer, user)) return false
+  if (user?.role === 'admin') return true
+  if (canViewScopedCustomer(customer, user, 'customers')) return true
+  if (canViewScopedCustomer(customer, user, 'sales')) return true
+  if (canViewScopedCustomer(customer, user, 'dashboard')) return true
+  if (canViewScopedCustomer(customer, user)) return true
+  // Product matrix tab lists all customers for holders of products_matrix.
+  if (hasPermissionForUser(user, 'products_matrix')) return true
+  return false
+}
+
+/** Customer assigned to another advisor (not current user). */
+export function isOtherAdvisorsCustomer(customer, user = getCurrentUser()) {
+  if (!customer || ownsCustomer(customer, user)) return false
+  return !!(normalizePhone(customer.advisorPhone) || String(customer.advisor || '').trim())
+}
+
+/**
  * Edit customer profile (name, phones, status, …).
  * Owner with customers_add, or customers_edit_others for another advisor's customers.
  */
 export function canEditCustomerInfo(customer, user = getCurrentUser()) {
   if (!customer || !canViewCustomer(customer, user)) return false
   if (user?.role === 'admin') return true
-  if (!hasPermission('customers_add')) return false
-  if (canManageCustomer(customer, user)) return true
-  if (!hasPermission('customers_edit_others')) return false
-  const ownerPhone = normalizePhone(customer.advisorPhone)
-  if (!ownerPhone || ownsCustomer(customer, user)) return false
-  return canViewScopedCustomer(customer, user, 'customers')
+  if (hasPermissionForUser(user, 'customers_add') && canManageCustomer(customer, user)) return true
+  if (!hasPermissionForUser(user, 'customers_edit_others')) return false
+  if (!isOtherAdvisorsCustomer(customer, user)) return false
+  return canViewCustomerAnyScope(customer, user)
 }
 
 /** Change customer advisor from the edit form (ownership). */
