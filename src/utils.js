@@ -1107,6 +1107,7 @@ export const ALL_PERMISSIONS = {
   customers_edit_others: 'ویرایش مشتریان دیگران (بدون تغییر کارشناس)',
   customers_delete: 'حذف مشتری',
   customers_transfer: 'انتقال مالکیت مشتری',
+  customers_merge: 'ادغام مشتریان',
   customers_import: 'ایمپورت اکسل مشتریان',
   customers_export: 'خروجی مشتریان',
   followups_view: 'مشاهده پیگیری‌ها',
@@ -1134,7 +1135,7 @@ export const REFUND_PERMISSION_KEYS = ['refunds_view', 'refunds_request', 'refun
 
 export const PERMISSION_GROUPS = [
   { label: 'داشبورد', keys: ['dashboard'] },
-  { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_edit_others', 'customers_delete', 'customers_transfer', 'customers_import', 'customers_export'] },
+  { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_edit_others', 'customers_delete', 'customers_transfer', 'customers_merge', 'customers_import', 'customers_export'] },
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_add_others', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_add_others', 'sales_import', 'sales_export'] },
   { label: 'محصولات', keys: ['products_matrix', 'matrix_historical_import'] },
@@ -1733,6 +1734,7 @@ export function getDefaultPermissions() {
   const p = {}
   Object.keys(ALL_PERMISSIONS).forEach(k => p[k] = true)
   p.customers_delete = false
+  p.customers_merge = false
   p.followups_delete = false
   p.followups_add_others = false
   p.customers_edit_others = false

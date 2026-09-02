@@ -11,7 +11,8 @@ import {
   escapeHtml, escapeAttr, showToast, normalizePhone, getCustomerPhones,
   getCustomerAddresses, getPlatformLabels, getStatusLabels,
   formatCustomerLevel, resolveCustomerLevel, syncCustomerLevel,
-  ensureProductPayments, syncProductStatus, toEnDigits, formatNumber
+  ensureProductPayments, syncProductStatus, toEnDigits, formatNumber,
+  requirePermission
 } from './utils.js'
 import { renderCustomers, openCustomerDetail } from './customers.js'
 
@@ -459,6 +460,7 @@ export function skipBulkMergeConflicts() {
 }
 
 export async function confirmBulkMergePreview() {
+  if (!requirePermission('customers_merge')) return
   if (!pendingBulkMerge?.merged) {
     closeBulkMergePreviewModal()
     return
@@ -532,6 +534,8 @@ async function executeCustomerMerge({ survivorId, sourceId, merged }) {
 
 /** Entry from bulk action — exactly two customer ids. */
 export async function openBulkCustomerMerge(ids) {
+  if (!requirePermission('customers_merge')) return
+
   const unique = [...new Set((ids || []).map(String).filter(Boolean))]
   if (unique.length !== 2) {
     showToast('برای ادغام دقیقاً ۲ مشتری انتخاب کنید')

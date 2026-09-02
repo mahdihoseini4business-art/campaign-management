@@ -19,7 +19,7 @@ const BULK_DELETE_PERM = {
 /** True if the user may select rows for any bulk action on this tab. */
 function canBulkSelect(tab) {
   if (tab === 'customers') {
-    return hasPermission('customers_delete') || hasPermission('customers_transfer') || hasPermission('customers_add')
+    return hasPermission('customers_delete') || hasPermission('customers_transfer') || hasPermission('customers_merge')
   }
   const perm = BULK_DELETE_PERM[tab]
   return !perm || hasPermission(perm)
@@ -125,8 +125,9 @@ function syncCustomerBulkOptions(actionEl) {
   if (!actionEl || actionEl.dataset.optionsReady === '1') return
   const canDelete = hasPermission('customers_delete')
   const canTransfer = hasPermission('customers_transfer')
+  const canMerge = hasPermission('customers_merge')
   actionEl.innerHTML = '<option value="">عملیات دسته‌جمعی...</option>' +
-    '<option value="merge">ادغام</option>' +
+    (canMerge ? '<option value="merge">ادغام</option>' : '') +
     (canTransfer ? '<option value="transfer">انتقال به کارشناس</option>' : '') +
     (canDelete ? '<option value="delete">حذف انتخاب شده‌ها</option>' : '')
   actionEl.dataset.optionsReady = '1'
@@ -174,6 +175,10 @@ export function executeBulkAction(tab) {
     }
     openBulkTransferModal([...ids])
   } else if (action === 'merge' && tab === 'customers') {
+    if (!requirePermission('customers_merge')) {
+      actionEl.value = ''
+      return
+    }
     if (ids.size !== 2) {
       showToast('برای ادغام دقیقاً ۲ مشتری انتخاب کنید')
       actionEl.value = ''

@@ -503,7 +503,7 @@ export async function renderCustomers() {
   if (!tbody) return
 
   const loadState = getDataLoadState()
-  const showSelectColEarly = hasPermission('customers_delete') || hasPermission('customers_transfer')
+  const showSelectColEarly = hasPermission('customers_delete') || hasPermission('customers_transfer') || hasPermission('customers_merge')
   const colCountEarly = showSelectColEarly ? 12 : 11
 
   if (loadState.status === 'loading' || loadState.status === 'idle') {
@@ -544,7 +544,7 @@ export async function renderCustomers() {
   const myPhone = normalizePhone(currentUser?.phone)
   const filtered = getFilteredCustomers()
 
-  const showSelectCol = hasPermission('customers_delete') || hasPermission('customers_transfer')
+  const showSelectCol = hasPermission('customers_delete') || hasPermission('customers_transfer') || hasPermission('customers_merge')
   const colCount = showSelectCol ? 12 : 11
   const selectTh = document.querySelector('#sheet-customers thead th.customer-select-col')
   if (selectTh) selectTh.style.display = showSelectCol ? '' : 'none'
@@ -596,7 +596,7 @@ export async function renderCustomers() {
     const canSelect = showSelectCol && (
       (hasPermission('customers_delete') && canManageCustomer(c, currentUser)) ||
       canTransferCustomer(c, currentUser) ||
-      (hasPermission('customers_add') && canViewCustomer(c, currentUser))
+      (hasPermission('customers_merge') && canViewCustomer(c, currentUser))
     )
     const isMine = ownsCustomer(c, currentUser) || canViewOrgWideData('customers')
     const transferredIn = isRecentTransferredIn(c.id, myPhone, 7)
