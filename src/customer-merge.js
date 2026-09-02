@@ -8,18 +8,22 @@ import {
   invalidateProductSalesCountCache, ensureCustomerDetailsLoaded, saveSetting
 } from './data.js'
 import {
-  escapeHtml, escapeAttr, showToast, normalizePhone, getCustomerPhones,
+  escapeHtml, escapeAttr, showToast, normalizePhone, getCustomerPhones, getPrimaryPhone,
   getCustomerAddresses, getPlatformLabels, getStatusLabels,
   formatCustomerLevel, resolveCustomerLevel, syncCustomerLevel,
   ensureProductPayments, syncProductStatus, toEnDigits, formatNumber,
-  requirePermission
+  requirePermission, findCustomersByPhonePrefix, matchesTabSearch,
+  canViewCustomer
 } from './utils.js'
-import { renderCustomers, openCustomerDetail } from './customers.js'
+import { renderCustomers, openCustomerDetail, getOpenDetailCustomerId } from './customers.js'
 
 /** @typedef {{ key: string, label: string, survivorVal: string, sourceVal: string, survivorDisplay?: string, sourceDisplay?: string }} MergeConflict */
 
 /** @type {{ survivorId: string, sourceId: string, choices: Record<string, 'survivor'|'source'>, merged: object | null } | null} */
 let pendingBulkMerge = null
+
+/** @type {{ anchorCustomerId: string | null, selectedPartnerId: string | null }} */
+let detailMergePickState = { anchorCustomerId: null, selectedPartnerId: null }
 
 const SCALAR_FIELDS = [
   { key: 'name', label: 'نام' },
@@ -532,13 +536,194 @@ async function executeCustomerMerge({ survivorId, sourceId, merged }) {
   return finalSurvivorId
 }
 
-/** Entry from bulk action — exactly two customer ids. */
-export async function openBulkCustomerMerge(ids) {
-  if (!requirePermission('customers_merge')) return
+function findCustomersForMergeSearch(query, customers, { excludeId = null, limit = 8 } = {}) {
+  const raw = String(query || '').trim()
+  if (raw.length < 2) return []
 
-  const unique = [...new Set((ids || []).map(String).filter(Boolean))]
+  const byId = new Map()
+  const digits = toEnDigits(raw).replace(/\D/g, '')
+
+  if (digits.length >= 3) {
+    for (const hit of findCustomersByPhonePrefix(digits, customers, { excludeId, limit })) {
+      if (!canViewCustomer(hit.customer)) continue
+      byId.set(hit.customer.id, hit)
+    }
+  }
+
+  const q = toEnDigits(raw).trim().toLowerCase()
+  for (const c of customers || []) {
+    if (excludeId && c.id === excludeId) continue
+    if (!canViewCustomer(c)) continue
+    if (byId.has(c.id)) continue
+    const fields = [
+      c.id,
+      c.name,
+      c.platformId,
+      c.advisor,
+      c.customerCode,
+      ...getCustomerPhones(c)
+    ]
+    if (!matchesTabSearch(q, fields)) continue
+    byId.set(c.id, {
+      customer: c,
+      matchedPhone: getPrimaryPhone(c) || '',
+      exact: false
+    })
+  }
+
+  return [...byId.values()].slice(0, Math.max(0, limit))
+}
+
+function hideDetailMergePartnerSuggest() {
+  const box = document.getElementById('detailMergePartnerSuggest')
+  if (box) {
+    box.hidden = true
+    box.innerHTML = ''
+  }
+}
+
+function renderDetailMergePartnerSelected(customer) {
+  const el = document.getElementById('detailMergePartnerSelected')
+  const searchEl = document.getElementById('detailMergePartnerSearch')
+  const hidden = document.getElementById('detailMergePartnerId')
+  const btn = document.getElementById('detailMergePartnerContinueBtn')
+  if (!el || !customer) return
+  const phone = getPrimaryPhone(customer)
+  el.hidden = false
+  el.innerHTML = `
+    <div><strong>${escapeHtml(customer.name || customer.platformId || customer.id)}</strong></div>
+    <div class="merge-partner-selected-id">${escapeHtml(customer.id)}${phone ? ` · ${escapeHtml(phone)}` : ''}</div>
+  `
+  if (hidden) hidden.value = customer.id
+  if (searchEl) searchEl.value = customer.name || customer.platformId || customer.id
+  if (btn) btn.disabled = false
+  hideDetailMergePartnerSuggest()
+}
+
+function clearDetailMergePartnerSelection() {
+  detailMergePickState.selectedPartnerId = null
+  const el = document.getElementById('detailMergePartnerSelected')
+  const hidden = document.getElementById('detailMergePartnerId')
+  const btn = document.getElementById('detailMergePartnerContinueBtn')
+  if (el) { el.hidden = true; el.innerHTML = '' }
+  if (hidden) hidden.value = ''
+  if (btn) btn.disabled = true
+}
+
+export function closeDetailMergePickModal() {
+  document.getElementById('detailMergePickModal')?.classList.remove('active')
+  detailMergePickState = { anchorCustomerId: null, selectedPartnerId: null }
+  hideDetailMergePartnerSuggest()
+}
+
+export function onDetailMergePartnerSearchBlur() {
+  setTimeout(() => hideDetailMergePartnerSuggest(), 180)
+}
+
+export function onDetailMergePartnerSearchKeydown(event) {
+  if (event?.key === 'Escape') hideDetailMergePartnerSuggest()
+}
+
+export function onDetailMergePartnerSearchInput() {
+  const anchorId = detailMergePickState.anchorCustomerId
+  const searchEl = document.getElementById('detailMergePartnerSearch')
+  const query = searchEl?.value || ''
+  if (detailMergePickState.selectedPartnerId && query.trim() !== '') {
+    const picked = getData().customers.find(c => c.id === detailMergePickState.selectedPartnerId)
+    const pickedLabel = picked?.name || picked?.platformId || picked?.id || ''
+    if (query.trim() !== pickedLabel.trim()) clearDetailMergePartnerSelection()
+  }
+
+  const box = document.getElementById('detailMergePartnerSuggest')
+  if (!box) return
+
+  const matches = findCustomersForMergeSearch(query, getData().customers, {
+    excludeId: anchorId,
+    limit: 8
+  })
+
+  if (!matches.length) {
+    hideDetailMergePartnerSuggest()
+    return
+  }
+
+  box.hidden = false
+  box.innerHTML = matches.map(({ customer: c, matchedPhone }) => `
+    <button type="button" class="customer-phone-suggest-item" role="option"
+      onmousedown="event.preventDefault(); app.selectDetailMergePartner('${escapeAttr(c.id)}')">
+      <span class="customer-phone-suggest-main">
+        <strong>${escapeHtml(c.name || c.platformId || c.id)}</strong>
+        <span class="customer-phone-suggest-id">${escapeHtml(c.id)}</span>
+      </span>
+      <span class="customer-phone-suggest-meta" dir="ltr">${escapeHtml(matchedPhone || '—')}</span>
+      <span class="customer-phone-suggest-advisor">${escapeHtml(c.advisor || '—')}</span>
+    </button>
+  `).join('')
+}
+
+export function selectDetailMergePartner(customerId) {
+  const anchorId = detailMergePickState.anchorCustomerId
+  if (!customerId || customerId === anchorId) {
+    showToast('نمی‌توانید مشتری را با خودش ادغام کنید')
+    return
+  }
+  const c = getData().customers.find(x => x.id === customerId)
+  if (!c || !canViewCustomer(c)) {
+    showToast('مشتری یافت نشد یا دسترسی ندارید')
+    return
+  }
+  detailMergePickState.selectedPartnerId = customerId
+  renderDetailMergePartnerSelected(c)
+}
+
+export async function confirmDetailMergePartnerPick() {
+  if (!requirePermission('customers_merge')) return
+  const anchorId = detailMergePickState.anchorCustomerId
+  const partnerId = detailMergePickState.selectedPartnerId
+    || document.getElementById('detailMergePartnerId')?.value?.trim()
+  if (!anchorId || !partnerId) {
+    showToast('مشتری مقصد را انتخاب کنید')
+    return
+  }
+  if (anchorId === partnerId) {
+    showToast('نمی‌توانید مشتری را با خودش ادغام کنید')
+    return
+  }
+  closeDetailMergePickModal()
+  await beginCustomerMergeFlow(anchorId, partnerId, { defaultSurvivorId: anchorId })
+}
+
+export function openDetailPanelMergePicker() {
+  if (!requirePermission('customers_merge')) return
+  const anchorId = getOpenDetailCustomerId()
+  if (!anchorId) {
+    showToast('ابتدا پنل یک مشتری را باز کنید')
+    return
+  }
+  const anchor = getData().customers.find(c => c.id === anchorId)
+  if (!anchor) {
+    showToast('مشتری یافت نشد')
+    return
+  }
+
+  detailMergePickState = { anchorCustomerId: anchorId, selectedPartnerId: null }
+  const intro = document.getElementById('detailMergePickIntro')
+  if (intro) {
+    intro.textContent =
+      `مشتری ${anchorId} (${anchor.name || anchor.platformId || 'بدون نام'}) با کدام مشتری ادغام شود؟`
+  }
+  const searchEl = document.getElementById('detailMergePartnerSearch')
+  if (searchEl) searchEl.value = ''
+  clearDetailMergePartnerSelection()
+  hideDetailMergePartnerSuggest()
+  document.getElementById('detailMergePickModal')?.classList.add('active')
+  searchEl?.focus()
+}
+
+async function beginCustomerMergeFlow(idA, idB, { defaultSurvivorId } = {}) {
+  const unique = [...new Set([String(idA), String(idB)].filter(Boolean))]
   if (unique.length !== 2) {
-    showToast('برای ادغام دقیقاً ۲ مشتری انتخاب کنید')
+    showToast('برای ادغام دقیقاً ۲ مشتری لازم است')
     return
   }
 
@@ -558,15 +743,22 @@ export async function openBulkCustomerMerge(ids) {
     return
   }
 
+  const survivorId = defaultSurvivorId && unique.includes(defaultSurvivorId)
+    ? defaultSurvivorId
+    : unique[0]
+  const sourceId = unique.find(id => id !== survivorId) || unique[1]
+
   pendingBulkMerge = {
-    survivorId: unique[0],
-    sourceId: unique[1],
+    survivorId,
+    sourceId,
     choices: {},
     merged: null,
     _ids: unique
   }
 
-  const conflicts = detectMergeConflicts(a, b)
+  const survivor = data.customers.find(c => c.id === survivorId) || a
+  const source = data.customers.find(c => c.id === sourceId) || b
+  const conflicts = detectMergeConflicts(survivor, source)
   pendingBulkMerge.choices = defaultChoices(conflicts)
 
   const survivorPicker = document.getElementById('bulkMergeSurvivorPicker')
@@ -583,6 +775,19 @@ export async function openBulkCustomerMerge(ids) {
     }).join('')
   }
 
-  renderConflictModalContent(a, b, conflicts)
+  renderConflictModalContent(survivor, source, conflicts)
   document.getElementById('bulkMergeConflictModal')?.classList.add('active')
+}
+
+/** Entry from bulk action — exactly two customer ids. */
+export async function openBulkCustomerMerge(ids) {
+  if (!requirePermission('customers_merge')) return
+
+  const unique = [...new Set((ids || []).map(String).filter(Boolean))]
+  if (unique.length !== 2) {
+    showToast('برای ادغام دقیقاً ۲ مشتری انتخاب کنید')
+    return
+  }
+
+  await beginCustomerMergeFlow(unique[0], unique[1], { defaultSurvivorId: unique[0] })
 }

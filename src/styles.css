@@ -3616,6 +3616,42 @@
     font-size: 12px;
   }
 
+  .merge-stack-modal.active {
+    z-index: 1100;
+  }
+
+  .detail-modal-header {
+    gap: 12px;
+  }
+
+  .detail-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .merge-partner-field {
+    position: relative;
+    margin-top: 6px;
+  }
+
+  .merge-partner-selected {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .merge-partner-selected-id {
+    font-family: 'Vazirmatn', sans-serif;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
   #rejectPaymentModal.active {
     z-index: 1100;
   }

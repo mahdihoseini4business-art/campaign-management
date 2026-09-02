@@ -1717,6 +1717,7 @@ export function patchDetailReadOnlyFields(customerId) {
 
   const titleEl = document.getElementById('detailTitle')
   if (titleEl) titleEl.textContent = `پنل مشتری — ${c.name || c.platformId || c.id}`
+  syncDetailMergeButton(false, c)
 
   setDetailTabCount('sales', (c.products || []).length)
   const followups = getFollowupsByCustomerId().get(c.id) || []
@@ -1914,6 +1915,15 @@ export function onCustomerRowClick(event, customerId) {
   const t = event?.target
   if (t?.closest?.('button, a, input, select, textarea, label, .actions-cell, .followup-phone-cell, .copyable-cell')) return
   openCustomerDetail(customerId)
+}
+
+function syncDetailMergeButton(isNew, customer) {
+  const btn = document.getElementById('detailMergeBtn')
+  if (!btn) return
+  const show = !isNew && hasPermission('customers_merge') && customer && canViewCustomer(customer)
+  btn.hidden = !show
+  if (show) btn.dataset.customerId = customer.id
+  else delete btn.dataset.customerId
 }
 
 function renderDetailFooter({ isNew, canEdit, canDelete, customerId, tab = 'info', canClaim = false }) {
@@ -2368,6 +2378,7 @@ export async function openCustomerDetail(id, options = {}) {
   document.getElementById('detailTitle').textContent = isNew
     ? 'پنل مشتری — مشتری جدید'
     : `پنل مشتری — ${c.name || c.platformId || c.id}`
+  syncDetailMergeButton(isNew, isNew ? null : c)
 
   const advisorOptions = detailUsers.filter(u => u.phone).map(u => {
     const phone = normalizePhone(u.phone)

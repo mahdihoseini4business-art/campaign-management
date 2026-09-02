@@ -25,7 +25,10 @@ import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection, op
 import {
   openBulkCustomerMerge, closeBulkMergeConflictModal, closeBulkMergePreviewModal,
   confirmBulkMergeConflicts, confirmBulkMergePreview, setBulkMergeSurvivor, setBulkMergeConflictChoice,
-  backBulkMergePreviewToConflicts
+  backBulkMergePreviewToConflicts,
+  openDetailPanelMergePicker, closeDetailMergePickModal, onDetailMergePartnerSearchInput,
+  onDetailMergePartnerSearchBlur, onDetailMergePartnerSearchKeydown, selectDetailMergePartner,
+  confirmDetailMergePartnerPick
 } from './customer-merge.js'
 import {
   openTransferInbox,
@@ -504,6 +507,13 @@ const app = {
   setBulkMergeSurvivor,
   setBulkMergeConflictChoice,
   backBulkMergePreviewToConflicts,
+  openDetailPanelMergePicker,
+  closeDetailMergePickModal,
+  onDetailMergePartnerSearchInput,
+  onDetailMergePartnerSearchBlur,
+  onDetailMergePartnerSearchKeydown,
+  selectDetailMergePartner,
+  confirmDetailMergePartnerPick,
   openTransferInbox,
   closeTransferInbox,
   setTransferInboxTab,

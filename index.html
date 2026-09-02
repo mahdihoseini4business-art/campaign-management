@@ -1570,7 +1570,7 @@
 </div>
 
 <!-- مودال تعارض فیلدها — ادغام دسته‌جمعی -->
-<div class="modal-overlay" id="bulkMergeConflictModal">
+<div class="modal-overlay merge-stack-modal" id="bulkMergeConflictModal">
   <div class="modal merge-modal" style="max-width: 560px;">
     <div class="modal-header">
       <h2>انتخاب مقادیر درست</h2>
@@ -1592,7 +1592,7 @@
 </div>
 
 <!-- مودال پیش‌نمایش — ادغام دسته‌جمعی -->
-<div class="modal-overlay" id="bulkMergePreviewModal">
+<div class="modal-overlay merge-stack-modal" id="bulkMergePreviewModal">
   <div class="modal merge-modal" style="max-width: 560px;">
     <div class="modal-header">
       <h2>پیش‌نمایش مشتری بازمانده</h2>
@@ -1880,9 +1880,12 @@
 <!-- مودال پنل مشتری -->
 <div class="modal-overlay" id="detailModal">
   <div class="modal detail-modal" style="max-width: 720px;">
-    <div class="modal-header">
+    <div class="modal-header detail-modal-header">
       <h2 id="detailTitle">پنل مشتری</h2>
-      <button class="modal-close" onclick="app.closeDetailModal()">&times;</button>
+      <div class="detail-header-actions">
+        <button type="button" class="btn btn-sm" id="detailMergeBtn" hidden onclick="app.openDetailPanelMergePicker()">ادغام</button>
+        <button class="modal-close" onclick="app.closeDetailModal()">&times;</button>
+      </div>
     </div>
     <div class="modal-body" id="detailBody"></div>
     <div class="modal-footer" id="detailFooter">
@@ -1893,6 +1896,38 @@
 
 <!-- Fixed target HUD for group members (ring + countdown) -->
 <div id="salesTargetHud" class="sales-target-hud" hidden aria-live="off"></div>
+
+<!-- انتخاب مشتری برای ادغام از پنل مشتری -->
+<div class="modal-overlay merge-stack-modal" id="detailMergePickModal">
+  <div class="modal merge-modal" style="max-width: 480px;">
+    <div class="modal-header">
+      <h2>ادغام مشتری</h2>
+      <button class="modal-close" onclick="app.closeDetailMergePickModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="detailMergePickIntro" style="margin:0 0 14px;line-height:1.7;font-size:13px;color:var(--text-muted);"></p>
+      <div class="form-group" style="margin:0;">
+        <label for="detailMergePartnerSearch">مشتری مقصد ادغام</label>
+        <div class="customer-phone-field merge-partner-field">
+          <input type="text" class="form-input" id="detailMergePartnerSearch"
+            placeholder="نام، شناسه یا شماره موبایل..."
+            autocomplete="off"
+            oninput="app.onDetailMergePartnerSearchInput()"
+            onblur="app.onDetailMergePartnerSearchBlur()"
+            onkeydown="app.onDetailMergePartnerSearchKeydown(event)">
+          <div class="customer-phone-suggest" id="detailMergePartnerSuggest" hidden role="listbox"></div>
+        </div>
+        <input type="hidden" id="detailMergePartnerId" value="">
+        <div id="detailMergePartnerSelected" class="merge-partner-selected" hidden></div>
+        <div class="form-hint" style="margin-top:8px;">حداقل ۲ کاراکتر یا ۳ رقم شماره برای جستجو</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeDetailMergePickModal()">انصراف</button>
+      <button class="btn btn-primary" id="detailMergePartnerContinueBtn" disabled onclick="app.confirmDetailMergePartnerPick()">ادامه</button>
+    </div>
+  </div>
+</div>
 
 <!-- Toast -->
 <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
