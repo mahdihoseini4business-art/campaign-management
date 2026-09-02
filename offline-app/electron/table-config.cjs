@@ -22,7 +22,7 @@ const TABLE_COLUMNS = {
     'created_at', 'updated_at'
   ],
   followups: [
-    'id', 'customer_id', 'date', 'type', 'result', 'next_date', 'notes',
+    'id', 'customer_id', 'date', 'type', 'result', 'next_date', 'product_name', 'notes',
     'created_by_phone', 'status', 'done_at', 'done_by_phone', 'done_note',
     'was_overdue', 'updated_at'
   ],

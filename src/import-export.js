@@ -41,7 +41,7 @@ const INFO_ONLY_HEADERS = new Set([
 
 const FOLLOWUP_EXPORT_HEADERS = [
   'شناسه مشتری', 'نام مشتری', 'شماره مشتری', 'کارشناس',
-  'تاریخ', 'نوع', 'نتیجه', 'پیگیری بعدی', 'توضیحات', 'ثبت‌کننده'
+  'تاریخ', 'نوع', 'نتیجه', 'محصول', 'پیگیری بعدی', 'توضیحات', 'ثبت‌کننده'
 ]
 
 function followupsForCustomer(customerId, followups) {
@@ -77,6 +77,7 @@ function buildFollowupExportAoa(followups, customers) {
       f.date || '',
       f.type || '',
       f.result || '',
+      f.productName || '',
       f.nextDate || '',
       f.notes || f.doneNote || '',
       f.createdByPhone || ''
@@ -622,6 +623,7 @@ const FOLLOWUP_IMPORT_FIELDS = [
   { key: 'date', label: 'تاریخ' },
   { key: 'type', label: 'نوع' },
   { key: 'result', label: 'نتیجه' },
+  { key: 'productName', label: 'محصول' },
   { key: 'nextDate', label: 'پیگیری بعدی' },
   { key: 'notes', label: 'توضیحات', aliases: ['یادداشت'] },
   { key: 'createdByPhone', label: 'ثبت‌کننده', aliases: ['ایجادکننده'] },
@@ -739,6 +741,7 @@ async function importFollowupRows({ headers, rows, mapping }, { syncCustomerNext
 
     const nextDate = toEnDigits(getValue('nextDate'))
     const result = getValue('result') || ''
+    const productName = getValue('productName') || ''
     const createdByPhone = normalizePhone(getValue('createdByPhone')) || normalizePhone(currentUser?.phone || '')
     const done = isDoneFollowupType(type)
     const followup = {
@@ -746,6 +749,7 @@ async function importFollowupRows({ headers, rows, mapping }, { syncCustomerNext
       date: date || '',
       type,
       result,
+      productName,
       nextDate: nextDate || '',
       notes: notes || '',
       createdByPhone,
@@ -1081,12 +1085,14 @@ function previewFollowupRows({ headers, rows, mapping }, { syncCustomerNextDate 
 
     const nextDate = toEnDigits(getValue('nextDate'))
     const result = getValue('result') || ''
+    const productName = getValue('productName') || ''
     const done = isDoneFollowupType(type)
     const followup = {
       customerId,
       date: date || '',
       type,
       result,
+      productName,
       nextDate: nextDate || '',
       notes: notes || '',
       status: done ? 'done' : 'pending',

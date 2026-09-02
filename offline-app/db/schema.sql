@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS followups (
   type TEXT NOT NULL DEFAULT '',
   result TEXT NOT NULL DEFAULT '',
   next_date TEXT NOT NULL DEFAULT '',
+  product_name TEXT NOT NULL DEFAULT '',
   notes TEXT NOT NULL DEFAULT '',
   created_by_phone TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT '',

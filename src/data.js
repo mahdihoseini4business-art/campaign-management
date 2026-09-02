@@ -323,6 +323,7 @@ export function mapFollowupFromDb(f) {
     type: f.type || '',
     result: f.result || '',
     nextDate: f.next_date || '',
+    productName: f.product_name || '',
     notes: f.notes || '',
     createdByPhone: f.created_by_phone || '',
     status: f.status || 'pending',
@@ -2764,6 +2765,7 @@ export async function saveFollowupToDB(followup) {
     type: followup.type,
     result: followup.result,
     next_date: followup.nextDate || '',
+    product_name: followup.productName || '',
     notes: followup.notes,
     created_by_phone: followup.createdByPhone || null
   }
@@ -2805,6 +2807,7 @@ export async function updateFollowupInDB(followup) {
     type: followup.type,
     result: followup.result,
     next_date: followup.nextDate,
+    product_name: followup.productName || '',
     notes: followup.notes
   }
   if (followup.createdByPhone !== undefined) {
