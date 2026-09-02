@@ -1826,6 +1826,15 @@ export function customerMeetsCreateCompletionRule(customer) {
   return customerHasCommittedSale(customer)
 }
 
+/** Owner may clear next follow-up date unless pending-create would become incomplete. */
+function canClearNextFollowupDate(customer) {
+  if (!customer || !canScheduleFollowupOnCustomer(customer)) return false
+  if (!canManageCustomer(customer)) return false
+  if (!getRequireFollowupOnCreate()) return true
+  if (!isPendingCreateCompletion(customer.id)) return true
+  return customerHasFollowupNote(customer) || customerHasCommittedSale(customer)
+}
+
 function maybeResolvePendingCreateCompletion(customerId, { toast = false } = {}) {
   if (!isPendingCreateCompletion(customerId)) return false
   const customer = getData().customers.find(c => c.id === customerId)
@@ -2343,8 +2352,7 @@ export async function openCustomerDetail(id, options = {}) {
   const canAddSale = !isNew && canAddSaleOnCustomer(c)
   const canAddFollowup = !isNew && canAddNoteOnCustomer(c)
   const canScheduleFollowup = !isNew && canScheduleFollowupOnCustomer(c)
-  const canClearFollowupDate = canScheduleFollowup && canManageCustomer(c)
-    && (!getRequireFollowupOnCreate() || customerHasCommittedSale(c))
+  const canClearFollowupDate = canClearNextFollowupDate(c)
   const schedulingForOther = canScheduleFollowup && !canManageCustomer(c)
   const requireFollowupOnCreate = isNew && getRequireFollowupOnCreate()
   const pendingCreateCompletion = !isNew && isPendingCreateCompletion(c.id)
@@ -3010,15 +3018,16 @@ export async function setNextFollowup(customerId) {
 }
 
 export async function clearNextFollowup(customerId) {
-  if (!requirePermission('customers_add')) return
   const data = getData()
   const customer = data.customers.find(c => c.id === customerId)
-  if (!canManageCustomer(customer)) {
-    showToast('فقط کارشناس مسئول می‌تواند تاریخ پیگیری را حذف کند')
-    return
-  }
-  if (getRequireFollowupOnCreate() && !customerHasCommittedSale(customer)) {
-    showToast('بدون فروش ثبت‌شده، حذف تاریخ پیگیری مجاز نیست')
+  if (!canClearNextFollowupDate(customer)) {
+    if (!canManageCustomer(customer)) {
+      showToast('فقط کارشناس مسئول می‌تواند تاریخ پیگیری را حذف کند')
+    } else if (getRequireFollowupOnCreate() && isPendingCreateCompletion(customerId)) {
+      showToast('برای تکمیل ثبت مشتری، ابتدا یک یادداشت ثبت کنید یا یک فروش ثبت کنید')
+    } else {
+      showToast('شما دسترسی حذف تاریخ پیگیری برای این مشتری را ندارید')
+    }
     return
   }
   const idx = data.customers.findIndex(c => c.id === customerId)
