@@ -1826,9 +1826,9 @@ export function customerMeetsCreateCompletionRule(customer) {
   return customerHasCommittedSale(customer)
 }
 
-/** Owner may clear next follow-up date unless pending-create would become incomplete. */
+/** Owner with followups_delete may clear next date unless pending-create would become incomplete. */
 function canClearNextFollowupDate(customer) {
-  if (!customer || !canScheduleFollowupOnCustomer(customer)) return false
+  if (!customer || !hasPermission('followups_delete')) return false
   if (!canManageCustomer(customer)) return false
   if (!getRequireFollowupOnCreate()) return true
   if (!isPendingCreateCompletion(customer.id)) return true
@@ -3021,7 +3021,9 @@ export async function clearNextFollowup(customerId) {
   const data = getData()
   const customer = data.customers.find(c => c.id === customerId)
   if (!canClearNextFollowupDate(customer)) {
-    if (!canManageCustomer(customer)) {
+    if (!hasPermission('followups_delete')) {
+      showToast('شما دسترسی حذف پیگیری را ندارید')
+    } else if (!canManageCustomer(customer)) {
       showToast('فقط کارشناس مسئول می‌تواند تاریخ پیگیری را حذف کند')
     } else if (getRequireFollowupOnCreate() && isPendingCreateCompletion(customerId)) {
       showToast('برای تکمیل ثبت مشتری، ابتدا یک یادداشت ثبت کنید یا یک فروش ثبت کنید')
