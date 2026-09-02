@@ -1931,8 +1931,15 @@ function syncDetailMergeButton(isNew, customer) {
   if (!btn) return
   const show = !isNew && hasPermission('customers_merge') && customer && canViewCustomer(customer)
   btn.hidden = !show
-  if (show) btn.dataset.customerId = customer.id
-  else delete btn.dataset.customerId
+  if (show) {
+    btn.dataset.customerId = customer.id
+    btn.title = 'ادغام با مشتری دیگر — فروش‌ها، پیگیری‌ها و عودت‌ها منتقل می‌شوند و پروفایل دوم حذف می‌شود.'
+    btn.setAttribute('aria-label', btn.title)
+  } else {
+    delete btn.dataset.customerId
+    btn.removeAttribute('title')
+    btn.removeAttribute('aria-label')
+  }
 }
 
 function renderDetailFooter({ isNew, canEdit, canDelete, customerId, tab = 'info', canClaim = false }) {

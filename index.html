@@ -1578,6 +1578,7 @@
     </div>
     <div class="modal-body">
       <p id="bulkMergeConflictIntro" style="margin:0 0 14px;line-height:1.7;font-size:13px;color:var(--text-muted);"></p>
+      <div id="bulkMergeAdvisorWarn" hidden></div>
       <div class="merge-survivor-block">
         <div class="merge-section-title">مشتری بازمانده (شناسه حفظ می‌شود)</div>
         <div id="bulkMergeSurvivorPicker" class="merge-survivor-picker"></div>
@@ -1604,9 +1605,12 @@
       </p>
       <div id="bulkMergePreviewBody"></div>
     </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="app.backBulkMergePreviewToConflicts()">بازگشت</button>
-      <button class="btn btn-primary" id="bulkMergePreviewConfirmBtn" onclick="app.confirmBulkMergePreview()">تأیید و ادغام</button>
+    <div class="modal-footer merge-preview-footer">
+      <p id="bulkMergePreviewIrreversible" class="merge-preview-irreversible">این عمل قابل بازگشت نیست. قبل از تأیید، پیش‌نمایش را بررسی کنید.</p>
+      <div class="merge-preview-footer-actions">
+        <button class="btn" onclick="app.backBulkMergePreviewToConflicts()">بازگشت</button>
+        <button class="btn btn-primary" id="bulkMergePreviewConfirmBtn" onclick="app.confirmBulkMergePreview()">تأیید و ادغام</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1910,7 +1914,7 @@
         <label for="detailMergePartnerSearch">مشتری مقصد ادغام</label>
         <div class="customer-phone-field merge-partner-field">
           <input type="text" class="form-input" id="detailMergePartnerSearch"
-            placeholder="نام، شناسه یا شماره موبایل..."
+            placeholder="نام، شناسه، آیدی پلتفرم یا شماره موبایل..."
             autocomplete="off"
             oninput="app.onDetailMergePartnerSearchInput()"
             onblur="app.onDetailMergePartnerSearchBlur()"
@@ -1919,7 +1923,7 @@
         </div>
         <input type="hidden" id="detailMergePartnerId" value="">
         <div id="detailMergePartnerSelected" class="merge-partner-selected" hidden></div>
-        <div class="form-hint" style="margin-top:8px;">حداقل ۲ کاراکتر یا ۳ رقم شماره برای جستجو</div>
+        <div class="form-hint" style="margin-top:8px;">حداقل ۲ کاراکتر، ۳ رقم شماره، یا آیدی پلتفرم (مثلاً @user) برای جستجو</div>
       </div>
     </div>
     <div class="modal-footer">

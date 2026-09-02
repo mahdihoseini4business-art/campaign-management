@@ -249,17 +249,77 @@ export function escapeAttr(str) {
 }
 
 let toastTimer = null
+let toastActionCleanup = null
 
 export function showToast(msg) {
   const t = document.getElementById('toast')
   if (!t) return
   if (toastTimer) clearTimeout(toastTimer)
+  if (toastActionCleanup) {
+    toastActionCleanup()
+    toastActionCleanup = null
+  }
   t.textContent = msg
   t.classList.remove('show')
   void t.offsetWidth // force reflow
   t.classList.add('show')
   toastTimer = setTimeout(() => t.classList.remove('show'), 2500)
   const text = String(msg || '').trim()
+  if (text) showBrowserNotification({ title: 'CARNO', body: text, tag: 'app-toast' })
+}
+
+/**
+ * Toast with an optional action button (e.g. open merged customer).
+ * @param {string} message
+ * @param {{ actionLabel?: string, onAction?: () => void, durationMs?: number }} [opts]
+ */
+export function showToastWithAction(message, { actionLabel, onAction, durationMs = 5000 } = {}) {
+  const t = document.getElementById('toast')
+  if (!t) return
+  if (toastTimer) clearTimeout(toastTimer)
+  if (toastActionCleanup) {
+    toastActionCleanup()
+    toastActionCleanup = null
+  }
+
+  t.replaceChildren()
+  const textEl = document.createElement('span')
+  textEl.className = 'toast-text'
+  textEl.textContent = message
+  t.appendChild(textEl)
+
+  if (actionLabel && typeof onAction === 'function') {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'toast-action'
+    btn.textContent = actionLabel
+    const handler = (e) => {
+      e.stopPropagation()
+      if (toastTimer) clearTimeout(toastTimer)
+      t.classList.remove('show')
+      if (toastActionCleanup) {
+        toastActionCleanup()
+        toastActionCleanup = null
+      }
+      onAction()
+    }
+    btn.addEventListener('click', handler)
+    t.appendChild(btn)
+    toastActionCleanup = () => btn.removeEventListener('click', handler)
+  }
+
+  t.classList.remove('show')
+  void t.offsetWidth
+  t.classList.add('show')
+  toastTimer = setTimeout(() => {
+    t.classList.remove('show')
+    if (toastActionCleanup) {
+      toastActionCleanup()
+      toastActionCleanup = null
+    }
+  }, durationMs)
+
+  const text = String(message || '').trim()
   if (text) showBrowserNotification({ title: 'CARNO', body: text, tag: 'app-toast' })
 }
 

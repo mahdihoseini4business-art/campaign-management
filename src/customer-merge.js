@@ -5,15 +5,17 @@
 import {
   getData, saveCustomerToDB, deleteCustomerRowOnly, updateFollowupsCustomerId,
   updateRefundsCustomerId, generateId, rekeyCustomerId, cloneCustomerRecord,
-  invalidateProductSalesCountCache, ensureCustomerDetailsLoaded, saveSetting
+  invalidateProductSalesCountCache, ensureCustomerDetailsLoaded, saveSetting,
+  saveFollowupToDB
 } from './data.js'
 import {
-  escapeHtml, escapeAttr, showToast, normalizePhone, getCustomerPhones, getPrimaryPhone,
+  escapeHtml, escapeAttr, showToast, showToastWithAction, normalizePhone, getCustomerPhones, getPrimaryPhone,
   getCustomerAddresses, getPlatformLabels, getStatusLabels,
   formatCustomerLevel, resolveCustomerLevel, syncCustomerLevel,
   ensureProductPayments, syncProductStatus, toEnDigits, formatNumber,
   requirePermission, findCustomersByPhonePrefix, matchesTabSearch,
-  canViewCustomer
+  canViewCustomer, getNowJalaliDateTime, getCurrentUser,
+  MAX_CUSTOMER_PHONES, MAX_CUSTOMER_ADDRESSES
 } from './utils.js'
 import { renderCustomers, openCustomerDetail, getOpenDetailCustomerId } from './customers.js'
 
@@ -22,8 +24,8 @@ import { renderCustomers, openCustomerDetail, getOpenDetailCustomerId } from './
 /** @type {{ survivorId: string, sourceId: string, choices: Record<string, 'survivor'|'source'>, merged: object | null } | null} */
 let pendingBulkMerge = null
 
-/** @type {{ anchorCustomerId: string | null, selectedPartnerId: string | null }} */
-let detailMergePickState = { anchorCustomerId: null, selectedPartnerId: null }
+/** @type {{ anchorCustomerId: string | null, selectedPartnerId: string | null, lastMatches: Array<{ customer: object, matchedPhone: string, matchKind?: string }> }} */
+let detailMergePickState = { anchorCustomerId: null, selectedPartnerId: null, lastMatches: [] }
 
 const SCALAR_FIELDS = [
   { key: 'name', label: 'نام' },
@@ -308,48 +310,155 @@ function renderConflictRow(conflict, survivorId, sourceId, choice) {
     </div>`
 }
 
-function renderMergePreviewHtml(merged, sourceId) {
+function hasAdvisorMismatch(a, b) {
+  const pa = normalizePhone(a?.advisorPhone)
+  const pb = normalizePhone(b?.advisorPhone)
+  if (!pa || !pb) return false
+  return pa !== pb
+}
+
+function renderAdvisorWarnBanner(survivor, source, merged, { inPreview = false } = {}) {
+  if (!hasAdvisorMismatch(survivor, source)) return ''
+  const advisorConflict = pendingBulkMerge?.choices?.advisor === 'source'
+    || pendingBulkMerge?.choices?.advisorPhone === 'source'
+  let text
+  if (inPreview && merged) {
+    text = `کارشناس مسئول نهایی: ${merged.advisor || '—'}${merged.advisorPhone ? ` · ${merged.advisorPhone}` : ''}`
+  } else if (advisorConflict) {
+    text = 'کارشناس مسئول این دو مشتری متفاوت است — مقدار نهایی را در تعارض‌های زیر انتخاب کنید.'
+  } else {
+    text = 'کارشناس مسئول این دو مشتری متفاوت است. پیش‌فرض: کارشناس مشتری بازمانده.'
+  }
+  return `<div class="merge-preview-warning merge-advisor-warn" role="status">${escapeHtml(text)}</div>`
+}
+
+function truncateNotes(notes, max = 120) {
+  const s = normStr(notes)
+  if (!s) return '—'
+  return s.length > max ? `${s.slice(0, max)}…` : s
+}
+
+function formatPhonesInline(customer) {
+  const phones = getCustomerPhones(customer)
+  return phones.length ? phones.map(p => escapeHtml(p)).join('<br>') : '—'
+}
+
+function formatAddressesInline(customer) {
+  const addrs = getCustomerAddresses(customer)
+  if (!addrs.length) return '—'
+  return addrs.map(a => {
+    const postal = a.postalCode ? ` <span class="merge-preview-muted">(${escapeHtml(a.postalCode)})</span>` : ''
+    const pri = a.isPrimary ? ' <span class="address-primary-badge">اولویت</span>' : ''
+    return `<div>${escapeHtml(a.text)}${postal}${pri}</div>`
+  }).join('')
+}
+
+function renderCompareRow(label, beforeHtml, afterHtml, changed = false) {
+  const cls = changed ? ' merge-diff-changed' : ''
+  return `<tr>
+    <th scope="row">${escapeHtml(label)}</th>
+    <td class="merge-compare-before${cls}">${beforeHtml}</td>
+    <td class="merge-compare-after${cls}">${afterHtml}</td>
+  </tr>`
+}
+
+function renderMergePreviewHtml({ survivor, source, merged }) {
   const platforms = getPlatformLabels()
   const statuses = getStatusLabels()
-  const phones = getCustomerPhones(merged)
-  const addrs = getCustomerAddresses(merged)
   const data = getData()
+  const sourceId = source.id
+  const sourceName = source.name || source.platformId || 'بدون نام'
   const sourceFollowups = data.followups.filter(f => f.customerId === sourceId).length
-  const sourceProducts = (data.customers.find(c => c.id === sourceId)?.products || []).length
+  const sourceProducts = (source.products || []).length
+  const sourceRefunds = (data.refunds || []).filter(r => String(r.customerId) === String(sourceId)).length
 
-  const phoneHtml = phones.length
-    ? phones.map(p => escapeHtml(p)).join('<br>')
-    : '—'
-  const addrHtml = addrs.length
-    ? addrs.map(a => {
-      const postal = a.postalCode ? ` <span class="merge-preview-muted">(${escapeHtml(a.postalCode)})</span>` : ''
-      const pri = a.isPrimary ? ' <span class="address-primary-badge">اولویت ارسال</span>' : ''
-      return `<div>${escapeHtml(a.text)}${postal}${pri}</div>`
-    }).join('')
-    : '—'
+  const mergedPhones = getCustomerPhones(merged)
+  const mergedAddrs = getCustomerAddresses(merged)
+  const limitWarnings = []
+  if (mergedPhones.length > MAX_CUSTOMER_PHONES) {
+    limitWarnings.push(`تعداد شماره (${mergedPhones.length}) از سقف ${MAX_CUSTOMER_PHONES} بیشتر است — ممکن است در ویرایش بعدی محدود شود.`)
+  }
+  if (mergedAddrs.length > MAX_CUSTOMER_ADDRESSES) {
+    limitWarnings.push(`تعداد آدرس (${mergedAddrs.length}) از سقف ${MAX_CUSTOMER_ADDRESSES} بیشتر است — ممکن است در ویرایش بعدی محدود شود.`)
+  }
 
-  const levelKey = merged.customerLevelLocked
-    ? (merged.customerLevel || resolveCustomerLevel(merged, data.customers, data.followups))
-    : resolveCustomerLevel(merged, data.customers, data.followups)
+  const levelBefore = formatCustomerLevel(resolveCustomerLevel(survivor, data.customers, data.followups))
+  const levelAfter = formatCustomerLevel(
+    merged.customerLevelLocked
+      ? (merged.customerLevel || resolveCustomerLevel(merged, data.customers, data.followups))
+      : resolveCustomerLevel(merged, data.customers, data.followups)
+  )
+
+  const advisorBefore = `${escapeHtml(survivor.advisor || '—')}${survivor.advisorPhone ? `<br><span dir="ltr">${escapeHtml(survivor.advisorPhone)}</span>` : ''}`
+  const advisorAfter = `${escapeHtml(merged.advisor || '—')}${merged.advisorPhone ? `<br><span dir="ltr">${escapeHtml(merged.advisorPhone)}</span>` : ''}`
+
+  const compareTable = `
+    <table class="merge-preview-compare">
+      <thead>
+        <tr>
+          <th scope="col">فیلد</th>
+          <th scope="col">قبل (بازمانده)</th>
+          <th scope="col">بعد از ادغام</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${renderCompareRow('نام', escapeHtml(survivor.name || '—'), escapeHtml(merged.name || '—'), normStr(survivor.name) !== normStr(merged.name))}
+        ${renderCompareRow('آیدی پلتفرم', escapeHtml(survivor.platformId || '—'), escapeHtml(merged.platformId || '—'), normStr(survivor.platformId).toLowerCase() !== normStr(merged.platformId).toLowerCase())}
+        ${renderCompareRow('وضعیت', escapeHtml(statuses[survivor.status] || survivor.status || '—'), escapeHtml(statuses[merged.status] || merged.status || '—'), survivor.status !== merged.status)}
+        ${renderCompareRow('شماره‌ها', formatPhonesInline(survivor), formatPhonesInline(merged), formatPhonesInline(survivor) !== formatPhonesInline(merged))}
+        ${renderCompareRow('آدرس‌ها', formatAddressesInline(survivor), formatAddressesInline(merged), formatAddressesInline(survivor) !== formatAddressesInline(merged))}
+        ${renderCompareRow('کارشناس', advisorBefore, advisorAfter, hasAdvisorMismatch(survivor, merged) || survivor.advisor !== merged.advisor)}
+        ${renderCompareRow('یادداشت', escapeHtml(truncateNotes(survivor.notes)), escapeHtml(truncateNotes(merged.notes)), normStr(survivor.notes) !== normStr(merged.notes))}
+        ${renderCompareRow('فروش‌ها', formatNumber((survivor.products || []).length), formatNumber((merged.products || []).length), (survivor.products || []).length !== (merged.products || []).length)}
+        ${renderCompareRow('سطح', escapeHtml(levelBefore), escapeHtml(levelAfter), levelBefore !== levelAfter)}
+      </tbody>
+    </table>`
+
+  const limitHtml = limitWarnings.length
+    ? limitWarnings.map(w => `<div class="merge-preview-warning">${escapeHtml(w)}</div>`).join('')
+    : ''
 
   return `
-    <div class="merge-preview-grid">
+    ${renderAdvisorWarnBanner(survivor, source, merged, { inPreview: true })}
+    <div class="merge-preview-danger" role="alert">
+      <strong>حذف دائمی:</strong>
+      پروفایل <span class="id-badge">${escapeHtml(sourceId)}</span>
+      (${escapeHtml(sourceName)}) پس از ادغام حذف می‌شود.
+      <div class="merge-preview-danger-detail">
+        ${formatNumber(sourceProducts)} فروش، ${formatNumber(sourceFollowups)} پیگیری و ${formatNumber(sourceRefunds)} عودت
+        <strong>منتقل</strong> می‌شوند (حذف نمی‌شوند).
+      </div>
+    </div>
+    ${limitHtml}
+    <div class="merge-preview-section-title">مقایسه قبل / بعد</div>
+    ${compareTable}
+    <div class="merge-preview-section-title">شناسه نهایی</div>
+    <div class="merge-preview-grid merge-preview-grid-compact">
       <div class="merge-preview-field"><span class="merge-preview-label">شناسه بازمانده</span><span class="merge-preview-value"><span class="id-badge">${escapeHtml(merged.id)}</span></span></div>
-      <div class="merge-preview-field"><span class="merge-preview-label">نام</span><span class="merge-preview-value">${escapeHtml(merged.name || '—')}</span></div>
-      <div class="merge-preview-field"><span class="merge-preview-label">آیدی پلتفرم</span><span class="merge-preview-value">${escapeHtml(merged.platformId || '—')}</span></div>
       <div class="merge-preview-field"><span class="merge-preview-label">پلتفرم</span><span class="merge-preview-value">${escapeHtml(platforms[merged.platform] || merged.platform || '—')}</span></div>
-      <div class="merge-preview-field"><span class="merge-preview-label">وضعیت</span><span class="merge-preview-value">${escapeHtml(statuses[merged.status] || merged.status || '—')}</span></div>
-      <div class="merge-preview-field"><span class="merge-preview-label">شماره‌ها</span><span class="merge-preview-value">${phoneHtml}</span></div>
-      <div class="merge-preview-field"><span class="merge-preview-label">آدرس‌ها</span><span class="merge-preview-value">${addrHtml}</span></div>
-      <div class="merge-preview-field"><span class="merge-preview-label">کارشناس</span><span class="merge-preview-value">${escapeHtml(merged.advisor || '—')}${merged.advisorPhone ? ` · ${escapeHtml(merged.advisorPhone)}` : ''}</span></div>
-      <div class="merge-preview-field"><span class="merge-preview-label">کد مشتری</span><span class="merge-preview-value">${escapeHtml(merged.customerCode || '—')}</span></div>
-      <div class="merge-preview-field"><span class="merge-preview-label">معرف</span><span class="merge-preview-value">${escapeHtml(merged.referredByPhone || '—')}</span></div>
       <div class="merge-preview-field"><span class="merge-preview-label">پیگیری بعدی</span><span class="merge-preview-value">${escapeHtml(merged.nextFollowupDate || '—')}</span></div>
-      <div class="merge-preview-field"><span class="merge-preview-label">سطح</span><span class="merge-preview-value">${escapeHtml(formatCustomerLevel(levelKey))}</span></div>
-      <div class="merge-preview-field merge-preview-field-full"><span class="merge-preview-label">یادداشت</span><span class="merge-preview-value merge-preview-notes">${escapeHtml(merged.notes || '—')}</span></div>
-      <div class="merge-preview-field"><span class="merge-preview-label">محصولات (کل)</span><span class="merge-preview-value">${formatNumber(merged.products?.length || 0)}</span></div>
-      <div class="merge-preview-field"><span class="merge-preview-label">منتقل از ${escapeHtml(sourceId)}</span><span class="merge-preview-value">${sourceProducts} فروش · ${sourceFollowups} پیگیری</span></div>
+      <div class="merge-preview-field"><span class="merge-preview-label">کد مشتری</span><span class="merge-preview-value">${escapeHtml(merged.customerCode || '—')}</span></div>
     </div>`
+}
+
+async function writeMergeAuditFollowup({ finalSurvivorId, sourceId, sourceLabel, actedBy = getCurrentUser() }) {
+  const { date, time, dateTime } = getNowJalaliDateTime()
+  const note = {
+    customerId: finalSurvivorId,
+    date: dateTime,
+    type: 'سیستمی',
+    result: 'ادغام مشتری',
+    nextDate: '',
+    notes: `پروفایل ${sourceId} (${sourceLabel || '—'}) در تاریخ ${date} ساعت ${time} با این مشتری ادغام شد.`,
+    createdByPhone: normalizePhone(actedBy?.phone || '')
+  }
+  try {
+    const fid = await saveFollowupToDB(note)
+    note.id = fid
+    getData().followups.push(note)
+  } catch (e) {
+    console.warn('merge audit followup skipped:', e?.message || e)
+  }
 }
 
 async function loadCustomerForMerge(id) {
@@ -376,9 +485,12 @@ function rebuildMergedPreview() {
   return merged
 }
 
-function openPreviewModal(merged, sourceId) {
+function openPreviewModal(merged) {
+  const { survivor, source } = getSurvivorAndSource()
   const body = document.getElementById('bulkMergePreviewBody')
-  if (body) body.innerHTML = renderMergePreviewHtml(merged, sourceId)
+  if (body && survivor && source) {
+    body.innerHTML = renderMergePreviewHtml({ survivor, source, merged })
+  }
   document.getElementById('bulkMergePreviewModal')?.classList.add('active')
 }
 
@@ -428,10 +540,21 @@ export function setBulkMergeConflictChoice(key, side) {
 function renderConflictModalContent(survivor, source, conflicts) {
   const list = document.getElementById('bulkMergeConflictList')
   const intro = document.getElementById('bulkMergeConflictIntro')
+  const advisorWarn = document.getElementById('bulkMergeAdvisorWarn')
   if (intro) {
     intro.textContent = conflicts.length
       ? 'برای فیلدهایی که در هر دو پروفایل مقدار متفاوت دارند، مقدار درست را انتخاب کنید. شماره‌ها و آدرس‌های بدون تداخل خودکار جمع می‌شوند.'
       : 'تعارضی در فیلدهای تکی نیست. شماره‌ها و آدرس‌ها و داده‌های وابسته ادغام می‌شوند.'
+  }
+  if (advisorWarn) {
+    const html = renderAdvisorWarnBanner(survivor, source, null, { inPreview: false })
+    if (html) {
+      advisorWarn.innerHTML = html
+      advisorWarn.hidden = false
+    } else {
+      advisorWarn.innerHTML = ''
+      advisorWarn.hidden = true
+    }
   }
   if (list) {
     list.innerHTML = conflicts.length
@@ -448,7 +571,7 @@ function proceedToPreview() {
   const merged = rebuildMergedPreview()
   if (!merged || !pendingBulkMerge) return
   closeConflictModal()
-  openPreviewModal(merged, pendingBulkMerge.sourceId)
+  openPreviewModal(merged)
 }
 
 export function confirmBulkMergeConflicts() {
@@ -481,7 +604,10 @@ export async function confirmBulkMergePreview() {
     clearSelection('customers')
     await renderCustomers()
     await openCustomerDetail(finalId)
-    showToast(`ادغام انجام شد — ${sourceId} داخل ${finalId} ادغام شد`)
+    showToastWithAction(`ادغام انجام شد — ${sourceId} داخل ${finalId} ادغام شد`, {
+      actionLabel: `مشاهده ${finalId}`,
+      onAction: () => { openCustomerDetail(finalId) }
+    })
   } catch (e) {
     console.error('confirmBulkMergePreview error:', e)
     showToast(e?.message || 'خطا در ادغام مشتریان')
@@ -496,6 +622,8 @@ export async function confirmBulkMergePreview() {
 /** @returns {Promise<string>} final survivor id */
 async function executeCustomerMerge({ survivorId, sourceId, merged }) {
   const data = getData()
+  const sourceCustomer = data.customers.find(c => c.id === sourceId)
+  const sourceLabel = sourceCustomer?.name || sourceCustomer?.platformId || sourceId
   let finalSurvivorId = survivorId
   let toSave = cloneCustomerRecord(merged, { id: survivorId })
 
@@ -532,8 +660,24 @@ async function executeCustomerMerge({ survivorId, sourceId, merged }) {
     data.convertedCount = (data.convertedCount || 0) + 1
   }
 
+  await writeMergeAuditFollowup({ finalSurvivorId, sourceId, sourceLabel })
+
   invalidateProductSalesCountCache()
   return finalSurvivorId
+}
+
+function platformIdSearchKey(raw) {
+  const s = String(raw || '').trim()
+  if (s.startsWith('@')) return s.slice(1).trim().toLowerCase()
+  return s.toLowerCase()
+}
+
+function customerMatchesPlatformId(c, query) {
+  const key = platformIdSearchKey(query)
+  if (!key || key.length < 2) return false
+  const pid = normStr(c.platformId).toLowerCase()
+  if (!pid) return false
+  return pid.includes(key) || `@${pid}`.includes(key)
 }
 
 function findCustomersForMergeSearch(query, customers, { excludeId = null, limit = 8 } = {}) {
@@ -546,15 +690,29 @@ function findCustomersForMergeSearch(query, customers, { excludeId = null, limit
   if (digits.length >= 3) {
     for (const hit of findCustomersByPhonePrefix(digits, customers, { excludeId, limit })) {
       if (!canViewCustomer(hit.customer)) continue
-      byId.set(hit.customer.id, hit)
+      byId.set(hit.customer.id, { ...hit, matchKind: 'phone' })
     }
   }
 
   const q = toEnDigits(raw).trim().toLowerCase()
+  const platformQ = platformIdSearchKey(raw)
+
   for (const c of customers || []) {
     if (excludeId && c.id === excludeId) continue
     if (!canViewCustomer(c)) continue
     if (byId.has(c.id)) continue
+
+    if (platformQ.length >= 2 && customerMatchesPlatformId(c, raw)) {
+      const pid = normStr(c.platformId)
+      byId.set(c.id, {
+        customer: c,
+        matchedPhone: pid ? `@${pid}` : '',
+        exact: false,
+        matchKind: 'platformId'
+      })
+      continue
+    }
+
     const fields = [
       c.id,
       c.name,
@@ -566,8 +724,9 @@ function findCustomersForMergeSearch(query, customers, { excludeId = null, limit
     if (!matchesTabSearch(q, fields)) continue
     byId.set(c.id, {
       customer: c,
-      matchedPhone: getPrimaryPhone(c) || '',
-      exact: false
+      matchedPhone: getPrimaryPhone(c) || normStr(c.platformId) || '',
+      exact: false,
+      matchKind: 'text'
     })
   }
 
@@ -589,10 +748,16 @@ function renderDetailMergePartnerSelected(customer) {
   const btn = document.getElementById('detailMergePartnerContinueBtn')
   if (!el || !customer) return
   const phone = getPrimaryPhone(customer)
+  const platformTag = customer.platformId ? `@${customer.platformId}` : ''
   el.hidden = false
   el.innerHTML = `
-    <div><strong>${escapeHtml(customer.name || customer.platformId || customer.id)}</strong></div>
-    <div class="merge-partner-selected-id">${escapeHtml(customer.id)}${phone ? ` · ${escapeHtml(phone)}` : ''}</div>
+    <div class="merge-partner-selected-row">
+      <div>
+        <div><strong>${escapeHtml(customer.name || customer.platformId || customer.id)}</strong></div>
+        <div class="merge-partner-selected-id">${escapeHtml(customer.id)}${phone ? ` · ${escapeHtml(phone)}` : ''}${platformTag ? ` · ${escapeHtml(platformTag)}` : ''}</div>
+      </div>
+      <button type="button" class="btn btn-sm" onclick="app.clearDetailMergePartnerSelection()">پاک کردن</button>
+    </div>
   `
   if (hidden) hidden.value = customer.id
   if (searchEl) searchEl.value = customer.name || customer.platformId || customer.id
@@ -600,7 +765,20 @@ function renderDetailMergePartnerSelected(customer) {
   hideDetailMergePartnerSuggest()
 }
 
-function clearDetailMergePartnerSelection() {
+export function clearDetailMergePartnerSelection() {
+  detailMergePickState.selectedPartnerId = null
+  const el = document.getElementById('detailMergePartnerSelected')
+  const hidden = document.getElementById('detailMergePartnerId')
+  const btn = document.getElementById('detailMergePartnerContinueBtn')
+  const searchEl = document.getElementById('detailMergePartnerSearch')
+  if (el) { el.hidden = true; el.innerHTML = '' }
+  if (hidden) hidden.value = ''
+  if (searchEl) searchEl.value = ''
+  if (btn) btn.disabled = true
+  searchEl?.focus()
+}
+
+function clearDetailMergePartnerSelectionInternal() {
   detailMergePickState.selectedPartnerId = null
   const el = document.getElementById('detailMergePartnerSelected')
   const hidden = document.getElementById('detailMergePartnerId')
@@ -612,7 +790,7 @@ function clearDetailMergePartnerSelection() {
 
 export function closeDetailMergePickModal() {
   document.getElementById('detailMergePickModal')?.classList.remove('active')
-  detailMergePickState = { anchorCustomerId: null, selectedPartnerId: null }
+  detailMergePickState = { anchorCustomerId: null, selectedPartnerId: null, lastMatches: [] }
   hideDetailMergePartnerSuggest()
 }
 
@@ -621,7 +799,14 @@ export function onDetailMergePartnerSearchBlur() {
 }
 
 export function onDetailMergePartnerSearchKeydown(event) {
-  if (event?.key === 'Escape') hideDetailMergePartnerSuggest()
+  if (event?.key === 'Escape') {
+    hideDetailMergePartnerSuggest()
+    return
+  }
+  if (event?.key !== 'Enter') return
+  event.preventDefault()
+  const firstId = detailMergePickState.lastMatches[0]?.customer?.id
+  if (firstId) selectDetailMergePartner(firstId)
 }
 
 export function onDetailMergePartnerSearchInput() {
@@ -631,7 +816,7 @@ export function onDetailMergePartnerSearchInput() {
   if (detailMergePickState.selectedPartnerId && query.trim() !== '') {
     const picked = getData().customers.find(c => c.id === detailMergePickState.selectedPartnerId)
     const pickedLabel = picked?.name || picked?.platformId || picked?.id || ''
-    if (query.trim() !== pickedLabel.trim()) clearDetailMergePartnerSelection()
+    if (query.trim() !== pickedLabel.trim()) clearDetailMergePartnerSelectionInternal()
   }
 
   const box = document.getElementById('detailMergePartnerSuggest')
@@ -641,6 +826,7 @@ export function onDetailMergePartnerSearchInput() {
     excludeId: anchorId,
     limit: 8
   })
+  detailMergePickState.lastMatches = matches
 
   if (!matches.length) {
     hideDetailMergePartnerSuggest()
@@ -648,17 +834,22 @@ export function onDetailMergePartnerSearchInput() {
   }
 
   box.hidden = false
-  box.innerHTML = matches.map(({ customer: c, matchedPhone }) => `
+  box.innerHTML = matches.map(({ customer: c, matchedPhone, matchKind }) => {
+    const meta = matchKind === 'platformId'
+      ? (matchedPhone || `@${c.platformId || ''}`)
+      : (matchedPhone || '—')
+    return `
     <button type="button" class="customer-phone-suggest-item" role="option"
       onmousedown="event.preventDefault(); app.selectDetailMergePartner('${escapeAttr(c.id)}')">
       <span class="customer-phone-suggest-main">
         <strong>${escapeHtml(c.name || c.platformId || c.id)}</strong>
         <span class="customer-phone-suggest-id">${escapeHtml(c.id)}</span>
       </span>
-      <span class="customer-phone-suggest-meta" dir="ltr">${escapeHtml(matchedPhone || '—')}</span>
+      <span class="customer-phone-suggest-meta" dir="ltr">${escapeHtml(meta)}</span>
       <span class="customer-phone-suggest-advisor">${escapeHtml(c.advisor || '—')}</span>
     </button>
-  `).join('')
+  `
+  }).join('')
 }
 
 export function selectDetailMergePartner(customerId) {
@@ -706,7 +897,7 @@ export function openDetailPanelMergePicker() {
     return
   }
 
-  detailMergePickState = { anchorCustomerId: anchorId, selectedPartnerId: null }
+  detailMergePickState = { anchorCustomerId: anchorId, selectedPartnerId: null, lastMatches: [] }
   const intro = document.getElementById('detailMergePickIntro')
   if (intro) {
     intro.textContent =
@@ -714,7 +905,7 @@ export function openDetailPanelMergePicker() {
   }
   const searchEl = document.getElementById('detailMergePartnerSearch')
   if (searchEl) searchEl.value = ''
-  clearDetailMergePartnerSelection()
+  clearDetailMergePartnerSelectionInternal()
   hideDetailMergePartnerSuggest()
   document.getElementById('detailMergePickModal')?.classList.add('active')
   searchEl?.focus()

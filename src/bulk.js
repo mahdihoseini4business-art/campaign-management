@@ -119,6 +119,28 @@ function updateBulkUI(tab) {
       countEl.textContent = `${count} مورد انتخاب شده`
     }
   }
+  if (tab === 'customers') syncMergeBulkOptionState(count)
+}
+
+function syncMergeBulkOptionState(count = selectedIds.customers.size) {
+  if (!hasPermission('customers_merge')) return
+  const actionEl = document.getElementById('bulkActionCustomers')
+  if (!actionEl) return
+  const mergeOpt = actionEl.querySelector('option[value="merge"]')
+  if (!mergeOpt) return
+  if (count === 2) {
+    mergeOpt.disabled = false
+    mergeOpt.removeAttribute('title')
+  } else if (count === 1) {
+    mergeOpt.disabled = true
+    mergeOpt.title = 'برای ادغام دقیقاً ۲ مشتری انتخاب کنید'
+  } else if (count > 2) {
+    mergeOpt.disabled = true
+    mergeOpt.title = 'ادغام فقط بین ۲ مشتری ممکن است'
+  } else {
+    mergeOpt.disabled = true
+    mergeOpt.removeAttribute('title')
+  }
 }
 
 function syncCustomerBulkOptions(actionEl) {
@@ -139,6 +161,7 @@ export function refreshCustomerBulkOptions() {
   if (!actionEl) return
   delete actionEl.dataset.optionsReady
   syncCustomerBulkOptions(actionEl)
+  syncMergeBulkOptionState()
 }
 
 function getTabBody(tab) {
@@ -176,6 +199,11 @@ export function executeBulkAction(tab) {
     openBulkTransferModal([...ids])
   } else if (action === 'merge' && tab === 'customers') {
     if (!requirePermission('customers_merge')) {
+      actionEl.value = ''
+      return
+    }
+    const mergeOpt = actionEl.querySelector('option[value="merge"]')
+    if (mergeOpt?.disabled) {
       actionEl.value = ''
       return
     }

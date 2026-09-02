@@ -28,7 +28,7 @@ import {
   backBulkMergePreviewToConflicts,
   openDetailPanelMergePicker, closeDetailMergePickModal, onDetailMergePartnerSearchInput,
   onDetailMergePartnerSearchBlur, onDetailMergePartnerSearchKeydown, selectDetailMergePartner,
-  confirmDetailMergePartnerPick
+  confirmDetailMergePartnerPick, clearDetailMergePartnerSelection
 } from './customer-merge.js'
 import {
   openTransferInbox,
@@ -514,6 +514,7 @@ const app = {
   onDetailMergePartnerSearchKeydown,
   selectDetailMergePartner,
   confirmDetailMergePartnerPick,
+  clearDetailMergePartnerSelection,
   openTransferInbox,
   closeTransferInbox,
   setTransferInboxTab,
