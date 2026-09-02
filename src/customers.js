@@ -1757,7 +1757,7 @@ export function showMoreDetailFollowups(customerId) {
   }
 }
 
-/** Session-tracked creates that still need follow-up date OR a committed sale before the panel can close. */
+/** Session-tracked creates that still need follow-up date, a note, OR a committed sale before the panel can close. */
 const PENDING_CREATE_STORAGE_KEY = 'cm_pending_create_completion_ids'
 /** @type {Set<string>} */
 let pendingCreateCompletionIds = new Set()
@@ -1807,11 +1807,19 @@ export function customerHasCommittedSale(customer) {
   return false
 }
 
-/** Setting off → always ok. Setting on → need nextFollowupDate or a committed sale. */
+/** True when customer has at least one follow-up note in the timeline. */
+function customerHasFollowupNote(customer) {
+  if (!customer?.id) return false
+  const followups = getFollowupsByCustomerId().get(customer.id) || []
+  return followups.some(f => String(f.notes || '').trim())
+}
+
+/** Setting off → always ok. Setting on → need nextFollowupDate, a follow-up note, or a committed sale. */
 export function customerMeetsCreateCompletionRule(customer) {
   if (!getRequireFollowupOnCreate()) return true
   if (!customer) return false
   if (String(customer.nextFollowupDate || '').trim()) return true
+  if (customerHasFollowupNote(customer)) return true
   return customerHasCommittedSale(customer)
 }
 
@@ -1977,8 +1985,8 @@ export async function toggleRequireFollowupOnCreate(enabled) {
     syncRequireFollowupOnCreateUi()
     await broadcastAppSetting('require_followup_on_create', next)
     showToast(next
-      ? 'اجبار پیگیری یا فروش هنگام ثبت مشتری فعال شد'
-      : 'اجبار پیگیری یا فروش هنگام ثبت مشتری غیرفعال شد')
+      ? 'اجبار پیگیری، یادداشت یا فروش هنگام ثبت مشتری فعال شد'
+      : 'اجبار پیگیری، یادداشت یا فروش هنگام ثبت مشتری غیرفعال شد')
   } catch (e) {
     console.error('toggleRequireFollowupOnCreate error:', e)
     syncRequireFollowupOnCreateUi()
@@ -2179,7 +2187,7 @@ async function createCustomerFromDetail(fields) {
     // Open sales tab for guidance, but do NOT auto-create an empty product/payment row
     // (that was polluting the sales list with blank drafts).
     await openCustomerDetail(id, { tab: 'sales' })
-    showToast('مشتری ذخیره شد — تاریخ پیگیری ست کنید یا یک فروش ثبت کنید')
+    showToast('مشتری ذخیره شد — تاریخ پیگیری ست کنید، یک یادداشت ثبت کنید یا یک فروش ثبت کنید')
   } else {
     await openCustomerDetail(id, { tab: nextFollowupDate ? 'followups' : 'sales' })
     showToast(nextFollowupDate
@@ -2706,13 +2714,13 @@ export async function openCustomerDetail(id, options = {}) {
     html = `
       ${infoPanelHtml}
       <div class="detail-tab-empty" style="margin-top:8px;">${requireFollowupOnCreate
-        ? 'پس از ایجاد، یا تاریخ پیگیری را ست کنید یا یک فروش ثبت کنید تا ثبت مشتری کامل شود.'
+        ? 'پس از ایجاد، تاریخ پیگیری ست کنید، یک یادداشت ثبت کنید یا یک فروش ثبت کنید تا ثبت مشتری کامل شود.'
         : 'پس از ایجاد مشتری، تب‌های فروش و پیگیری در دسترس خواهند بود.'}</div>
     `
   } else {
     const pendingBanner = pendingCreateCompletion
       ? `<div class="detail-create-pending-banner" role="status">
-          برای تکمیل ثبت این مشتری، <strong>تاریخ پیگیری بعدی</strong> را ست کنید یا یک <strong>فروش</strong> ثبت کنید. تا قبل از آن پنل بسته نمی‌شود.
+          برای تکمیل ثبت این مشتری، <strong>تاریخ پیگیری بعدی</strong> را ست کنید، یک <strong>یادداشت</strong> ثبت کنید یا یک <strong>فروش</strong> ثبت کنید. تا قبل از آن پنل بسته نمی‌شود.
         </div>`
       : ''
     const tabBtn = (key, count) => {
@@ -3052,9 +3060,7 @@ export async function addQuickNote(customerId) {
     }
 
     await renderCustomers()
-    const resolved = nextDate
-      ? maybeResolvePendingCreateCompletion(customerId, { toast: true })
-      : false
+    const resolved = maybeResolvePendingCreateCompletion(customerId, { toast: true })
     openCustomerDetail(customerId)
     if (!resolved) {
       showToast(nextDate ? 'توضیحات ثبت و تاریخ پیگیری بعدی تنظیم شد' : 'توضیحات ثبت شد')
@@ -3174,7 +3180,7 @@ export function closeDetailModal({ force = false } = {}) {
   if (!force && id && isPendingCreateCompletion(id)) {
     const customer = getData().customers.find(c => c.id === id)
     if (!customerMeetsCreateCompletionRule(customer)) {
-      showToast('برای بستن پنل، تاریخ پیگیری ست کنید یا یک فروش ثبت کنید — یا «انصراف و حذف مشتری» را بزنید')
+      showToast('برای بستن پنل، تاریخ پیگیری ست کنید، یک یادداشت ثبت کنید یا یک فروش ثبت کنید — یا «انصراف و حذف مشتری» را بزنید')
       return false
     }
     clearPendingCreateCompletion(id)
