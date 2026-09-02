@@ -3523,6 +3523,99 @@
 
   .modal-overlay.active { display: flex; }
 
+  /* --- Customer bulk merge --- */
+  .merge-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .merge-survivor-block {
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .merge-survivor-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .merge-survivor-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .merge-conflict-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: 340px;
+    overflow-y: auto;
+  }
+  .merge-conflict-row {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+  .merge-conflict-label {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .merge-conflict-option {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 0;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .merge-conflict-option-id {
+    font-family: 'Vazirmatn', sans-serif;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .merge-conflict-option-val {
+    line-height: 1.5;
+    padding-right: 22px;
+  }
+  .merge-conflict-empty {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .merge-preview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 14px;
+  }
+  .merge-preview-field-full {
+    grid-column: 1 / -1;
+  }
+  .merge-preview-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 13px;
+  }
+  .merge-preview-label {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .merge-preview-value {
+    line-height: 1.5;
+  }
+  .merge-preview-notes {
+    white-space: pre-wrap;
+  }
+  .merge-preview-muted {
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
   #rejectPaymentModal.active {
     z-index: 1100;
   }

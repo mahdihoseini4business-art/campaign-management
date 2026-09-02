@@ -2851,6 +2851,12 @@ export async function updateFollowupsCustomerId(oldId, newId) {
   bumpLocalWrite()
 }
 
+export async function updateRefundsCustomerId(oldId, newId) {
+  const { error } = await supabase.from('refunds').update({ customer_id: newId }).eq('customer_id', oldId)
+  if (error) throw new Error('خطا در بروزرسانی عودت‌ها: ' + error.message)
+  bumpLocalWrite()
+}
+
 // ============================================
 // Save app setting
 // ============================================

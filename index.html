@@ -1569,6 +1569,48 @@
   </div>
 </div>
 
+<!-- مودال تعارض فیلدها — ادغام دسته‌جمعی -->
+<div class="modal-overlay" id="bulkMergeConflictModal">
+  <div class="modal merge-modal" style="max-width: 560px;">
+    <div class="modal-header">
+      <h2>انتخاب مقادیر درست</h2>
+      <button class="modal-close" onclick="app.closeBulkMergeConflictModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="bulkMergeConflictIntro" style="margin:0 0 14px;line-height:1.7;font-size:13px;color:var(--text-muted);"></p>
+      <div class="merge-survivor-block">
+        <div class="merge-section-title">مشتری بازمانده (شناسه حفظ می‌شود)</div>
+        <div id="bulkMergeSurvivorPicker" class="merge-survivor-picker"></div>
+      </div>
+      <div id="bulkMergeConflictList" class="merge-conflict-list"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeBulkMergeConflictModal()">انصراف</button>
+      <button class="btn btn-primary" onclick="app.confirmBulkMergeConflicts()">ادامه به پیش‌نمایش</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال پیش‌نمایش — ادغام دسته‌جمعی -->
+<div class="modal-overlay" id="bulkMergePreviewModal">
+  <div class="modal merge-modal" style="max-width: 560px;">
+    <div class="modal-header">
+      <h2>پیش‌نمایش مشتری بازمانده</h2>
+      <button class="modal-close" onclick="app.closeBulkMergePreviewModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0 0 12px;font-size:13px;color:var(--text-muted);line-height:1.6;">
+        پس از تأیید، مشتری دوم حذف و تمام فروش‌ها، پیگیری‌ها و عودت‌هایش به این پروفایل منتقل می‌شوند.
+      </p>
+      <div id="bulkMergePreviewBody"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.backBulkMergePreviewToConflicts()">بازگشت</button>
+      <button class="btn btn-primary" id="bulkMergePreviewConfirmBtn" onclick="app.confirmBulkMergePreview()">تأیید و ادغام</button>
+    </div>
+  </div>
+</div>
+
 <!-- مودال رد واریزی -->
 <div class="modal-overlay" id="rejectPaymentModal">
   <div class="modal" style="max-width: 480px;">

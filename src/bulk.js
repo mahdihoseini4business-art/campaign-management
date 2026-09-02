@@ -1,4 +1,5 @@
 import { getData, deleteCustomerFromDB, deleteFollowupFromDB, saveCustomerToDB, generateTransferBatchId } from './data.js'
+import { openBulkCustomerMerge } from './customer-merge.js'
 import { showToast, requirePermission, hasPermission, canTransferCustomer, normalizePhone, escapeHtml, escapeAttr, userDisplayName, resolveAdvisor, syncCustomerLevel } from './utils.js'
 import { renderCustomers, reassignCustomerOwnership, closeDeleteModal } from './customers.js'
 import { renderFollowups } from './followups.js'
@@ -18,7 +19,7 @@ const BULK_DELETE_PERM = {
 /** True if the user may select rows for any bulk action on this tab. */
 function canBulkSelect(tab) {
   if (tab === 'customers') {
-    return hasPermission('customers_delete') || hasPermission('customers_transfer')
+    return hasPermission('customers_delete') || hasPermission('customers_transfer') || hasPermission('customers_add')
   }
   const perm = BULK_DELETE_PERM[tab]
   return !perm || hasPermission(perm)
@@ -125,6 +126,7 @@ function syncCustomerBulkOptions(actionEl) {
   const canDelete = hasPermission('customers_delete')
   const canTransfer = hasPermission('customers_transfer')
   actionEl.innerHTML = '<option value="">عملیات دسته‌جمعی...</option>' +
+    '<option value="merge">ادغام</option>' +
     (canTransfer ? '<option value="transfer">انتقال به کارشناس</option>' : '') +
     (canDelete ? '<option value="delete">حذف انتخاب شده‌ها</option>' : '')
   actionEl.dataset.optionsReady = '1'
@@ -171,6 +173,13 @@ export function executeBulkAction(tab) {
       return
     }
     openBulkTransferModal([...ids])
+  } else if (action === 'merge' && tab === 'customers') {
+    if (ids.size !== 2) {
+      showToast('برای ادغام دقیقاً ۲ مشتری انتخاب کنید')
+      actionEl.value = ''
+      return
+    }
+    openBulkCustomerMerge([...ids])
   }
 
   actionEl.value = ''

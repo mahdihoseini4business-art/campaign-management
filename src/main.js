@@ -23,6 +23,11 @@ import { renderDashboard, toggleDashSection, applyDashFilter, clearDashFilter, t
 import { exportTabCSV, exportTabXLSX, openImportModal, closeImportModal, doImport, dryRunCustomerImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners, openMatrixImportModal, closeMatrixImportModal, doMatrixImport, dryRunMatrixImport, setMatrixImportMapping, setMatrixProductValueMap, setMatrixProductPriceMap, downloadMatrixImportProblems, initMatrixImportListeners } from './import-export.js'
 import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection, openBulkTransferModal, closeBulkTransferModal, confirmBulkTransfer, refreshCustomerBulkOptions, updateBulkTransferPreview, filterBulkTransferOptions } from './bulk.js'
 import {
+  openBulkCustomerMerge, closeBulkMergeConflictModal, closeBulkMergePreviewModal,
+  confirmBulkMergeConflicts, confirmBulkMergePreview, setBulkMergeSurvivor, setBulkMergeConflictChoice,
+  backBulkMergePreviewToConflicts
+} from './customer-merge.js'
+import {
   openTransferInbox,
   closeTransferInbox,
   setTransferInboxTab,
@@ -491,6 +496,14 @@ const app = {
   confirmBulkTransfer,
   updateBulkTransferPreview,
   filterBulkTransferOptions,
+  openBulkCustomerMerge,
+  closeBulkMergeConflictModal,
+  closeBulkMergePreviewModal,
+  confirmBulkMergeConflicts,
+  confirmBulkMergePreview,
+  setBulkMergeSurvivor,
+  setBulkMergeConflictChoice,
+  backBulkMergePreviewToConflicts,
   openTransferInbox,
   closeTransferInbox,
   setTransferInboxTab,

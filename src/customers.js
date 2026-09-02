@@ -595,7 +595,8 @@ export async function renderCustomers() {
     const statusLabel = getStatusLabels()[c.status] || c.status
     const canSelect = showSelectCol && (
       (hasPermission('customers_delete') && canManageCustomer(c, currentUser)) ||
-      canTransferCustomer(c, currentUser)
+      canTransferCustomer(c, currentUser) ||
+      (hasPermission('customers_add') && canViewCustomer(c, currentUser))
     )
     const isMine = ownsCustomer(c, currentUser) || canViewOrgWideData('customers')
     const transferredIn = isRecentTransferredIn(c.id, myPhone, 7)
@@ -604,7 +605,7 @@ export async function renderCustomers() {
     const selectCell = showSelectCol
       ? `<td>${canSelect
         ? `<input type="checkbox" data-id="${escapeAttr(c.id)}" aria-label="انتخاب ${escapeAttr(c.name || c.id)}" onchange="app.toggleRowSelect('customers', '${escapeAttr(c.id)}', this.checked)">`
-        : `<input type="checkbox" disabled title="بدون دسترسی حذف یا انتقال برای این مشتری" aria-label="غیرقابل انتخاب">`
+        : `<input type="checkbox" disabled title="بدون دسترسی انتخاب برای این مشتری" aria-label="غیرقابل انتخاب">`
       }</td>`
       : ''
 
