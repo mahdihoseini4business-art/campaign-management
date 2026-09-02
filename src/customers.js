@@ -38,7 +38,8 @@ import {
   buildFollowupsByCustomerMap,
   getFollowupsByCustomerId,
   getReferralCountForCustomer,
-  getCustomerById
+  getCustomerById,
+  invalidateDerivedCache
 } from './derived-cache.js'
 import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
 import { paginateList, renderPaginationBar, getPage } from './pagination.js'
@@ -1815,8 +1816,8 @@ export function customerHasCommittedSale(customer) {
 /** True when customer has at least one follow-up note in the timeline. */
 function customerHasFollowupNote(customer) {
   if (!customer?.id) return false
-  const followups = getFollowupsByCustomerId().get(customer.id) || []
-  return followups.some(f => String(f.notes || '').trim())
+  const cid = customer.id
+  return getData().followups.some(f => f.customerId === cid && String(f.notes || '').trim())
 }
 
 /** Setting off → always ok. Setting on → need nextFollowupDate, a follow-up note, or a committed sale. */
@@ -3009,6 +3010,7 @@ export async function setNextFollowup(customerId) {
       const id = await saveFollowupToDB(newFollowup)
       newFollowup.id = id
       data.followups.push(newFollowup)
+      invalidateDerivedCache('followups')
     }
     await saveCustomerToDB(data.customers[idx])
     await renderCustomers()
@@ -3166,6 +3168,7 @@ export async function addQuickNote(customerId) {
     const id = await saveFollowupToDB(newFollowup)
     newFollowup.id = id
     data.followups.push(newFollowup)
+    invalidateDerivedCache('followups')
 
     if (nextDate) {
       const idx = data.customers.findIndex(c => c.id === customerId)
