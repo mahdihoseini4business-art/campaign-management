@@ -2488,7 +2488,6 @@ export async function openCustomerDetail(id, options = {}) {
         <div id="detailPhonesList" class="phone-fields"></div>
         <div class="form-error" id="detailPhoneError" hidden></div>
         <div class="form-hint" id="detailPhoneHint" hidden></div>
-        ${isNew ? '<div class="form-hint">حداقل یکی از «شماره تماس» یا «ایدی پلتفرم» الزامی است.</div>' : ''}
       </div>
       <div class="detail-field">
         <span class="detail-label">آدرس پستی</span>
@@ -2510,7 +2509,6 @@ export async function openCustomerDetail(id, options = {}) {
       <div class="detail-field">
         <span class="detail-label">تاریخ پیگیری بعدی</span>
         <input type="text" class="form-input" id="detailCreateFollowupDate" placeholder="مثلاً 1405/05/01" data-jdp style="font-family:'Vazirmatn',sans-serif;max-width:180px;">
-        <div class="form-hint" style="margin-top:6px;">اگر مشتری را برای پیگیری ثبت می‌کنید تاریخ را بزنید. اگر فقط می‌خواهید خرید انجام‌شده را وارد کنید، خالی بگذارید و بعد از ایجاد یک فروش ثبت کنید.</div>
       </div>` : ''}
     `
     : `
@@ -2761,9 +2759,6 @@ export async function openCustomerDetail(id, options = {}) {
   if (isNew) {
     html = `
       ${infoPanelHtml}
-      <div class="detail-tab-empty" style="margin-top:8px;">${requireFollowupOnCreate
-        ? 'پس از ایجاد، تاریخ پیگیری ست کنید، یک یادداشت ثبت کنید یا یک فروش ثبت کنید تا ثبت مشتری کامل شود.'
-        : 'پس از ایجاد مشتری، تب‌های فروش و پیگیری در دسترس خواهند بود.'}</div>
     `
   } else {
     const pendingBanner = pendingCreateCompletion
