@@ -288,25 +288,26 @@ function defaultChoices(conflicts) {
 }
 
 function renderConflictRow(conflict, survivorId, sourceId, choice) {
-  const name = (id) => escapeHtml(id)
   const picked = choice || 'survivor'
   return `
     <div class="merge-conflict-row" data-key="${escapeAttr(conflict.key)}">
       <div class="merge-conflict-label">${escapeHtml(conflict.label)}</div>
-      <label class="merge-conflict-option">
-        <input type="radio" name="mergeConflict_${escapeAttr(conflict.key)}" value="survivor"
-          ${picked === 'survivor' ? 'checked' : ''}
-          onchange="app.setBulkMergeConflictChoice('${escapeAttr(conflict.key)}', 'survivor')">
-        <span class="merge-conflict-option-id">${name(survivorId)}</span>
-        <span class="merge-conflict-option-val">${escapeHtml(conflict.survivorDisplay || conflict.survivorVal || '—')}</span>
-      </label>
-      <label class="merge-conflict-option">
-        <input type="radio" name="mergeConflict_${escapeAttr(conflict.key)}" value="source"
-          ${picked === 'source' ? 'checked' : ''}
-          onchange="app.setBulkMergeConflictChoice('${escapeAttr(conflict.key)}', 'source')">
-        <span class="merge-conflict-option-id">${name(sourceId)}</span>
-        <span class="merge-conflict-option-val">${escapeHtml(conflict.sourceDisplay || conflict.sourceVal || '—')}</span>
-      </label>
+      <div class="merge-conflict-choices">
+        <label class="merge-choice">
+          <input type="radio" name="mergeConflict_${escapeAttr(conflict.key)}" value="survivor"
+            ${picked === 'survivor' ? 'checked' : ''}
+            onchange="app.setBulkMergeConflictChoice('${escapeAttr(conflict.key)}', 'survivor')">
+          <span class="merge-choice-id">${escapeHtml(survivorId)}</span>
+          <span class="merge-choice-val">${escapeHtml(conflict.survivorDisplay || conflict.survivorVal || '—')}</span>
+        </label>
+        <label class="merge-choice">
+          <input type="radio" name="mergeConflict_${escapeAttr(conflict.key)}" value="source"
+            ${picked === 'source' ? 'checked' : ''}
+            onchange="app.setBulkMergeConflictChoice('${escapeAttr(conflict.key)}', 'source')">
+          <span class="merge-choice-id">${escapeHtml(sourceId)}</span>
+          <span class="merge-choice-val">${escapeHtml(conflict.sourceDisplay || conflict.sourceVal || '—')}</span>
+        </label>
+      </div>
     </div>`
 }
 
@@ -329,7 +330,7 @@ function renderAdvisorWarnBanner(survivor, source, merged, { inPreview = false }
   } else {
     text = 'کارشناس مسئول این دو مشتری متفاوت است. پیش‌فرض: کارشناس مشتری بازمانده.'
   }
-  return `<div class="merge-preview-warning merge-advisor-warn" role="status">${escapeHtml(text)}</div>`
+  return `<div class="merge-banner merge-banner--warn" role="status">${escapeHtml(text)}</div>`
 }
 
 function truncateNotes(notes, max = 120) {
@@ -392,13 +393,21 @@ function renderMergePreviewHtml({ survivor, source, merged }) {
   const advisorBefore = `${escapeHtml(survivor.advisor || '—')}${survivor.advisorPhone ? `<br><span dir="ltr">${escapeHtml(survivor.advisorPhone)}</span>` : ''}`
   const advisorAfter = `${escapeHtml(merged.advisor || '—')}${merged.advisorPhone ? `<br><span dir="ltr">${escapeHtml(merged.advisorPhone)}</span>` : ''}`
 
+  const metaStrip = `
+    <dl class="merge-preview-meta">
+      <div><dt>شناسه</dt><dd><span class="id-badge">${escapeHtml(merged.id)}</span></dd></div>
+      <div><dt>پلتفرم</dt><dd>${escapeHtml(platforms[merged.platform] || merged.platform || '—')}</dd></div>
+      <div><dt>پیگیری بعدی</dt><dd>${escapeHtml(merged.nextFollowupDate || '—')}</dd></div>
+      <div><dt>کد مشتری</dt><dd>${escapeHtml(merged.customerCode || '—')}</dd></div>
+    </dl>`
+
   const compareTable = `
     <table class="merge-preview-compare">
       <thead>
         <tr>
-          <th scope="col">فیلد</th>
-          <th scope="col">قبل (بازمانده)</th>
-          <th scope="col">بعد از ادغام</th>
+          <th scope="col"></th>
+          <th scope="col">قبل</th>
+          <th scope="col">بعد</th>
         </tr>
       </thead>
       <tbody>
@@ -415,30 +424,18 @@ function renderMergePreviewHtml({ survivor, source, merged }) {
     </table>`
 
   const limitHtml = limitWarnings.length
-    ? limitWarnings.map(w => `<div class="merge-preview-warning">${escapeHtml(w)}</div>`).join('')
+    ? limitWarnings.map(w => `<div class="merge-banner merge-banner--warn">${escapeHtml(w)}</div>`).join('')
     : ''
 
   return `
     ${renderAdvisorWarnBanner(survivor, source, merged, { inPreview: true })}
-    <div class="merge-preview-danger" role="alert">
-      <strong>حذف دائمی:</strong>
-      پروفایل <span class="id-badge">${escapeHtml(sourceId)}</span>
-      (${escapeHtml(sourceName)}) پس از ادغام حذف می‌شود.
-      <div class="merge-preview-danger-detail">
-        ${formatNumber(sourceProducts)} فروش، ${formatNumber(sourceFollowups)} پیگیری و ${formatNumber(sourceRefunds)} عودت
-        <strong>منتقل</strong> می‌شوند (حذف نمی‌شوند).
-      </div>
+    <div class="merge-banner merge-banner--danger" role="alert">
+      <span class="id-badge">${escapeHtml(sourceId)}</span>
+      <span class="merge-banner-text">${escapeHtml(sourceName)} حذف می‌شود — ${formatNumber(sourceProducts)} فروش، ${formatNumber(sourceFollowups)} پیگیری، ${formatNumber(sourceRefunds)} عودت منتقل می‌شوند.</span>
     </div>
     ${limitHtml}
-    <div class="merge-preview-section-title">مقایسه قبل / بعد</div>
-    ${compareTable}
-    <div class="merge-preview-section-title">شناسه نهایی</div>
-    <div class="merge-preview-grid merge-preview-grid-compact">
-      <div class="merge-preview-field"><span class="merge-preview-label">شناسه بازمانده</span><span class="merge-preview-value"><span class="id-badge">${escapeHtml(merged.id)}</span></span></div>
-      <div class="merge-preview-field"><span class="merge-preview-label">پلتفرم</span><span class="merge-preview-value">${escapeHtml(platforms[merged.platform] || merged.platform || '—')}</span></div>
-      <div class="merge-preview-field"><span class="merge-preview-label">پیگیری بعدی</span><span class="merge-preview-value">${escapeHtml(merged.nextFollowupDate || '—')}</span></div>
-      <div class="merge-preview-field"><span class="merge-preview-label">کد مشتری</span><span class="merge-preview-value">${escapeHtml(merged.customerCode || '—')}</span></div>
-    </div>`
+    ${metaStrip}
+    ${compareTable}`
 }
 
 async function writeMergeAuditFollowup({ finalSurvivorId, sourceId, sourceLabel, actedBy = getCurrentUser() }) {
@@ -543,8 +540,8 @@ function renderConflictModalContent(survivor, source, conflicts) {
   const advisorWarn = document.getElementById('bulkMergeAdvisorWarn')
   if (intro) {
     intro.textContent = conflicts.length
-      ? 'برای فیلدهایی که در هر دو پروفایل مقدار متفاوت دارند، مقدار درست را انتخاب کنید. شماره‌ها و آدرس‌های بدون تداخل خودکار جمع می‌شوند.'
-      : 'تعارضی در فیلدهای تکی نیست. شماره‌ها و آدرس‌ها و داده‌های وابسته ادغام می‌شوند.'
+      ? 'فیلدهای متفاوت را انتخاب کنید. شماره و آدرس بدون تداخل خودکار جمع می‌شوند.'
+      : 'تعارض فیلدی نیست — شماره، آدرس و داده‌های وابسته ادغام می‌شوند.'
   }
   if (advisorWarn) {
     const html = renderAdvisorWarnBanner(survivor, source, null, { inPreview: false })
@@ -612,7 +609,7 @@ export async function confirmBulkMergePreview() {
     console.error('confirmBulkMergePreview error:', e)
     showToast(e?.message || 'خطا در ادغام مشتریان')
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'تأیید و ادغام' }
+    if (btn) { btn.disabled = false; btn.textContent = 'تأیید ادغام' }
   }
 }
 
@@ -956,12 +953,16 @@ async function beginCustomerMergeFlow(idA, idB, { defaultSurvivorId } = {}) {
   if (survivorPicker) {
     survivorPicker.innerHTML = unique.map(id => {
       const c = data.customers.find(x => x.id === id)
-      const label = `${id} — ${c?.name || c?.platformId || 'بدون نام'}`
-      return `<label class="merge-survivor-option">
+      const name = c?.name || c?.platformId || 'بدون نام'
+      const selected = id === pendingBulkMerge.survivorId
+      return `<label class="merge-survivor-card">
         <input type="radio" name="bulkMergeSurvivor" value="${escapeAttr(id)}"
-          ${id === pendingBulkMerge.survivorId ? 'checked' : ''}
+          ${selected ? 'checked' : ''}
           onchange="app.setBulkMergeSurvivor('${escapeAttr(id)}')">
-        <span>${escapeHtml(label)}</span>
+        <span class="merge-survivor-card-body">
+          <span class="id-badge">${escapeHtml(id)}</span>
+          <span class="merge-survivor-name">${escapeHtml(name)}</span>
+        </span>
       </label>`
     }).join('')
   }
