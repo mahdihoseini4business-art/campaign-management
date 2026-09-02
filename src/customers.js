@@ -48,6 +48,9 @@ export { buildFollowupsByCustomerMap } from './derived-cache.js'
 const LEVEL_ORDER = Object.keys(CUSTOMER_LEVELS)
 const DETAIL_FOLLOWUPS_LIMIT = 20
 const DETAIL_QUICK_PRODUCT_OTHER = '__other__'
+const DETAIL_QUICK_PRODUCTS_SEP = '، '
+/** @type {string[]} */
+let detailQuickSelectedProducts = []
 let customerSortState = { field: null, asc: true }
 
 function nextFollowupUrgency(c, bounds) {
@@ -2602,6 +2605,7 @@ export async function openCustomerDetail(id, options = {}) {
 
   let followupsPanelHtml = ''
   if (!isNew) {
+    detailQuickSelectedProducts = []
     let timelineHtml = ''
     if (customerFollowups.length === 0) {
       timelineHtml = `<div class="detail-tab-empty">پیگیری ثبت نشده</div>`
@@ -2671,14 +2675,13 @@ export async function openCustomerDetail(id, options = {}) {
     const nextDateFieldHtml = canScheduleFollowup
       ? `
         <div class="form-group detail-add-note-field detail-add-note-field--date">
-          <label class="detail-label" for="detailFollowupDate">تاریخ پیگیری بعدی (اختیاری)</label>
-          <input type="text" class="form-input" id="detailFollowupDate" placeholder="مثلاً 1405/05/01" data-jdp style="font-family:'Vazirmatn',sans-serif;">
+          <input type="text" class="form-input detail-add-note-input" id="detailFollowupDate" placeholder="پیگیری بعدی" data-jdp style="font-family:'Vazirmatn',sans-serif;">
         </div>`
       : ''
 
     const sellableNames = getSellableNames()
     const productOptionsHtml = [
-      '<option value="">انتخاب محصول...</option>',
+      '<option value="" disabled selected hidden>محصول</option>',
       ...sellableNames.map(name =>
         `<option value="${escapeAttr(name)}">${escapeHtml(name)}</option>`
       ),
@@ -2688,13 +2691,13 @@ export async function openCustomerDetail(id, options = {}) {
     const quickNoteHtml = canAddFollowup
       ? `
       <div class="detail-add-note">
-        <div style="font-size:13px;font-weight:600;margin-bottom:8px;">افزودن توضیحات جدید</div>
+        <div class="detail-add-note-title">افزودن توضیحات جدید</div>
         ${nextDateStatusHtml}
-        <textarea class="form-textarea" id="detailQuickNote" placeholder="توضیحات جدید را اینجا بنویسید..." style="min-height:60px;margin-bottom:8px;"></textarea>
+        <textarea class="form-textarea detail-add-note-textarea" id="detailQuickNote" placeholder="توضیحات جدید را اینجا بنویسید..."></textarea>
         <div class="detail-add-note-meta-row">
           <div class="form-group detail-add-note-field">
-            <label class="detail-label" for="detailQuickType">نوع</label>
-            <select class="form-select" id="detailQuickType">
+            <select class="form-select detail-add-note-select" id="detailQuickType" required>
+              <option value="" disabled selected hidden>نوع</option>
               <option value="دایرکت">دایرکت</option>
               <option value="تماس">تماس</option>
               <option value="کامنت">کامنت</option>
@@ -2702,8 +2705,8 @@ export async function openCustomerDetail(id, options = {}) {
             </select>
           </div>
           <div class="form-group detail-add-note-field">
-            <label class="detail-label" for="detailQuickResult">نتیجه</label>
-            <select class="form-select" id="detailQuickResult">
+            <select class="form-select detail-add-note-select" id="detailQuickResult" required>
+              <option value="" disabled selected hidden>نتیجه</option>
               <option value="پاسخ داد">پاسخ داد</option>
               <option value="صحبت شد">صحبت شد</option>
               <option value="ارسال قیمت">ارسال قیمت</option>
@@ -2715,15 +2718,18 @@ export async function openCustomerDetail(id, options = {}) {
           </div>
           ${nextDateFieldHtml}
           <div class="form-group detail-add-note-field detail-add-note-field--product">
-            <label class="detail-label" for="detailQuickProduct">محصول <span class="required">*</span></label>
-            <select class="form-select" id="detailQuickProduct" onchange="app.onDetailQuickProductChange()">
-              ${productOptionsHtml}
-            </select>
+            <div class="detail-quick-products" id="detailQuickProductsBox">
+              <div class="detail-quick-product-chips" id="detailQuickProductChips"></div>
+              <select class="form-select detail-add-note-select detail-quick-product-pick" id="detailQuickProductPick" onchange="app.onDetailQuickProductPick()">
+                ${productOptionsHtml}
+              </select>
+              <div id="detailQuickProductOtherWrap" class="detail-quick-product-other-inline" hidden>
+                <input type="text" class="form-input detail-quick-product-other-input" id="detailQuickProductOther" placeholder="نام محصول..." onkeydown="if(event.key==='Enter'){event.preventDefault();app.addDetailQuickProductOther()}">
+                <button type="button" class="btn btn-sm detail-quick-product-other-add" onclick="app.addDetailQuickProductOther()" title="افزودن">+</button>
+                <button type="button" class="btn btn-sm detail-quick-product-other-cancel" onclick="app.cancelDetailQuickProductOther()" title="انصراف">×</button>
+              </div>
+            </div>
           </div>
-        </div>
-        <div id="detailQuickProductOtherWrap" class="detail-quick-product-other" hidden>
-          <label class="detail-label" for="detailQuickProductOther">نام محصول <span class="required">*</span></label>
-          <input type="text" class="form-input" id="detailQuickProductOther" placeholder="نام محصول را بنویسید...">
         </div>
         <div class="detail-add-note-actions">
           <button type="button" class="btn btn-primary" onclick="app.addQuickNote('${escapeAttr(c.id)}')">ثبت</button>
@@ -3054,29 +3060,97 @@ export async function clearNextFollowup(customerId) {
   }
 }
 
-export function onDetailQuickProductChange() {
-  const select = document.getElementById('detailQuickProduct')
-  const wrap = document.getElementById('detailQuickProductOtherWrap')
+export function onDetailQuickProductPick() {
+  const select = document.getElementById('detailQuickProductPick')
+  if (!select?.value) return
+  if (select.value === DETAIL_QUICK_PRODUCT_OTHER) {
+    select.hidden = true
+    const wrap = document.getElementById('detailQuickProductOtherWrap')
+    if (wrap) {
+      wrap.hidden = false
+      document.getElementById('detailQuickProductOther')?.focus()
+    }
+    select.value = ''
+    return
+  }
+  addDetailQuickProduct(select.value)
+  select.value = ''
+  syncDetailQuickProductPickOptions()
+}
+
+function addDetailQuickProduct(name) {
+  const trimmed = String(name || '').trim()
+  if (!trimmed) return
+  const key = trimmed.toLowerCase()
+  if (detailQuickSelectedProducts.some(p => p.toLowerCase() === key)) {
+    showToast('این محصول قبلاً اضافه شده')
+    return
+  }
+  detailQuickSelectedProducts.push(trimmed)
+  renderDetailQuickProductChips()
+}
+
+function renderDetailQuickProductChips() {
+  const el = document.getElementById('detailQuickProductChips')
+  if (!el) return
+  el.innerHTML = detailQuickSelectedProducts.map((name, i) =>
+    `<span class="detail-quick-product-chip"><span title="${escapeAttr(name)}">${escapeHtml(name)}</span><button type="button" class="detail-quick-product-chip-remove" aria-label="حذف" onclick="app.removeDetailQuickProduct(${i})">×</button></span>`
+  ).join('')
+  syncDetailQuickProductPickOptions()
+}
+
+function syncDetailQuickProductPickOptions() {
+  const select = document.getElementById('detailQuickProductPick')
+  if (!select || select.hidden) return
+  const selectedSet = new Set(detailQuickSelectedProducts.map(n => n.toLowerCase()))
+  const options = [
+    '<option value="" disabled selected hidden>محصول</option>',
+    ...getSellableNames()
+      .filter(name => !selectedSet.has(name.toLowerCase()))
+      .map(name => `<option value="${escapeAttr(name)}">${escapeHtml(name)}</option>`),
+    `<option value="${DETAIL_QUICK_PRODUCT_OTHER}">سایر</option>`
+  ]
+  select.innerHTML = options.join('')
+}
+
+export function addDetailQuickProductOther() {
   const input = document.getElementById('detailQuickProductOther')
-  if (!select || !wrap) return
-  const isOther = select.value === DETAIL_QUICK_PRODUCT_OTHER
-  wrap.hidden = !isOther
-  if (!isOther && input) input.value = ''
-  if (isOther) input?.focus()
+  const name = input?.value.trim() || ''
+  if (!name) {
+    showToast('نام محصول را وارد کنید')
+    input?.focus()
+    return
+  }
+  addDetailQuickProduct(name)
+  if (input) input.value = ''
+  cancelDetailQuickProductOther()
+}
+
+export function cancelDetailQuickProductOther() {
+  const wrap = document.getElementById('detailQuickProductOtherWrap')
+  if (wrap) wrap.hidden = true
+  const input = document.getElementById('detailQuickProductOther')
+  if (input) input.value = ''
+  const select = document.getElementById('detailQuickProductPick')
+  if (select) {
+    select.hidden = false
+    select.value = ''
+    syncDetailQuickProductPickOptions()
+  }
+}
+
+export function removeDetailQuickProduct(index) {
+  if (index < 0 || index >= detailQuickSelectedProducts.length) return
+  detailQuickSelectedProducts.splice(index, 1)
+  renderDetailQuickProductChips()
 }
 
 /** @returns {{ ok: true, productName: string } | { ok: false, message: string }} */
-function readDetailQuickProductName() {
-  const select = document.getElementById('detailQuickProduct')
-  if (!select?.value) {
-    return { ok: false, message: 'محصول را انتخاب کنید' }
+function readDetailQuickProducts() {
+  if (!detailQuickSelectedProducts.length) {
+    return { ok: false, message: 'حداقل یک محصول انتخاب کنید' }
   }
-  if (select.value === DETAIL_QUICK_PRODUCT_OTHER) {
-    const other = document.getElementById('detailQuickProductOther')?.value.trim() || ''
-    if (!other) return { ok: false, message: 'نام محصول را وارد کنید' }
-    return { ok: true, productName: other }
-  }
-  return { ok: true, productName: select.value }
+  return { ok: true, productName: detailQuickSelectedProducts.join(DETAIL_QUICK_PRODUCTS_SEP) }
 }
 
 export async function addQuickNote(customerId) {
@@ -3089,22 +3163,27 @@ export async function addQuickNote(customerId) {
   }
   const textarea = document.getElementById('detailQuickNote')
   const notes = textarea.value.trim()
-  const type = document.getElementById('detailQuickType').value
-  const result = document.getElementById('detailQuickResult').value
+  const type = document.getElementById('detailQuickType')?.value || ''
+  const result = document.getElementById('detailQuickResult')?.value || ''
   const nextDateRaw = toEnDigits(
     document.getElementById('detailFollowupDate')?.value || ''
   ).trim()
 
   if (!notes) { showToast('توضیحات را وارد کنید'); return }
+  if (!type) { showToast('نوع را انتخاب کنید'); document.getElementById('detailQuickType')?.focus(); return }
+  if (!result) { showToast('نتیجه را انتخاب کنید'); document.getElementById('detailQuickResult')?.focus(); return }
 
-  const product = readDetailQuickProductName()
+  const otherWrap = document.getElementById('detailQuickProductOtherWrap')
+  if (otherWrap && !otherWrap.hidden) {
+    showToast('نام محصول سایر را ثبت کنید یا انصراف دهید')
+    document.getElementById('detailQuickProductOther')?.focus()
+    return
+  }
+
+  const product = readDetailQuickProducts()
   if (!product.ok) {
     showToast(product.message)
-    if (product.message.includes('انتخاب')) {
-      document.getElementById('detailQuickProduct')?.focus()
-    } else {
-      document.getElementById('detailQuickProductOther')?.focus()
-    }
+    document.getElementById('detailQuickProductPick')?.focus()
     return
   }
 
