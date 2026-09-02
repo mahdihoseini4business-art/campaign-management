@@ -2717,6 +2717,8 @@ export async function openCustomerDetail(id, options = {}) {
             </select>
           </div>
           ${nextDateFieldHtml}
+        </div>
+        <div class="detail-add-note-product-row">
           <div class="form-group detail-add-note-field detail-add-note-field--product">
             <div class="detail-quick-products" id="detailQuickProductsBox">
               <div class="detail-quick-product-chips" id="detailQuickProductChips"></div>
@@ -2730,9 +2732,7 @@ export async function openCustomerDetail(id, options = {}) {
               </div>
             </div>
           </div>
-        </div>
-        <div class="detail-add-note-actions">
-          <button type="button" class="btn btn-primary" onclick="app.addQuickNote('${escapeAttr(c.id)}')">ثبت</button>
+          <button type="button" class="btn btn-primary detail-add-note-submit" onclick="app.addQuickNote('${escapeAttr(c.id)}')">ثبت</button>
         </div>
       </div>`
       : (canScheduleFollowup

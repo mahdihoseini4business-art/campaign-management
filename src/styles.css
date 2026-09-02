@@ -1458,13 +1458,12 @@
     flex-wrap: nowrap;
     gap: 6px;
     align-items: stretch;
-    margin-bottom: 0;
-    overflow-x: auto;
+    margin-bottom: 6px;
   }
 
   .detail-add-note-field {
     flex: 1 1 0;
-    min-width: 72px;
+    min-width: 0;
     margin-bottom: 0;
   }
 
@@ -1486,13 +1485,25 @@
   }
 
   .detail-add-note-field--date {
-    flex: 0.95 1 0;
-    min-width: 96px;
+    flex: 1 1 0;
+  }
+
+  .detail-add-note-product-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    align-items: center;
   }
 
   .detail-add-note-field--product {
-    flex: 1.35 1 0;
-    min-width: 120px;
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-bottom: 0;
+  }
+
+  .detail-add-note-submit {
+    flex: 0 0 auto;
+    align-self: center;
   }
 
   .detail-quick-products {
@@ -1501,20 +1512,20 @@
     gap: 4px;
     min-width: 0;
     min-height: 32px;
-    height: 32px;
+    height: auto;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm, 6px);
     background: #fff;
-    padding: 0 4px;
+    padding: 2px 4px;
   }
 
   .detail-quick-product-chips {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 3px;
     flex: 0 1 auto;
     min-width: 0;
-    overflow: hidden;
   }
 
   .detail-quick-product-chip {
@@ -1583,12 +1594,6 @@
     min-width: 24px;
     padding: 2px 6px;
     line-height: 1.2;
-  }
-
-  .detail-add-note-actions {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 8px;
   }
 
   .detail-add-note .form-row {
