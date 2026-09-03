@@ -104,17 +104,14 @@ function dateNum(dateStr) {
   return jalaliToNum(normalizeJalaliDate(dateStr))
 }
 
-/** today | waiting (فردا تا +۳ روز) | overdue | null */
+/** today | waiting (هر تاریخ بعد از امروز) | overdue | null */
 function classifyDate(dateStr) {
   const num = dateNum(dateStr)
   if (num === 99999999) return null
-  const today = getTodayJalaliStr()
-  const todayN = jalaliToNum(today)
+  const todayN = jalaliToNum(getTodayJalaliStr())
   if (num < todayN) return 'overdue'
   if (num === todayN) return 'today'
-  const threeDaysNum = jalaliAddDays(today, 3)
-  if (num <= threeDaysNum) return 'waiting'
-  return null
+  return 'waiting'
 }
 
 function isDoneFollowup(f) {
@@ -645,7 +642,6 @@ export async function renderFollowups() {
       const overdueCount = hasSearch
         ? 0
         : lists.pending.filter(i => i.category === 'overdue').length
-      const distantHint = 'پیگیری‌های بعد از ۳ روز اینجا نیست؛ از پنل مشتری ببینید.'
 
       let title = 'پیگیری‌ای یافت نشد'
       let detail = ''
@@ -657,16 +653,16 @@ export async function renderFollowups() {
         actionsHtml = `<button type="button" class="btn btn-sm" onclick="app.clearFollowupSearch()">پاک کردن سرچ</button>`
       } else if (followupFilter === 'today') {
         title = 'پیگیری برای امروز ندارید ✓'
-        detail = distantHint
+        detail = ''
         if (overdueCount > 0) {
           actionsHtml = `<button type="button" class="btn btn-sm" onclick="app.setFollowupFilter('overdue')">مشاهده معوقه‌ها (${overdueCount})</button>`
         }
       } else if (followupFilter === 'overdue') {
         title = 'معوقه‌ای نیست'
-        detail = distantHint
+        detail = ''
       } else if (followupFilter === 'waiting') {
-        title = 'در ۲–۳ روز آینده موردی نیست'
-        detail = distantHint
+        title = 'پیگیری آینده‌ای نیست'
+        detail = ''
       } else if (followupFilter === 'done') {
         title = hasDateFilter ? 'در این بازه یادداشتی نیست' : 'هنوز یادداشتی ثبت نشده'
         detail = ''
@@ -878,7 +874,7 @@ let followupDonePickOptions = []
 const DONE_PICK_CAT_LABEL = {
   overdue: 'معوقه',
   today: 'امروز',
-  waiting: 'نزدیک'
+  waiting: 'آینده'
 }
 
 function renderFollowupDonePickOptions(query) {
