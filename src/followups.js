@@ -17,6 +17,48 @@ function getFollowupAdvisorFilter() {
   return document.getElementById('filterFollowupAdvisor')?.value || ''
 }
 
+function getFollowupDateFilter() {
+  const dateFrom = document.getElementById('filterFollowupDateFrom')?.value.trim() || ''
+  const dateTo = document.getElementById('filterFollowupDateTo')?.value.trim() || ''
+  return {
+    dateFrom,
+    dateTo,
+    hasDateFilter: !!(dateFrom || dateTo),
+    fromNum: dateFrom ? jalaliToNum(dateFrom) : 0,
+    toNum: dateTo ? jalaliToNum(dateTo) : 99999999
+  }
+}
+
+function followupDateFilterSig() {
+  const { dateFrom, dateTo } = getFollowupDateFilter()
+  return `${dateFrom}|${dateTo}`
+}
+
+function syncFollowupDateFilterVisibility() {
+  const show = followupFilter === 'done'
+  for (const id of ['filterFollowupDateFrom', 'filterFollowupDateTo']) {
+    const el = document.getElementById(id)
+    if (el) el.style.display = show ? '' : 'none'
+  }
+}
+
+function isFollowupInDateRange(f, dateFilter) {
+  if (!dateFilter?.hasDateFilter) return true
+  const d = jalaliDatePart(f?.date || f?.doneAt || '')
+  if (!d) return false
+  const n = jalaliToNum(d)
+  return n >= dateFilter.fromNum && n <= dateFilter.toNum
+}
+
+function countUniqueDoneCustomers(doneItems) {
+  const keys = new Set()
+  for (const item of doneItems || []) {
+    const key = item.customerId || item.id || ''
+    if (key) keys.add(key)
+  }
+  return keys.size
+}
+
 function matchesAdvisorScope(customer, scopePhones) {
   if (!scopePhones) return true
   const phone = normalizePhone(customer?.advisorPhone)
@@ -269,12 +311,16 @@ function getDoneItems(applySearch = true, ctx = null) {
     : ''
   const advisorFilter = applySearch ? getFollowupAdvisorFilter() : ''
   const advisorScope = phonesMatchingAdvisorFilter(advisorFilter, currentUser)
+  const dateFilter = (applySearch && followupFilter === 'done')
+    ? getFollowupDateFilter()
+    : { hasDateFilter: false }
 
   const items = []
   for (const f of data.followups) {
     const customer = customersById.get(f.customerId)
     if (!canSeeFollowupInTab(customer, currentUser, f.createdByPhone)) continue
     if (!matchesAdvisorScope(customer, advisorScope)) continue
+    if (!isFollowupInDateRange(f, dateFilter)) continue
 
     if (search) {
       const name = customer ? customer.name : ''
@@ -392,6 +438,7 @@ export function hasActiveFollowupExportFilter() {
   return !!(
     document.getElementById('searchFollowups')?.value?.trim()
     || getFollowupAdvisorFilter()
+    || getFollowupDateFilter().hasDateFilter
     || followupFilter
   )
 }
@@ -419,7 +466,7 @@ function ensureFollowupBadgeCounts() {
     todayDue: pending.filter(i => dateNum(i.nextDate) === todayN).length,
     waiting: pending.filter(i => i.category === 'waiting').length,
     overdue: pending.filter(i => i.category === 'overdue').length,
-    done: done.length
+    done: countUniqueDoneCustomers(done)
   }
   followupBadgeCountsCache = { version, counts }
   return counts
@@ -446,7 +493,7 @@ function updateFollowupStats(lists = null) {
         today: lists.pending.filter(i => i.category === 'today').length,
         waiting: lists.pending.filter(i => i.category === 'waiting').length,
         overdue: lists.pending.filter(i => i.category === 'overdue').length,
-        done: lists.done.length
+        done: countUniqueDoneCustomers(lists.done)
       }
     : ensureFollowupBadgeCounts()
   const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v }
@@ -461,6 +508,7 @@ export function setFollowupFilter(filter) {
   document.querySelectorAll('.followup-filter-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.filter === filter)
   })
+  syncFollowupDateFilterVisibility()
   renderFollowups()
 }
 
@@ -572,8 +620,11 @@ export async function renderFollowups() {
   const cards = document.getElementById('followupCards')
   if (!tbody) return
 
+  syncFollowupDateFilterVisibility()
+
   const search = toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
-  const cacheKey = `${followupFilter}|${search}|${sortSig(followupSortState)}|${tabPageKey('followups', getPage('followups'))}`
+  const dateSig = followupDateFilterSig()
+  const cacheKey = `${followupFilter}|${search}|${dateSig}|${sortSig(followupSortState)}|${tabPageKey('followups', getPage('followups'))}`
   if (shouldSkipTabRender('followups', cacheKey)) return
 
   try {
@@ -590,6 +641,7 @@ export async function renderFollowups() {
     if (filtered.length === 0) {
       const searchRaw = (document.getElementById('searchFollowups')?.value || '').trim()
       const hasSearch = !!toEnDigits(searchRaw).toLowerCase()
+      const hasDateFilter = getFollowupDateFilter().hasDateFilter
       const overdueCount = hasSearch
         ? 0
         : lists.pending.filter(i => i.category === 'overdue').length
@@ -616,7 +668,7 @@ export async function renderFollowups() {
         title = 'در ۲–۳ روز آینده موردی نیست'
         detail = distantHint
       } else if (followupFilter === 'done') {
-        title = 'هنوز یادداشتی ثبت نشده'
+        title = hasDateFilter ? 'در این بازه یادداشتی نیست' : 'هنوز یادداشتی ثبت نشده'
         detail = ''
       }
 
@@ -629,7 +681,7 @@ export async function renderFollowups() {
     }
 
     const search = toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
-    const page = paginateList('followups', filtered, `${followupFilter}|${search}|${sortSig(followupSortState)}`)
+    const page = paginateList('followups', filtered, `${followupFilter}|${search}|${dateSig}|${sortSig(followupSortState)}`)
     const canEdit = hasPermission('followups_add')
     const users = await getUsersSafe()
     const nameByPhone = (phone) => {
