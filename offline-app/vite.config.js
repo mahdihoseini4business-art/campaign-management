@@ -15,7 +15,8 @@ const SHIM_MAP = {
   'browser-notifications.js': 'browser-notifications-stub.js',
   'config.js': 'config-shim.js',
   'backup-ui.js': 'backup-ui-shim.js',
-  'dm-chat.js': 'dm-chat-stub.js'
+  'dm-chat.js': 'dm-chat-stub.js',
+  'dm-chat-admin.js': 'dm-chat-admin-stub.js'
 }
 
 function resolveOnlineShim(source, importer) {

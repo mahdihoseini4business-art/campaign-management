@@ -8021,8 +8021,8 @@
 
 @media (max-width: 480px) {
   .dm-chat-root {
-    left: 12px;
-    bottom: 12px;
+    left: max(12px, env(safe-area-inset-left));
+    bottom: max(12px, env(safe-area-inset-bottom));
   }
 
   .dm-chat-panel {
@@ -8030,3 +8030,361 @@
     height: min(70vh, calc(100vh - 80px));
   }
 }
+
+body.dm-chat-open {
+  overscroll-behavior: none;
+}
+
+.dm-chat-root {
+  left: max(20px, env(safe-area-inset-left));
+  bottom: max(20px, env(safe-area-inset-bottom));
+}
+
+.dm-chat-admin-bar {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.dm-chat-row-wrap {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid transparent;
+}
+
+.dm-chat-row-wrap .dm-chat-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.dm-chat-row-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 6px 4px 0;
+}
+
+.dm-chat-pin-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.45;
+}
+
+.dm-chat-pin-btn.is-on,
+.dm-chat-pin-btn:hover {
+  opacity: 1;
+  background: var(--row-hover);
+}
+
+.dm-chat-pin-mark {
+  margin-left: 4px;
+  font-size: 12px;
+}
+
+.dm-chat-kind-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--secondary-light);
+  color: var(--secondary);
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.dm-chat-create-group {
+  padding: 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.dm-chat-member-list {
+  max-height: 220px;
+  overflow-y: auto;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.dm-chat-member-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+
+.dm-chat-member-row:last-child {
+  border-bottom: none;
+}
+
+.dm-chat-member-row small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.dm-chat-bubble-sender {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--secondary);
+  margin-bottom: 2px;
+}
+
+/* Chat admin oversight */
+.dm-admin-root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dm-admin-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dm-admin-presets,
+.dm-admin-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dm-admin-custom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.dm-admin-custom.is-hidden {
+  display: none;
+}
+
+.dm-admin-custom .form-input {
+  max-width: 160px;
+}
+
+.dm-admin-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dm-admin-kpi {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.dm-admin-kpi-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.dm-admin-kpi-value {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.dm-admin-kpi-sub {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.dm-admin-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.dm-admin-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  min-width: 0;
+}
+
+.dm-admin-block h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.dm-admin-chart-box {
+  position: relative;
+  height: 260px;
+  margin-bottom: 10px;
+}
+
+.dm-admin-chart-sm {
+  height: 220px;
+}
+
+.dm-admin-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dm-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.dm-admin-table th,
+.dm-admin-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dm-admin-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.dm-admin-inactive {
+  margin: 0;
+  padding-right: 18px;
+  columns: 2;
+  font-size: 13px;
+}
+
+.dm-admin-mini-list {
+  margin: 0;
+  padding-right: 16px;
+  font-size: 11px;
+}
+
+.dm-admin-daily-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.dm-admin-archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(50vh, 480px);
+  overflow-y: auto;
+}
+
+.dm-admin-archive-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: right;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.dm-admin-archive-item:hover {
+  background: var(--row-hover);
+}
+
+.dm-admin-archive-modal {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--paper);
+  max-height: min(60vh, 520px);
+  display: flex;
+  flex-direction: column;
+}
+
+.dm-admin-archive-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.dm-admin-archive-messages {
+  overflow-y: auto;
+  padding: 10px 12px;
+  flex: 1;
+}
+
+.dm-admin-archive-msg {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.dm-admin-archive-msg-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+@media (max-width: 900px) {
+  .dm-admin-kpi-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .dm-admin-split {
+    grid-template-columns: 1fr;
+  }
+
+  .dm-admin-inactive {
+    columns: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .dm-chat-panel {
+    width: calc(100vw - 16px);
+    height: min(78vh, calc(100dvh - 72px));
+    max-height: calc(100dvh - 72px);
+  }
+
+  .dm-chat-tab {
+    max-width: 110px;
+  }
+
+  .dm-admin-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dm-admin-chart-box {
+    height: 220px;
+  }
+
+  .dm-admin-archive-modal {
+    position: fixed;
+    inset: 8px;
+    z-index: 9600;
+    max-height: none;
+    margin: 0;
+  }
+}
+

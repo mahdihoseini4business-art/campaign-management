@@ -18,6 +18,9 @@ const TABLE_LABELS = {
   dm_conversations: 'گفتگوها',
   dm_messages: 'پیام‌ها',
   dm_reads: 'خوانده‌شدن چت',
+  dm_members: 'اعضای چت',
+  dm_pins: 'پین چت',
+  dm_chat_time_daily: 'زمان چت روزانه',
   deletion_log: 'حذف‌های ثبت‌شده'
 }
 

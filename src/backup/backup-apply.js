@@ -20,7 +20,10 @@ const UPSERT_ON_CONFLICT = {
   notification_reads: 'user_phone,notification_id',
   dm_conversations: 'id',
   dm_messages: 'id',
-  dm_reads: 'conversation_id,user_phone'
+  dm_reads: 'conversation_id,user_phone',
+  dm_members: 'conversation_id,user_phone',
+  dm_pins: 'id',
+  dm_chat_time_daily: 'day,user_phone,conversation_id'
 }
 
 const DELETE_ORDER = [...MERGE_ORDER].reverse()
@@ -146,6 +149,23 @@ async function deleteBackupRow(table, key, row) {
     return supabase.from(table).delete().eq('conversation_id', conversationId).eq('user_phone', phone)
   }
 
+  if (table === 'dm_members') {
+    const parts = key.split('\0')
+    const cid = parts[0] ?? row?.conversation_id
+    const phone = parts[1] || row?.user_phone
+    const conversationId = /^\d+$/.test(String(cid)) ? Number(cid) : cid
+    return supabase.from(table).delete().eq('conversation_id', conversationId).eq('user_phone', phone)
+  }
+
+  if (table === 'dm_chat_time_daily') {
+    const parts = key.split('\0')
+    const day = parts[0] ?? row?.day
+    const phone = parts[1] || row?.user_phone
+    const cid = parts[2] ?? row?.conversation_id
+    const conversationId = /^\d+$/.test(String(cid)) ? Number(cid) : cid
+    return supabase.from(table).delete().eq('day', day).eq('user_phone', phone).eq('conversation_id', conversationId)
+  }
+
   const cfg = BACKUP_TABLE_CONFIG[table]
   const pk = cfg?.primaryKey
   if (!pk || Array.isArray(pk)) {
@@ -173,7 +193,10 @@ function tableLabel(table) {
     notification_reads: 'خوانده‌شدن اعلان',
     dm_conversations: 'گفتگوها',
     dm_messages: 'پیام‌ها',
-    dm_reads: 'خوانده‌شدن چت'
+    dm_reads: 'خوانده‌شدن چت',
+    dm_members: 'اعضای چت',
+    dm_pins: 'پین چت',
+    dm_chat_time_daily: 'زمان چت روزانه'
   }
   return labels[table] || table
 }

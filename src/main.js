@@ -1,7 +1,7 @@
 import './styles.css'
 import { toEnDigits, initDigitConversion, hasPermission, hasAnyRefundPermission, showToast, escapeAttr, toggleToolbarActions, closeAllToolbarActions, initToolbarActionsMenus, copyToClipboard } from './utils.js'
 import { loadData, backfillAdvisorPhones, cleanupConversionOrphans } from './data.js'
-import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal as openSettingsModalBase, closeSettingsModal, addUser, deleteUser, startEditUserInfo, cancelEditUserInfo, saveEditUserInfo, saveUserPermissions, togglePermCheckbox, togglePermGroup, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, selectSettingsUser, filterSettingsUsers, backToUsersList, markPermissionsDirty, switchSettingsSection, filterSettingsNav, addDestinationBank, removeDestinationBank, startDestinationBankEdit, cancelDestinationBankEdit, saveDestinationBankEdit, addProductCatalogItem, removeProductCatalogItem, startProductCatalogEdit, cancelProductCatalogEdit, saveProductCatalogEdit, onNewProductKindChange, onEditProductKindChange, onNewProductProfitModeChange, onEditProductProfitModeChange, startProductBundleEdit, cancelProductBundleEdit, saveProductBundleForm, removeProductBundle, runCatalogToBundleMigration, filterViewUserOptions, changeUserGroupAssignment, createSettingsGroup, renameSettingsGroup, deleteSettingsGroup, selectSettingsGroup, backToGroupsList, addSettingsGroupMember, removeSettingsGroupMember, makeGroupManager, addPlatform, removePlatform, updatePlatformField, editPlatform, cancelPlatformEdit, savePlatformEdit, addStatus, removeStatus, updateStatusField, editStatus, cancelStatusEdit, saveStatusEdit, onStatusDragStart, onStatusDragOver, onStatusDrop, addCustomerCode, removeCustomerCode, editCustomerCode, cancelCustomerCodeEdit, saveCustomerCodeEdit, onCustomerCodeDragStart, onCustomerCodeDragOver, onCustomerCodeDrop, onSalesTargetMetricChange, onSalesTargetAllocationChange, onSalesTargetDeadlineChange, onDeadlineUrgencyFieldChange, addSalesTargetFormStage, removeSalesTargetFormStage, onSalesTargetFormStageChange, addDeadlineUrgencyStage, removeDeadlineUrgencyStage, saveDeadlineUrgencySettings, startSalesTargetEdit, cancelSalesTargetEdit, saveSalesTargetForm, removeSalesTarget, renderSalesTargetsSettings, addSalesTargetBarToDraft, removeSalesTargetBarFromDraft, startSalesTargetBarEdit, cancelSalesTargetBarEdit, saveSmsPanelSettings, resetSmsMessageTemplate } from './auth.js'
+import { seedAdmin, doLogin, doLogout, checkSession, applyPermissions, openSettingsModal as openSettingsModalBase, closeSettingsModal, addUser, deleteUser, startEditUserInfo, cancelEditUserInfo, saveEditUserInfo, saveUserPermissions, togglePermCheckbox, togglePermGroup, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, selectSettingsUser, filterSettingsUsers, backToUsersList, markPermissionsDirty, switchSettingsSection as switchSettingsSectionBase, filterSettingsNav, addDestinationBank, removeDestinationBank, startDestinationBankEdit, cancelDestinationBankEdit, saveDestinationBankEdit, addProductCatalogItem, removeProductCatalogItem, startProductCatalogEdit, cancelProductCatalogEdit, saveProductCatalogEdit, onNewProductKindChange, onEditProductKindChange, onNewProductProfitModeChange, onEditProductProfitModeChange, startProductBundleEdit, cancelProductBundleEdit, saveProductBundleForm, removeProductBundle, runCatalogToBundleMigration, filterViewUserOptions, changeUserGroupAssignment, createSettingsGroup, renameSettingsGroup, deleteSettingsGroup, selectSettingsGroup, backToGroupsList, addSettingsGroupMember, removeSettingsGroupMember, makeGroupManager, addPlatform, removePlatform, updatePlatformField, editPlatform, cancelPlatformEdit, savePlatformEdit, addStatus, removeStatus, updateStatusField, editStatus, cancelStatusEdit, saveStatusEdit, onStatusDragStart, onStatusDragOver, onStatusDrop, addCustomerCode, removeCustomerCode, editCustomerCode, cancelCustomerCodeEdit, saveCustomerCodeEdit, onCustomerCodeDragStart, onCustomerCodeDragOver, onCustomerCodeDrop, onSalesTargetMetricChange, onSalesTargetAllocationChange, onSalesTargetDeadlineChange, onDeadlineUrgencyFieldChange, addSalesTargetFormStage, removeSalesTargetFormStage, onSalesTargetFormStageChange, addDeadlineUrgencyStage, removeDeadlineUrgencyStage, saveDeadlineUrgencySettings, startSalesTargetEdit, cancelSalesTargetEdit, saveSalesTargetForm, removeSalesTarget, renderSalesTargetsSettings, addSalesTargetBarToDraft, removeSalesTargetBarFromDraft, startSalesTargetBarEdit, cancelSalesTargetBarEdit, saveSmsPanelSettings, resetSmsMessageTemplate } from './auth.js'
 import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, switchDetailTab, showMoreDetailFollowups, setNextFollowup, clearNextFollowup, addQuickNote, onDetailQuickProductPick, removeDetailQuickProduct, updateCustomerAdvisor, claimUnassignedCustomer, updateCustomerLevel, addProductRow, removeProduct, onCustomerPhoneInput, onCustomerPlatformIdInput, selectCustomerPhoneSuggest, onCustomerPhoneSuggestBlur, onCustomerPhoneKeydown, addCustomerPhoneSlot, removeCustomerPhoneSlot, onCustomerAddressInput, onCustomerAddressPriorityChange, addCustomerAddressSlot, removeCustomerAddressSlot, addProductPayment, removeProductPayment, onDestinationBankSelect, commitSalePayment, commitSaleProductDetails, updateSaleTotalPrice, commitGiftSale, onSaleProductNameChange, onSalePriceInput, markSalePaymentTouched, toggleClosedProductBlock, openStartSaleModal, closeStartSaleModal, confirmStartSale, filterStartSaleCustomers, closeMergeCustomerModal, confirmMergeCustomers, clearCustomerSearch, clearCustomerFilters, onCustomerSearchInput, applyCustomerStatFilter, toggleRequireFollowupOnCreate, syncRequireFollowupOnCreateUi, cancelPendingCustomerCreate, sortCustomers } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, clearFollowupSearch, onFollowupSearchInput, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, openFollowupDonePicker, closeFollowupDonePicker, filterFollowupDonePick, confirmFollowupDonePick, setFollowupDoneNextShortcut, isFollowupDoneNoteDirty, updateFollowupBadge, updateFollowupAdvisorDropdown, sortFollowups } from './followups.js'
 import { renderSales, sortSales, onSalesSearchInput } from './sales.js'
@@ -64,13 +64,32 @@ import {
   openDmChatPanel,
   closeDmChatPanel,
   openDmChatWith,
+  openDmChatConversation,
   selectDmChatTab,
   closeDmChatTab,
   backToDmChatList,
   filterDmChatContacts,
   sendDmChatMessage,
-  onDmChatInputKeydown
+  onDmChatInputKeydown,
+  openDmCreateGroup,
+  onDmGroupTitleInput,
+  filterDmGroupMembers,
+  toggleDmGroupMember,
+  submitDmCreateGroup,
+  toggleDmChatPin
 } from './dm-chat.js'
+import {
+  renderDmChatAdminSection,
+  refreshDmChatAdmin,
+  setDmAdminRange,
+  setDmAdminSubTab,
+  onDmAdminCustomFrom,
+  onDmAdminCustomTo,
+  onDmAdminDailyDate,
+  filterDmAdminArchive,
+  openDmAdminArchive,
+  closeDmAdminArchive
+} from './dm-chat-admin.js'
 import { initLiveSync } from './live-sync.js'
 import { initAppUpdate } from './app-update.js'
 import {
@@ -181,6 +200,13 @@ async function openSettingsModal() {
   syncSaleToastToggleUi()
   syncRequireFollowupOnCreateUi()
   syncBrowserNotifUi()
+}
+
+function switchSettingsSection(sectionId) {
+  switchSettingsSectionBase(sectionId)
+  if (sectionId === 'chat-oversight') {
+    renderDmChatAdminSection().catch(e => console.error('dm chat admin render:', e))
+  }
 }
 
 async function enableBrowserNotifications() {
@@ -317,12 +343,28 @@ const app = {
   openDmChatPanel,
   closeDmChatPanel,
   openDmChatWith,
+  openDmChatConversation,
   selectDmChatTab,
   closeDmChatTab,
   backToDmChatList,
   filterDmChatContacts,
   sendDmChatMessage,
   onDmChatInputKeydown,
+  openDmCreateGroup,
+  onDmGroupTitleInput,
+  filterDmGroupMembers,
+  toggleDmGroupMember,
+  submitDmCreateGroup,
+  toggleDmChatPin,
+  refreshDmChatAdmin,
+  setDmAdminRange,
+  setDmAdminSubTab,
+  onDmAdminCustomFrom,
+  onDmAdminCustomTo,
+  onDmAdminDailyDate,
+  filterDmAdminArchive,
+  openDmAdminArchive,
+  closeDmAdminArchive,
   showToast,
   hasPermission,
   openSettingsModal,

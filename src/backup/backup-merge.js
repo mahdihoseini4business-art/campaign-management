@@ -50,12 +50,15 @@ export const MERGE_ORDER = [
   'notifications',
   'notification_reads',
   'dm_conversations',
+  'dm_members',
   'dm_messages',
-  'dm_reads'
+  'dm_reads',
+  'dm_pins',
+  'dm_chat_time_daily'
 ]
 
 /** Tables where existing online rows are never overwritten by backup. */
-const INSERT_ONLY_TABLES = new Set(['notifications', 'notification_reads', 'dm_messages', 'dm_reads'])
+const INSERT_ONLY_TABLES = new Set(['notifications', 'notification_reads', 'dm_messages', 'dm_reads', 'dm_chat_time_daily'])
 
 function emptySummary() {
   return {

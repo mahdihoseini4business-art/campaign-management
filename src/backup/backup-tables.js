@@ -94,6 +94,24 @@ export const BACKUP_TABLE_CONFIG = Object.freeze({
     orderCol: 'conversation_id',
     ascending: true,
     primaryKey: ['conversation_id', 'user_phone']
+  },
+  dm_members: {
+    select: '*',
+    orderCol: 'conversation_id',
+    ascending: true,
+    primaryKey: ['conversation_id', 'user_phone']
+  },
+  dm_pins: {
+    select: '*',
+    orderCol: 'id',
+    ascending: true,
+    primaryKey: 'id'
+  },
+  dm_chat_time_daily: {
+    select: '*',
+    orderCol: 'day',
+    ascending: true,
+    primaryKey: ['day', 'user_phone', 'conversation_id']
   }
 })
 

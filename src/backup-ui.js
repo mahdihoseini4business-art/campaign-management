@@ -41,7 +41,10 @@ const TABLE_LABELS = {
   notification_reads: 'خوانده‌شدن اعلان',
   dm_conversations: 'گفتگوها',
   dm_messages: 'پیام‌ها',
-  dm_reads: 'خوانده‌شدن چت'
+  dm_reads: 'خوانده‌شدن چت',
+  dm_members: 'اعضای چت',
+  dm_pins: 'پین چت',
+  dm_chat_time_daily: 'زمان چت روزانه'
 }
 
 function formatBackupDate(iso) {

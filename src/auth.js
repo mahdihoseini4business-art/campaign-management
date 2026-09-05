@@ -467,7 +467,8 @@ const SETTINGS_SECTIONS = [
   { id: 'backup', label: 'بکاپ و بازیابی', group: 'سیستم', keywords: 'بکاپ backup restore بازیابی پشتیبان آفلاین carno' },
   { id: 'notif-compose', label: 'ارسال اعلان', group: 'اعلان‌ها', keywords: 'اعلان notification ارسال' },
   { id: 'notif-prefs', label: 'ترجیحات اعلان', group: 'اعلان‌ها', keywords: 'toast فروش زنده ترجیح نوتیفیکیشن مرورگر browser notification' },
-  { id: 'notif-history', label: 'تاریخچه اعلان‌ها', group: 'اعلان‌ها', keywords: 'تاریخچه ارسال‌شده' }
+  { id: 'notif-history', label: 'تاریخچه اعلان‌ها', group: 'اعلان‌ها', keywords: 'تاریخچه ارسال‌شده' },
+  { id: 'chat-oversight', label: 'نظارت چت', group: 'چت', keywords: 'چت chat dm گروه پین آمار آرشیو نظارت' }
 ]
 
 let _settingsSection = 'users'

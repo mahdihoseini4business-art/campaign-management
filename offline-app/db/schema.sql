@@ -179,8 +179,11 @@ CREATE TABLE IF NOT EXISTS notification_reads (
 
 CREATE TABLE IF NOT EXISTS dm_conversations (
   id INTEGER PRIMARY KEY,
-  phone_a TEXT NOT NULL,
-  phone_b TEXT NOT NULL,
+  phone_a TEXT,
+  phone_b TEXT,
+  kind TEXT NOT NULL DEFAULT 'dm',
+  title TEXT,
+  created_by_phone TEXT,
   last_message_at TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   UNIQUE (phone_a, phone_b)
@@ -211,6 +214,35 @@ CREATE TABLE IF NOT EXISTS dm_reads (
 );
 
 CREATE INDEX IF NOT EXISTS idx_dm_reads_user ON dm_reads (user_phone);
+
+CREATE TABLE IF NOT EXISTS dm_members (
+  conversation_id INTEGER NOT NULL,
+  user_phone TEXT NOT NULL,
+  joined_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  PRIMARY KEY (conversation_id, user_phone),
+  FOREIGN KEY (conversation_id) REFERENCES dm_conversations(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_dm_members_user ON dm_members (user_phone);
+
+CREATE TABLE IF NOT EXISTS dm_pins (
+  id INTEGER PRIMARY KEY,
+  conversation_id INTEGER NOT NULL,
+  scope TEXT NOT NULL,
+  user_phone TEXT,
+  pinned_by_phone TEXT,
+  pinned_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (conversation_id) REFERENCES dm_conversations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dm_chat_time_daily (
+  day TEXT NOT NULL,
+  user_phone TEXT NOT NULL,
+  conversation_id INTEGER NOT NULL,
+  seconds INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, user_phone, conversation_id),
+  FOREIGN KEY (conversation_id) REFERENCES dm_conversations(id) ON DELETE CASCADE
+);
 
 CREATE TABLE IF NOT EXISTS deletion_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

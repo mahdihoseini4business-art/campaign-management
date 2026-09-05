@@ -181,6 +181,36 @@ export async function collectFullBackupFromSupabase(opts = {}) {
   tables.dm_reads = dmReadsRes.error ? [] : dmReadsRes.data
   report('dm_reads')
 
+  const dmMembersRes = await fetchAllRows('dm_members', {
+    select: BACKUP_TABLE_CONFIG.dm_members.select,
+    orderCol: 'conversation_id'
+  })
+  if (dmMembersRes.error && !/dm_members|does not exist|relation/i.test(dmMembersRes.error.message || '')) {
+    throw new Error('اعضای چت: ' + dmMembersRes.error.message)
+  }
+  tables.dm_members = dmMembersRes.error ? [] : dmMembersRes.data
+  report('dm_members')
+
+  const dmPinsRes = await fetchAllRows('dm_pins', {
+    select: BACKUP_TABLE_CONFIG.dm_pins.select,
+    orderCol: 'id'
+  })
+  if (dmPinsRes.error && !/dm_pins|does not exist|relation/i.test(dmPinsRes.error.message || '')) {
+    throw new Error('پین چت: ' + dmPinsRes.error.message)
+  }
+  tables.dm_pins = dmPinsRes.error ? [] : dmPinsRes.data
+  report('dm_pins')
+
+  const dmTimeRes = await fetchAllRows('dm_chat_time_daily', {
+    select: BACKUP_TABLE_CONFIG.dm_chat_time_daily.select,
+    orderCol: 'day'
+  })
+  if (dmTimeRes.error && !/dm_chat_time_daily|does not exist|relation/i.test(dmTimeRes.error.message || '')) {
+    throw new Error('زمان چت: ' + dmTimeRes.error.message)
+  }
+  tables.dm_chat_time_daily = dmTimeRes.error ? [] : dmTimeRes.data
+  report('dm_chat_time_daily')
+
   let deletions = opts.deletions
   /** @type {number[]} */
   let deletionLogIds = []

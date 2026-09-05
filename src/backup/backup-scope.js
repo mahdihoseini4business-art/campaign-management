@@ -248,6 +248,12 @@ export function filterTablesForUser(allTables, user, ctx = {}) {
   })
 
   const dm_conversations = (allTables.dm_conversations || []).filter(c => {
+    if (c.kind === 'group') {
+      const memberPhones = (allTables.dm_members || [])
+        .filter(m => String(m.conversation_id) === String(c.id))
+        .map(m => normalizePhone(m.user_phone))
+      return memberPhones.some(p => p && advisorPhones.has(p))
+    }
     const a = normalizePhone(c.phone_a)
     const b = normalizePhone(c.phone_b)
     return (a && advisorPhones.has(a)) || (b && advisorPhones.has(b))
@@ -255,6 +261,13 @@ export function filterTablesForUser(allTables, user, ctx = {}) {
   const dmConvIds = new Set(dm_conversations.map(c => String(c.id || '')).filter(Boolean))
   const dm_messages = (allTables.dm_messages || []).filter(m => dmConvIds.has(String(m.conversation_id || '')))
   const dm_reads = (allTables.dm_reads || []).filter(r => {
+    if (!dmConvIds.has(String(r.conversation_id || ''))) return false
+    const phone = normalizePhone(r.user_phone)
+    return phone && advisorPhones.has(phone)
+  })
+  const dm_members = (allTables.dm_members || []).filter(m => dmConvIds.has(String(m.conversation_id || '')))
+  const dm_pins = (allTables.dm_pins || []).filter(p => dmConvIds.has(String(p.conversation_id || '')))
+  const dm_chat_time_daily = (allTables.dm_chat_time_daily || []).filter(r => {
     if (!dmConvIds.has(String(r.conversation_id || ''))) return false
     const phone = normalizePhone(r.user_phone)
     return phone && advisorPhones.has(phone)
@@ -276,6 +289,9 @@ export function filterTablesForUser(allTables, user, ctx = {}) {
     dm_conversations,
     dm_messages,
     dm_reads,
+    dm_members,
+    dm_pins,
+    dm_chat_time_daily,
   }
 
   for (const table of BACKUP_TABLES) {

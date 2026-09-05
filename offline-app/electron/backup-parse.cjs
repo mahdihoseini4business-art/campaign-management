@@ -8,7 +8,7 @@ const BACKUP_DATA_PREFIX = 'data/'
 const BACKUP_TABLES = [
   'customers', 'followups', 'refunds', 'ownership_transfers', 'ownership_transfer_acks',
   'users', 'groups', 'group_members', 'app_settings', 'notifications', 'notification_reads',
-  'dm_conversations', 'dm_messages', 'dm_reads'
+  'dm_conversations', 'dm_messages', 'dm_reads', 'dm_members', 'dm_pins', 'dm_chat_time_daily'
 ]
 
 class BackupFormatError extends Error {

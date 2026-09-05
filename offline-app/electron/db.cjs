@@ -18,7 +18,10 @@ const BACKUP_TABLES = [
   'notification_reads',
   'dm_conversations',
   'dm_messages',
-  'dm_reads'
+  'dm_reads',
+  'dm_members',
+  'dm_pins',
+  'dm_chat_time_daily'
 ]
 
 /** @type {import('sql.js').Database | null} */
