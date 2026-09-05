@@ -74,6 +74,16 @@ function pad2(n) {
   return String(n).padStart(2, '0')
 }
 
+/** Convert jalaliAddDays numeric result (YYYYMMDD) to YYYY/MM/DD. */
+function jalaliNumToStr(n) {
+  const num = Number(n)
+  if (!num || num === 99999999) return ''
+  const y = Math.floor(num / 10000)
+  const m = Math.floor((num % 10000) / 100)
+  const d = num % 100
+  return `${y}/${pad2(m)}/${pad2(d)}`
+}
+
 function jalaliToIsoDate(jstr) {
   const parts = toEnDigits(String(jstr || '')).split(/[/-]/).map(Number)
   if (parts.length < 3 || parts.some(n => !Number.isFinite(n))) return ''
@@ -107,12 +117,19 @@ function getRangeIso() {
     return { from: iso, to: iso }
   }
   if (rangePreset === '7') {
-    return { from: jalaliToIsoDate(jalaliAddDays(todayJ, -6)), to: jalaliToIsoDate(todayJ) }
+    return {
+      from: jalaliToIsoDate(jalaliNumToStr(jalaliAddDays(todayJ, -6))),
+      to: jalaliToIsoDate(todayJ)
+    }
   }
   if (rangePreset === '30') {
-    return { from: jalaliToIsoDate(jalaliAddDays(todayJ, -29)), to: jalaliToIsoDate(todayJ) }
+    return {
+      from: jalaliToIsoDate(jalaliNumToStr(jalaliAddDays(todayJ, -29))),
+      to: jalaliToIsoDate(todayJ)
+    }
   }
-  const from = jalaliToIsoDate(customFrom) || jalaliToIsoDate(jalaliAddDays(todayJ, -6))
+  const from = jalaliToIsoDate(customFrom)
+    || jalaliToIsoDate(jalaliNumToStr(jalaliAddDays(todayJ, -6)))
   const to = jalaliToIsoDate(customTo) || jalaliToIsoDate(todayJ)
   return from <= to ? { from, to } : { from: to, to: from }
 }
