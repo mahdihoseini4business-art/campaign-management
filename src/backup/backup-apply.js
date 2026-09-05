@@ -17,7 +17,10 @@ const UPSERT_ON_CONFLICT = {
   ownership_transfers: 'id',
   ownership_transfer_acks: 'id',
   notifications: 'id',
-  notification_reads: 'user_phone,notification_id'
+  notification_reads: 'user_phone,notification_id',
+  dm_conversations: 'id',
+  dm_messages: 'id',
+  dm_reads: 'conversation_id,user_phone'
 }
 
 const DELETE_ORDER = [...MERGE_ORDER].reverse()
@@ -135,6 +138,14 @@ async function deleteBackupRow(table, key, row) {
     return supabase.from(table).delete().eq('user_phone', phone).eq('notification_id', nid)
   }
 
+  if (table === 'dm_reads') {
+    const parts = key.split('\0')
+    const cid = parts[0] ?? row?.conversation_id
+    const phone = parts[1] || row?.user_phone
+    const conversationId = /^\d+$/.test(String(cid)) ? Number(cid) : cid
+    return supabase.from(table).delete().eq('conversation_id', conversationId).eq('user_phone', phone)
+  }
+
   const cfg = BACKUP_TABLE_CONFIG[table]
   const pk = cfg?.primaryKey
   if (!pk || Array.isArray(pk)) {
@@ -159,7 +170,10 @@ function tableLabel(table) {
     group_members: 'اعضای گروه',
     app_settings: 'تنظیمات',
     notifications: 'اعلان‌ها',
-    notification_reads: 'خوانده‌شدن اعلان'
+    notification_reads: 'خوانده‌شدن اعلان',
+    dm_conversations: 'گفتگوها',
+    dm_messages: 'پیام‌ها',
+    dm_reads: 'خوانده‌شدن چت'
   }
   return labels[table] || table
 }

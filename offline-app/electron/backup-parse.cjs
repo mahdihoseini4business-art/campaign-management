@@ -7,7 +7,8 @@ const BACKUP_MANIFEST_PATH = 'manifest.json'
 const BACKUP_DATA_PREFIX = 'data/'
 const BACKUP_TABLES = [
   'customers', 'followups', 'refunds', 'ownership_transfers', 'ownership_transfer_acks',
-  'users', 'groups', 'group_members', 'app_settings', 'notifications', 'notification_reads'
+  'users', 'groups', 'group_members', 'app_settings', 'notifications', 'notification_reads',
+  'dm_conversations', 'dm_messages', 'dm_reads'
 ]
 
 class BackupFormatError extends Error {

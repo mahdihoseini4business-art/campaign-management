@@ -57,6 +57,20 @@ import {
   updateNotifMessagePreview
 } from './notifications.js'
 import { initSaleToastFeed, toggleSaleToastSetting, syncSaleToastToggleUi } from './sale-toasts.js'
+import {
+  initDmChat,
+  teardownDmChat,
+  toggleDmChatPanel,
+  openDmChatPanel,
+  closeDmChatPanel,
+  openDmChatWith,
+  selectDmChatTab,
+  closeDmChatTab,
+  backToDmChatList,
+  filterDmChatContacts,
+  sendDmChatMessage,
+  onDmChatInputKeydown
+} from './dm-chat.js'
 import { initLiveSync } from './live-sync.js'
 import { initAppUpdate } from './app-update.js'
 import {
@@ -295,9 +309,22 @@ const app = {
   setMatrixProductPriceMap,
   downloadMatrixImportProblems,
   doLogin,
+  doLogout: () => {
+    teardownDmChat()
+    doLogout()
+  },
+  toggleDmChatPanel,
+  openDmChatPanel,
+  closeDmChatPanel,
+  openDmChatWith,
+  selectDmChatTab,
+  closeDmChatTab,
+  backToDmChatList,
+  filterDmChatContacts,
+  sendDmChatMessage,
+  onDmChatInputKeydown,
   showToast,
   hasPermission,
-  doLogout,
   openSettingsModal,
   closeSettingsModal,
   addUser,
@@ -745,6 +772,7 @@ async function init() {
   try { renderSalesTargetBand() } catch (e) { console.error('renderSalesTargetBand error:', e) }
   refreshNotifications().catch(e => console.error('notifications init error:', e))
   initSaleToastFeed().catch(e => console.error('sale toast init error:', e))
+  initDmChat().catch(e => console.error('dm chat init error:', e))
   initLiveSync().catch(e => console.error('live sync init error:', e))
   try { initBrowserNotifications() } catch (e) { console.error('browser notifications init error:', e) }
 

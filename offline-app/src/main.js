@@ -15,6 +15,9 @@ const TABLE_LABELS = {
   app_settings: 'تنظیمات',
   notifications: 'اعلان‌ها',
   notification_reads: 'خوانده‌شده‌ها',
+  dm_conversations: 'گفتگوها',
+  dm_messages: 'پیام‌ها',
+  dm_reads: 'خوانده‌شدن چت',
   deletion_log: 'حذف‌های ثبت‌شده'
 }
 

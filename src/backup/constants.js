@@ -34,7 +34,10 @@ export const BACKUP_TABLES = Object.freeze([
   'group_members',
   'app_settings',
   'notifications',
-  'notification_reads'
+  'notification_reads',
+  'dm_conversations',
+  'dm_messages',
+  'dm_reads'
 ])
 
 /** Default empty deletions map (filled when deletion_log exists — phase 3). */

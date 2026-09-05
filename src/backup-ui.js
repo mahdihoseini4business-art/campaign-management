@@ -38,7 +38,10 @@ const TABLE_LABELS = {
   group_members: 'اعضای گروه',
   app_settings: 'تنظیمات',
   notifications: 'اعلان‌ها',
-  notification_reads: 'خوانده‌شدن اعلان'
+  notification_reads: 'خوانده‌شدن اعلان',
+  dm_conversations: 'گفتگوها',
+  dm_messages: 'پیام‌ها',
+  dm_reads: 'خوانده‌شدن چت'
 }
 
 function formatBackupDate(iso) {

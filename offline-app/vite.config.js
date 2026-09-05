@@ -14,7 +14,8 @@ const SHIM_MAP = {
   'sale-toasts.js': 'sale-toasts-stub.js',
   'browser-notifications.js': 'browser-notifications-stub.js',
   'config.js': 'config-shim.js',
-  'backup-ui.js': 'backup-ui-shim.js'
+  'backup-ui.js': 'backup-ui-shim.js',
+  'dm-chat.js': 'dm-chat-stub.js'
 }
 
 function resolveOnlineShim(source, importer) {

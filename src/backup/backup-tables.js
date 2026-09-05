@@ -76,6 +76,24 @@ export const BACKUP_TABLE_CONFIG = Object.freeze({
     orderCol: 'user_phone',
     ascending: true,
     primaryKey: ['user_phone', 'notification_id']
+  },
+  dm_conversations: {
+    select: '*',
+    orderCol: 'id',
+    ascending: true,
+    primaryKey: 'id'
+  },
+  dm_messages: {
+    select: '*',
+    orderCol: 'id',
+    ascending: true,
+    primaryKey: 'id'
+  },
+  dm_reads: {
+    select: '*',
+    orderCol: 'conversation_id',
+    ascending: true,
+    primaryKey: ['conversation_id', 'user_phone']
   }
 })
 
@@ -112,7 +130,7 @@ export function recordKey(table, row) {
  */
 export function recordUpdatedAt(table, row) {
   if (!row || typeof row !== 'object') return null
-  const candidates = ['updated_at', 'created_at', 'seen_at', 'read_at', 'requested_at', 'completed_at']
+  const candidates = ['updated_at', 'created_at', 'seen_at', 'read_at', 'last_read_at', 'last_message_at', 'requested_at', 'completed_at']
   for (const col of candidates) {
     const v = row[col]
     if (v) return String(v)

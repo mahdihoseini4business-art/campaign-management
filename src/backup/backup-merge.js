@@ -48,11 +48,14 @@ export const MERGE_ORDER = [
   'ownership_transfers',
   'ownership_transfer_acks',
   'notifications',
-  'notification_reads'
+  'notification_reads',
+  'dm_conversations',
+  'dm_messages',
+  'dm_reads'
 ]
 
 /** Tables where existing online rows are never overwritten by backup. */
-const INSERT_ONLY_TABLES = new Set(['notifications', 'notification_reads'])
+const INSERT_ONLY_TABLES = new Set(['notifications', 'notification_reads', 'dm_messages', 'dm_reads'])
 
 function emptySummary() {
   return {

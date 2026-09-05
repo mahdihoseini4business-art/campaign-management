@@ -137,12 +137,38 @@ async function cascadeUserPhoneChange(oldPhone, newPhone) {
     supabase.from('followups').update({ created_by_phone: newP }).eq('created_by_phone', oldP),
     supabase.from('refunds').update({ advisor_phone: newP }).eq('advisor_phone', oldP),
     supabase.from('refunds').update({ created_by_phone: newP }).eq('created_by_phone', oldP),
-    supabase.from('refunds').update({ updated_by_phone: newP }).eq('updated_by_phone', oldP)
+    supabase.from('refunds').update({ updated_by_phone: newP }).eq('updated_by_phone', oldP),
+    supabase.from('dm_messages').update({ sender_phone: newP }).eq('sender_phone', oldP),
+    supabase.from('dm_reads').update({ user_phone: newP }).eq('user_phone', oldP)
   ]
   const results = await Promise.all(updates)
   results.forEach(({ error }, i) => {
     if (error) console.error('cascadeUserPhoneChange update error:', i, error)
   })
+
+  try {
+    const { data: convs } = await supabase
+      .from('dm_conversations')
+      .select('*')
+      .or(`phone_a.eq.${oldP},phone_b.eq.${oldP}`)
+    for (const c of convs || []) {
+      let a = normalizePhone(c.phone_a) === oldP ? newP : normalizePhone(c.phone_a)
+      let b = normalizePhone(c.phone_b) === oldP ? newP : normalizePhone(c.phone_b)
+      if (!a || !b || a === b) continue
+      if (a > b) {
+        const tmp = a
+        a = b
+        b = tmp
+      }
+      const { error } = await supabase
+        .from('dm_conversations')
+        .update({ phone_a: a, phone_b: b })
+        .eq('id', c.id)
+      if (error) console.error('cascadeUserPhoneChange dm_conversations error:', error)
+    }
+  } catch (e) {
+    console.error('cascadeUserPhoneChange dm conversations:', e)
+  }
 
   const users = await getUsersSafe()
   for (const u of users) {

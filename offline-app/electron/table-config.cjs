@@ -10,7 +10,10 @@ const IMPORT_ORDER = [
   'ownership_transfers',
   'ownership_transfer_acks',
   'notifications',
-  'notification_reads'
+  'notification_reads',
+  'dm_conversations',
+  'dm_messages',
+  'dm_reads'
 ]
 
 /** @type {Record<string, string[]>} */
@@ -53,7 +56,10 @@ const TABLE_COLUMNS = {
     'id', 'title', 'message', 'recipient_phones', 'created_by_phone',
     'created_by_name', 'created_at', 'expires_at'
   ],
-  notification_reads: ['user_phone', 'notification_id', 'read_at']
+  notification_reads: ['user_phone', 'notification_id', 'read_at'],
+  dm_conversations: ['id', 'phone_a', 'phone_b', 'last_message_at', 'created_at'],
+  dm_messages: ['id', 'conversation_id', 'sender_phone', 'body', 'created_at'],
+  dm_reads: ['conversation_id', 'user_phone', 'last_read_message_id', 'last_read_at']
 }
 
 /** Stored as JSON text in SQLite. */
@@ -86,11 +92,15 @@ const PRIMARY_KEYS = {
   group_members: ['group_id', 'user_phone'],
   app_settings: 'key',
   notifications: 'id',
-  notification_reads: ['user_phone', 'notification_id']
+  notification_reads: ['user_phone', 'notification_id'],
+  dm_conversations: 'id',
+  dm_messages: 'id',
+  dm_reads: ['conversation_id', 'user_phone']
 }
 
 const AUTO_ID_TABLES = new Set([
-  'followups', 'refunds', 'ownership_transfers', 'ownership_transfer_acks', 'notifications'
+  'followups', 'refunds', 'ownership_transfers', 'ownership_transfer_acks', 'notifications',
+  'dm_conversations', 'dm_messages'
 ])
 
 function recordKey(table, row) {

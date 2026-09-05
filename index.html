@@ -1944,5 +1944,34 @@
 <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 <div class="sale-toast-stack" id="saleToastStack" aria-live="polite" aria-relevant="additions"></div>
 
+<!-- DM chat widget (bottom-left) -->
+<div class="dm-chat-root" id="dmChatRoot" hidden>
+  <div class="dm-chat-panel" id="dmChatPanel" hidden role="dialog" aria-label="چت خصوصی">
+    <div class="dm-chat-panel-header">
+      <button type="button" class="dm-chat-icon-btn" id="dmChatBackBtn" hidden onclick="app.backToDmChatList()" aria-label="بازگشت به لیست">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <div class="dm-chat-panel-title" id="dmChatTitle">گفتگوها</div>
+      <button type="button" class="dm-chat-icon-btn" onclick="app.closeDmChatPanel()" aria-label="بستن">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="dm-chat-tabs" id="dmChatTabs" hidden></div>
+    <div class="dm-chat-body" id="dmChatBody"></div>
+    <div class="dm-chat-composer" id="dmChatComposer" hidden>
+      <textarea id="dmChatInput" rows="1" placeholder="پیام خود را بنویسید…" onkeydown="app.onDmChatInputKeydown(event)"></textarea>
+      <button type="button" class="dm-chat-send" onclick="app.sendDmChatMessage()" aria-label="ارسال">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+      </button>
+    </div>
+  </div>
+  <button type="button" class="dm-chat-fab" id="dmChatFab" onclick="app.toggleDmChatPanel()" aria-label="چت">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+    <span class="dm-chat-badge" id="dmChatBadge" hidden>0</span>
+  </button>
+</div>
+
 </body>
 </html>

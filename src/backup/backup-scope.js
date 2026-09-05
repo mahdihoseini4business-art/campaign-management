@@ -247,6 +247,19 @@ export function filterTablesForUser(allTables, user, ctx = {}) {
     return !nid || notificationIds.has(nid)
   })
 
+  const dm_conversations = (allTables.dm_conversations || []).filter(c => {
+    const a = normalizePhone(c.phone_a)
+    const b = normalizePhone(c.phone_b)
+    return (a && advisorPhones.has(a)) || (b && advisorPhones.has(b))
+  })
+  const dmConvIds = new Set(dm_conversations.map(c => String(c.id || '')).filter(Boolean))
+  const dm_messages = (allTables.dm_messages || []).filter(m => dmConvIds.has(String(m.conversation_id || '')))
+  const dm_reads = (allTables.dm_reads || []).filter(r => {
+    if (!dmConvIds.has(String(r.conversation_id || ''))) return false
+    const phone = normalizePhone(r.user_phone)
+    return phone && advisorPhones.has(phone)
+  })
+
   /** @type {Record<string, Record<string, unknown>[]>} */
   const scoped = {
     customers,
@@ -260,6 +273,9 @@ export function filterTablesForUser(allTables, user, ctx = {}) {
     app_settings: [...(allTables.app_settings || [])],
     notifications,
     notification_reads,
+    dm_conversations,
+    dm_messages,
+    dm_reads,
   }
 
   for (const table of BACKUP_TABLES) {

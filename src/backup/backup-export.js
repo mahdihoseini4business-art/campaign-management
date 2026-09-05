@@ -151,6 +151,36 @@ export async function collectFullBackupFromSupabase(opts = {}) {
   tables.notification_reads = readsRes.error ? [] : readsRes.data
   report('notification_reads')
 
+  const dmConvRes = await fetchAllRows('dm_conversations', {
+    select: BACKUP_TABLE_CONFIG.dm_conversations.select,
+    orderCol: 'id'
+  })
+  if (dmConvRes.error && !/dm_conversations|does not exist|relation/i.test(dmConvRes.error.message || '')) {
+    throw new Error('گفتگوها: ' + dmConvRes.error.message)
+  }
+  tables.dm_conversations = dmConvRes.error ? [] : dmConvRes.data
+  report('dm_conversations')
+
+  const dmMsgRes = await fetchAllRows('dm_messages', {
+    select: BACKUP_TABLE_CONFIG.dm_messages.select,
+    orderCol: 'id'
+  })
+  if (dmMsgRes.error && !/dm_messages|does not exist|relation/i.test(dmMsgRes.error.message || '')) {
+    throw new Error('پیام‌ها: ' + dmMsgRes.error.message)
+  }
+  tables.dm_messages = dmMsgRes.error ? [] : dmMsgRes.data
+  report('dm_messages')
+
+  const dmReadsRes = await fetchAllRows('dm_reads', {
+    select: BACKUP_TABLE_CONFIG.dm_reads.select,
+    orderCol: 'conversation_id'
+  })
+  if (dmReadsRes.error && !/dm_reads|does not exist|relation/i.test(dmReadsRes.error.message || '')) {
+    throw new Error('خوانده‌شدن چت: ' + dmReadsRes.error.message)
+  }
+  tables.dm_reads = dmReadsRes.error ? [] : dmReadsRes.data
+  report('dm_reads')
+
   let deletions = opts.deletions
   /** @type {number[]} */
   let deletionLogIds = []
