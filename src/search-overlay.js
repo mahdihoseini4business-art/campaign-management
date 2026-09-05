@@ -47,7 +47,7 @@ function ensureOverlay(host) {
     el.setAttribute('aria-live', 'polite')
     el.innerHTML = `
       <div class="table-search-overlay-inner">
-        <div class="table-search-overlay-spinner" aria-hidden="true"></div>
+        <span class="loader" aria-hidden="true"></span>
         <div class="table-search-overlay-title">در حال جستجو…</div>
         <div class="table-search-overlay-detail">لطفاً کمی صبر کنید</div>
       </div>
