@@ -1357,6 +1357,7 @@
     </div>
     <div class="modal-body">
       <input type="hidden" id="followupDoneId">
+      <input type="hidden" id="followupDoneFollowupId">
       <div id="followupDoneInfo" class="followup-done-info"></div>
       <div id="followupDonePrevNote" class="followup-done-prev" hidden></div>
       <div class="form-group">
@@ -1399,6 +1400,13 @@
       <div class="form-row">
         <div class="form-group"><label for="followupDate">تاریخ و ساعت تماس <span class="required">*</span></label><input type="text" class="form-input" id="followupDate" placeholder="مثال: 1405/05/01 14:30" data-jdp></div>
         <div class="form-group"><label for="followupNextDate">پیگیری بعدی <span class="settings-optional">(اختیاری — برای صف)</span></label><input type="text" class="form-input" id="followupNextDate" placeholder="اگر می‌خواهید در صف بیاید" data-jdp></div>
+      </div>
+      <div class="form-group">
+        <label for="followupAssignTo">ارجاع به <span class="settings-optional">(اختیاری)</span></label>
+        <select class="form-select" id="followupAssignTo">
+          <option value="">ارجاع نده (برای خودم)</option>
+        </select>
+        <div class="form-hint" style="margin-top:6px;">با ارجاع، تاریخ صف خودتان عوض نمی‌شود؛ همکار ارجاع را در صف خودش می‌بیند.</div>
       </div>
       <div class="form-row">
         <div class="form-group">

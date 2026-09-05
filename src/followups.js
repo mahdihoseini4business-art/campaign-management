@@ -1,4 +1,4 @@
-import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB } from './data.js'
+import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB, markFollowupDoneInDB } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone, formatSoldAt24h, soldAtTimePart, jalaliDatePart, formatTeamFilterLabel, isPaymentFilled, isGiftSale, isProductPriceLocked, ensureProductPayments } from './utils.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
@@ -181,16 +181,46 @@ function isNonOwnerFollowupCreator(customer, createdByPhone, currentUser) {
   return true
 }
 
+/** Current user is the assignee of an ارجاع پیگیری. */
+function isFollowupAssignee(assignedToPhone, currentUser) {
+  const me = normalizePhone(currentUser?.phone)
+  const assignee = normalizePhone(assignedToPhone)
+  return !!(me && assignee && me === assignee)
+}
+
+function isOpenAssignedFollowup(f) {
+  if (!f) return false
+  if (!normalizePhone(f.assignedToPhone)) return false
+  if (!normalizeJalaliDate(f.nextDate)) return false
+  if (isDoneFollowup(f) || f.status === 'done') return false
+  return true
+}
+
+/** Can current user see this assigned follow-up in the queue (self / team / org / advisor filter). */
+function canSeeAssignedFollowup(f, currentUser, advisorScope) {
+  const assignee = normalizePhone(f?.assignedToPhone)
+  if (!assignee) return false
+  if (advisorScope) return advisorScope.has(assignee)
+  if (isFollowupAssignee(assignee, currentUser)) return true
+  if (canViewOrgWideData(null, currentUser)) return true
+  if (currentUser?.isGroupManager) {
+    const team = phonesMatchingAdvisorFilter('__team__', currentUser)
+    return !!(team && team.has(assignee))
+  }
+  return false
+}
+
 /**
  * Follow-ups tab visibility for a single follow-up row:
  * - Owner / team / org-wide: via canViewScopedCustomer
  * - Creator of a follow-up on someone else's customer: also sees it
- * - Owner-created follow-ups: only via ownership path
+ * - Assignee of ارجاع پیگیری: also sees it
  */
-function canSeeFollowupInTab(customer, currentUser, createdByPhone) {
+function canSeeFollowupInTab(customer, currentUser, createdByPhone, assignedToPhone = '') {
   if (!canSeeCustomerType(customer)) return false
   if (canViewScopedCustomer(customer, currentUser)) return true
-  return isNonOwnerFollowupCreator(customer, createdByPhone, currentUser)
+  if (isNonOwnerFollowupCreator(customer, createdByPhone, currentUser)) return true
+  return isFollowupAssignee(assignedToPhone, currentUser)
 }
 
 /**
@@ -298,6 +328,77 @@ function getPendingItems(applySearch = true, followupsByCustomer = null) {
   return items
 }
 
+/** Pending ارجاع پیگیری rows assigned to me/team — independent of customer.nextFollowupDate. */
+function getAssignedPendingItems(applySearch = true, ctx = null) {
+  const data = getData()
+  const currentUser = getCurrentUser()
+  const customersById = ctx?.customersById ?? getCustomersById()
+  const search = applySearch
+    ? toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
+    : ''
+  const advisorFilter = applySearch ? getFollowupAdvisorFilter() : ''
+  const advisorScope = phonesMatchingAdvisorFilter(advisorFilter, currentUser)
+
+  const items = []
+  for (const f of data.followups) {
+    if (!isOpenAssignedFollowup(f)) continue
+    if (!canSeeAssignedFollowup(f, currentUser, advisorScope)) continue
+
+    const customer = customersById.get(f.customerId)
+    if (!canSeeCustomerType(customer)) continue
+
+    const category = classifyDate(f.nextDate)
+    if (!category) continue
+
+    if (search) {
+      const name = customer ? customer.name : ''
+      const extras = safeSearchExtras(customer)
+      if (!matchesTabSearch(search, [
+        f.customerId,
+        name,
+        ...getCustomerPhones(customer),
+        customer?.advisor,
+        f.notes,
+        f.type,
+        f.result,
+        f.date,
+        f.nextDate,
+        f.assignedByPhone,
+        ...extras.products,
+        ...extras.depositors
+      ])) continue
+    }
+
+    const phones = customer ? formatPhonesDisplay(customer) : { text: '', extra: 0 }
+    items.push({
+      kind: 'assigned',
+      id: f.id,
+      customerId: f.customerId,
+      customerName: customer ? (customer.name || customer.platformId || customer.id) : '—',
+      customerPhone: phones.text || '',
+      customerPhoneExtra: phones.extra,
+      advisor: customer?.advisor || '',
+      date: f.date || '',
+      type: f.type || '—',
+      result: f.result || '—',
+      nextDate: normalizeJalaliDate(f.nextDate),
+      notes: followupNoteText(f),
+      createdByPhone: f.createdByPhone || '',
+      assignedToPhone: f.assignedToPhone || '',
+      assignedByPhone: f.assignedByPhone || '',
+      setByOther: true,
+      category
+    })
+  }
+
+  items.sort((a, b) => {
+    const d = dateNum(a.nextDate) - dateNum(b.nextDate)
+    if (d !== 0) return d
+    return String(a.id || '').localeCompare(String(b.id || ''), undefined, { numeric: true })
+  })
+  return items
+}
+
 /** History items = every followup/note on a customer (timeline), not only «انجام شد» queue completions. */
 function getDoneItems(applySearch = true, ctx = null) {
   const data = getData()
@@ -315,8 +416,12 @@ function getDoneItems(applySearch = true, ctx = null) {
   const items = []
   for (const f of data.followups) {
     const customer = customersById.get(f.customerId)
-    if (!canSeeFollowupInTab(customer, currentUser, f.createdByPhone)) continue
-    if (!matchesAdvisorScope(customer, advisorScope)) continue
+    if (!canSeeFollowupInTab(customer, currentUser, f.createdByPhone, f.assignedToPhone)) continue
+    if (advisorScope) {
+      const ownerOk = matchesAdvisorScope(customer, advisorScope)
+      const assigneeOk = advisorScope.has(normalizePhone(f.assignedToPhone))
+      if (!ownerOk && !assigneeOk) continue
+    }
     if (!isFollowupInDateRange(f, dateFilter)) continue
 
     if (search) {
@@ -355,6 +460,8 @@ function getDoneItems(applySearch = true, ctx = null) {
       nextDate: f.nextDate || '',
       notes: f.notes || f.doneNote || '',
       createdByPhone: f.createdByPhone || '',
+      assignedToPhone: f.assignedToPhone || '',
+      assignedByPhone: f.assignedByPhone || '',
       setByOther,
       wasOverdue: !!f.wasOverdue || f.type === 'پیگیری معوقه انجام‌شده',
       category: 'done'
@@ -389,10 +496,17 @@ export function sortFollowups(field) {
 function buildFollowupLists(applySearch = true) {
   const followupsByCustomer = getFollowupsByCustomerId()
   const customersById = getCustomersById()
+  const ownerPending = getPendingItems(applySearch, followupsByCustomer)
+  const assignedPending = getAssignedPendingItems(applySearch, { customersById })
+  const pending = [...ownerPending, ...assignedPending].sort((a, b) => {
+    const d = dateNum(a.nextDate) - dateNum(b.nextDate)
+    if (d !== 0) return d
+    return String(a.customerId || '').localeCompare(String(b.customerId || ''), 'fa')
+  })
   return {
     followupsByCustomer,
     customersById,
-    pending: getPendingItems(applySearch, followupsByCustomer),
+    pending,
     done: getDoneItems(applySearch, { customersById })
   }
 }
@@ -413,7 +527,7 @@ export function getFilteredFollowups() {
   return getData().followups.filter(f => {
     const customer = customersById.get(f.customerId)
     const name = customer ? customer.name : ''
-    if (!canSeeFollowupInTab(customer, currentUser, f.createdByPhone)) return false
+    if (!canSeeFollowupInTab(customer, currentUser, f.createdByPhone, f.assignedToPhone)) return false
     const extras = getCustomerSearchExtras(customer)
     return matchesTabSearch(search, [
       f.customerId,
@@ -544,15 +658,18 @@ function followupDueMeta(item) {
     return days === 1 ? '۱ روز تأخیر' : `${days} روز تأخیر`
   }
   if (item.category === 'today') return 'امروز'
-  if (item.category === 'waiting') {
+  if (item.category === 'waiting' || item.kind === 'assigned') {
     const days = jalaliDiffDays(today, item.nextDate)
-    if (days == null || days <= 0) return ''
+    if (days == null || days <= 0) return item.kind === 'assigned' && item.category === 'today' ? 'امروز' : ''
     return days === 1 ? '۱ روز دیگر' : `${days} روز دیگر`
   }
   return ''
 }
 
 function followupCardBadge(item) {
+  if (item.kind === 'assigned') {
+    return '<span class="followup-card-badge is-assigned">ارجاعی</span>'
+  }
   if (item.kind === 'pending' && item.category === 'overdue') {
     return '<span class="overdue-tag">معوقه</span>'
   }
@@ -565,8 +682,11 @@ function followupCardBadge(item) {
 
 function renderFollowupItemActions(item, { canEdit }) {
   let actionBtns = ''
-  if (item.kind === 'pending') {
-    actionBtns += `<button type="button" class="btn btn-sm btn-done" title="انجام شد" onclick="event.stopPropagation();app.openFollowupDoneModal('${escapeAttr(item.customerId)}')">✓ انجام شد</button>`
+  if (item.kind === 'pending' || item.kind === 'assigned') {
+    const followupIdArg = item.kind === 'assigned' && item.id != null
+      ? `, '${escapeAttr(String(item.id))}'`
+      : ''
+    actionBtns += `<button type="button" class="btn btn-sm btn-done" title="انجام شد" onclick="event.stopPropagation();app.openFollowupDoneModal('${escapeAttr(item.customerId)}'${followupIdArg})">✓ انجام شد</button>`
   } else {
     if (canEdit) {
       actionBtns += `<button type="button" class="btn-icon" title="ویرایش" onclick="event.stopPropagation();app.editFollowup('${escapeAttr(String(item.id))}')">✏</button>`
@@ -584,12 +704,13 @@ function renderFollowupCard(item, { canEdit, nameByPhone }) {
     extra: item.customerPhoneExtra || 0
   })
   const dueMeta = followupDueMeta(item)
-  const dueLabel = item.kind === 'pending'
+  const dueLabel = (item.kind === 'pending' || item.kind === 'assigned')
     ? `موعد: ${escapeHtml(item.nextDate || '—')}${dueMeta ? ` (${escapeHtml(dueMeta)})` : ''}`
     : `تاریخ: ${escapeHtml(formatFollowupHistoryAt(item) || '—')}`
-  const setterName = item.setByOther ? (nameByPhone(item.createdByPhone) || item.createdByPhone) : ''
+  const fromPhone = item.kind === 'assigned' ? item.assignedByPhone : (item.setByOther ? item.createdByPhone : '')
+  const setterName = fromPhone ? (nameByPhone(fromPhone) || fromPhone) : ''
   const setterBadge = setterName
-    ? `<div class="followup-card-from">از: ${escapeHtml(setterName)}</div>`
+    ? `<div class="followup-card-from">${item.kind === 'assigned' ? 'ارجاع از' : 'از'}: ${escapeHtml(setterName)}</div>`
     : ''
   const notes = item.notes ? escapeHtml(item.notes) : '—'
   const metaDone = item.kind === 'done'
@@ -695,25 +816,34 @@ export async function renderFollowups() {
         : ''
 
       const actionBtns = renderFollowupItemActions(item, { canEdit })
+      const assignedBadge = item.kind === 'assigned'
+        ? ' <span class="followup-card-badge is-assigned">ارجاعی</span>'
+        : ''
       const overdueBadge = item.wasOverdue ? ' <span class="overdue-tag">معوقه</span>' : ''
       const phoneHtml = renderFollowupPhoneCell(item.customerPhone, {
         extra: item.customerPhoneExtra || 0
       })
 
-      const setterName = item.setByOther ? (nameByPhone(item.createdByPhone) || item.createdByPhone) : ''
+      const fromPhone = item.kind === 'assigned'
+        ? item.assignedByPhone
+        : (item.setByOther ? item.createdByPhone : '')
+      const setterName = fromPhone ? (nameByPhone(fromPhone) || fromPhone) : ''
       const setterBadge = setterName
-        ? ` <span style="display:inline-block;margin-top:2px;font-size:11px;color:var(--text-muted);">از: ${escapeHtml(setterName)}</span>`
+        ? ` <span style="display:inline-block;margin-top:2px;font-size:11px;color:var(--text-muted);">${item.kind === 'assigned' ? 'ارجاع از' : 'از'}: ${escapeHtml(setterName)}</span>`
         : ''
       const notesHtml = item.notes
         ? `${escapeHtml(item.notes)}${setterBadge}`
         : (setterBadge || '—')
+      const dateCell = (item.kind === 'pending' || item.kind === 'assigned')
+        ? (escapeHtml(item.nextDate) || '—')
+        : (escapeHtml(formatFollowupHistoryAt(item)) || '—')
 
       return `<tr class="clickable-row" onclick="app.onCustomerRowClick(event, '${escapeAttr(item.customerId)}')">
         ${selectCell}
-        <td class="followup-name-cell">${escapeHtml(item.customerName)}${overdueBadge}</td>
+        <td class="followup-name-cell">${escapeHtml(item.customerName)}${assignedBadge}${overdueBadge}</td>
         <td class="followup-phone-td">${phoneHtml}</td>
         <td style="font-size:12px;">${escapeHtml(item.advisor) || '—'}</td>
-        <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;direction:ltr;text-align:right;">${escapeHtml(formatFollowupHistoryAt(item)) || '—'}</td>
+        <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;direction:ltr;text-align:right;">${dateCell}</td>
         <td>${escapeHtml(item.type)}</td>
         <td>${escapeHtml(item.result)}</td>
         <td style="font-size:13px;">${escapeHtml(item.nextDate) || '—'}</td>
@@ -801,32 +931,48 @@ export function isFollowupDoneNoteDirty() {
   return note.trim().length > 0
 }
 
-export function openFollowupDoneModal(customerId) {
+export function openFollowupDoneModal(customerId, followupId = null) {
   if (!requirePermission('followups_add')) return
   const data = getData()
   const customer = data.customers.find(c => c.id === customerId)
   if (!customer) { showToast('مشتری یافت نشد'); return }
 
-  const cat = classifyDate(customer.nextFollowupDate)
+  const assignedFollowup = followupId != null && followupId !== ''
+    ? data.followups.find(x => String(x.id) === String(followupId))
+    : null
+  const dueDate = assignedFollowup
+    ? normalizeJalaliDate(assignedFollowup.nextDate)
+    : customer.nextFollowupDate
+  const cat = classifyDate(dueDate)
   const name = customer.name || customer.platformId || customerId
   const statusKey = customer.status || ''
   const statusLabel = getStatusLabels()[statusKey] || statusKey || '—'
   const statusClass = getStatusClass(statusKey)
-  const lastNotes = getLatestCustomerNotes(customerId, data.followups)
+  const lastNotes = assignedFollowup
+    ? (followupNoteText(assignedFollowup) || getLatestCustomerNotes(customerId, data.followups))
+    : getLatestCustomerNotes(customerId, data.followups)
 
   document.getElementById('followupDoneId').value = customerId
+  const followupIdEl = document.getElementById('followupDoneFollowupId')
+  if (followupIdEl) followupIdEl.value = assignedFollowup ? String(assignedFollowup.id) : ''
   document.getElementById('followupDoneNote').value = ''
   const nextDateEl = document.getElementById('followupDoneNextDate')
   if (nextDateEl) nextDateEl.value = ''
+
+  const assignedHint = assignedFollowup
+    ? '<div style="color:var(--warning);font-weight:600;">این یک ارجاع پیگیری است — تاریخ صف مالک مشتری تغییر نمی‌کند.</div>'
+    : ''
 
   document.getElementById('followupDoneInfo').innerHTML = `
     <div>
       <strong>مشتری:</strong> ${escapeHtml(name)}
       <span style="color:var(--text-muted);">(${escapeHtml(customerId)})</span>
       <span class="status-badge ${escapeAttr(statusClass)}">${escapeHtml(statusLabel)}</span>
+      ${assignedFollowup ? '<span class="followup-card-badge is-assigned">ارجاعی</span>' : ''}
     </div>
     <div><strong>شماره:</strong> ${renderFollowupDonePhoneActions(customer)}</div>
-    <div><strong>تاریخ پیگیری:</strong> ${escapeHtml(customer.nextFollowupDate || '—')}</div>
+    <div><strong>تاریخ پیگیری:</strong> ${escapeHtml(dueDate || '—')}</div>
+    ${assignedHint}
     ${cat === 'overdue' ? '<div style="color:var(--danger);font-weight:600;">⚠ این پیگیری معوقه است</div>' : ''}
   `
 
@@ -846,9 +992,9 @@ export function openFollowupDoneModal(customerId) {
 
   const nextLabel = document.querySelector('label[for="followupDoneNextDate"]')
   if (nextLabel) {
-    // For "done" we should never force scheduling a next follow-up forever.
-    // User can mark completion and optionally schedule the next date.
-    nextLabel.innerHTML = 'پیگیری بعدی <span class="settings-optional">(اختیاری)</span>'
+    nextLabel.innerHTML = assignedFollowup
+      ? 'پیگیری بعدی ارجاعی <span class="settings-optional">(اختیاری — فقط برای شما)</span>'
+      : 'پیگیری بعدی <span class="settings-optional">(اختیاری)</span>'
   }
 
   document.getElementById('followupDoneModal').classList.add('active')
@@ -897,7 +1043,8 @@ function renderFollowupDonePickOptions(query) {
 /** Toolbar CTA: pick a queued customer, then open the done modal. */
 export function openFollowupDonePicker() {
   if (!requirePermission('followups_add')) return
-  const pending = getPendingItems(false)
+  const lists = buildFollowupLists(false)
+  const pending = lists.pending
   const catOrder = { overdue: 0, today: 1, waiting: 2 }
   followupDonePickOptions = pending
     .slice()
@@ -908,11 +1055,15 @@ export function openFollowupDonePicker() {
     })
     .map(item => {
       const catLabel = DONE_PICK_CAT_LABEL[item.category] || ''
-      const label = `${catLabel} · ${item.nextDate || '—'} — ${item.customerId} — ${item.customerName}`
+      const assignedTag = item.kind === 'assigned' ? 'ارجاعی · ' : ''
+      const label = `${assignedTag}${catLabel} · ${item.nextDate || '—'} — ${item.customerId} — ${item.customerName}`
+      const pickId = item.kind === 'assigned' && item.id != null
+        ? `a:${item.id}`
+        : item.customerId
       return {
-        id: item.customerId,
+        id: pickId,
         label,
-        search: toEnDigits(`${item.customerId} ${item.customerName} ${item.customerPhone} ${item.nextDate} ${catLabel}`).toLowerCase()
+        search: toEnDigits(`${item.customerId} ${item.customerName} ${item.customerPhone} ${item.nextDate} ${catLabel} ارجاعی`).toLowerCase()
       }
     })
 
@@ -937,27 +1088,36 @@ export function closeFollowupDonePicker() {
 }
 
 export function confirmFollowupDonePick() {
-  const customerId = document.getElementById('followupDonePickCustomer')?.value
-  if (!customerId) {
+  const pickId = document.getElementById('followupDonePickCustomer')?.value
+  if (!pickId) {
     showToast('مشتری را انتخاب کنید')
     return
   }
   closeFollowupDonePicker()
-  openFollowupDoneModal(customerId)
+  if (String(pickId).startsWith('a:')) {
+    const followupId = String(pickId).slice(2)
+    const f = getData().followups.find(x => String(x.id) === followupId)
+    if (!f) {
+      showToast('ارجاع پیگیری یافت نشد')
+      return
+    }
+    openFollowupDoneModal(f.customerId, f.id)
+    return
+  }
+  openFollowupDoneModal(pickId)
 }
 
 export async function confirmFollowupDone() {
   if (!requirePermission('followups_add')) return
   const data = getData()
   const customerId = document.getElementById('followupDoneId').value
+  const assignedFollowupId = document.getElementById('followupDoneFollowupId')?.value || ''
   const note = document.getElementById('followupDoneNote').value.trim()
   const nextDate = toEnDigits(
     document.getElementById('followupDoneNextDate')?.value || ''
   ).trim()
 
   if (!note) { showToast('یادداشت را وارد کنید'); return }
-  // Do not require "next follow-up date" here.
-  // Clearing `nextFollowupDate` is the correct way to stop further follow-ups.
   if (nextDate && !/^\d{4}\/\d{2}\/\d{2}$/.test(nextDate)) {
     showToast('فرمت تاریخ پیگیری بعدی صحیح نیست (1405/05/01)')
     return
@@ -966,14 +1126,67 @@ export async function confirmFollowupDone() {
   const idx = data.customers.findIndex(c => c.id === customerId)
   if (idx === -1) { showToast('مشتری یافت نشد'); return }
   const customer = data.customers[idx]
-
-  const cat = classifyDate(customer.nextFollowupDate)
-  const wasOverdue = cat === 'overdue'
   const { dateTime } = getNowJalaliDateTime()
   const doneByPhone = normalizePhone(getCurrentUser()?.phone || '')
-  const noteType = wasOverdue ? 'پیگیری معوقه انجام‌شده' : 'پیگیری انجام‌شده'
 
   try {
+    if (assignedFollowupId) {
+      const existing = data.followups.find(x => String(x.id) === String(assignedFollowupId))
+      if (!existing) { showToast('ارجاع پیگیری یافت نشد'); return }
+      const cat = classifyDate(existing.nextDate)
+      const wasOverdue = cat === 'overdue'
+      await markFollowupDoneInDB(existing.id, {
+        doneAt: dateTime,
+        doneByPhone,
+        doneNote: note,
+        wasOverdue
+      })
+      const memIdx = data.followups.indexOf(existing)
+      if (memIdx !== -1) {
+        data.followups[memIdx] = {
+          ...existing,
+          status: 'done',
+          doneAt: dateTime,
+          doneByPhone,
+          doneNote: note,
+          wasOverdue,
+          notes: note || existing.notes
+        }
+      }
+
+      if (nextDate) {
+        const reassign = {
+          customerId,
+          date: dateTime,
+          type: 'ارجاع پیگیری',
+          result: 'پیگیری',
+          nextDate,
+          notes: note,
+          createdByPhone: doneByPhone,
+          status: 'pending',
+          assignedToPhone: doneByPhone,
+          assignedByPhone: normalizePhone(existing.assignedByPhone || doneByPhone),
+          assignedAt: dateTime
+        }
+        const newId = await saveFollowupToDB(reassign)
+        reassign.id = newId
+        data.followups.push(reassign)
+      }
+
+      closeFollowupDoneModal()
+      renderFollowups()
+      const remainingToday = buildFollowupLists(false).pending.filter(i => i.category === 'today').length
+      const base = nextDate
+        ? 'ارجاع انجام شد و پیگیری بعدی ارجاعی تنظیم شد'
+        : 'ارجاع پیگیری انجام شد'
+      showToast(`${base} — ${remainingToday} پیگیری امروز مانده`)
+      return
+    }
+
+    const cat = classifyDate(customer.nextFollowupDate)
+    const wasOverdue = cat === 'overdue'
+    const noteType = wasOverdue ? 'پیگیری معوقه انجام‌شده' : 'پیگیری انجام‌شده'
+
     const noteFollowup = {
       customerId,
       date: dateTime,
@@ -992,13 +1205,12 @@ export async function confirmFollowupDone() {
     noteFollowup.id = noteId
     data.followups.push(noteFollowup)
 
-    // Set optional next follow-up, otherwise clear the schedule
     data.customers[idx].nextFollowupDate = nextDate || ''
     await saveCustomerToDB(data.customers[idx])
 
     closeFollowupDoneModal()
     renderFollowups()
-    const remainingToday = getPendingItems(false).filter(i => i.category === 'today').length
+    const remainingToday = buildFollowupLists(false).pending.filter(i => i.category === 'today').length
     const base = nextDate
       ? 'ثبت شد و پیگیری بعدی تنظیم شد'
       : 'ثبت شد'
@@ -1014,7 +1226,7 @@ export async function confirmFollowupDone() {
 // Followup Modal (Add/Edit) — history records
 // ============================================
 
-export function openFollowupModal(editFollowupId) {
+export async function openFollowupModal(editFollowupId) {
   if (!requirePermission('followups_add')) return
   const data = getData()
   const modal = document.getElementById('followupModal')
@@ -1022,11 +1234,27 @@ export function openFollowupModal(editFollowupId) {
   const select = document.getElementById('followupCustomer')
   const guide = document.getElementById('followupModalGuide')
   const saveBtn = document.getElementById('followupModalSaveBtn')
+  const assignSelect = document.getElementById('followupAssignTo')
 
   select.innerHTML = '<option value="">انتخاب کنید...</option>' +
     data.customers.filter(c => canAddNoteOnCustomer(c)).map(c =>
       `<option value="${c.id}">${c.id} — ${escapeHtml(c.name || c.platformId)}</option>`
     ).join('')
+
+  const mePhone = normalizePhone(getCurrentUser()?.phone)
+  const users = await getUsersSafe()
+  try { await loadGroupsData() } catch (_) {}
+  const assignUsers = users.filter(u => {
+    const p = normalizePhone(u.phone)
+    return p && p !== mePhone
+  })
+  if (assignSelect) {
+    assignSelect.innerHTML = buildGroupedAdvisorSelectHtml({
+      users: assignUsers,
+      includeGroupAllOption: false,
+      emptyLabel: 'ارجاع نده (برای خودم)'
+    })
+  }
 
   if (editFollowupId) {
     const f = data.followups.find(x => String(x.id) === String(editFollowupId) || `idx_${data.followups.indexOf(x)}` === editFollowupId)
@@ -1039,6 +1267,7 @@ export function openFollowupModal(editFollowupId) {
     document.getElementById('followupType').value = f.type
     document.getElementById('followupResult').value = f.result
     document.getElementById('followupNotes').value = f.notes
+    if (assignSelect) assignSelect.value = normalizePhone(f.assignedToPhone) || ''
     if (guide) guide.hidden = true
     if (saveBtn) saveBtn.textContent = 'ذخیره تغییرات'
   } else {
@@ -1050,6 +1279,7 @@ export function openFollowupModal(editFollowupId) {
     document.getElementById('followupType').value = 'دایرکت'
     document.getElementById('followupResult').value = 'پاسخ داد'
     document.getElementById('followupNotes').value = ''
+    if (assignSelect) assignSelect.value = ''
     if (guide) guide.hidden = false
     if (saveBtn) saveBtn.textContent = 'ثبت یادداشت'
   }
@@ -1067,14 +1297,21 @@ export async function saveFollowup() {
   const data = getData()
   const editFollowupId = document.getElementById('editFollowupIndex').value
   const customerId = document.getElementById('followupCustomer').value
-  const nextDate = document.getElementById('followupNextDate').value.trim()
+  const nextDate = toEnDigits(document.getElementById('followupNextDate').value.trim())
   const type = document.getElementById('followupType').value
   const result = document.getElementById('followupResult').value
   const notes = document.getElementById('followupNotes').value.trim()
   let date = toEnDigits(document.getElementById('followupDate').value.trim())
+  const mePhone = normalizePhone(getCurrentUser()?.phone || '')
+  const assignToRaw = normalizePhone(document.getElementById('followupAssignTo')?.value || '')
+  const isReferral = !!(assignToRaw && assignToRaw !== mePhone)
 
   if (!customerId) { showToast('مشتری را انتخاب کنید'); return }
   if (!date) { showToast('تاریخ تماس را وارد کنید'); return }
+  if (isReferral && !nextDate) {
+    showToast('برای ارجاع پیگیری، تاریخ پیگیری بعدی را وارد کنید')
+    return
+  }
 
   const customer = data.customers.find(c => c.id === customerId)
   if (!customer || !canViewCustomer(customer)) {
@@ -1086,11 +1323,36 @@ export async function saveFollowup() {
     return
   }
 
+  const { dateTime } = getNowJalaliDateTime()
+  const assignmentFields = isReferral
+    ? {
+        assignedToPhone: assignToRaw,
+        assignedByPhone: mePhone,
+        assignedAt: dateTime
+      }
+    : {
+        assignedToPhone: '',
+        assignedByPhone: '',
+        assignedAt: ''
+      }
+
   if (editFollowupId) {
     const existing = data.followups.find(x => String(x.id) === String(editFollowupId) || `idx_${data.followups.indexOf(x)}` === editFollowupId)
     if (!existing) { showToast('پیگیری یافت نشد'); return }
     date = ensureFollowupDateTime(date, existing.doneAt || existing.date)
-    const updated = { ...existing, customerId, date, nextDate, type, result, notes }
+    const updated = {
+      ...existing,
+      customerId,
+      date,
+      nextDate,
+      type,
+      result,
+      notes,
+      ...assignmentFields,
+      assignedAt: isReferral
+        ? (existing.assignedAt || dateTime)
+        : ''
+    }
     try {
       await updateFollowupInDB(updated)
       const idx = data.followups.indexOf(existing)
@@ -1102,7 +1364,17 @@ export async function saveFollowup() {
     }
   } else {
     date = ensureFollowupDateTime(date)
-    const newFollowup = { customerId, date, nextDate, type, result, notes, createdByPhone: normalizePhone(getCurrentUser()?.phone || ''), status: 'pending' }
+    const newFollowup = {
+      customerId,
+      date,
+      nextDate,
+      type,
+      result,
+      notes,
+      createdByPhone: mePhone,
+      status: 'pending',
+      ...assignmentFields
+    }
     try {
       const id = await saveFollowupToDB(newFollowup)
       newFollowup.id = id
@@ -1114,7 +1386,8 @@ export async function saveFollowup() {
     }
   }
 
-  if (nextDate) {
+  // ارجاع: صف مالک را عوض نکن
+  if (nextDate && !isReferral) {
     customer.nextFollowupDate = nextDate
     try { await saveCustomerToDB(customer) } catch (_) {}
   }
@@ -1122,7 +1395,11 @@ export async function saveFollowup() {
   renderFollowups()
   closeFollowupModal()
   await refreshOpenCustomerDetail(customerId)
-  showToast(editFollowupId ? 'یادداشت ویرایش شد' : 'یادداشت ثبت شد')
+  showToast(
+    editFollowupId
+      ? 'یادداشت ویرایش شد'
+      : (isReferral ? 'ارجاع پیگیری ثبت شد' : 'یادداشت ثبت شد')
+  )
 }
 
 export function editFollowup(followupId) {

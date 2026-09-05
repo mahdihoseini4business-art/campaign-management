@@ -2392,6 +2392,7 @@ export async function openCustomerDetail(id, options = {}) {
   }
 
   const detailUsers = await getUsersSafe()
+  try { await loadGroupsData() } catch (_) { /* optional until migration */ }
 
   document.getElementById('detailTitle').textContent = isNew
     ? 'پنل مشتری — مشتری جدید'
@@ -2621,6 +2622,10 @@ export async function openCustomerDetail(id, options = {}) {
         const authorHtml = authorName
           ? `<span class="record-author" title="ثبت‌کننده">👤 ${escapeHtml(authorName)}</span>`
           : ''
+        const assigneeName = resolveUserNameByPhone(f.assignedToPhone, detailUsers)
+        const assignHtml = assigneeName
+          ? `<span class="followup-card-badge is-assigned" title="ارجاع به">ارجاع به ${escapeHtml(assigneeName)}</span>`
+          : ''
         const isOverdoneNote = f.type === 'پیگیری معوقه انجام‌شده'
         const overdueTag = isOverdoneNote ? '<span class="overdue-tag">معوقه</span>' : ''
         const itemClass = isOverdoneNote ? ' timeline-item-overdue' : ''
@@ -2641,6 +2646,7 @@ export async function openCustomerDetail(id, options = {}) {
               <span class="timeline-date">${escapeHtml(formatFollowupHistoryAt(f))}</span>
               <span class="timeline-type">${escapeHtml(f.type)}</span>
               ${overdueTag}
+              ${assignHtml}
               ${authorHtml}
               ${actionsHtml}
             </div>
@@ -2674,6 +2680,24 @@ export async function openCustomerDetail(id, options = {}) {
       ? `
         <div class="form-group detail-add-note-field detail-add-note-field--date">
           <input type="text" class="form-input detail-add-note-input" id="detailFollowupDate" placeholder="پیگیری بعدی" data-jdp style="font-family:'Vazirmatn',sans-serif;">
+        </div>`
+      : ''
+
+    const mePhone = normalizePhone(getCurrentUser()?.phone)
+    const assignUsers = detailUsers.filter(u => {
+      const p = normalizePhone(u.phone)
+      return p && p !== mePhone
+    })
+    const assignSelectHtml = canScheduleFollowup
+      ? `
+        <div class="form-group detail-add-note-field detail-add-note-field--assign">
+          <select class="form-select detail-add-note-select" id="detailFollowupAssignTo" title="ارجاع پیگیری">
+            ${buildGroupedAdvisorSelectHtml({
+              users: assignUsers,
+              includeGroupAllOption: false,
+              emptyLabel: 'ارجاع نده (برای خودم)'
+            })}
+          </select>
         </div>`
       : ''
 
@@ -2714,6 +2738,7 @@ export async function openCustomerDetail(id, options = {}) {
             </select>
           </div>
           ${nextDateFieldHtml}
+          ${assignSelectHtml}
         </div>
         <div class="detail-add-note-product-row">
           <div class="form-group detail-add-note-field detail-add-note-field--product">
@@ -3146,6 +3171,15 @@ export async function addQuickNote(customerId) {
     nextDate = nextDateRaw
   }
 
+  const mePhone = normalizePhone(getCurrentUser()?.phone || '')
+  const assignToRaw = normalizePhone(document.getElementById('detailFollowupAssignTo')?.value || '')
+  const isReferral = !!(assignToRaw && assignToRaw !== mePhone)
+  if (isReferral && !nextDate) {
+    showToast('برای ارجاع پیگیری، تاریخ پیگیری بعدی را وارد کنید')
+    document.getElementById('detailFollowupDate')?.focus()
+    return
+  }
+
   const { dateTime } = getNowJalaliDateTime()
 
   const newFollowup = {
@@ -3156,8 +3190,13 @@ export async function addQuickNote(customerId) {
     nextDate,
     productName: product.productName,
     notes,
-    createdByPhone: normalizePhone(getCurrentUser()?.phone || ''),
-    status: 'pending'
+    createdByPhone: mePhone,
+    status: 'pending',
+    ...(isReferral ? {
+      assignedToPhone: assignToRaw,
+      assignedByPhone: mePhone,
+      assignedAt: dateTime
+    } : {})
   }
   try {
     const id = await saveFollowupToDB(newFollowup)
@@ -3165,7 +3204,8 @@ export async function addQuickNote(customerId) {
     data.followups.push(newFollowup)
     invalidateDerivedCache('followups')
 
-    if (nextDate) {
+    // ارجاع: صف مالک دست‌نخورده؛ فقط ردیف assigned در صف همکار می‌آید
+    if (nextDate && !isReferral) {
       const idx = data.customers.findIndex(c => c.id === customerId)
       if (idx !== -1) {
         data.customers[idx].nextFollowupDate = nextDate
@@ -3177,7 +3217,11 @@ export async function addQuickNote(customerId) {
     const resolved = maybeResolvePendingCreateCompletion(customerId, { toast: true })
     openCustomerDetail(customerId)
     if (!resolved) {
-      showToast(nextDate ? 'توضیحات ثبت و تاریخ پیگیری بعدی تنظیم شد' : 'توضیحات ثبت شد')
+      if (isReferral) {
+        showToast('ارجاع پیگیری ثبت شد — صف شما تغییر نکرد')
+      } else {
+        showToast(nextDate ? 'توضیحات ثبت و تاریخ پیگیری بعدی تنظیم شد' : 'توضیحات ثبت شد')
+      }
     }
   } catch (e) {
     console.error('addQuickNote error:', e)

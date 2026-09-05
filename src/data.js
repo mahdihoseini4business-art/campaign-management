@@ -330,7 +330,10 @@ export function mapFollowupFromDb(f) {
     doneAt: f.done_at || '',
     doneByPhone: f.done_by_phone || '',
     doneNote: f.done_note || '',
-    wasOverdue: !!f.was_overdue
+    wasOverdue: !!f.was_overdue,
+    assignedToPhone: f.assigned_to_phone || '',
+    assignedByPhone: f.assigned_by_phone || '',
+    assignedAt: f.assigned_at || ''
   }
 }
 
@@ -2767,7 +2770,10 @@ export async function saveFollowupToDB(followup) {
     next_date: followup.nextDate || '',
     product_name: followup.productName || '',
     notes: followup.notes,
-    created_by_phone: followup.createdByPhone || null
+    created_by_phone: followup.createdByPhone || null,
+    assigned_to_phone: followup.assignedToPhone || null,
+    assigned_by_phone: followup.assignedByPhone || null,
+    assigned_at: followup.assignedAt || ''
   }
 
   // Prefer writing status/done columns when present; fall back on any schema error
@@ -2786,15 +2792,23 @@ export async function saveFollowupToDB(followup) {
       return full.data ? full.data.id : null
     }
 
-    // Fallback without optional columns
-    const fallback = await supabase.from('followups').insert(baseRow).select('id').single()
+    // Fallback without optional columns (assignment + status)
+    const { assigned_to_phone, assigned_by_phone, assigned_at, ...legacyBase } = baseRow
+    const fallback = await supabase.from('followups').insert(legacyBase).select('id').single()
     if (fallback.error) throw new Error('خطا در درج پیگیری: ' + fallback.error.message)
     bumpLocalWrite()
     return fallback.data ? fallback.data.id : null
   }
 
   const { data: inserted, error } = await supabase.from('followups').insert(baseRow).select('id').single()
-  if (error) throw new Error('خطا در درج پیگیری: ' + error.message)
+  if (error) {
+    // Fallback when assignment columns are missing on older DBs
+    const { assigned_to_phone, assigned_by_phone, assigned_at, ...legacyBase } = baseRow
+    const fallback = await supabase.from('followups').insert(legacyBase).select('id').single()
+    if (fallback.error) throw new Error('خطا در درج پیگیری: ' + fallback.error.message)
+    bumpLocalWrite()
+    return fallback.data ? fallback.data.id : null
+  }
   bumpLocalWrite()
   return inserted ? inserted.id : null
 }
@@ -2812,6 +2826,15 @@ export async function updateFollowupInDB(followup) {
   }
   if (followup.createdByPhone !== undefined) {
     row.created_by_phone = followup.createdByPhone || null
+  }
+  if (followup.assignedToPhone !== undefined) {
+    row.assigned_to_phone = followup.assignedToPhone || null
+  }
+  if (followup.assignedByPhone !== undefined) {
+    row.assigned_by_phone = followup.assignedByPhone || null
+  }
+  if (followup.assignedAt !== undefined) {
+    row.assigned_at = followup.assignedAt || ''
   }
   const { error } = await supabase.from('followups').update(row).eq('id', followup.id)
   if (error) throw new Error('خطا در ویرایش پیگیری: ' + error.message)

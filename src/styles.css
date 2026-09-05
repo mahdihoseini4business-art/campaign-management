@@ -3112,6 +3112,17 @@
     white-space: nowrap;
   }
 
+  .followup-card-badge.is-assigned {
+    display: inline-block;
+    background: var(--secondary, #0d9488);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    white-space: nowrap;
+  }
+
   .followup-card-phone {
     direction: ltr;
     text-align: right;

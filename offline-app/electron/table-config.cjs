@@ -24,7 +24,7 @@ const TABLE_COLUMNS = {
   followups: [
     'id', 'customer_id', 'date', 'type', 'result', 'next_date', 'product_name', 'notes',
     'created_by_phone', 'status', 'done_at', 'done_by_phone', 'done_note',
-    'was_overdue', 'updated_at'
+    'was_overdue', 'assigned_to_phone', 'assigned_by_phone', 'assigned_at', 'updated_at'
   ],
   refunds: [
     'id', 'customer_id', 'product_index', 'product_name', 'payment_id', 'amount',

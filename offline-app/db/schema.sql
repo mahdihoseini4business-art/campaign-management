@@ -48,11 +48,15 @@ CREATE TABLE IF NOT EXISTS followups (
   done_by_phone TEXT NOT NULL DEFAULT '',
   done_note TEXT NOT NULL DEFAULT '',
   was_overdue INTEGER NOT NULL DEFAULT 0,
+  assigned_to_phone TEXT,
+  assigned_by_phone TEXT,
+  assigned_at TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_followups_customer_id ON followups (customer_id);
 CREATE INDEX IF NOT EXISTS idx_followups_updated_at ON followups (updated_at);
+CREATE INDEX IF NOT EXISTS idx_followups_assigned_to_phone ON followups (assigned_to_phone);
 
 CREATE TABLE IF NOT EXISTS refunds (
   id INTEGER PRIMARY KEY,

@@ -41,7 +41,8 @@ const INFO_ONLY_HEADERS = new Set([
 
 const FOLLOWUP_EXPORT_HEADERS = [
   'شناسه مشتری', 'نام مشتری', 'شماره مشتری', 'کارشناس',
-  'تاریخ', 'نوع', 'نتیجه', 'محصول', 'پیگیری بعدی', 'توضیحات', 'ثبت‌کننده'
+  'تاریخ', 'نوع', 'نتیجه', 'محصول', 'پیگیری بعدی', 'توضیحات', 'ثبت‌کننده',
+  'ارجاع به', 'ارجاع‌دهنده'
 ]
 
 function followupsForCustomer(customerId, followups) {
@@ -80,7 +81,9 @@ function buildFollowupExportAoa(followups, customers) {
       f.productName || '',
       f.nextDate || '',
       f.notes || f.doneNote || '',
-      f.createdByPhone || ''
+      f.createdByPhone || '',
+      f.assignedToPhone || '',
+      f.assignedByPhone || ''
     ]
   })
   return [FOLLOWUP_EXPORT_HEADERS, ...rows]
@@ -483,9 +486,12 @@ const EXPORT_CONFIG = {
         f.date || '',
         f.type || '',
         f.result || '',
+        f.productName || '',
         f.nextDate || '',
         f.notes || '',
-        f.createdByPhone || ''
+        f.createdByPhone || '',
+        f.assignedToPhone || '',
+        f.assignedByPhone || ''
       ])
     }
   },
@@ -627,6 +633,8 @@ const FOLLOWUP_IMPORT_FIELDS = [
   { key: 'nextDate', label: 'پیگیری بعدی' },
   { key: 'notes', label: 'توضیحات', aliases: ['یادداشت'] },
   { key: 'createdByPhone', label: 'ثبت‌کننده', aliases: ['ایجادکننده'] },
+  { key: 'assignedToPhone', label: 'ارجاع به', aliases: ['محول به'] },
+  { key: 'assignedByPhone', label: 'ارجاع‌دهنده' },
 ]
 
 function parseSheetAoA(XLSX, ws) {
@@ -743,6 +751,8 @@ async function importFollowupRows({ headers, rows, mapping }, { syncCustomerNext
     const result = getValue('result') || ''
     const productName = getValue('productName') || ''
     const createdByPhone = normalizePhone(getValue('createdByPhone')) || normalizePhone(currentUser?.phone || '')
+    const assignedToPhone = normalizePhone(getValue('assignedToPhone'))
+    const assignedByPhone = normalizePhone(getValue('assignedByPhone')) || (assignedToPhone ? createdByPhone : '')
     const done = isDoneFollowupType(type)
     const followup = {
       customerId,
@@ -757,7 +767,12 @@ async function importFollowupRows({ headers, rows, mapping }, { syncCustomerNext
       doneAt: done ? (date || '') : '',
       doneByPhone: done ? createdByPhone : '',
       doneNote: done ? (notes || '') : '',
-      wasOverdue: type === 'پیگیری معوقه انجام‌شده'
+      wasOverdue: type === 'پیگیری معوقه انجام‌شده',
+      ...(assignedToPhone ? {
+        assignedToPhone,
+        assignedByPhone,
+        assignedAt: date || ''
+      } : {})
     }
 
     const fp = followupFingerprint(followup)
@@ -790,8 +805,9 @@ async function importFollowupRows({ headers, rows, mapping }, { syncCustomerNext
       }
 
       // Pending tab reads customer.nextFollowupDate — rewrite from Excel when asked
+      // ارجاع پیگیری: صف مالک را overwrite نکن
       let customerTouched = false
-      if (syncCustomerNextDate && nextDateMapped) {
+      if (syncCustomerNextDate && nextDateMapped && !assignedToPhone) {
         const normalizedNext = nextDate || ''
         if ((customer.nextFollowupDate || '') !== normalizedNext) {
           customer.nextFollowupDate = normalizedNext
