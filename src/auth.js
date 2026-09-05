@@ -468,6 +468,7 @@ const SETTINGS_SECTIONS = [
   { id: 'notif-compose', label: 'ارسال اعلان', group: 'اعلان‌ها', keywords: 'اعلان notification ارسال' },
   { id: 'notif-prefs', label: 'ترجیحات اعلان', group: 'اعلان‌ها', keywords: 'toast فروش زنده ترجیح نوتیفیکیشن مرورگر browser notification' },
   { id: 'notif-history', label: 'تاریخچه اعلان‌ها', group: 'اعلان‌ها', keywords: 'تاریخچه ارسال‌شده' },
+  { id: 'chat-prefs', label: 'ترجیحات چت', group: 'چت', keywords: 'چت chat فعال غیرفعال dm پیام' },
   { id: 'chat-oversight', label: 'نظارت چت', group: 'چت', keywords: 'چت chat dm گروه پین آمار آرشیو نظارت' }
 ]
 

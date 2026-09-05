@@ -103,6 +103,7 @@ let data = {
   salesTargets: [],
   salesTargetDeadlineUrgency: null,
   saleToastEnabled: true,
+  dmChatEnabled: true,
   requireFollowupOnCreate: true,
   smsPanel: null
 }
@@ -547,6 +548,7 @@ function applySettingsRows(rows) {
     ? [...settings.customer_codes].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [...DEFAULT_CUSTOMER_CODES]
   data.saleToastEnabled = settings.sale_toast_enabled !== false && settings.sale_toast_enabled !== 'false'
+  data.dmChatEnabled = coerceAppSettingBool(settings.dm_chat_enabled, true)
   data.requireFollowupOnCreate = coerceAppSettingBool(settings.require_followup_on_create, true)
   try {
     data.smsPanel = normalizeSmsPanel(settings.sms_panel)
@@ -2913,6 +2915,19 @@ export function setSaleToastEnabledLocal(enabled) {
 export async function saveSaleToastEnabled(enabled) {
   data.saleToastEnabled = !!enabled
   await saveSetting('sale_toast_enabled', !!enabled)
+}
+
+export function getDmChatEnabled() {
+  return data.dmChatEnabled !== false
+}
+
+export function setDmChatEnabledLocal(enabled) {
+  data.dmChatEnabled = !!enabled
+}
+
+export async function saveDmChatEnabled(enabled) {
+  data.dmChatEnabled = !!enabled
+  await saveSetting('dm_chat_enabled', !!enabled)
 }
 
 export function getRequireFollowupOnCreate() {

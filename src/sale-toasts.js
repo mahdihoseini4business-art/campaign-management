@@ -6,7 +6,7 @@
 import { supabase } from './supabase.js'
 import {
   getSaleToastEnabled, setSaleToastEnabledLocal, saveSaleToastEnabled, coerceProductName,
-  setRequireFollowupOnCreateLocal
+  setRequireFollowupOnCreateLocal, setDmChatEnabledLocal
 } from './data.js'
 import { escapeHtml, formatNumber, requireMainAdmin, userDisplayName, getCurrentUser, normalizePhone } from './utils.js'
 import { showBrowserNotificationFromHtml } from './browser-notifications.js'
@@ -238,6 +238,14 @@ async function ensureChannel() {
         setRequireFollowupOnCreateLocal(payload.enabled)
         const el = document.getElementById('requireFollowupOnCreate')
         if (el) el.checked = payload.enabled
+        return
+      }
+      if (payload.key === 'dm_chat_enabled') {
+        setDmChatEnabledLocal(payload.enabled)
+        import('./dm-chat.js').then(m => {
+          m.syncDmChatToggleUi()
+          m.applyDmChatEnabledState().catch(e => console.error('dm chat apply setting:', e))
+        }).catch(() => {})
         return
       }
       // sale_toast_enabled (legacy payloads without key still apply here)

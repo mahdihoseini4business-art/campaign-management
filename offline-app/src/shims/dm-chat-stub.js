@@ -35,3 +35,9 @@ export function toggleDmGroupMember() {}
 export async function submitDmCreateGroup() {}
 
 export async function toggleDmChatPin() {}
+
+export function syncDmChatToggleUi() {}
+
+export async function toggleDmChatSetting() {}
+
+export async function applyDmChatEnabledState() {}

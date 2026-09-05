@@ -76,7 +76,9 @@ import {
   filterDmGroupMembers,
   toggleDmGroupMember,
   submitDmCreateGroup,
-  toggleDmChatPin
+  toggleDmChatPin,
+  syncDmChatToggleUi,
+  toggleDmChatSetting
 } from './dm-chat.js'
 import {
   renderDmChatAdminSection,
@@ -198,6 +200,7 @@ async function openSettingsModal() {
   if (!document.getElementById('settingsModal')?.classList.contains('active')) return
   await renderNotificationAdminSection()
   syncSaleToastToggleUi()
+  syncDmChatToggleUi()
   syncRequireFollowupOnCreateUi()
   syncBrowserNotifUi()
 }
@@ -356,6 +359,7 @@ const app = {
   toggleDmGroupMember,
   submitDmCreateGroup,
   toggleDmChatPin,
+  toggleDmChatSetting,
   refreshDmChatAdmin,
   setDmAdminRange,
   setDmAdminSubTab,

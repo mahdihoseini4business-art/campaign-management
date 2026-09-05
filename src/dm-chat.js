@@ -4,6 +4,7 @@
 
 import { supabase } from './supabase.js'
 import { getUsersSafe } from './auth.js'
+import { getDmChatEnabled, saveDmChatEnabled } from './data.js'
 import {
   escapeHtml,
   escapeAttr,
@@ -11,7 +12,8 @@ import {
   normalizePhone,
   userDisplayName,
   showToast,
-  isMainAdmin
+  isMainAdmin,
+  requireMainAdmin
 } from './utils.js'
 
 const CHANNEL_NAME = 'dm-chat-live'
@@ -1141,6 +1143,11 @@ function bindChrome() {
 }
 
 export async function initDmChat() {
+  if (!getDmChatEnabled()) {
+    const root = rootEl()
+    if (root) root.hidden = true
+    return
+  }
   if (started) return
   const root = rootEl()
   if (!root) return
@@ -1157,6 +1164,41 @@ export async function initDmChat() {
   await refreshUnreadCounts()
   await subscribeRealtime()
   updateBadge()
+}
+
+export function syncDmChatToggleUi() {
+  const el = document.getElementById('dmChatEnabled')
+  if (el) el.checked = !!getDmChatEnabled()
+}
+
+export async function applyDmChatEnabledState() {
+  if (getDmChatEnabled()) {
+    await initDmChat()
+  } else {
+    teardownDmChat()
+  }
+  syncDmChatToggleUi()
+}
+
+export async function toggleDmChatSetting(enabled) {
+  if (!requireMainAdmin()) {
+    syncDmChatToggleUi()
+    return
+  }
+  const next = !!enabled
+  try {
+    await saveDmChatEnabled(next)
+    await applyDmChatEnabledState()
+    try {
+      const { broadcastAppSetting } = await import('./sale-toasts.js')
+      await broadcastAppSetting('dm_chat_enabled', next)
+    } catch (_) { /* ignore realtime sync errors */ }
+    showToast(next ? 'چت برای همه کاربران فعال شد' : 'چت برای همه کاربران غیرفعال شد')
+  } catch (e) {
+    console.error('toggleDmChatSetting error:', e)
+    syncDmChatToggleUi()
+    showToast('خطا در ذخیره تنظیمات')
+  }
 }
 
 export function teardownDmChat() {

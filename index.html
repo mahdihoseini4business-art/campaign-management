@@ -572,6 +572,21 @@
           <div id="notifSentList" class="notif-sent-list"></div>
         </section>
 
+        <!-- ترجیحات چت -->
+        <section class="settings-pane" data-settings-pane="chat-prefs" hidden>
+          <div class="settings-pane-header">
+            <h3>ترجیحات چت</h3>
+            <p class="settings-pane-desc">فعال یا غیرفعال کردن چت داخلی برای همه کاربران.</p>
+          </div>
+          <label class="settings-pref-row">
+            <input type="checkbox" id="dmChatEnabled" onchange="app.toggleDmChatSetting(this.checked)">
+            <span>
+              <strong>فعال بودن چت</strong>
+              <span class="settings-pane-desc">نمایش دکمه چت و امکان پیام‌رسانی بین کاربران. با غیرفعال کردن، ویجت چت برای همه پنهان می‌شود.</span>
+            </span>
+          </label>
+        </section>
+
         <!-- نظارت چت -->
         <section class="settings-pane" data-settings-pane="chat-oversight" hidden>
           <div class="settings-pane-header">
