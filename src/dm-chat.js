@@ -1,5 +1,5 @@
 // ============================================
-// DM + group chat widget (bottom-left FAB)
+// DM + group chat widget (bottom-right FAB)
 // ============================================
 
 import { supabase } from './supabase.js'
@@ -1084,11 +1084,16 @@ export function onDmChatInputKeydown(event) {
 }
 
 export function toggleDmChatPanel() {
+  if (!getDmChatEnabled()) return
   if (panelOpen) closeDmChatPanel()
   else openDmChatPanel()
 }
 
 export async function openDmChatPanel() {
+  if (!getDmChatEnabled()) {
+    teardownDmChat()
+    return
+  }
   panelOpen = true
   const panel = panelEl()
   if (panel) panel.hidden = false

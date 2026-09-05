@@ -7669,17 +7669,22 @@
   background: #ecfdf5;
 }
 
-/* --- DM chat widget (bottom-left) --- */
+/* --- DM chat widget (bottom-right) --- */
 .dm-chat-root {
   position: fixed;
-  bottom: 20px;
-  left: 20px;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  right: max(20px, env(safe-area-inset-right));
+  left: auto;
   z-index: 9500;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 12px;
   pointer-events: none;
+}
+
+.dm-chat-root[hidden] {
+  display: none !important;
 }
 
 .dm-chat-root > * {
@@ -7734,6 +7739,14 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.dm-chat-panel[hidden],
+.dm-chat-tabs[hidden],
+.dm-chat-composer[hidden],
+.dm-chat-badge[hidden],
+.dm-chat-icon-btn[hidden] {
+  display: none !important;
 }
 
 .dm-chat-panel-header {
@@ -8021,7 +8034,7 @@
 
 @media (max-width: 480px) {
   .dm-chat-root {
-    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
     bottom: max(12px, env(safe-area-inset-bottom));
   }
 
@@ -8033,11 +8046,6 @@
 
 body.dm-chat-open {
   overscroll-behavior: none;
-}
-
-.dm-chat-root {
-  left: max(20px, env(safe-area-inset-left));
-  bottom: max(20px, env(safe-area-inset-bottom));
 }
 
 .dm-chat-admin-bar {
