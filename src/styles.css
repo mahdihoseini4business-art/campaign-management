@@ -7735,6 +7735,8 @@
 
 /* --- DM chat widget (bottom-right) --- */
 .dm-chat-root {
+  /* LTR so flex-end stays physical right even when page is dir=rtl */
+  direction: ltr;
   position: fixed;
   bottom: max(20px, env(safe-area-inset-bottom));
   right: max(20px, env(safe-area-inset-right));
@@ -7794,6 +7796,7 @@
 }
 
 .dm-chat-panel {
+  direction: rtl;
   width: min(380px, calc(100vw - 40px));
   height: min(520px, calc(100vh - 100px));
   background: var(--surface);
