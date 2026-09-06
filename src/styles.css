@@ -3489,6 +3489,20 @@
   }
   .btn-remove-product:hover { background: var(--danger-light); }
 
+  .sale-product-remove-bar {
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px 12px 0;
+  }
+  .sale-product-remove-bar .btn-danger-outline {
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    background: transparent;
+  }
+  .sale-product-remove-bar .btn-danger-outline:hover {
+    background: var(--danger-light);
+  }
+
   /* --- Import Mapping --- */
   .import-map-hint {
     font-size: 12px;

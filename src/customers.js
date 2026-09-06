@@ -28,7 +28,7 @@ import {
   isEmptySaleProductDraft,
   applyProfitSnapshotToProduct, isGiftSale, getGiftAccountingStatus,
   getPaymentRefundBadge, getProductRefundBadge, getProductRefundRecords, getProductPendingRefundLabel,
-  REFUND_STATUS, requireMainAdmin
+  REFUND_STATUS, requireMainAdmin, isMainAdmin
 } from './utils.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig, compareSortValues } from './table-sort.js'
 import { restoreSelection } from './bulk.js'
@@ -3538,6 +3538,7 @@ export async function renderProducts(customerId, users = null) {
     try { detailUsersCache = await getUsersSafe() } catch (_) { detailUsersCache = [] }
   }
   const usersList = detailUsersCache
+  const canRemoveProduct = isMainAdmin()
 
   if (products.length === 0) {
     container.innerHTML = '<div class="detail-tab-empty">فروشی ثبت نشده</div>'
@@ -3545,6 +3546,11 @@ export async function renderProducts(customerId, users = null) {
   }
 
   container.innerHTML = products.map((p, i) => {
+    const removeProductBtn = canRemoveProduct
+      ? `<div class="sale-product-remove-bar">
+          <button type="button" class="btn btn-sm btn-danger-outline" title="حذف کل این محصول از خریدهای مشتری" onclick="app.removeProduct('${escapeAttr(customerId)}', ${i})">حذف محصول</button>
+        </div>`
+      : ''
     const isGift = isGiftSale(p)
     const price = parseFloat(p.price) || 0
     const approved = getApprovedPaid(p)
@@ -3645,6 +3651,7 @@ export async function renderProducts(customerId, users = null) {
         </section>`
       return `
       <div class="${blockClass}" data-product-index="${i}">
+        ${removeProductBtn}
         ${wrapClosedProductContent(closed, toggleHtml, inner)}
       </div>`
     }
@@ -3840,6 +3847,7 @@ export async function renderProducts(customerId, users = null) {
 
     return `
       <div class="${blockClass}" data-product-index="${i}">
+        ${removeProductBtn}
         ${wrapClosedProductContent(closed, toggleHtml, inner)}
       </div>`
   }).join('')
@@ -4582,6 +4590,40 @@ export function onDestinationBankSelect(selectEl) {
 }
 
 export async function removeProduct(customerId, index) {
-  showToast('پس از ثبت محصول، امکان حذف وجود ندارد')
+  if (!requireMainAdmin()) return
+  const data = getData()
+  const customer = data.customers.find(c => c.id === customerId)
+  if (!customer || !Array.isArray(customer.products)) return
+  const i = Number(index)
+  if (!Number.isInteger(i) || i < 0 || i >= customer.products.length) return
+
+  const product = customer.products[i]
+  const label = coerceProductName(product?.name) || 'این محصول'
+  if (!window.confirm(`«${label}» به‌طور کامل از خریدهای این مشتری حذف شود؟\nتمام واریزهای مرتبط هم حذف می‌شوند.`)) return
+
+  const snapshot = customer.products.slice()
+  customer.products.splice(i, 1)
+  customer._productsLoaded = true
+  customer.productCount = customer.products.length
+  invalidateProductSalesCountCache()
+  syncCustomerLevel(customer, data.customers, data.followups)
+  try {
+    await saveCustomerToDB(customer)
+    try {
+      const { deleteOrphanedRefundsForCustomer } = await import('./refunds.js')
+      await deleteOrphanedRefundsForCustomer(customerId)
+    } catch (refundErr) {
+      console.error('removeProduct refunds cleanup error:', refundErr)
+    }
+    await renderProducts(customerId)
+    showToast('محصول از خریدهای مشتری حذف شد')
+  } catch (e) {
+    console.error('removeProduct error:', e)
+    customer.products = snapshot
+    customer.productCount = snapshot.length
+    invalidateProductSalesCountCache()
+    syncCustomerLevel(customer, data.customers, data.followups)
+    showToast('خطا در حذف محصول')
+  }
 }
 
