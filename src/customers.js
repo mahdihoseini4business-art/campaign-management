@@ -3547,9 +3547,7 @@ export async function renderProducts(customerId, users = null) {
 
   container.innerHTML = products.map((p, i) => {
     const removeProductBtn = canRemoveProduct
-      ? `<div class="sale-product-remove-bar">
-          <button type="button" class="btn btn-sm btn-danger-outline" title="حذف کل این محصول از خریدهای مشتری" onclick="app.removeProduct('${escapeAttr(customerId)}', ${i})">حذف محصول</button>
-        </div>`
+      ? `<button type="button" class="btn-remove-product" title="حذف محصول" onclick="app.removeProduct('${escapeAttr(customerId)}', ${i})">✕</button>`
       : ''
     const isGift = isGiftSale(p)
     const price = parseFloat(p.price) || 0
@@ -3630,7 +3628,10 @@ export async function renderProducts(customerId, users = null) {
         : ''
       const inner = `
         <section class="sale-step sale-step-product">
-          <h4 class="sale-step-title">۱. محصول ${giftBadge}${sellerHtml}</h4>
+          <div class="sale-step-head">
+            <h4 class="sale-step-title">۱. محصول ${giftBadge}${sellerHtml}</h4>
+            ${removeProductBtn}
+          </div>
           <div class="sale-gift-banner" data-gift-banner>
             <strong>فروش هدیه</strong>
             <span>قیمت صفر · بدون دریافت وجه</span>
@@ -3651,7 +3652,6 @@ export async function renderProducts(customerId, users = null) {
         </section>`
       return `
       <div class="${blockClass}" data-product-index="${i}">
-        ${removeProductBtn}
         ${wrapClosedProductContent(closed, toggleHtml, inner)}
       </div>`
     }
@@ -3822,7 +3822,10 @@ export async function renderProducts(customerId, users = null) {
       : ''
     const inner = `
         <section class="sale-step sale-step-product">
-          <h4 class="sale-step-title">۱. محصول</h4>
+          <div class="sale-step-head">
+            <h4 class="sale-step-title">۱. محصول</h4>
+            ${removeProductBtn}
+          </div>
           <div class="sale-gift-banner" data-gift-banner hidden>
             <strong>ثبت هدیه</strong>
             <span>قیمت صفر یعنی این فروش به‌عنوان هدیه ثبت می‌شود · واریز لازم نیست</span>
@@ -3847,7 +3850,6 @@ export async function renderProducts(customerId, users = null) {
 
     return `
       <div class="${blockClass}" data-product-index="${i}">
-        ${removeProductBtn}
         ${wrapClosedProductContent(closed, toggleHtml, inner)}
       </div>`
   }).join('')
