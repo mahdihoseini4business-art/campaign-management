@@ -90,7 +90,11 @@ import {
   onDmAdminDailyDate,
   filterDmAdminArchive,
   openDmAdminArchive,
-  closeDmAdminArchive
+  closeDmAdminArchive,
+  filterDmAdminExplorer,
+  selectDmAdminExplorerUser,
+  selectDmAdminExplorerPair,
+  openDmAdminExplorerConv
 } from './dm-chat-admin.js'
 import { initLiveSync } from './live-sync.js'
 import { initAppUpdate } from './app-update.js'
@@ -369,6 +373,10 @@ const app = {
   filterDmAdminArchive,
   openDmAdminArchive,
   closeDmAdminArchive,
+  filterDmAdminExplorer,
+  selectDmAdminExplorerUser,
+  selectDmAdminExplorerPair,
+  openDmAdminExplorerConv,
   showToast,
   hasPermission,
   openSettingsModal,

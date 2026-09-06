@@ -40,6 +40,11 @@ let archiveFilter = ''
 let archiveConvs = []
 let archiveOpenId = null
 let archiveMessages = []
+/** @type {any | null} */
+let lastMetrics = null
+let explorerQuery = ''
+let explorerSelectedPhone = ''
+let explorerHighlightPeer = ''
 
 async function ensureChartLib() {
   if (!ChartLib) {
@@ -385,7 +390,8 @@ function computeMetrics() {
     focusRows,
     inactive,
     userConvSec,
-    secByUser
+    secByUser,
+    msgByConv
   }
 }
 
@@ -460,16 +466,6 @@ async function paintDashboardCharts(m) {
     }
   })
 
-  const pairs = m.topPairs.slice(0, 10)
-  await renderChart('pairs', 'dmAdminChartPairs', {
-    type: 'bar',
-    data: {
-      labels: pairs.map(p => p.label),
-      datasets: [{ label: 'دقیقه', data: pairs.map(p => Math.round(p.seconds / 60)), backgroundColor: '#0155d2' }]
-    },
-    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-  })
-
   const groups = m.topGroups.slice(0, 10)
   await renderChart('groups', 'dmAdminChartGroups', {
     type: 'bar',
@@ -515,16 +511,135 @@ function tableUsers(m) {
   </tr></thead><tbody>${rows}</tbody></table></div>`
 }
 
-function tablePairs(m) {
-  const rows = m.topPairs.map(p => `<tr>
-    <td>${escapeHtml(p.label)}</td>
-    <td>${escapeHtml(formatDuration(p.seconds))}</td>
-    <td>${escapeHtml(formatDuration(p.avgDaily))}</td>
-    <td>${p.messages.toLocaleString('fa-IR')}</td>
-  </tr>`).join('') || '<tr><td colspan="4">داده‌ای نیست</td></tr>'
-  return `<div class="dm-admin-table-wrap"><table class="dm-admin-table"><thead><tr>
-    <th>جفت</th><th>زمان</th><th>میانگین روزانه</th><th>پیام</th>
-  </tr></thead><tbody>${rows}</tbody></table></div>`
+function explorerUsers(m) {
+  const q = explorerQuery.trim().toLowerCase()
+  return m.topUsers.filter(u => {
+    if (!q) return true
+    return u.name.toLowerCase().includes(q) || String(u.phone || '').includes(q)
+  })
+}
+
+function ensureExplorerSelection(m) {
+  if (explorerSelectedPhone && m.topUsers.some(u => u.phone === explorerSelectedPhone)) return
+  explorerSelectedPhone = m.topUsers[0]?.phone || ''
+  if (!explorerSelectedPhone) explorerHighlightPeer = ''
+}
+
+function explorerPartners(phone, m) {
+  const map = m.userConvSec.get(phone) || new Map()
+  const rows = []
+  for (const [cid, seconds] of map) {
+    const conv = convById.get(Number(cid))
+    if (!conv) continue
+    const isGroup = conv.kind === 'group'
+    let peerPhone = ''
+    let label
+    if (isGroup) {
+      label = conv.title || 'گروه'
+    } else {
+      const a = normalizePhone(conv.phone_a)
+      const b = normalizePhone(conv.phone_b)
+      peerPhone = a === phone ? b : a
+      label = nameOf(peerPhone)
+    }
+    rows.push({
+      cid: Number(cid),
+      isGroup,
+      peerPhone,
+      label,
+      seconds,
+      messages: m.msgByConv.get(Number(cid)) || 0
+    })
+  }
+  return rows.sort((a, b) => b.seconds - a.seconds)
+}
+
+function pairChipActive(a, b) {
+  return (explorerSelectedPhone === a && explorerHighlightPeer === b)
+    || (explorerSelectedPhone === b && explorerHighlightPeer === a)
+}
+
+function renderHotChipButtons(m) {
+  return m.topPairs.slice(0, 8).map(p => {
+    const active = pairChipActive(p.a, p.b)
+    return `<button type="button" class="dm-admin-hot-chip${active ? ' is-active' : ''}"
+      onclick="app.selectDmAdminExplorerPair('${escapeAttr(p.a)}','${escapeAttr(p.b)}')">
+      <span>${escapeHtml(nameOf(p.a))} ↔ ${escapeHtml(nameOf(p.b))}</span>
+      <strong>${escapeHtml(formatDuration(p.seconds))}</strong>
+    </button>`
+  }).join('')
+}
+
+function renderExplorerListsInner(m) {
+  const users = explorerUsers(m)
+  const selected = explorerSelectedPhone
+  const people = users.map(u => {
+    const active = u.phone === selected ? ' is-selected' : ''
+    return `<button type="button" class="dm-admin-explorer-row${active}"
+      onclick="app.selectDmAdminExplorerUser('${escapeAttr(u.phone)}')">
+      <span class="dm-admin-explorer-name">${escapeHtml(u.name)}</span>
+      <span class="dm-admin-explorer-meta">${escapeHtml(formatDuration(u.seconds))} · ${u.convs.toLocaleString('fa-IR')} مخاطب · ${u.messages.toLocaleString('fa-IR')} پیام</span>
+    </button>`
+  }).join('') || '<div class="dm-chat-empty">نتیجه‌ای نیست</div>'
+
+  let partnersHtml = '<div class="dm-chat-empty">یک نفر را از فهرست انتخاب کنید</div>'
+  let partnersHead = 'مخاطبان'
+  if (selected) {
+    partnersHead = `مخاطبان «${escapeHtml(nameOf(selected))}»`
+    const partners = explorerPartners(selected, m)
+    partnersHtml = partners.map(p => {
+      const hi = p.peerPhone && p.peerPhone === explorerHighlightPeer ? ' is-highlight' : ''
+      const tag = p.isGroup ? '<span class="dm-chat-kind-tag">گروه</span>' : ''
+      return `<button type="button" class="dm-admin-explorer-row${hi}"
+        onclick="app.openDmAdminExplorerConv(${p.cid})">
+        <span class="dm-admin-explorer-name">${tag}${escapeHtml(p.label)}</span>
+        <span class="dm-admin-explorer-meta">${escapeHtml(formatDuration(p.seconds))} · ${p.messages.toLocaleString('fa-IR')} پیام · آرشیو</span>
+      </button>`
+    }).join('') || '<div class="dm-chat-empty">مخاطبی در این بازه نیست</div>'
+  }
+
+  return `
+    <div class="dm-admin-explorer-pane">
+      <div class="dm-admin-explorer-pane-head">افراد</div>
+      <div class="dm-admin-explorer-list">${people}</div>
+    </div>
+    <div class="dm-admin-explorer-pane">
+      <div class="dm-admin-explorer-pane-head">${partnersHead}</div>
+      <div class="dm-admin-explorer-list">${partnersHtml}</div>
+    </div>`
+}
+
+function renderPairExplorer(m) {
+  ensureExplorerSelection(m)
+  const chips = renderHotChipButtons(m)
+  return `
+    <div class="dm-admin-block dm-admin-explorer-block" id="dmAdminExplorer">
+      <h4>کاوش گفتگوها</h4>
+      <p class="settings-pane-desc">یک نفر را انتخاب کنید تا مخاطبانش را ببینید. داغ‌ترین جفت‌ها برای نگاه سریع اینجاست.</p>
+      <div id="dmAdminExplorerChips" class="dm-admin-hot-chips${chips ? '' : ' is-empty'}">${chips}</div>
+      <div class="dm-admin-explorer-toolbar">
+        <input type="search" class="form-input" id="dmAdminExplorerSearch" placeholder="جستجوی نام…"
+          value="${escapeAttr(explorerQuery)}" oninput="app.filterDmAdminExplorer(this.value)" autocomplete="off" />
+      </div>
+      <div id="dmAdminExplorerLists" class="dm-admin-explorer-grid">${renderExplorerListsInner(m)}</div>
+    </div>`
+}
+
+function patchExplorer() {
+  if (!lastMetrics) return
+  ensureExplorerSelection(lastMetrics)
+  const chips = document.getElementById('dmAdminExplorerChips')
+  if (chips) {
+    const html = renderHotChipButtons(lastMetrics)
+    chips.innerHTML = html
+    chips.classList.toggle('is-empty', !html)
+  }
+  const lists = document.getElementById('dmAdminExplorerLists')
+  if (lists) lists.innerHTML = renderExplorerListsInner(lastMetrics)
+  document.querySelector('#dmAdminExplorerLists .dm-admin-explorer-row.is-selected')
+    ?.scrollIntoView({ block: 'nearest' })
+  document.querySelector('#dmAdminExplorerLists .dm-admin-explorer-row.is-highlight')
+    ?.scrollIntoView({ block: 'nearest' })
 }
 
 function tableGroups(m) {
@@ -569,10 +684,8 @@ function renderDashboardHtml(m) {
         <div class="dm-admin-chart-box"><canvas id="dmAdminChartHours"></canvas></div>
       </div>
     </div>
-    <div class="dm-admin-split">
-      <div class="dm-admin-block"><h4>پرفعال‌ترین کاربران</h4><div class="dm-admin-chart-box"><canvas id="dmAdminChartUsers"></canvas></div>${tableUsers(m)}</div>
-      <div class="dm-admin-block"><h4>جفت‌های پرترافیک</h4><div class="dm-admin-chart-box"><canvas id="dmAdminChartPairs"></canvas></div>${tablePairs(m)}</div>
-    </div>
+    <div class="dm-admin-block"><h4>پرفعال‌ترین کاربران</h4><div class="dm-admin-chart-box"><canvas id="dmAdminChartUsers"></canvas></div>${tableUsers(m)}</div>
+    ${renderPairExplorer(m)}
     <div class="dm-admin-split">
       <div class="dm-admin-block"><h4>گروه‌های پرفعال</h4><div class="dm-admin-chart-box"><canvas id="dmAdminChartGroups"></canvas></div>${tableGroups(m)}</div>
       <div class="dm-admin-block"><h4>تمرکز ارتباطی</h4><div class="dm-admin-chart-box"><canvas id="dmAdminChartFocus"></canvas></div>${tableFocus(m)}</div>
@@ -756,6 +869,7 @@ export async function refreshDmChatAdmin() {
 
   await loadRangeData()
   const m = computeMetrics()
+  lastMetrics = m
   if (subTab === 'daily') {
     if (!dailyPick) dailyPick = getTodayJalaliStr()
     body.innerHTML = renderDailyHtml(m)
@@ -820,4 +934,42 @@ export function closeDmAdminArchive() {
   archiveMessages = []
   const body = document.getElementById('dmAdminBody')
   if (body) body.innerHTML = renderArchiveHtml()
+}
+
+export function filterDmAdminExplorer(v) {
+  explorerQuery = String(v || '')
+  patchExplorer()
+}
+
+export function selectDmAdminExplorerUser(phone) {
+  explorerSelectedPhone = normalizePhone(phone)
+  explorerHighlightPeer = ''
+  patchExplorer()
+}
+
+export function selectDmAdminExplorerPair(a, b) {
+  explorerQuery = ''
+  explorerSelectedPhone = normalizePhone(a)
+  explorerHighlightPeer = normalizePhone(b)
+  const input = document.getElementById('dmAdminExplorerSearch')
+  if (input) input.value = ''
+  patchExplorer()
+}
+
+export async function openDmAdminExplorerConv(id) {
+  archiveOpenId = Number(id)
+  subTab = 'archive'
+  const { data, error } = await supabase
+    .from('dm_messages')
+    .select('*')
+    .eq('conversation_id', archiveOpenId)
+    .order('id', { ascending: true })
+    .limit(500)
+  if (error) {
+    showToast('خطا در بارگذاری پیام‌ها')
+    archiveMessages = []
+  } else {
+    archiveMessages = data || []
+  }
+  await renderDmChatAdminSection()
 }
