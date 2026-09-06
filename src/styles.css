@@ -510,6 +510,33 @@
     max-width: 320px;
     width: calc(100% - 40px);
     pointer-events: none;
+    transition: bottom 0.2s ease, top 0.2s ease, left 0.2s ease, right 0.2s ease;
+  }
+
+  /* Chat FAB visible: keep sale toasts above the button */
+  body:has(#dmChatRoot:not([hidden])) .sale-toast-stack {
+    bottom: calc(max(20px, env(safe-area-inset-bottom)) + 56px + 12px);
+  }
+
+  /* Desktop chat open: move toasts to the opposite corner */
+  @media (min-width: 641px) {
+    body.dm-chat-open .sale-toast-stack {
+      right: auto;
+      left: max(20px, env(safe-area-inset-left));
+      bottom: max(20px, env(safe-area-inset-bottom));
+    }
+  }
+
+  /* Mobile chat open (fullscreen): show toasts at the top */
+  @media (max-width: 640px) {
+    body.dm-chat-open .sale-toast-stack {
+      top: max(12px, env(safe-area-inset-top));
+      bottom: auto;
+      right: max(12px, env(safe-area-inset-right));
+      left: max(12px, env(safe-area-inset-left));
+      width: auto;
+      max-width: none;
+    }
   }
 
   .sale-toast-card {
@@ -8127,15 +8154,52 @@
     right: max(12px, env(safe-area-inset-right));
     bottom: max(12px, env(safe-area-inset-bottom));
   }
-
-  .dm-chat-panel {
-    width: calc(100vw - 24px);
-    height: min(70vh, calc(100vh - 80px));
-  }
 }
 
 body.dm-chat-open {
   overscroll-behavior: none;
+}
+
+/* Mobile: fullscreen sheet; stay fullscreen until panel is hidden (close anim) */
+@media (max-width: 640px) {
+  .dm-chat-root:has(#dmChatPanel:not([hidden])) {
+    inset: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    gap: 0;
+    align-items: stretch;
+    z-index: 9600;
+  }
+
+  .dm-chat-root:has(#dmChatPanel:not([hidden])) .dm-chat-fab {
+    display: none !important;
+  }
+
+  .dm-chat-root:has(#dmChatPanel:not([hidden])) .dm-chat-panel {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+  }
+
+  body.dm-chat-open {
+    overflow: hidden;
+  }
+
+  body.dm-chat-open .toast {
+    top: max(12px, env(safe-area-inset-top));
+    bottom: auto;
+    left: 12px;
+    right: 12px;
+    transform: translateX(0) translateY(-20px);
+  }
+
+  body.dm-chat-open .toast.show {
+    transform: translateX(0) translateY(0);
+  }
 }
 
 .dm-chat-admin-bar {
@@ -8598,12 +8662,6 @@ body.dm-chat-open {
 }
 
 @media (max-width: 640px) {
-  .dm-chat-panel {
-    width: calc(100vw - 16px);
-    height: min(78vh, calc(100dvh - 72px));
-    max-height: calc(100dvh - 72px);
-  }
-
   .dm-chat-tab {
     max-width: 110px;
   }

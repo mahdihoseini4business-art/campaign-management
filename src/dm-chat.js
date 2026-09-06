@@ -215,7 +215,9 @@ function syncViewportOffset() {
     panel.style.maxHeight = ''
     return
   }
-  const available = Math.max(240, Math.floor(vv.height - 24))
+  const mobile = typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches
+  const pad = mobile ? 0 : 24
+  const available = Math.max(240, Math.floor(vv.height - pad))
   panel.style.maxHeight = `${available}px`
 }
 
@@ -1167,7 +1169,10 @@ export function closeDmChatPanel() {
 function bindChrome() {
   if (!escapeHandler) {
     escapeHandler = (e) => {
-      if (e.key === 'Escape' && panelOpen) closeDmChatPanel()
+      if (e.key !== 'Escape' || !panelOpen) return
+      // Mobile fullscreen: close only via the panel X button
+      if (typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches) return
+      closeDmChatPanel()
     }
     document.addEventListener('keydown', escapeHandler)
   }
