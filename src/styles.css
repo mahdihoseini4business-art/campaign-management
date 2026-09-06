@@ -7806,6 +7806,29 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+  transition:
+    transform 0.16s ease,
+    opacity 0.16s ease;
+}
+
+.dm-chat-root.is-open .dm-chat-panel {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition:
+    transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.22s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dm-chat-panel,
+  .dm-chat-root.is-open .dm-chat-panel {
+    transition: none;
+    transform: none;
+  }
 }
 
 .dm-chat-panel[hidden],

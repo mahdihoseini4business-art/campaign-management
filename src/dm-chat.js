@@ -106,6 +106,52 @@ function panelEl() {
   return document.getElementById('dmChatPanel')
 }
 
+const PANEL_CLOSE_MS = 180
+/** @type {ReturnType<typeof setTimeout> | null} */
+let panelCloseTimer = null
+
+function prefersReducedMotion() {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function clearPanelCloseTimer() {
+  if (panelCloseTimer == null) return
+  clearTimeout(panelCloseTimer)
+  panelCloseTimer = null
+}
+
+function showPanelAnimated() {
+  const panel = panelEl()
+  const root = rootEl()
+  if (!panel || !root) return
+  clearPanelCloseTimer()
+  panel.hidden = false
+  if (prefersReducedMotion()) {
+    root.classList.add('is-open')
+    return
+  }
+  // Ensure closed styles paint before opening transition.
+  void panel.offsetHeight
+  root.classList.add('is-open')
+}
+
+function hidePanelAnimated() {
+  const panel = panelEl()
+  const root = rootEl()
+  if (!panel || !root) return
+  clearPanelCloseTimer()
+  root.classList.remove('is-open')
+  panel.style.maxHeight = ''
+  if (prefersReducedMotion()) {
+    panel.hidden = true
+    return
+  }
+  panelCloseTimer = setTimeout(() => {
+    panelCloseTimer = null
+    if (!panelOpen) panel.hidden = true
+  }, PANEL_CLOSE_MS)
+}
+
 function badgeEl() {
   return document.getElementById('dmChatBadge')
 }
@@ -805,9 +851,7 @@ function openConversationTab(conv) {
   activeTabIndex = idx
   viewMode = 'chat'
   panelOpen = true
-  const panel = panelEl()
-  if (panel) panel.hidden = false
-  rootEl()?.classList.add('is-open')
+  showPanelAnimated()
   setBodyChatOpen(true)
   startHeartbeat()
   return cid
@@ -1095,9 +1139,7 @@ export async function openDmChatPanel() {
     return
   }
   panelOpen = true
-  const panel = panelEl()
-  if (panel) panel.hidden = false
-  rootEl()?.classList.add('is-open')
+  showPanelAnimated()
   setBodyChatOpen(true)
   startHeartbeat()
   if (viewMode === 'chat' && openTabs[activeTabIndex]) {
@@ -1118,12 +1160,7 @@ export function closeDmChatPanel() {
   flushHeartbeat().catch(() => {})
   stopHeartbeat()
   panelOpen = false
-  const panel = panelEl()
-  if (panel) {
-    panel.hidden = true
-    panel.style.maxHeight = ''
-  }
-  rootEl()?.classList.remove('is-open')
+  hidePanelAnimated()
   setBodyChatOpen(false)
 }
 
