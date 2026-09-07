@@ -225,15 +225,67 @@ function canSeeFollowupInTab(customer, currentUser, createdByPhone, assignedToPh
 
 /**
  * Pending queue visibility for a customer with nextFollowupDate:
- * owner/team/org-wide, or anyone who created a still-pending follow-up
- * on this customer while not being the owner.
+ * owner/team/org-wide, or a non-owner who scheduled *this* pending date
+ * (matching nextDate). Older pending notes must not keep granting queue access
+ * after that cycle is done / the date changes.
  */
 function canSeePendingCustomerInTab(customer, currentUser, customerFollowups) {
   if (!canSeeCustomerType(customer)) return false
   if (canViewScopedCustomer(customer, currentUser)) return true
+  const next = normalizeJalaliDate(customer?.nextFollowupDate)
+  if (!next) return false
   return (customerFollowups || []).some(f =>
-    !isDoneFollowup(f) && isNonOwnerFollowupCreator(customer, f.createdByPhone, currentUser)
+    !isDoneFollowup(f)
+    && isNonOwnerFollowupCreator(customer, f.createdByPhone, currentUser)
+    && normalizeJalaliDate(f.nextDate) === next
+    // ارجاع باز فقط از صف assigned دیده می‌شود، نه از مسیر سازنده
+    && !normalizePhone(f.assignedToPhone)
   )
+}
+
+/**
+ * When the assignee registers a note on a referred follow-up, close open
+ * assignment rows referred *by someone else* so the referral is one-shot.
+ * Self-continued «پیگیری بعدی ارجاعی» (assignedBy === me) stays open.
+ */
+export async function closeMyOpenAssignedFollowups(customerId, { note = '', dateTime = '' } = {}) {
+  if (!customerId) return 0
+  const data = getData()
+  const currentUser = getCurrentUser()
+  const me = normalizePhone(currentUser?.phone)
+  if (!me) return 0
+  const doneAt = dateTime || getNowJalaliDateTime().dateTime
+  let closed = 0
+  for (const f of data.followups) {
+    if (f.customerId !== customerId) continue
+    if (!isOpenAssignedFollowup(f)) continue
+    if (!isFollowupAssignee(f.assignedToPhone, currentUser)) continue
+    const by = normalizePhone(f.assignedByPhone)
+    // ادامهٔ ارجاعی که خودم برای خودم ست کردم را با یادداشت معمولی نبند
+    if (by && by === me) continue
+    const cat = classifyDate(f.nextDate)
+    const wasOverdue = cat === 'overdue'
+    await markFollowupDoneInDB(f.id, {
+      doneAt,
+      doneByPhone: me,
+      doneNote: note || f.notes || '',
+      wasOverdue
+    })
+    const memIdx = data.followups.indexOf(f)
+    if (memIdx !== -1) {
+      data.followups[memIdx] = {
+        ...f,
+        status: 'done',
+        doneAt,
+        doneByPhone: me,
+        doneNote: note || f.notes || '',
+        wasOverdue,
+        notes: note || f.notes
+      }
+    }
+    closed++
+  }
+  return closed
 }
 
 /** Prefer creator of the follow-up that matches the scheduled next date. */
@@ -1399,6 +1451,8 @@ export async function saveFollowup() {
       const id = await saveFollowupToDB(newFollowup)
       newFollowup.id = id
       data.followups.push(newFollowup)
+      // ثبت یادداشت توسط گیرندهٔ ارجاع → بستن ارجاع‌های باز به او
+      await closeMyOpenAssignedFollowups(customerId, { note: notes, dateTime: date })
     } catch (e) {
       console.error('saveFollowup error:', e)
       showToast(e.message || 'خطا در ذخیره پیگیری')

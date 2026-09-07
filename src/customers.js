@@ -3160,6 +3160,15 @@ export async function addQuickNote(customerId) {
     data.followups.push(newFollowup)
     invalidateDerivedCache('followups')
 
+    // ارجاع باز به من با ثبت یادداشت بسته می‌شود (یک‌بارمصرف، مگر ارجاع دوباره)
+    try {
+      const { closeMyOpenAssignedFollowups } = await import('./followups.js')
+      const closed = await closeMyOpenAssignedFollowups(customerId, { note: notes, dateTime })
+      if (closed) invalidateDerivedCache('followups')
+    } catch (closeErr) {
+      console.error('closeMyOpenAssignedFollowups error:', closeErr)
+    }
+
     // ارجاع: صف مالک دست‌نخورده؛ فقط ردیف assigned در صف همکار می‌آید
     if (nextDate && !isReferral) {
       const idx = data.customers.findIndex(c => c.id === customerId)
