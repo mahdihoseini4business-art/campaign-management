@@ -1271,8 +1271,7 @@ async function applyCustomerEdit(editId, fields) {
       toAdvisor: advisor,
       toAdvisorPhone: advisorPhone,
       reason: 'handoff',
-      fieldOverrides: { platformId, platform, name, ...phoneFields, ...addressFields, status, notes },
-      skipPermissionCheck: true
+      fieldOverrides: { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, customerCode: customerCode || '' }
     })
   }
 
@@ -2355,7 +2354,6 @@ export async function openCustomerDetail(id, options = {}) {
     : data.customers.find(x => x.id === id)
 
   const canEdit = isNew || canEditCustomerInfo(c)
-  const canChangeAdvisor = isNew || canChangeCustomerAdvisor(c)
   const canTransfer = !isNew && canTransferCustomer(c)
   const canDelete = !isNew && hasPermission('customers_delete') && canManageCustomer(c)
   const canClaim = !isNew && canClaimUnassignedCustomer(c)
@@ -2405,15 +2403,15 @@ export async function openCustomerDetail(id, options = {}) {
     return `<option value="${escapeAttr(phone)}" ${selected}>${escapeHtml(userDisplayName(u))}</option>`
   }).join('')
 
-  // Editable when managing; edit-others users see read-only advisor; transfer-only get onchange select
+  // New: editable advisor. Existing: transfer wins over edit_others (read-only advisor).
   let advisorHtml
-  if (canEdit && canChangeAdvisor) {
+  if (isNew && canEdit) {
     advisorHtml = `<select class="form-select" id="detailAdvisor">${advisorOptions}</select>`
-  } else if (canEdit) {
-    advisorHtml = escapeHtml(c.advisor || '—')
   } else if (canTransfer) {
     advisorHtml = `<select class="form-select" id="detailAdvisor" onchange="app.updateCustomerAdvisor('${escapeAttr(c.id)}', this.value)">${advisorOptions}</select>
       <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">با تغییر، مالکیت فوراً منتقل می‌شود</div>`
+  } else if (canEdit) {
+    advisorHtml = escapeHtml(c.advisor || '—')
   } else {
     advisorHtml = escapeHtml(c.advisor || '—')
     if (canClaim) {

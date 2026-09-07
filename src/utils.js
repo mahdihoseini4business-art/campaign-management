@@ -2072,13 +2072,6 @@ export function canEditCustomerInfo(customer, user = getCurrentUser()) {
   return canViewCustomerAnyScope(customer, user)
 }
 
-/** Change customer advisor from the edit form (ownership). */
-export function canChangeCustomerAdvisor(customer, user = getCurrentUser()) {
-  if (!customer || !canViewCustomer(customer, user)) return false
-  if (user?.role === 'admin') return true
-  return canManageCustomer(customer, user)
-}
-
 /**
  * Transfer ownership: admin, or user with customers_transfer who owns
  * the customer or has the owner in viewUserPhones (زیرمجموعه).
@@ -2093,6 +2086,14 @@ export function canTransferCustomer(customer, user = getCurrentUser()) {
   if (!ownerPhone) return false
   const team = normalizeViewUserPhones(user.viewUserPhones ?? user.permissions?.viewUserPhones)
   return team.includes(ownerPhone)
+}
+
+/**
+ * Change customer advisor / ownership from the edit form.
+ * Same gate as transfer: requires customers_transfer (or admin).
+ */
+export function canChangeCustomerAdvisor(customer, user = getCurrentUser()) {
+  return canTransferCustomer(customer, user)
 }
 
 /** @deprecated use canViewCustomer / canManageCustomer */
