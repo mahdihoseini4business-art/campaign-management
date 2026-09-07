@@ -1321,7 +1321,8 @@ export async function renderDashboard() {
   const dateFrom = document.getElementById('dashDateFrom')?.value.trim() || ''
   const dateTo = document.getElementById('dashDateTo')?.value.trim() || ''
   const userSig = selectedAdvisorPhones ? [...selectedAdvisorPhones].sort().join(',') : 'all'
-  const cacheKey = `${dateFrom}|${dateTo}|${userSig}|${dashFilterApplied ? 1 : 0}|${dashOverdueShowAll ? 1 : 0}|${dashSoonShowAll ? 1 : 0}|${dashOverdueSort.field}:${dashOverdueSort.asc}|${dashSoonSort.field}:${dashSoonSort.asc}`
+  const conversionCode = document.getElementById('dashConversionCustomerCode')?.value || ''
+  const cacheKey = `${dateFrom}|${dateTo}|${userSig}|${dashFilterApplied ? 1 : 0}|${dashOverdueShowAll ? 1 : 0}|${dashSoonShowAll ? 1 : 0}|${dashOverdueSort.field}:${dashOverdueSort.asc}|${dashSoonSort.field}:${dashSoonSort.asc}|${conversionCode}`
   if (shouldSkipTabRender('dashboard', cacheKey)) return
 
   const data = getData()
