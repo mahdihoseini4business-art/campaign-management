@@ -1767,6 +1767,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     populateDashConversionCodeFilter()
     const codeFilter = document.getElementById('dashConversionCustomerCode')?.value || ''
     const data = getData()
+    const customersById = getCustomersById()
     const customersWithActivity = new Set()
     data.followups.forEach(f => {
       const dateStr = jalaliDatePart(f.doneAt || f.date)
