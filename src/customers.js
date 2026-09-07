@@ -10,7 +10,7 @@ import {
   canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canScheduleFollowupOnCustomer, canDeleteFollowupOnCustomer, canDeleteSalePayment, matchesTabSearch, getCustomerSearchExtras,
   canClaimUnassignedCustomer, canRevealUnassignedByPhoneSearch, isHistoricalImportSale,
   resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
-  getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
+  getPlatformUrl, getLastActivity, findCustomerByPhone,
   findCustomerByPlatformId, findCustomersByPhonePrefix,
   getCustomerPhones, normalizeCustomerPhones, getPrimaryPhone, formatPhonesDisplay,
   MAX_CUSTOMER_PHONES, MAX_CUSTOMER_ADDRESSES,
@@ -1276,48 +1276,6 @@ async function applyCustomerEdit(editId, fields) {
   }
 
   return { id: resultId, toast }
-}
-
-async function transferCustomerOwnership(existing, fields, users) {
-  const data = getData()
-  const currentUser = getCurrentUser()
-  const idx = data.customers.findIndex(c => c.id === existing.id)
-  if (idx === -1) { showToast('مشتری یافت نشد'); return }
-
-  if (hasRecentActivityByOther(existing, data.followups, currentUser?.phone, 30)) {
-    onCustomerPhoneInput()
-    showToast('امکان انتقال نیست؛ اخیراً توسط کارشناس دیگری فعالیت ثبت شده')
-    return
-  }
-
-  const { advisor, advisorPhone } = fields
-  const phones = normalizeCustomerPhones(fields.phones || fields.phone || existing)
-  const fieldOverrides = {
-    platformId: fields.platformId || existing.platformId,
-    platform: fields.platform || existing.platform,
-    name: fields.name || existing.name,
-    phones,
-    phone: phones[0] || '',
-    status: fields.status || existing.status,
-    notes: fields.notes !== undefined && fields.notes !== '' ? fields.notes : existing.notes
-  }
-
-  try {
-    await reassignCustomerOwnership({
-      customer: existing,
-      toAdvisor: advisor,
-      toAdvisorPhone: advisorPhone,
-      reason: 'reclaim',
-      fieldOverrides,
-      skipPermissionCheck: true
-    })
-    await renderCustomers()
-    openCustomerDetail(existing.id)
-    showToast(`مشتری ${existing.id} از ${existing.advisor || '—'} به ${advisor} منتقل شد`)
-  } catch (e) {
-    console.error('transferCustomerOwnership error:', e)
-    showToast(e?.message || 'خطا در انتقال مشتری')
-  }
 }
 
 /**
