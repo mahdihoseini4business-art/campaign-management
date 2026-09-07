@@ -1,6 +1,6 @@
 import { getData, deleteCustomerFromDB, deleteFollowupFromDB, saveCustomerToDB, generateTransferBatchId } from './data.js'
 import { openBulkCustomerMerge } from './customer-merge.js'
-import { showToast, requirePermission, hasPermission, canTransferCustomer, normalizePhone, escapeHtml, escapeAttr, userDisplayName, resolveAdvisor, syncCustomerLevel } from './utils.js'
+import { showToast, requirePermission, hasPermission, canTransferCustomer, canManageCustomer, normalizePhone, escapeHtml, escapeAttr, userDisplayName, resolveAdvisor, syncCustomerLevel } from './utils.js'
 import { renderCustomers, reassignCustomerOwnership, closeDeleteModal } from './customers.js'
 import { renderFollowups } from './followups.js'
 import { renderSales, parseSaleRowKey } from './sales.js'
@@ -266,6 +266,11 @@ async function runBulkDelete(tab, ids) {
     for (const id of ids) {
       const customer = data.customers.find(c => c.id === id)
       const label = (customer?.name || id || '').trim() || String(id)
+      if (!hasPermission('customers_delete') || !customer || !canManageCustomer(customer)) {
+        failed++
+        failedLabels.push(label)
+        continue
+      }
       try {
         await deleteCustomerFromDB(id)
         data.customers = data.customers.filter(c => c.id !== id)
