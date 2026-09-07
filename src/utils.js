@@ -1172,12 +1172,12 @@ export const ALL_PERMISSIONS = {
   customers_export: 'خروجی مشتریان',
   followups_view: 'مشاهده پیگیری‌ها',
   followups_add: 'افزودن و ویرایش پیگیری',
-  followups_add_others: 'ثبت پیگیری / یادداشت برای مشتریان دیگران',
+  followups_add_others: 'ثبت پیگیری روی مشتریان دیگران',
   followups_delete: 'حذف پیگیری',
   followups_export: 'خروجی پیگیری‌ها',
   sales_view: 'مشاهده فروش‌ها',
   sales_import: 'ایمپورت فروش',
-  sales_add_others: 'ثبت فروش برای مشتریان دیگران',
+  sales_add_others: 'ثبت فروش فقط برای مشتریان دیگران',
   sales_export: 'خروجی فروش‌ها',
   products_matrix: 'ماتریس محصولات',
   matrix_historical_import: 'ایمپورت تاریخی ماتریس محصول',
@@ -1834,32 +1834,61 @@ export function canDeleteSalePayment(product, payment, user = getCurrentUser()) 
   return !!registrant && registrant === myPhone
 }
 
-/** Register/edit sales on a customer (owner with customers_add, or sales_add_others). */
+/** Register/edit sales on a customer (owner with customers_add, or sales_add_others on others). */
 export function canAddSaleOnCustomer(customer, user = getCurrentUser()) {
   if (!customer || !canViewCustomer(customer, user)) return false
   if (user?.role === 'admin') return true
   if (hasPermission('customers_add') && canManageCustomer(customer, user)) return true
-  return hasPermission('sales_add_others')
+  if (!hasPermission('sales_add_others')) return false
+  return isOtherAdvisorsCustomer(customer, user)
 }
 
-/** Add notes/followups on a customer (owner, or followups_add_others). */
+/** Add notes/followups on a customer (owner with followups_add, or followups_add_others on others). */
 export function canAddNoteOnCustomer(customer, user = getCurrentUser()) {
   if (!customer || !canViewCustomer(customer, user)) return false
-  if (!hasPermission('followups_add') && user?.role !== 'admin') return false
   if (user?.role === 'admin') return true
-  if (canManageCustomer(customer, user)) return true
+  if (canManageCustomer(customer, user)) {
+    return hasPermission('followups_add')
+  }
   return hasPermission('followups_add_others')
 }
 
-/** Set next follow-up date on a customer (owner, or followups_add_others). */
+/** Set next follow-up date on a customer (owner path, or followups_add_others on others). */
 export function canScheduleFollowupOnCustomer(customer, user = getCurrentUser()) {
   if (!customer || !canViewCustomer(customer, user)) return false
   if (user?.role === 'admin') return true
   if (canManageCustomer(customer, user)) {
     return hasPermission('customers_add') || hasPermission('followups_add')
   }
-  if (!hasPermission('followups_add')) return false
   return hasPermission('followups_add_others')
+}
+
+/**
+ * Delete a followup note on a customer.
+ * Same customer scope as notes: own with followups_delete, or others with followups_add_others.
+ */
+export function canDeleteFollowupOnCustomer(customer, user = getCurrentUser()) {
+  if (!customer || !canViewCustomer(customer, user)) return false
+  if (user?.role === 'admin') return true
+  if (!hasPermissionForUser(user, 'followups_delete')) return false
+  if (canManageCustomer(customer, user)) return true
+  return hasPermissionForUser(user, 'followups_add_others')
+}
+
+/**
+ * Bulk-delete a sale product row: every payment must be deletable by the user.
+ * Products with no payments require the current user to be the product registrant.
+ */
+export function canBulkDeleteSaleProduct(product, user = getCurrentUser()) {
+  if (!product) return false
+  if (user?.role === 'admin') return true
+  const pays = getProductPayments(product)
+  if (!pays.length) {
+    const myPhone = normalizePhone(user?.phone)
+    const registrant = normalizePhone(product.soldByPhone)
+    return !!myPhone && !!registrant && myPhone === registrant
+  }
+  return pays.every(pay => canDeleteSalePayment(product, pay, user))
 }
 
 export function hasPermission(key) {
@@ -2061,7 +2090,8 @@ export function isOtherAdvisorsCustomer(customer, user = getCurrentUser()) {
 
 /**
  * Edit customer profile (name, phones, status, …).
- * Owner with customers_add, or customers_edit_others for another advisor's customers.
+ * Owner with customers_add, or customers_edit_others for another advisor's customers
+ * in customers/team scope (not product-matrix-wide).
  */
 export function canEditCustomerInfo(customer, user = getCurrentUser()) {
   if (!customer || !canViewCustomer(customer, user)) return false
@@ -2069,7 +2099,7 @@ export function canEditCustomerInfo(customer, user = getCurrentUser()) {
   if (hasPermissionForUser(user, 'customers_add') && canManageCustomer(customer, user)) return true
   if (!hasPermissionForUser(user, 'customers_edit_others')) return false
   if (!isOtherAdvisorsCustomer(customer, user)) return false
-  return canViewCustomerAnyScope(customer, user)
+  return canViewScopedCustomer(customer, user, 'customers') || canViewScopedCustomer(customer, user)
 }
 
 /**

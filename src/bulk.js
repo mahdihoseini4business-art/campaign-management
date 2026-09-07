@@ -1,6 +1,6 @@
 import { getData, deleteCustomerFromDB, deleteFollowupFromDB, saveCustomerToDB, generateTransferBatchId } from './data.js'
 import { openBulkCustomerMerge } from './customer-merge.js'
-import { showToast, requirePermission, hasPermission, canTransferCustomer, canManageCustomer, normalizePhone, escapeHtml, escapeAttr, userDisplayName, resolveAdvisor, syncCustomerLevel } from './utils.js'
+import { showToast, requirePermission, hasPermission, canTransferCustomer, canManageCustomer, canDeleteFollowupOnCustomer, canBulkDeleteSaleProduct, normalizePhone, escapeHtml, escapeAttr, userDisplayName, resolveAdvisor, syncCustomerLevel } from './utils.js'
 import { renderCustomers, reassignCustomerOwnership, closeDeleteModal } from './customers.js'
 import { renderFollowups } from './followups.js'
 import { renderSales, parseSaleRowKey } from './sales.js'
@@ -291,6 +291,12 @@ async function runBulkDelete(tab, ids) {
         failedLabels.push(String(id))
         continue
       }
+      const customer = data.customers.find(c => c.id === f.customerId)
+      if (!customer || !canDeleteFollowupOnCustomer(customer)) {
+        failed++
+        failedLabels.push(String(f.id || id))
+        continue
+      }
       try {
         if (f.id) await deleteFollowupFromDB(f.id)
         data.followups = data.followups.filter(x => x !== f)
@@ -332,8 +338,19 @@ async function runBulkDelete(tab, ids) {
       }
       if (!indices.length) continue
 
+      const allowed = []
+      for (const i of indices) {
+        const product = customer.products[i]
+        if (canBulkDeleteSaleProduct(product)) allowed.push(i)
+        else {
+          failed++
+          failedLabels.push(customer?.name || customerId)
+        }
+      }
+      if (!allowed.length) continue
+
       const snapshot = customer.products.slice()
-      for (const i of indices) customer.products.splice(i, 1)
+      for (const i of allowed) customer.products.splice(i, 1)
       syncCustomerLevel(customer, data.customers, data.followups)
       try {
         await saveCustomerToDB(customer)
@@ -342,12 +359,12 @@ async function runBulkDelete(tab, ids) {
         } catch (refundErr) {
           console.error('Bulk delete sale refunds error:', refundErr)
         }
-        deleted += indices.length
+        deleted += allowed.length
       } catch (e) {
         console.error('Bulk delete sales error:', e)
         customer.products = snapshot
         syncCustomerLevel(customer, data.customers, data.followups)
-        failed += indices.length
+        failed += allowed.length
         failedLabels.push(customer?.name || customerId)
       }
     }
