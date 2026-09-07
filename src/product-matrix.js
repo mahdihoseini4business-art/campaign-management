@@ -149,7 +149,7 @@ export function getFilteredProductMatrixCustomers() {
     }
 
     const phones = getCustomerPhones(c)
-    if (!matchesTabSearch(search, [c.name, c.advisor, ...phones])) return false
+    if (!matchesTabSearch(search, [c.name, ...phones])) return false
 
     const owned = getCustomerOwnedProductNames(c)
 
@@ -213,23 +213,12 @@ export function toggleProductMatrixAdvisorDropdown(event) {
   event?.stopPropagation?.()
   advisorDropdownOpen = !advisorDropdownOpen
   const dd = document.getElementById('productMatrixAdvisorDropdown')
-  const btn = event?.currentTarget || document.querySelector('.product-matrix-advisor-btn')
   if (!dd) return
   if (!advisorDropdownOpen) {
     dd.hidden = true
-    dd.classList.remove('is-fixed')
     return
   }
   dd.hidden = false
-  // Escape overflow clipping of .table-wrapper
-  if (btn && typeof btn.getBoundingClientRect === 'function') {
-    const rect = btn.getBoundingClientRect()
-    dd.classList.add('is-fixed')
-    dd.style.position = 'fixed'
-    dd.style.top = `${Math.round(rect.bottom + 4)}px`
-    dd.style.right = `${Math.round(window.innerWidth - rect.right)}px`
-    dd.style.left = 'auto'
-  }
   bindAdvisorOutsideClick()
 }
 
@@ -259,15 +248,28 @@ function bindAdvisorOutsideClick() {
   advisorOutsideClickBound = true
   document.addEventListener('click', (e) => {
     const wrap = document.getElementById('productMatrixAdvisorFilter')
-    const dd = document.getElementById('productMatrixAdvisorDropdown')
-    if (wrap?.contains(e.target) || dd?.contains(e.target)) return
+    if (wrap?.contains(e.target)) return
     if (!advisorDropdownOpen) return
     advisorDropdownOpen = false
-    if (dd) {
-      dd.hidden = true
-      dd.classList.remove('is-fixed')
-    }
+    const dd = document.getElementById('productMatrixAdvisorDropdown')
+    if (dd) dd.hidden = true
   })
+}
+
+function syncAdvisorFilterUI() {
+  const dd = document.getElementById('productMatrixAdvisorDropdown')
+  if (dd) {
+    dd.innerHTML = buildAdvisorDropdownHtml()
+    dd.hidden = !advisorDropdownOpen
+  }
+  const btn = document.getElementById('productMatrixAdvisorBtn')
+  if (btn) {
+    btn.classList.toggle('is-filtered', hasActiveAdvisorFilter())
+    btn.innerHTML = `کارشناسان <span class="product-matrix-advisor-count" id="productMatrixAdvisorCount"></span>`
+  }
+  updateAdvisorFilterCount()
+  syncClearFiltersButton()
+  bindAdvisorOutsideClick()
 }
 
 function markCell(has) {
@@ -300,20 +302,11 @@ export async function renderProductMatrix() {
   const customers = getFilteredProductMatrixCustomers()
 
   const noneMode = getFilterMode(NONE_KEY)
-  const advisorActiveClass = hasActiveAdvisorFilter() ? ' is-filtered' : ''
   thead.innerHTML = `
     <tr>
       ${sortThHtml({ field: 'name', label: 'نام مشتری', handler: "app.sortProductMatrixHeader('name')", extraClass: 'product-matrix-sticky product-matrix-col-name' })}
       ${sortThHtml({ field: 'phone', label: 'شماره مشتری', handler: "app.sortProductMatrixHeader('phone')", extraClass: 'product-matrix-sticky product-matrix-col-phone' })}
-      <th class="product-matrix-sticky product-matrix-col-advisor sort-th" data-sort-field="advisor" aria-sort="none" id="productMatrixAdvisorFilter">
-        <button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس کارشناس" onclick="app.sortProductMatrixHeader('advisor')">کارشناس</button>
-        <button type="button" class="product-matrix-advisor-btn${advisorActiveClass}" onclick="app.toggleProductMatrixAdvisorDropdown(event)" aria-label="فیلتر کارشناس" title="فیلتر کارشناس">
-          ▾ <span class="product-matrix-advisor-count" id="productMatrixAdvisorCount"></span>
-        </button>
-        <div class="product-matrix-advisor-dropdown" id="productMatrixAdvisorDropdown"${advisorDropdownOpen ? '' : ' hidden'} onclick="event.stopPropagation()">
-          ${buildAdvisorDropdownHtml()}
-        </div>
-      </th>
+      ${sortThHtml({ field: 'advisor', label: 'کارشناس', handler: "app.sortProductMatrixHeader('advisor')", extraClass: 'product-matrix-sticky product-matrix-col-advisor' })}
       ${catalog.map(name => {
         const mode = getFilterMode(name)
         return `<th class="product-matrix-product-col product-matrix-filterable${filterHeaderClass(mode)}" title="${escapeAttr(name)} — کلیک برای فیلتر" onclick="app.cycleProductMatrixFilter('${escapeAttr(name)}')"><span>${escapeHtml(name)}</span></th>`
@@ -321,24 +314,7 @@ export async function renderProductMatrix() {
       <th class="product-matrix-none-col product-matrix-product-col product-matrix-filterable${filterHeaderClass(noneMode)}" title="بدون محصول — کلیک برای فیلتر" onclick="app.cycleProductMatrixFilter('${escapeAttr(NONE_KEY)}')"><span>بدون محصول</span></th>
     </tr>`
   syncSortHeaders(thead, productMatrixSortState)
-
-  updateAdvisorFilterCount()
-  syncClearFiltersButton()
-  bindAdvisorOutsideClick()
-
-  if (advisorDropdownOpen) {
-    const dd = document.getElementById('productMatrixAdvisorDropdown')
-    const btn = document.querySelector('.product-matrix-advisor-btn')
-    if (dd && btn) {
-      dd.hidden = false
-      const rect = btn.getBoundingClientRect()
-      dd.classList.add('is-fixed')
-      dd.style.position = 'fixed'
-      dd.style.top = `${Math.round(rect.bottom + 4)}px`
-      dd.style.right = `${Math.round(window.innerWidth - rect.right)}px`
-      dd.style.left = 'auto'
-    }
-  }
+  syncAdvisorFilterUI()
 
   if (!catalog.length) {
     tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px;">کاتالوگ محصولات خالی است — از تنظیمات اضافه کنید</td></tr>`

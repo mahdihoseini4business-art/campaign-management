@@ -1190,7 +1190,13 @@
   <!-- شیت ماتریس محصولات -->
   <div class="sheet" id="sheet-products" role="tabpanel" aria-labelledby="tab-products" hidden>
     <div class="toolbar">
-      <input type="text" class="search-box" placeholder="جستجو (نام، شماره، کارشناس)..." id="searchProductMatrix" oninput="app.onProductMatrixSearchInput()">
+      <input type="text" class="search-box" placeholder="جستجو (نام، شماره)..." id="searchProductMatrix" oninput="app.onProductMatrixSearchInput()">
+      <div class="product-matrix-advisor-filter" id="productMatrixAdvisorFilter">
+        <button type="button" class="btn product-matrix-advisor-btn" id="productMatrixAdvisorBtn" onclick="app.toggleProductMatrixAdvisorDropdown(event)" aria-label="فیلتر کارشناس" title="فیلتر کارشناس">
+          کارشناسان <span class="product-matrix-advisor-count" id="productMatrixAdvisorCount"></span>
+        </button>
+        <div class="product-matrix-advisor-dropdown" id="productMatrixAdvisorDropdown" hidden onclick="event.stopPropagation()"></div>
+      </div>
       <button type="button" class="btn" id="clearProductMatrixFiltersBtn" hidden onclick="app.clearProductMatrixFilters()">پاک کردن فیلترها</button>
       <div class="toolbar-actions" id="productsActionsMenu">
         <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی ▾</button>
