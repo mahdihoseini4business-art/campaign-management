@@ -113,8 +113,12 @@ async function refreshTenants() {
         const id = btn.getAttribute('data-fill-tenant')
         const plan = btn.getAttribute('data-fill-plan')
         if ($('subTenantId')) $('subTenantId').value = id || ''
+        if ($('manualTenantId')) $('manualTenantId').value = id || ''
         if (plan && $('subPlanId') && ['trial', 'gold', 'diamond'].includes(plan)) {
           $('subPlanId').value = plan
+        }
+        if (plan && $('manualPlanId') && ['gold', 'diamond'].includes(plan)) {
+          $('manualPlanId').value = plan
         }
       })
     })
@@ -180,6 +184,7 @@ async function onVerify(event) {
     showShell()
     await refreshTenants()
     await loadSettingsForm()
+    await refreshPayments()
   } catch (e) {
     setStatus(e.message || 'خطا')
   } finally {
@@ -284,6 +289,54 @@ async function onSetSubscription(event) {
   }
 }
 
+async function refreshPayments() {
+  const list = $('platformPaymentsList')
+  if (!list) return
+  list.innerHTML = '<li style="color:var(--muted)">...</li>'
+  try {
+    const tenantId = ($('manualTenantId')?.value || $('subTenantId')?.value || '').trim()
+    const data = await platformApi('list_payments', tenantId ? { tenant_id: tenantId } : {})
+    const rows = data.payments || []
+    if (!rows.length) {
+      list.innerHTML = '<li style="color:var(--muted)">پرداختی نیست</li>'
+      return
+    }
+    list.innerHTML = rows.map((p) =>
+      `<li><code>${escapeHtml(p.id)}</code><br>${escapeHtml(p.plan_id)} / ${escapeHtml(p.period)} — ${Number(p.amount_irr || 0).toLocaleString('fa-IR')} — <strong>${escapeHtml(p.status)}</strong>${p.ref_id ? ` — ${escapeHtml(p.ref_id)}` : ''}</li>`
+    ).join('')
+  } catch (e) {
+    list.innerHTML = `<li style="color:var(--danger)">${escapeHtml(e.message || 'خطا')}</li>`
+  }
+}
+
+async function onManualPay(event) {
+  event.preventDefault()
+  const status = $('platformManualPayStatus')
+  try {
+    await platformApi('record_manual_payment', {
+      tenant_id: ($('manualTenantId')?.value || '').trim(),
+      plan_id: $('manualPlanId')?.value || 'gold',
+      period: $('manualPeriod')?.value || 'monthly',
+      amount_irr: Number($('manualAmount')?.value || 0),
+      note: ($('manualNote')?.value || '').trim(),
+      ends_in_days: ($('manualPeriod')?.value === 'yearly') ? 365 : 30
+    })
+    if (status) {
+      status.hidden = false
+      status.textContent = 'پرداخت دستی ثبت و اشتراک فعال شد.'
+      status.dataset.tone = 'info'
+    }
+    await refreshTenants()
+    await refreshPayments()
+  } catch (e) {
+    if (status) {
+      status.hidden = false
+      status.textContent = e.message || 'خطا'
+      status.dataset.tone = 'error'
+    }
+  }
+}
+
 async function onLogout() {
   clearAuthedFlag()
   clearPlatformGateSession()
@@ -299,6 +352,8 @@ async function boot() {
   $('platformCreateForm')?.addEventListener('submit', onCreateTenant)
   $('platformSettingsForm')?.addEventListener('submit', onSaveSettings)
   $('platformSubForm')?.addEventListener('submit', onSetSubscription)
+  $('platformManualPayForm')?.addEventListener('submit', onManualPay)
+  $('platformRefreshPaymentsBtn')?.addEventListener('click', () => refreshPayments())
   $('platformLogoutBtn')?.addEventListener('click', onLogout)
 
   // Phase 0 stub no longer blocks after real OTP; keep helpers referenced
@@ -312,6 +367,7 @@ async function boot() {
     showShell()
     await refreshTenants()
     await loadSettingsForm()
+    await refreshPayments()
   } else {
     showGate()
     setStatus('فقط شماره‌های allowlist سرور (PLATFORM_ADMIN_PHONES) مجازند.', false)

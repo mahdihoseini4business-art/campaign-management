@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>نتیجه پرداخت — CARNO</title>
+<link rel="icon" type="image/webp" href="/icon.webp">
+<link rel="stylesheet" href="/fonts/vazirmatn.css">
+<style>
+  body {
+    font-family: Vazirmatn, Tahoma, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    background: linear-gradient(135deg, #e6effa, #f8fafc);
+    padding: 24px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 20px;
+    padding: 32px;
+    max-width: 420px;
+    width: 100%;
+    box-shadow: 0 12px 40px rgba(1,85,210,.12);
+    text-align: center;
+  }
+  h1 { font-size: 1.25rem; margin: 0 0 10px; }
+  p { color: #64748b; line-height: 1.7; margin: 0 0 12px; }
+  .ok { color: #15803d; }
+  .bad { color: #b91c1c; }
+  a.btn {
+    display: inline-block;
+    margin-top: 8px;
+    background: #0155d2;
+    color: #fff;
+    text-decoration: none;
+    padding: 12px 20px;
+    border-radius: 12px;
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1 id="title">در حال بررسی…</h1>
+    <p id="body"></p>
+    <a class="btn" href="/index.html">بازگشت به پنل</a>
+  </div>
+  <script>
+    const q = new URLSearchParams(location.search)
+    const status = q.get('status') || ''
+    const title = document.getElementById('title')
+    const body = document.getElementById('body')
+    if (status === 'ok') {
+      title.textContent = 'پرداخت موفق'
+      title.className = 'ok'
+      body.textContent = `شماره پیگیری: ${q.get('ref') || '—'} · پلن: ${q.get('plan') || '—'} · فاکتور: ${q.get('invoice') || '—'}`
+    } else if (status === 'cancelled') {
+      title.textContent = 'پرداخت لغو شد'
+      title.className = 'bad'
+      body.textContent = 'تراکنش توسط شما لغو شد یا ناتمام ماند.'
+    } else if (status === 'failed') {
+      title.textContent = 'پرداخت ناموفق'
+      title.className = 'bad'
+      body.textContent = 'تأیید تراکنش ناموفق بود. در صورت کسر وجه با پشتیبانی تماس بگیرید.'
+    } else {
+      title.textContent = 'خطا در نتیجه پرداخت'
+      title.className = 'bad'
+      body.textContent = q.get('message') || 'نتیجه نامشخص'
+    }
+  </script>
+</body>
+</html>

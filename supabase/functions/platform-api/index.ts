@@ -232,6 +232,99 @@ serve(async (req) => {
       return json({ success: true })
     }
 
+    if (action === 'list_payments') {
+      const tenantId = body?.tenant_id ? String(body.tenant_id) : ''
+      let q = admin
+        .from('billing_payments')
+        .select('id, tenant_id, plan_id, period, amount_irr, status, ref_id, gateway, paid_at, created_at, authority')
+        .order('created_at', { ascending: false })
+        .limit(100)
+      if (tenantId) q = q.eq('tenant_id', tenantId)
+      const { data, error } = await q
+      if (error) return json({ success: false, error: error.message }, 500)
+      return json({ success: true, payments: data || [] })
+    }
+
+    if (action === 'record_manual_payment') {
+      const tenantId = String(body?.tenant_id || '').trim()
+      const planId = String(body?.plan_id || 'gold').trim()
+      const period = body?.period === 'yearly' ? 'yearly' : 'monthly'
+      const amount = Number(body?.amount_irr)
+      const endsInDays = Number(body?.ends_in_days) || (period === 'yearly' ? 365 : 30)
+      const note = String(body?.note || 'manual').trim()
+
+      if (!tenantId) return json({ success: false, error: 'tenant_id لازم است' }, 400)
+      if (!['gold', 'diamond'].includes(planId)) {
+        return json({ success: false, error: 'plan_id نامعتبر' }, 400)
+      }
+
+      const { data: payment, error: pErr } = await admin
+        .from('billing_payments')
+        .insert({
+          tenant_id: tenantId,
+          plan_id: planId,
+          period,
+          amount_irr: Number.isFinite(amount) ? amount : 0,
+          status: 'manual',
+          gateway: 'manual',
+          ref_id: note.slice(0, 80),
+          paid_at: new Date().toISOString(),
+          metadata: { note },
+        })
+        .select('id')
+        .single()
+      if (pErr || !payment) return json({ success: false, error: pErr?.message || 'insert failed' }, 500)
+
+      const invoiceNumber = `MAN-${Date.now().toString(36).toUpperCase()}`
+      const { data: invoice } = await admin
+        .from('billing_invoices')
+        .insert({
+          tenant_id: tenantId,
+          payment_id: payment.id,
+          number: invoiceNumber,
+          plan_id: planId,
+          period,
+          amount_irr: Number.isFinite(amount) ? amount : 0,
+          status: 'paid',
+          payload: { manual: true, note },
+        })
+        .select('id')
+        .single()
+
+      await admin.from('billing_payments').update({ invoice_id: invoice?.id || null }).eq('id', payment.id)
+
+      const now = Date.now()
+      const { data: existing } = await admin
+        .from('subscriptions')
+        .select('id, ends_at')
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+      let base = now
+      if (existing?.ends_at) {
+        const prev = new Date(existing.ends_at).getTime()
+        if (prev > now) base = prev
+      }
+      const endsAt = new Date(base + endsInDays * 86400000).toISOString()
+      const subPatch = {
+        plan_id: planId,
+        status: 'active',
+        trial_ends_at: null,
+        ends_at: endsAt,
+        updated_at: new Date().toISOString(),
+      }
+      if (existing?.id) {
+        await admin.from('subscriptions').update(subPatch).eq('tenant_id', tenantId)
+      } else {
+        await admin.from('subscriptions').insert({
+          tenant_id: tenantId,
+          starts_at: new Date().toISOString(),
+          ...subPatch,
+        })
+      }
+
+      return json({ success: true, payment_id: payment.id, ends_at: endsAt })
+    }
+
     return json({ success: false, error: 'action نامعتبر است' }, 400)
   } catch (error) {
     console.error('platform-api error', error)

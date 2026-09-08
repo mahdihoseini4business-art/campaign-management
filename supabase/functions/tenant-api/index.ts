@@ -188,6 +188,31 @@ serve(async (req) => {
       })
     }
 
+    if (action === 'list_payments') {
+      const tenantId = String(body?.tenant_id || '').trim()
+      if (!tenantId) return json({ success: false, error: 'tenant_id لازم است' }, 400)
+
+      const { data: membership } = await admin
+        .from('tenant_members')
+        .select('role')
+        .eq('tenant_id', tenantId)
+        .eq('username', me.username)
+        .maybeSingle()
+
+      if (!isPlatform && !membership) {
+        return json({ success: false, error: 'دسترسی ندارید' }, 403)
+      }
+
+      const { data, error } = await admin
+        .from('billing_payments')
+        .select('id, plan_id, period, amount_irr, status, ref_id, gateway, paid_at, created_at')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (error) return json({ success: false, error: error.message }, 500)
+      return json({ success: true, payments: data || [] })
+    }
+
     return json({ success: false, error: 'action نامعتبر است' }, 400)
   } catch (error) {
     console.error('tenant-api error', error)

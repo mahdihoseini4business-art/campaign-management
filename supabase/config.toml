@@ -12,3 +12,12 @@ verify_jwt = false
 
 [functions.tenant-api]
 verify_jwt = false
+
+[functions.create-payment]
+verify_jwt = false
+
+[functions.zarinpal-callback]
+verify_jwt = false
+
+[functions.subscription-cron]
+verify_jwt = false

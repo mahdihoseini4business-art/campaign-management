@@ -70,6 +70,13 @@ CARNO امروز تک‌مستأجر است: OTP سفارشی، session با HMA
 - مجوز UI مکمل RLS است، جایگزین آن نیست.
 - وب‌هوک پرداخت (فاز ۴) باید idempotent و با검증 باشد.
 
+## فاز ۴ — زرین‌پال
+
+Secrets لازم: `ZARINPAL_MERCHANT_ID`, `ZARINPAL_SANDBOX`, `PUBLIC_APP_URL`, `CRON_SECRET`  
+Functions: `create-payment`, `zarinpal-callback`, `subscription-cron`  
+Cron نمونه (روزانه):  
+`curl -H "x-cron-secret: $CRON_SECRET" https://<ref>.supabase.co/functions/v1/subscription-cron`
+
 ## فاز ۲ (کلاینت) — بدون وابستگی به دیپلوی Liara
 
 - لایه `src/entitlements.js`: پلن، حالت دسترسی، paywall

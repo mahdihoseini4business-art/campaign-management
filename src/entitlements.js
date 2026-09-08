@@ -319,15 +319,27 @@ export function ensurePaywallDom() {
       <h2 id="entitlementPaywallTitle">اشتراک به پایان رسیده</h2>
       <p id="entitlementPaywallBody"></p>
       <div class="entitlement-paywall-actions">
-        <button type="button" class="btn btn-primary" id="entitlementPaywallDismiss">مشاهده فقط‌خواندنی</button>
+        <button type="button" class="btn btn-primary" id="entitlementPaywallBuyGold">خرید طلایی</button>
+        <button type="button" class="btn btn-primary" id="entitlementPaywallBuyDiamond">خرید الماسی</button>
+        <button type="button" class="btn btn-sm" id="entitlementPaywallDismiss">مشاهده فقط‌خواندنی</button>
       </div>
-      <p class="entitlement-paywall-hint">خرید آنلاین در فاز بعد (زرین‌پال) فعال می‌شود. فعلاً از طریق پشتیبانی / سوپرادمین فعال‌سازی کنید.</p>
+      <p class="entitlement-paywall-hint">پرداخت امن از طریق زرین‌پال. در صورت نیاز، فعال‌سازی دستی از سوپرادمین هم ممکن است.</p>
     </div>
   `
   document.body.appendChild(wrap)
   document.getElementById('entitlementPaywallDismiss')?.addEventListener('click', () => {
     wrap.hidden = true
   })
+  const buy = async (planId) => {
+    try {
+      const { startCheckout } = await import('./onboarding.js')
+      await startCheckout(planId, 'monthly')
+    } catch (e) {
+      showToast(e.message || 'خطا در شروع پرداخت', 'error')
+    }
+  }
+  document.getElementById('entitlementPaywallBuyGold')?.addEventListener('click', () => buy('gold'))
+  document.getElementById('entitlementPaywallBuyDiamond')?.addEventListener('click', () => buy('diamond'))
 
   if (!document.getElementById('entitlementBanner')) {
     const banner = document.createElement('div')

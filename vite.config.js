@@ -68,7 +68,8 @@ export default defineConfig({
         main: 'index.html',
         login: 'login.html',
         platform: 'platform.html',
-        signup: 'signup.html'
+        signup: 'signup.html',
+        paymentResult: 'payment-result.html'
       }
     }
   }

@@ -182,6 +182,31 @@
           </form>
           <div id="platformSubStatus" class="status" hidden></div>
         </section>
+        <section class="card">
+          <h2>پرداخت دستی + لیست پرداخت‌ها</h2>
+          <form id="platformManualPayForm">
+            <label for="manualTenantId">شناسه tenant</label>
+            <input id="manualTenantId" required>
+            <label for="manualPlanId">پلن</label>
+            <select id="manualPlanId">
+              <option value="gold">طلایی</option>
+              <option value="diamond">الماسی</option>
+            </select>
+            <label for="manualPeriod">دوره</label>
+            <select id="manualPeriod">
+              <option value="monthly">ماهانه</option>
+              <option value="yearly">سالانه</option>
+            </select>
+            <label for="manualAmount">مبلغ (ریال)</label>
+            <input id="manualAmount" type="number" min="0" value="0">
+            <label for="manualNote">یادداشت / شماره پیگیری</label>
+            <input id="manualNote" placeholder="واریز کارت به کارت ...">
+            <button type="submit">ثبت پرداخت دستی و فعال‌سازی</button>
+          </form>
+          <div id="platformManualPayStatus" class="status" hidden></div>
+          <button type="button" class="secondary" id="platformRefreshPaymentsBtn" style="margin-top:12px;">بروزرسانی لیست پرداخت‌ها</button>
+          <ul id="platformPaymentsList" style="margin-top:12px;"></ul>
+        </section>
       </div>
 
       <section class="card">
