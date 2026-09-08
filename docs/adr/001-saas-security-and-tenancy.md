@@ -105,6 +105,14 @@ Cron نمونه (روزانه):
 
 برای ساب‌دامین پروداکشن، DNS wildcard (`*.carno.ir`) و TLS لازم است؛ nginx فعلی مسیرهای SPA را پوشش می‌دهد.
 
+## فاز ۶ — پولیش، E2E، go-live
+
+- چک‌لیست: [`docs/go-live-checklist.md`](../go-live-checklist.md)
+- سناریوهای دستی: [`docs/e2e-saas-scenarios.md`](../e2e-saas-scenarios.md)
+- تست واحد بدون شبکه: `npm run test:saas-unit` (`entitlements-core` + `subdomain-core`)
+- Smoke بعد از دیپلوی: `npm run smoke:saas` (با `SUPABASE_URL` / `SUPABASE_ANON_KEY`)
+- UX: paywall با عنوان پویا، dismiss تا انتهای session، بنر grace با روز باقی‌مانده، لینک جزئیات اشتراک، پیام‌های فارسی نتیجه پرداخت
+
 ## پیامدها
 
 - فاز ۱ باید migration `tenant_id` + بستن RLS باز + پل OTP→Auth را قبل از فروش انجام دهد.

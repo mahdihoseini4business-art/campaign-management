@@ -21,18 +21,19 @@
     background: #fff;
     border-radius: 20px;
     padding: 32px;
-    max-width: 420px;
+    max-width: 440px;
     width: 100%;
     box-shadow: 0 12px 40px rgba(1,85,210,.12);
     text-align: center;
   }
   h1 { font-size: 1.25rem; margin: 0 0 10px; }
   p { color: #64748b; line-height: 1.7; margin: 0 0 12px; }
+  .meta { font-size: 0.85rem; color: #94a3b8; margin-top: 4px; }
   .ok { color: #15803d; }
   .bad { color: #b91c1c; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px; }
   a.btn {
     display: inline-block;
-    margin-top: 8px;
     background: #0155d2;
     color: #fff;
     text-decoration: none;
@@ -40,35 +41,62 @@
     border-radius: 12px;
     font-weight: 700;
   }
+  a.btn.secondary {
+    background: transparent;
+    color: #0155d2;
+    border: 1px solid #cbd5e1;
+  }
 </style>
 </head>
 <body>
   <div class="card">
     <h1 id="title">در حال بررسی…</h1>
     <p id="body"></p>
-    <a class="btn" href="/index.html">بازگشت به پنل</a>
+    <p id="meta" class="meta"></p>
+    <div class="actions">
+      <a class="btn" id="primaryLink" href="/index.html">بازگشت به پنل</a>
+      <a class="btn secondary" id="secondaryLink" href="/login.html" hidden>ورود مجدد</a>
+    </div>
   </div>
   <script>
+    const PLAN_LABELS = { gold: 'طلایی', diamond: 'الماسی', trial: 'آزمایشی' }
     const q = new URLSearchParams(location.search)
     const status = q.get('status') || ''
     const title = document.getElementById('title')
     const body = document.getElementById('body')
+    const meta = document.getElementById('meta')
+    const secondary = document.getElementById('secondaryLink')
+    const plan = PLAN_LABELS[q.get('plan')] || q.get('plan') || '—'
+    const ref = q.get('ref') || '—'
+    const invoice = q.get('invoice') || ''
+    const ends = q.get('ends_at') || ''
+
     if (status === 'ok') {
-      title.textContent = 'پرداخت موفق'
+      title.textContent = 'پرداخت با موفقیت انجام شد'
       title.className = 'ok'
-      body.textContent = `شماره پیگیری: ${q.get('ref') || '—'} · پلن: ${q.get('plan') || '—'} · فاکتور: ${q.get('invoice') || '—'}`
+      body.textContent = 'اشتراک سازمان شما فعال شد. می‌توانید به پنل برگردید و از امکانات پلن استفاده کنید.'
+      meta.textContent = [
+        `پلن: ${plan}`,
+        `پیگیری: ${ref}`,
+        invoice ? `فاکتور: ${invoice}` : '',
+        ends ? `اعتبار تا: ${ends}` : ''
+      ].filter(Boolean).join(' · ')
     } else if (status === 'cancelled') {
       title.textContent = 'پرداخت لغو شد'
       title.className = 'bad'
-      body.textContent = 'تراکنش توسط شما لغو شد یا ناتمام ماند.'
+      body.textContent = 'تراکنش توسط شما لغو شد یا ناتمام ماند. اشتراکتان تغییر نکرده است؛ هر زمان خواستید دوباره از وضعیت اشتراک اقدام کنید.'
     } else if (status === 'failed') {
-      title.textContent = 'پرداخت ناموفق'
+      title.textContent = 'پرداخت ناموفق بود'
       title.className = 'bad'
-      body.textContent = 'تأیید تراکنش ناموفق بود. در صورت کسر وجه با پشتیبانی تماس بگیرید.'
+      body.textContent = 'تأیید تراکنش ناموفق بود. اگر مبلغی از حساب کسر شده، با پشتیبانی تماس بگیرید و شماره پیگیری درگاه را اعلام کنید.'
+      secondary.hidden = false
     } else {
-      title.textContent = 'خطا در نتیجه پرداخت'
+      title.textContent = 'نتیجه پرداخت نامشخص'
       title.className = 'bad'
-      body.textContent = q.get('message') || 'نتیجه نامشخص'
+      body.textContent = q.get('message') === 'payment_not_found'
+        ? 'شناسه پرداخت پیدا نشد. اگر پول کسر شده با پشتیبانی تماس بگیرید.'
+        : (q.get('message') || 'نتیجه نامشخص است. به پنل برگردید یا دوباره وارد شوید.')
+      secondary.hidden = false
     }
   </script>
 </body>

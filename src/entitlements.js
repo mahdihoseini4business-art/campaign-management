@@ -1,11 +1,19 @@
 /**
- * Phase 2: plan entitlements + access modes (trial / grace / readonly + paywall).
+ * Phase 2+6: plan entitlements + access modes (trial / grace / readonly + paywall).
  * Source of truth: subscriptions + plans (+ platform_settings for grace_days).
  */
 import { supabase } from './supabase.js'
 import { getStoredTenantId } from './tenant.js'
-import { DIAMOND_ONLY_FEATURES, PLATFORM_SETTING_DEFAULTS, PLAN_IDS } from './platform/defaults.js'
+import { DIAMOND_ONLY_FEATURES, PLATFORM_SETTING_DEFAULTS } from './platform/defaults.js'
 import { showToast } from './utils.js'
+import {
+  computeAccessState,
+  mergeFeatures,
+  paywallCopy,
+  graceDaysRemaining
+} from './entitlements-core.js'
+
+export { computeAccessState } from './entitlements-core.js'
 
 const FEATURE_LABELS = {
   dm_chat: 'چت داخلی',
@@ -14,30 +22,6 @@ const FEATURE_LABELS = {
   shipments: 'ارسالی‌ها',
   custom_subdomain: 'ساب‌دامین اختصاصی',
   import_export: 'ایمپورت / اکسپورت'
-}
-
-const PLAN_FEATURE_FALLBACK = {
-  [PLAN_IDS.trial]: {
-    dm_chat: true,
-    products_matrix: true,
-    refunds: true,
-    shipments: true,
-    custom_subdomain: false
-  },
-  [PLAN_IDS.gold]: {
-    dm_chat: false,
-    products_matrix: false,
-    refunds: false,
-    shipments: false,
-    custom_subdomain: false
-  },
-  [PLAN_IDS.diamond]: {
-    dm_chat: true,
-    products_matrix: true,
-    refunds: true,
-    shipments: true,
-    custom_subdomain: true
-  }
 }
 
 /** @type {null | {
@@ -56,134 +40,6 @@ const PLAN_FEATURE_FALLBACK = {
  * }} */
 let state = null
 
-function defaultFeatures(planId) {
-  return { ...(PLAN_FEATURE_FALLBACK[planId] || PLAN_FEATURE_FALLBACK[PLAN_IDS.gold]) }
-}
-
-function mergeFeatures(planId, fromDb) {
-  const base = defaultFeatures(planId)
-  if (fromDb && typeof fromDb === 'object' && !Array.isArray(fromDb)) {
-    for (const k of Object.keys(base)) {
-      if (typeof fromDb[k] === 'boolean') base[k] = fromDb[k]
-    }
-  }
-  return base
-}
-
-/**
- * Compute effective access from subscription row + grace_days.
- */
-export function computeAccessState(sub, graceDays = PLATFORM_SETTING_DEFAULTS.grace_days) {
-  const now = Date.now()
-  const gDays = Number.isFinite(Number(graceDays)) ? Number(graceDays) : PLATFORM_SETTING_DEFAULTS.grace_days
-
-  if (!sub) {
-    return {
-      accessMode: 'readonly',
-      paywall: true,
-      blockImportExport: true,
-      reason: 'no_subscription',
-      planId: PLAN_IDS.gold,
-      rawStatus: 'missing'
-    }
-  }
-
-  const planId = sub.plan_id || PLAN_IDS.gold
-  const rawStatus = sub.status || 'active'
-  const trialEnds = sub.trial_ends_at ? new Date(sub.trial_ends_at).getTime() : null
-  const endsAt = sub.ends_at ? new Date(sub.ends_at).getTime() : null
-
-  if (rawStatus === 'suspended') {
-    return {
-      accessMode: 'readonly',
-      paywall: true,
-      blockImportExport: true,
-      reason: 'suspended',
-      planId,
-      rawStatus
-    }
-  }
-
-  if (rawStatus === 'readonly') {
-    return {
-      accessMode: 'readonly',
-      paywall: true,
-      blockImportExport: true,
-      reason: 'readonly',
-      planId,
-      rawStatus
-    }
-  }
-
-  // Trial ended → readonly + paywall (per product decision)
-  if (rawStatus === 'trialing' && trialEnds && trialEnds < now) {
-    return {
-      accessMode: 'readonly',
-      paywall: true,
-      blockImportExport: true,
-      reason: 'trial_ended',
-      planId,
-      rawStatus
-    }
-  }
-
-  if (rawStatus === 'trialing') {
-    return {
-      accessMode: 'writable',
-      paywall: false,
-      blockImportExport: false,
-      reason: 'trialing',
-      planId,
-      rawStatus
-    }
-  }
-
-  // Paid expired → grace then readonly
-  if ((rawStatus === 'active' || rawStatus === 'grace') && endsAt && endsAt < now) {
-    const graceEnd = endsAt + gDays * 86400000
-    if (now < graceEnd || rawStatus === 'grace') {
-      if (now < graceEnd) {
-        return {
-          accessMode: 'grace',
-          paywall: false,
-          blockImportExport: false,
-          reason: 'grace',
-          planId,
-          rawStatus: 'grace'
-        }
-      }
-    }
-    return {
-      accessMode: 'readonly',
-      paywall: true,
-      blockImportExport: true,
-      reason: 'expired',
-      planId,
-      rawStatus
-    }
-  }
-
-  if (rawStatus === 'grace') {
-    return {
-      accessMode: 'grace',
-      paywall: false,
-      blockImportExport: false,
-      reason: 'grace',
-      planId,
-      rawStatus
-    }
-  }
-
-  return {
-    accessMode: 'writable',
-    paywall: false,
-    blockImportExport: false,
-    reason: 'active',
-    planId,
-    rawStatus
-  }
-}
-
 export function getEntitlements() {
   return state
 }
@@ -200,12 +56,32 @@ export function canUseFeature(featureKey) {
 }
 
 export function canWriteData() {
-  if (!state?.loaded) return true
-  return state.accessMode === 'writable' || state.accessMode === 'grace'
+  return !state?.loaded || state.accessMode === 'writable' || state.accessMode === 'grace'
 }
 
 export function shouldShowPaywall() {
   return !!(state?.loaded && state.paywall)
+}
+
+function paywallDismissKey() {
+  const tid = state?.tenantId || getStoredTenantId() || 'x'
+  return `carno_paywall_dismissed:${tid}:${state?.reason || 'paywall'}`
+}
+
+function isPaywallDismissed() {
+  try {
+    return sessionStorage.getItem(paywallDismissKey()) === '1'
+  } catch {
+    return false
+  }
+}
+
+function markPaywallDismissed() {
+  try {
+    sessionStorage.setItem(paywallDismissKey(), '1')
+  } catch {
+    /* ignore */
+  }
 }
 
 export function assertFeature(featureKey, { silent = false } = {}) {
@@ -213,6 +89,7 @@ export function assertFeature(featureKey, { silent = false } = {}) {
   if (!silent) {
     const label = FEATURE_LABELS[featureKey] || featureKey
     showToast(`قابلیت «${label}» در پلن فعلی شما فعال نیست. برای دسترسی پلن الماسی لازم است.`, 'error')
+    if (shouldShowPaywall()) showPaywallModal()
   }
   return false
 }
@@ -221,7 +98,7 @@ export function assertWritable({ silent = false } = {}) {
   if (canWriteData()) return true
   if (!silent) {
     showToast('اشتراک شما فقط‌خواندنی است. برای ادامه کار اشتراک را تمدید یا خریداری کنید.', 'error')
-    showPaywallModal()
+    if (shouldShowPaywall()) showPaywallModal()
   }
   return false
 }
@@ -238,7 +115,6 @@ export function assertImportExport({ silent = false } = {}) {
 export async function loadEntitlements() {
   const tenantId = getStoredTenantId()
   let graceDays = PLATFORM_SETTING_DEFAULTS.grace_days
-
   try {
     const { data: graceRow } = await supabase
       .from('platform_settings')
@@ -247,34 +123,32 @@ export async function loadEntitlements() {
       .maybeSingle()
     if (graceRow?.value != null) graceDays = Number(graceRow.value) || graceDays
   } catch {
-    /* platform_settings may be unreadable for non-platform users — use default */
+    /* keep default */
   }
 
   let sub = null
   let planFeatures = null
   if (tenantId) {
-    const { data: subRow, error } = await supabase
+    const { data } = await supabase
       .from('subscriptions')
       .select('tenant_id, plan_id, status, trial_ends_at, ends_at, starts_at')
       .eq('tenant_id', tenantId)
       .maybeSingle()
-    if (!error) sub = subRow
-
+    sub = data
     if (sub?.plan_id) {
       const { data: plan } = await supabase
         .from('plans')
-        .select('id, features')
+        .select('features')
         .eq('id', sub.plan_id)
         .maybeSingle()
-      planFeatures = plan?.features
+      planFeatures = plan?.features || null
     }
   }
 
   const access = computeAccessState(sub, graceDays)
-  const features = mergeFeatures(access.planId, planFeatures)
-
   // Expired trial on diamond-feature plan still had features in DB; keep feature flags
   // but accessMode readonly already blocks writes / import-export.
+  const features = mergeFeatures(access.planId, planFeatures)
 
   state = {
     loaded: true,
@@ -290,22 +164,7 @@ export async function loadEntitlements() {
     endsAt: sub?.ends_at || null,
     graceDays
   }
-
   return state
-}
-
-function paywallMessage() {
-  if (!state) return 'برای ادامه، اشتراک تهیه کنید.'
-  if (state.reason === 'trial_ended') {
-    return 'اشتراک آزمایشی رایگان شما به پایان رسیده است. سیستم فقط‌خواندنی است و ایمپورت/اکسپورت غیرفعال شده. برای ادامه یکی از پلن‌های طلایی یا الماسی را تهیه کنید.'
-  }
-  if (state.reason === 'expired' || state.reason === 'readonly') {
-    return 'اشتراک سازمان منقضی شده و دسترسی فقط‌خواندنی است. برای بازگشایی امکانات، اشتراک را تمدید کنید.'
-  }
-  if (state.reason === 'suspended') {
-    return 'سازمان شما تعلیق شده است. با پشتیبانی تماس بگیرید.'
-  }
-  return 'برای ادامه کار به اشتراک فعال نیاز دارید.'
 }
 
 export function ensurePaywallDom() {
@@ -319,23 +178,40 @@ export function ensurePaywallDom() {
       <h2 id="entitlementPaywallTitle">اشتراک به پایان رسیده</h2>
       <p id="entitlementPaywallBody"></p>
       <div class="entitlement-paywall-actions">
-        <button type="button" class="btn btn-primary" id="entitlementPaywallBuyGold">خرید طلایی</button>
-        <button type="button" class="btn btn-primary" id="entitlementPaywallBuyDiamond">خرید الماسی</button>
-        <button type="button" class="btn btn-sm" id="entitlementPaywallDismiss">مشاهده فقط‌خواندنی</button>
+        <button type="button" class="btn btn-primary" id="entitlementPaywallBuyGold">خرید طلایی (ماهانه)</button>
+        <button type="button" class="btn btn-primary" id="entitlementPaywallBuyDiamond">خرید الماسی (ماهانه)</button>
+        <button type="button" class="btn" id="entitlementPaywallOpenStatus">جزئیات اشتراک</button>
+        <button type="button" class="btn btn-sm" id="entitlementPaywallDismiss">ادامه فقط‌خواندنی</button>
       </div>
-      <p class="entitlement-paywall-hint">پرداخت امن از طریق زرین‌پال. در صورت نیاز، فعال‌سازی دستی از سوپرادمین هم ممکن است.</p>
+      <p class="entitlement-paywall-hint">پرداخت امن از طریق زرین‌پال. گزینه‌های سالانه و وضعیت کامل در «جزئیات اشتراک» است. فعال‌سازی دستی از سوپرادمین هم ممکن است.</p>
     </div>
   `
   document.body.appendChild(wrap)
   document.getElementById('entitlementPaywallDismiss')?.addEventListener('click', () => {
+    markPaywallDismissed()
     wrap.hidden = true
   })
+  document.getElementById('entitlementPaywallOpenStatus')?.addEventListener('click', async () => {
+    wrap.hidden = true
+    try {
+      const { openSubscriptionStatusModal } = await import('./onboarding.js')
+      await openSubscriptionStatusModal()
+    } catch (e) {
+      showToast(e.message || 'خطا در باز کردن وضعیت اشتراک', 'error')
+    }
+  })
   const buy = async (planId) => {
+    const btnGold = document.getElementById('entitlementPaywallBuyGold')
+    const btnDiamond = document.getElementById('entitlementPaywallBuyDiamond')
+    if (btnGold) btnGold.disabled = true
+    if (btnDiamond) btnDiamond.disabled = true
     try {
       const { startCheckout } = await import('./onboarding.js')
       await startCheckout(planId, 'monthly')
     } catch (e) {
       showToast(e.message || 'خطا در شروع پرداخت', 'error')
+      if (btnGold) btnGold.disabled = false
+      if (btnDiamond) btnDiamond.disabled = false
     }
   }
   document.getElementById('entitlementPaywallBuyGold')?.addEventListener('click', () => buy('gold'))
@@ -358,8 +234,13 @@ export function ensurePaywallDom() {
         position: sticky; top: 0; z-index: 9000;
         background: #92400e; color: #fff;
         padding: 10px 16px; text-align: center; font-size: 13px;
+        display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center;
       }
       .entitlement-banner[data-tone="danger"] { background: #991b1b; }
+      .entitlement-banner button {
+        font: inherit; cursor: pointer; border: 1px solid rgba(255,255,255,.45);
+        background: transparent; color: #fff; border-radius: 8px; padding: 4px 10px; font-size: 12px;
+      }
       .entitlement-paywall {
         position: fixed; inset: 0; z-index: 10050;
         background: rgba(15, 23, 42, 0.55);
@@ -368,14 +249,17 @@ export function ensurePaywallDom() {
       }
       .entitlement-paywall[hidden] { display: none !important; }
       .entitlement-paywall-card {
-        background: #fff; border-radius: 16px; max-width: 420px; width: 100%;
+        background: #fff; border-radius: 16px; max-width: 460px; width: 100%;
         padding: 24px; box-shadow: 0 16px 48px rgba(0,0,0,.2);
         font-family: Vazirmatn, Tahoma, sans-serif;
       }
       .entitlement-paywall-card h2 { margin: 0 0 10px; font-size: 1.15rem; }
       .entitlement-paywall-card p { margin: 0 0 12px; color: #475569; line-height: 1.7; font-size: 0.92rem; }
       .entitlement-paywall-hint { font-size: 0.8rem !important; color: #94a3b8 !important; }
-      .entitlement-paywall-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+      .entitlement-paywall-actions {
+        display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;
+      }
+      .entitlement-paywall-actions .btn { flex: 1 1 140px; }
       body.entitlement-readonly [data-entitlement-write] { opacity: 0.45; pointer-events: none !important; }
     `
     document.head.appendChild(style)
@@ -383,10 +267,14 @@ export function ensurePaywallDom() {
 }
 
 export function showPaywallModal() {
+  if (isPaywallDismissed()) return
   ensurePaywallDom()
   const el = document.getElementById('entitlementPaywall')
+  const title = document.getElementById('entitlementPaywallTitle')
   const body = document.getElementById('entitlementPaywallBody')
-  if (body) body.textContent = paywallMessage()
+  const copy = paywallCopy(state?.reason)
+  if (title) title.textContent = copy.title
+  if (body) body.textContent = copy.body
   if (el) el.hidden = false
 }
 
@@ -400,17 +288,37 @@ export function applyEntitlementUI() {
   const banner = document.getElementById('entitlementBanner')
   if (banner) {
     if (state.accessMode === 'grace') {
+      const left = graceDaysRemaining(state.endsAt, state.graceDays)
       banner.hidden = false
       banner.dataset.tone = 'warn'
-      banner.textContent = 'مهلت تمدید اشتراک (grace) فعال است. پس از پایان مهلت، سیستم فقط‌خواندنی می‌شود.'
+      banner.innerHTML = `
+        <span>مهلت تمدید اشتراک فعال است${left ? ` — حدود ${left.toLocaleString('fa-IR')} روز باقی‌مانده` : ''}. پس از پایان مهلت، سیستم فقط‌خواندنی می‌شود.</span>
+        <button type="button" id="entitlementBannerUpgrade">تمدید / خرید</button>
+      `
+      document.getElementById('entitlementBannerUpgrade')?.addEventListener('click', async () => {
+        try {
+          const { openSubscriptionStatusModal } = await import('./onboarding.js')
+          await openSubscriptionStatusModal()
+        } catch (e) {
+          showToast(e.message || 'خطا', 'error')
+        }
+      })
     } else if (state.accessMode === 'readonly') {
       banner.hidden = false
       banner.dataset.tone = 'danger'
-      banner.textContent = state.reason === 'trial_ended'
+      const msg = state.reason === 'trial_ended'
         ? 'آزمایشی تمام شده — فقط‌خواندنی · ایمپورت/اکسپورت غیرفعال'
-        : 'اشتراک منقضی — حالت فقط‌خواندنی'
+        : state.reason === 'suspended'
+          ? 'سازمان تعلیق شده — دسترسی محدود'
+          : 'اشتراک منقضی — حالت فقط‌خواندنی'
+      banner.innerHTML = `
+        <span>${msg}</span>
+        <button type="button" id="entitlementBannerUpgrade">خرید اشتراک</button>
+      `
+      document.getElementById('entitlementBannerUpgrade')?.addEventListener('click', () => showPaywallModal())
     } else {
       banner.hidden = true
+      banner.innerHTML = ''
     }
   }
 
