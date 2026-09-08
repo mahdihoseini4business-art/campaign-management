@@ -116,6 +116,11 @@ import {
   initBackupRestoreListeners
 } from './backup-ui.js'
 import { setPage } from './pagination.js'
+import {
+  loadEntitlements,
+  applyEntitlementUI,
+  assertFeature
+} from './entitlements.js'
 
 // ============================================
 // Tab Switching
@@ -123,6 +128,8 @@ import { setPage } from './pagination.js'
 
 function switchTab(tab, el) {
   const permMap = { dashboard: 'dashboard', customers: 'customers_view', followups: 'followups_view', sales: 'sales_view', products: 'products_matrix', accounting: 'accounting' }
+  const featureMap = { products: 'products_matrix', refunds: 'refunds', shipments: 'shipments' }
+  if (featureMap[tab] && !assertFeature(featureMap[tab])) return
   if (tab === 'refunds') {
     if (!hasAnyRefundPermission()) return
   } else if (permMap[tab] && !hasPermission(permMap[tab])) {
@@ -820,6 +827,12 @@ async function init() {
   if (loadingOverlay) loadingOverlay.style.display = 'none'
 
   try { applyPermissions() } catch (e) { console.error('applyPermissions error:', e) }
+  try {
+    await loadEntitlements()
+    applyEntitlementUI()
+  } catch (e) {
+    console.error('entitlements error:', e)
+  }
   try { openDefaultAccessibleTab() } catch (e) { console.error('openDefaultAccessibleTab error:', e) }
   try { refreshCustomerBulkOptions() } catch (e) { console.error('refreshCustomerBulkOptions error:', e) }
   try { updateTransferInboxBadge() } catch (e) { console.error('updateTransferInboxBadge error:', e) }

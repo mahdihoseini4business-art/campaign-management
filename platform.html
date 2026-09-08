@@ -157,6 +157,31 @@
           </form>
           <div id="platformCreateStatus" class="status" hidden></div>
         </section>
+        <section class="card">
+          <h2>تغییر پلن / وضعیت اشتراک (دستی)</h2>
+          <form id="platformSubForm">
+            <label for="subTenantId">شناسه tenant</label>
+            <input id="subTenantId" required placeholder="uuid سازمان">
+            <label for="subPlanId">پلن</label>
+            <select id="subPlanId">
+              <option value="trial">آزمایشی</option>
+              <option value="gold">طلایی</option>
+              <option value="diamond">الماسی</option>
+            </select>
+            <label for="subStatus">وضعیت</label>
+            <select id="subStatus">
+              <option value="trialing">trialing</option>
+              <option value="active">active</option>
+              <option value="grace">grace</option>
+              <option value="readonly">readonly</option>
+              <option value="suspended">suspended</option>
+            </select>
+            <label for="subEndsInDays">مدت اعتبار از امروز (روز) — برای active</label>
+            <input id="subEndsInDays" type="number" min="1" value="30">
+            <button type="submit">اعمال</button>
+          </form>
+          <div id="platformSubStatus" class="status" hidden></div>
+        </section>
       </div>
 
       <section class="card">

@@ -100,8 +100,24 @@ async function refreshTenants() {
       const sub = t.subscription
       const plan = sub?.plan_id || '—'
       const st = sub?.status || '—'
-      return `<li><strong>${escapeHtml(t.name)}</strong> <span style="color:var(--muted)">(${escapeHtml(t.slug || '')})</span><br><span style="color:var(--muted);font-size:0.85rem;">پلن: ${escapeHtml(plan)} · وضعیت: ${escapeHtml(st)} · ${escapeHtml(t.status)}</span></li>`
+      return `<li>
+        <strong>${escapeHtml(t.name)}</strong>
+        <span style="color:var(--muted)">(${escapeHtml(t.slug || '')})</span><br>
+        <span style="color:var(--muted);font-size:0.85rem;">id: <code style="user-select:all">${escapeHtml(t.id)}</code></span><br>
+        <span style="color:var(--muted);font-size:0.85rem;">پلن: ${escapeHtml(plan)} · وضعیت: ${escapeHtml(st)} · ${escapeHtml(t.status)}</span>
+        <br><button type="button" class="secondary" style="margin-top:8px;padding:6px 10px;font-size:0.8rem;" data-fill-tenant="${escapeAttr(t.id)}" data-fill-plan="${escapeAttr(plan)}">پر کردن فرم پلن</button>
+      </li>`
     }).join('')
+    list.querySelectorAll('[data-fill-tenant]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-fill-tenant')
+        const plan = btn.getAttribute('data-fill-plan')
+        if ($('subTenantId')) $('subTenantId').value = id || ''
+        if (plan && $('subPlanId') && ['trial', 'gold', 'diamond'].includes(plan)) {
+          $('subPlanId').value = plan
+        }
+      })
+    })
   } catch (e) {
     list.innerHTML = `<li style="color:var(--danger)">${escapeHtml(e.message || 'خطا')}</li>`
   }
@@ -113,6 +129,13 @@ function escapeHtml(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+function escapeAttr(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
 }
 
 async function onSendOtp(event) {
@@ -236,6 +259,31 @@ async function onSaveSettings(event) {
   }
 }
 
+async function onSetSubscription(event) {
+  event.preventDefault()
+  const status = $('platformSubStatus')
+  try {
+    await platformApi('set_subscription', {
+      tenant_id: ($('subTenantId')?.value || '').trim(),
+      plan_id: $('subPlanId')?.value || 'gold',
+      status: $('subStatus')?.value || 'active',
+      ends_in_days: Number($('subEndsInDays')?.value || 30)
+    })
+    if (status) {
+      status.hidden = false
+      status.textContent = 'اشتراک به‌روز شد.'
+      status.dataset.tone = 'info'
+    }
+    await refreshTenants()
+  } catch (e) {
+    if (status) {
+      status.hidden = false
+      status.textContent = e.message || 'خطا'
+      status.dataset.tone = 'error'
+    }
+  }
+}
+
 async function onLogout() {
   clearAuthedFlag()
   clearPlatformGateSession()
@@ -250,6 +298,7 @@ async function boot() {
   $('platformLoginForm')?.addEventListener('submit', onVerify)
   $('platformCreateForm')?.addEventListener('submit', onCreateTenant)
   $('platformSettingsForm')?.addEventListener('submit', onSaveSettings)
+  $('platformSubForm')?.addEventListener('submit', onSetSubscription)
   $('platformLogoutBtn')?.addEventListener('click', onLogout)
 
   // Phase 0 stub no longer blocks after real OTP; keep helpers referenced

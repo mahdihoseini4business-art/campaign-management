@@ -15,6 +15,7 @@ import { renderCustomers, getFilteredCustomers } from './customers.js'
 import { getFollowupsForExport, hasActiveFollowupExportFilter, renderFollowups } from './followups.js'
 import { renderSales, getFilteredSales, getSalesDateFilter } from './sales.js'
 import { getProductMatrixExportAoa, hasActiveProductMatrixFilter, renderProductMatrix } from './product-matrix.js'
+import { assertImportExport } from './entitlements.js'
 
 let xlsxModule = null
 
@@ -515,6 +516,7 @@ const EXPORT_CONFIG = {
 }
 
 export async function exportTabCSV(tab) {
+  if (!assertImportExport()) return
   const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'products_matrix' }[tab]
   if (exportPerm && !requirePermission(exportPerm)) return
   const cfg = EXPORT_CONFIG[tab]
@@ -535,6 +537,7 @@ export async function exportTabCSV(tab) {
 }
 
 export async function exportTabXLSX(tab) {
+  if (!assertImportExport()) return
   const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'products_matrix' }[tab]
   if (exportPerm && !requirePermission(exportPerm)) return
   const cfg = EXPORT_CONFIG[tab]
@@ -837,6 +840,7 @@ let importData = {
 }
 
 export function openImportModal() {
+  if (!assertImportExport()) return
   if (!requirePermission('customers_import')) return
   importData = { headers: [], rows: [], mapping: {}, autoMapping: {}, followups: null, mode: 'customers', dryRun: null }
   document.getElementById('importStep1').style.display = ''
@@ -1732,6 +1736,7 @@ function soldAtTimeFromCell(raw) {
 }
 
 export function openSalesImportModal() {
+  if (!assertImportExport()) return
   if (!requirePermission('sales_import')) return
   salesImportData = emptySalesImportState()
   document.getElementById('salesImportMapping').style.display = 'none'
@@ -2658,6 +2663,7 @@ export function setMatrixProductPriceMap(header, value) {
 }
 
 export function openMatrixImportModal() {
+  if (!assertImportExport()) return
   if (!requirePermission('matrix_historical_import')) return
   matrixImportData = emptyMatrixImportState()
   matrixImportData.refJalali = defaultMatrixRefJalali()

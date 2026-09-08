@@ -15,6 +15,7 @@ import {
   isMainAdmin,
   requireMainAdmin
 } from './utils.js'
+import { assertFeature, assertWritable } from './entitlements.js'
 
 const CHANNEL_NAME = 'dm-chat-live'
 const NOTIF_SOUND_URL = '/chat-notif.mp3'
@@ -1087,6 +1088,7 @@ export async function toggleDmChatPin(conversationId, scope) {
 }
 
 export async function sendDmChatMessage() {
+  if (!assertWritable()) return
   if (sending) return
   const tab = openTabs[activeTabIndex]
   if (!tab || viewMode !== 'chat') return
@@ -1136,6 +1138,7 @@ export function toggleDmChatPanel() {
 }
 
 export async function openDmChatPanel() {
+  if (!assertFeature('dm_chat')) return
   if (!getDmChatEnabled()) {
     teardownDmChat()
     return
@@ -1190,6 +1193,13 @@ function bindChrome() {
 }
 
 export async function initDmChat() {
+  if (!assertFeature('dm_chat', { silent: true })) {
+    const root = rootEl()
+    if (root) root.hidden = true
+    const fab = document.getElementById('dmChatFab')
+    if (fab) fab.style.display = 'none'
+    return
+  }
   if (!getDmChatEnabled()) {
     const root = rootEl()
     if (root) root.hidden = true

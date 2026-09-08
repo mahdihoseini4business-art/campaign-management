@@ -22,6 +22,7 @@ import { toggleSortField, sortRecords, syncSortHeaders, sortSig, sortThHtml } fr
 import { debouncedSearchInput } from './search-debounce.js'
 import { SEARCH_HOST } from './search-overlay.js'
 import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
+import { assertFeature } from './entitlements.js'
 
 const MARK_YES = '✅'
 const NONE_KEY = '__none__'
@@ -282,6 +283,7 @@ export function onProductMatrixSearchInput() {
 }
 
 export async function renderProductMatrix() {
+  if (!assertFeature('products_matrix', { silent: true })) return
   if (!hasPermission('products_matrix')) return
 
   const thead = document.getElementById('productMatrixHead')

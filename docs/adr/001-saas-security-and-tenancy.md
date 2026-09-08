@@ -70,7 +70,14 @@ CARNO امروز تک‌مستأجر است: OTP سفارشی، session با HMA
 - مجوز UI مکمل RLS است، جایگزین آن نیست.
 - وب‌هوک پرداخت (فاز ۴) باید idempotent و با검증 باشد.
 
-## استقرار فاز ۱ (الزامی)
+## فاز ۲ (کلاینت) — بدون وابستگی به دیپلوی Liara
+
+- لایه `src/entitlements.js`: پلن، حالت دسترسی، paywall
+- قفل قابلیت‌های الماس در تب‌ها و اکشن‌ها
+- قطع ایمپورت/اکسپورت در پایان trial / readonly
+- سوپرادمین: `set_subscription` برای تغییر پلن دستی
+
+برای تست کامل همچنان migration + Edge Functions فاز ۱ لازم است.
 
 1. اعمال migration: `supabase/migrations/031_tenancy_foundation.sql`
 2. دیپلوی Edge Functions: `send-otp`, `verify-otp`, `platform-api`

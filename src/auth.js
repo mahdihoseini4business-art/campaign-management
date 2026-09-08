@@ -20,7 +20,9 @@ import {
   resolveViewUserPhonesForSession,
   clearUserViewPhones
 } from './groups.js'
-import { clearAuthSession, ensureTenantContextOnBoot } from './tenant.js'
+import {
+  applyFeaturePermissionsOverlay
+} from './entitlements.js'
 
 function loginPageHref() {
   return typeof window !== 'undefined' && window.__CARNO_OFFLINE__ ? './login.html' : '/login.html'
@@ -3888,6 +3890,8 @@ export function applyPermissions() {
     const firstVisible = [...document.querySelectorAll('.tab')].find(t => t.style.display !== 'none')
     if (firstVisible) firstVisible.click()
   }
+
+  try { applyFeaturePermissionsOverlay() } catch (_) { /* entitlements may not be loaded yet */ }
 }
 
 // ============================================

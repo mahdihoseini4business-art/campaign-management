@@ -18,6 +18,7 @@ import { renderProducts } from './customers.js'
 import { debouncedSearchInput } from './search-debounce.js'
 import { SEARCH_HOST } from './search-overlay.js'
 import { shouldSkipTabRender, markTabRendered } from './tab-cache.js'
+import { assertFeature, assertWritable } from './entitlements.js'
 import { toggleSortField, sortRecords, syncSortHeaders } from './table-sort.js'
 
 let refundsView = 'kanban' // kanban | rejected | archived
@@ -192,6 +193,7 @@ export function onRefundsSearchInput() {
 }
 
 export async function renderRefunds() {
+  if (!assertFeature('refunds', { silent: true })) return
   if (!hasAnyRefundPermission()) return
   if (refundDrag?.active) return
 
@@ -1002,6 +1004,8 @@ export async function confirmRejectRefund() {
 // ============================================
 
 export function openRefundWizard() {
+  if (!assertFeature('refunds')) return
+  if (!assertWritable()) return
   if (!requirePermission('refunds_request')) return
   wizardBusy = false
   wizard.step = 1

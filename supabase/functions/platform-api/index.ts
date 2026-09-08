@@ -181,6 +181,57 @@ serve(async (req) => {
       return json({ success: true })
     }
 
+    if (action === 'set_subscription') {
+      const tenantId = String(body?.tenant_id || '').trim()
+      const planId = String(body?.plan_id || '').trim()
+      const status = String(body?.status || '').trim()
+      const allowedPlans = new Set(['trial', 'gold', 'diamond'])
+      const allowedStatus = new Set(['trialing', 'active', 'grace', 'readonly', 'suspended'])
+      if (!tenantId) return json({ success: false, error: 'tenant_id لازم است' }, 400)
+      if (!allowedPlans.has(planId)) return json({ success: false, error: 'plan_id نامعتبر است' }, 400)
+      if (!allowedStatus.has(status)) return json({ success: false, error: 'status نامعتبر است' }, 400)
+
+      const trialDays = Number(body?.trial_days) || 7
+      const endsInDays = body?.ends_in_days != null ? Number(body.ends_in_days) : null
+      const now = Date.now()
+      const patch: Record<string, unknown> = {
+        plan_id: planId,
+        status,
+        updated_at: new Date().toISOString(),
+      }
+      if (status === 'trialing') {
+        patch.trial_ends_at = new Date(now + trialDays * 86400000).toISOString()
+        patch.ends_at = patch.trial_ends_at
+      } else if (endsInDays != null && Number.isFinite(endsInDays)) {
+        patch.ends_at = new Date(now + endsInDays * 86400000).toISOString()
+        patch.trial_ends_at = null
+      } else if (status === 'active') {
+        patch.trial_ends_at = null
+        if (!body?.keep_ends_at) {
+          patch.ends_at = new Date(now + 30 * 86400000).toISOString()
+        }
+      }
+
+      const { data: existing } = await admin
+        .from('subscriptions')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+
+      if (existing?.id) {
+        const { error } = await admin.from('subscriptions').update(patch).eq('tenant_id', tenantId)
+        if (error) return json({ success: false, error: error.message }, 500)
+      } else {
+        const { error } = await admin.from('subscriptions').insert({
+          tenant_id: tenantId,
+          starts_at: new Date().toISOString(),
+          ...patch,
+        })
+        if (error) return json({ success: false, error: error.message }, 500)
+      }
+      return json({ success: true })
+    }
+
     return json({ success: false, error: 'action نامعتبر است' }, 400)
   } catch (error) {
     console.error('platform-api error', error)

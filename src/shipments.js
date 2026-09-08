@@ -16,6 +16,7 @@ import { renderProducts } from './customers.js'
 import { debouncedSearchInput } from './search-debounce.js'
 import { SEARCH_HOST } from './search-overlay.js'
 import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
+import { assertFeature, assertWritable } from './entitlements.js'
 
 let shipmentsFilter = 'pending' // pending | shipped
 let shipmentsSortState = { field: null, asc: true }
@@ -140,6 +141,7 @@ export function onShipmentsSearchInput() {
 }
 
 export async function renderShipments() {
+  if (!assertFeature('shipments', { silent: true })) return
   const tbody = document.getElementById('shipmentsBody')
   if (!tbody) return
 
@@ -276,6 +278,8 @@ export function sortShipments(field) {
 }
 
 export function openConfirmShipmentModal(customerId, productIndex) {
+  if (!assertFeature('shipments')) return
+  if (!assertWritable()) return
   if (!requirePermission('shipments_manage')) return
   const data = getData()
   const customer = data.customers.find(c => c.id === customerId)
