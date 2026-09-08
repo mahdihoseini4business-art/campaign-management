@@ -5,12 +5,13 @@ import { supabase } from './supabase.js'
 
 /**
  * @param {string} phone
- * @param {{ purpose?: 'tenant' | 'platform' }} [opts]
+ * @param {{ purpose?: 'tenant' | 'platform' | 'register' }} [opts]
  */
 export async function sendOTP(phone, opts = {}) {
   try {
+    const purpose = ['platform', 'register'].includes(opts.purpose) ? opts.purpose : 'tenant'
     const { data, error } = await supabase.functions.invoke('send-otp', {
-      body: { phone, purpose: opts.purpose === 'platform' ? 'platform' : 'tenant' }
+      body: { phone, purpose }
     })
 
     if (error) {
@@ -28,17 +29,18 @@ export async function sendOTP(phone, opts = {}) {
 /**
  * @param {string} phone
  * @param {string} code
- * @param {{ purpose?: 'tenant' | 'platform' }} [opts]
+ * @param {{ purpose?: 'tenant' | 'platform' | 'register', org_name?: string, first_name?: string, last_name?: string }} [opts]
  */
 export async function verifyOTP(phone, code, opts = {}) {
   try {
-    const { data, error } = await supabase.functions.invoke('verify-otp', {
-      body: {
-        phone,
-        code,
-        purpose: opts.purpose === 'platform' ? 'platform' : 'tenant'
-      }
-    })
+    const purpose = ['platform', 'register'].includes(opts.purpose) ? opts.purpose : 'tenant'
+    const body = { phone, code, purpose }
+    if (purpose === 'register') {
+      body.org_name = opts.org_name
+      body.first_name = opts.first_name
+      body.last_name = opts.last_name
+    }
+    const { data, error } = await supabase.functions.invoke('verify-otp', { body })
 
     if (error) {
       console.error('verifyOTP error:', error)

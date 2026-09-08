@@ -49,7 +49,8 @@ serve(async (req) => {
   try {
     const body = await req.json()
     const phone = String(body?.phone || '').trim()
-    const purpose = body?.purpose === 'platform' ? 'platform' : 'tenant'
+    const purposeRaw = String(body?.purpose || 'tenant')
+    const purpose = ['platform', 'register'].includes(purposeRaw) ? purposeRaw : 'tenant'
 
     if (!phone || !/^09\d{9}$/.test(phone)) {
       return json({ success: false, error: 'شماره موبایل صحیح نیست' }, 400)
@@ -66,8 +67,26 @@ serve(async (req) => {
     if (purpose === 'platform') {
       const allow = parseAllowlist()
       if (!allow.has(phone)) {
-        // Do not reveal whether phone is allowlisted
         return json({ success: false, error: 'دسترسی مجاز نیست' }, 403)
+      }
+    } else if (purpose === 'register') {
+      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      const { count: dayCount } = await supabase
+        .from('org_registration_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('phone', phone)
+        .gte('created_at', dayAgo)
+      if ((dayCount ?? 0) >= 1) {
+        return json({ success: false, error: 'امروز یک سازمان با این شماره ساخته‌اید. فردا دوباره تلاش کنید' }, 429)
+      }
+      const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+      const { count: monthCount } = await supabase
+        .from('org_registration_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('phone', phone)
+        .gte('created_at', monthAgo)
+      if ((monthCount ?? 0) >= 3) {
+        return json({ success: false, error: 'سقف ساخت سازمان برای این شماره پر شده است' }, 429)
       }
     } else {
       const { data: users, error: userError } = await supabase

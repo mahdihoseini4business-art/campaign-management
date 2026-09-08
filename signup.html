@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0155d2">
+<title>ثبت‌نام سازمان - CARNO</title>
+<link rel="icon" type="image/webp" href="/icon.webp">
+<link rel="stylesheet" href="/fonts/vazirmatn.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Vazirmatn', Tahoma, system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #e6effa 0%, #f0f5fc 100%);
+    padding: 24px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 24px;
+    box-shadow: 0 8px 32px rgba(1,85,210,0.12);
+    width: 100%;
+    max-width: 440px;
+    padding: 40px 32px;
+    text-align: center;
+  }
+  h2 { font-size: 1.25rem; margin-bottom: 6px; color: #0f172a; }
+  .sub { color: #64748b; font-size: 0.9rem; margin-bottom: 20px; line-height: 1.6; }
+  label { display: block; text-align: right; font-size: 0.85rem; color: #64748b; margin-bottom: 6px; }
+  input {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    font: inherit;
+    margin-bottom: 12px;
+  }
+  input:focus { outline: 2px solid rgba(1,85,210,0.25); border-color: #0155d2; }
+  .btn {
+    width: 100%;
+    border: 0;
+    border-radius: 12px;
+    padding: 14px;
+    background: #0155d2;
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .btn-ghost {
+    background: transparent;
+    color: #0155d2;
+    margin-top: 12px;
+  }
+  .err {
+    display: none;
+    background: #fef2f2;
+    color: #b91c1c;
+    border-radius: 10px;
+    padding: 10px;
+    font-size: 0.88rem;
+    margin-bottom: 12px;
+    text-align: right;
+  }
+  .err.show { display: block; }
+  .ok {
+    display: none;
+    background: #f0fdf4;
+    color: #15803d;
+    border-radius: 10px;
+    padding: 10px;
+    font-size: 0.88rem;
+    margin-bottom: 12px;
+  }
+  .ok.show { display: block; }
+  .otp-row { display: flex; gap: 8px; justify-content: center; direction: ltr; margin: 16px 0; }
+  .otp-row input {
+    width: 48px; height: 52px; text-align: center; font-size: 1.25rem; margin: 0;
+  }
+  a { color: #0155d2; text-decoration: none; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div id="step1">
+    <h2>ثبت‌نام سازمان</h2>
+    <p class="sub">۷ روز آزمایشی با تمام امکانات. بعد از تأیید موبایل، پنل سازمان شما ساخته می‌شود.</p>
+    <div class="err" id="error1"></div>
+    <label for="orgName">نام سازمان</label>
+    <input id="orgName" placeholder="مثلاً فروشگاه نمونه" autocomplete="organization">
+    <label for="firstName">نام</label>
+    <input id="firstName" autocomplete="given-name">
+    <label for="lastName">نام خانوادگی</label>
+    <input id="lastName" autocomplete="family-name">
+    <label for="phone">موبایل مالک</label>
+    <input id="phone" type="tel" inputmode="tel" maxlength="11" placeholder="09123456789" autocomplete="tel">
+    <button type="button" class="btn" id="sendBtn">ارسال کد تأیید</button>
+    <button type="button" class="btn btn-ghost" onclick="location.href='/login.html'">قبلاً حساب دارید؟ ورود</button>
+  </div>
+
+  <div id="step2" style="display:none;">
+    <h2>تأیید موبایل</h2>
+    <p class="sub">کد ۴ رقمی به <strong id="phoneDisplay"></strong> ارسال شد.</p>
+    <div class="err" id="error2"></div>
+    <div class="ok" id="ok2"></div>
+    <div class="otp-row">
+      <input class="otp" maxlength="1" inputmode="numeric" data-i="0">
+      <input class="otp" maxlength="1" inputmode="numeric" data-i="1">
+      <input class="otp" maxlength="1" inputmode="numeric" data-i="2">
+      <input class="otp" maxlength="1" inputmode="numeric" data-i="3">
+    </div>
+    <button type="button" class="btn" id="verifyBtn" disabled>ساخت سازمان و ورود</button>
+    <button type="button" class="btn btn-ghost" id="backBtn">بازگشت</button>
+  </div>
+</div>
+
+<script type="module">
+  import { toEnDigits, setCurrentUser } from './src/utils.js'
+  import { sendOTP, verifyOTP } from './src/sms.js'
+  import { applyAuthSession, setCurrentTenant } from './src/tenant.js'
+
+  let form = { orgName: '', firstName: '', lastName: '', phone: '' }
+
+  function showErr(id, msg) {
+    const el = document.getElementById(id)
+    el.textContent = msg || ''
+    el.classList.toggle('show', !!msg)
+  }
+
+  document.getElementById('sendBtn').onclick = async () => {
+    const orgName = document.getElementById('orgName').value.trim()
+    const firstName = document.getElementById('firstName').value.trim()
+    const lastName = document.getElementById('lastName').value.trim()
+    const phone = toEnDigits(document.getElementById('phone').value.replace(/\s/g, ''))
+    showErr('error1', '')
+    if (orgName.length < 2) return showErr('error1', 'نام سازمان را وارد کنید')
+    if (!firstName || !lastName) return showErr('error1', 'نام و نام خانوادگی لازم است')
+    if (!/^09\d{9}$/.test(phone)) return showErr('error1', 'شماره موبایل صحیح نیست')
+
+    const btn = document.getElementById('sendBtn')
+    btn.disabled = true
+    try {
+      const result = await sendOTP(phone, { purpose: 'register' })
+      if (!result.success) {
+        showErr('error1', result.error || 'ارسال ناموفق')
+        return
+      }
+      form = { orgName, firstName, lastName, phone }
+      document.getElementById('step1').style.display = 'none'
+      document.getElementById('step2').style.display = 'block'
+      document.getElementById('phoneDisplay').textContent = phone
+      document.querySelectorAll('.otp').forEach(i => { i.value = '' })
+      document.querySelector('.otp')?.focus()
+    } finally {
+      btn.disabled = false
+    }
+  }
+
+  document.getElementById('backBtn').onclick = () => {
+    document.getElementById('step2').style.display = 'none'
+    document.getElementById('step1').style.display = 'block'
+    showErr('error2', '')
+  }
+
+  const otpInputs = [...document.querySelectorAll('.otp')]
+  otpInputs.forEach((input, idx) => {
+    input.addEventListener('input', () => {
+      input.value = toEnDigits(input.value).replace(/\D/g, '').slice(0, 1)
+      if (input.value && otpInputs[idx + 1]) otpInputs[idx + 1].focus()
+      document.getElementById('verifyBtn').disabled = otpInputs.some(i => !i.value)
+    })
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && !input.value && otpInputs[idx - 1]) otpInputs[idx - 1].focus()
+    })
+  })
+
+  document.getElementById('verifyBtn').onclick = async () => {
+    const code = otpInputs.map(i => i.value).join('')
+    const btn = document.getElementById('verifyBtn')
+    const ok = document.getElementById('ok2')
+    showErr('error2', '')
+    ok.classList.remove('show')
+    btn.disabled = true
+    try {
+      const result = await verifyOTP(form.phone, code, {
+        purpose: 'register',
+        org_name: form.orgName,
+        first_name: form.firstName,
+        last_name: form.lastName
+      })
+      if (!result.success || !result.session || !result.user) {
+        showErr('error2', result.error || 'تأیید ناموفق')
+        otpInputs.forEach(i => { i.value = ''; i.disabled = false })
+        otpInputs[0].focus()
+        return
+      }
+      await applyAuthSession(result.session)
+      const tenant = result.tenants?.[0]
+      if (tenant?.id) await setCurrentTenant(tenant.id)
+      await setCurrentUser({
+        username: result.user.username,
+        displayName: result.user.display_name,
+        firstName: result.user.first_name,
+        lastName: result.user.last_name,
+        phone: result.user.phone,
+        role: result.user.role,
+        permissions: null,
+        tenantId: tenant?.id || null,
+        tenantName: tenant?.name || form.orgName
+      })
+      ok.textContent = 'سازمان ساخته شد. در حال ورود...'
+      ok.classList.add('show')
+      location.href = '/index.html'
+    } catch (e) {
+      console.error(e)
+      showErr('error2', e.message || 'خطا')
+    } finally {
+      btn.disabled = otpInputs.some(i => !i.value)
+    }
+  }
+</script>
+</body>
+</html>

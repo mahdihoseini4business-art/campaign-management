@@ -27,8 +27,28 @@ function parseAllowlist(): Set<string> {
   )
 }
 
+function slugify(name: string) {
+  const base = name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9\u0600-\u06ff-]/gi, '')
+    .slice(0, 40)
+  return base || `org-${Date.now().toString(36)}`
+}
+
 function phoneToAuthEmail(phone: string) {
   return `${phone}@otp.carno.local`
+}
+
+async function loadTrialDays(supabase: ReturnType<typeof createClient>) {
+  const { data } = await supabase
+    .from('platform_settings')
+    .select('value')
+    .eq('key', 'trial_days')
+    .maybeSingle()
+  const n = Number(data?.value)
+  return Number.isFinite(n) && n > 0 ? n : 7
 }
 
 async function findAuthUserIdByEmail(
@@ -172,7 +192,8 @@ serve(async (req) => {
     const body = await req.json()
     const phone = String(body?.phone || '').trim()
     const code = String(body?.code || '').trim()
-    const purpose = body?.purpose === 'platform' ? 'platform' : 'tenant'
+    const purposeRaw = String(body?.purpose || 'tenant')
+    const purpose = ['platform', 'register'].includes(purposeRaw) ? purposeRaw : 'tenant'
 
     if (!phone || !/^09\d{9}$/.test(phone)) {
       return json({ success: false, error: 'شماره موبایل صحیح نیست' }, 400)
@@ -271,6 +292,116 @@ serve(async (req) => {
         purpose: 'platform',
         session,
         user: { phone, username, role: 'platform_admin' },
+      })
+    }
+
+    if (purpose === 'register') {
+      const orgName = String(body?.org_name || '').trim()
+      const firstName = String(body?.first_name || '').trim()
+      const lastName = String(body?.last_name || '').trim()
+      if (!orgName || orgName.length < 2) {
+        return json({ success: false, error: 'نام سازمان لازم است' }, 400)
+      }
+      if (!firstName || !lastName) {
+        return json({ success: false, error: 'نام و نام خانوادگی لازم است' }, 400)
+      }
+
+      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      const { count: dayCount } = await supabase
+        .from('org_registration_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('phone', phone)
+        .gte('created_at', dayAgo)
+      if ((dayCount ?? 0) >= 1) {
+        return json({ success: false, error: 'امروز یک سازمان با این شماره ساخته‌اید' }, 429)
+      }
+
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('*')
+        .eq('phone', phone)
+        .limit(1)
+        .maybeSingle()
+
+      const { authUserId, session } = await ensureAuthSession(
+        supabaseUrl,
+        supabaseServiceKey,
+        anonKey,
+        phone,
+        existingUser?.auth_user_id || null
+      )
+
+      const username = existingUser?.username || `u_${phone}`
+      const displayName = `${firstName} ${lastName}`.trim()
+      await supabase.from('users').upsert({
+        username,
+        phone,
+        first_name: firstName,
+        last_name: lastName,
+        display_name: displayName,
+        role: 'admin',
+        permissions: null,
+        auth_user_id: authUserId,
+      }, { onConflict: 'username' })
+
+      const slug = `${slugify(orgName)}-${Date.now().toString(36)}`
+      const { data: tenant, error: tErr } = await supabase
+        .from('tenants')
+        .insert({ name: orgName, slug, status: 'active' })
+        .select('id, name, slug, status')
+        .single()
+      if (tErr || !tenant) {
+        console.error('create tenant', tErr)
+        return json({ success: false, error: 'ساخت سازمان ناموفق بود' }, 500)
+      }
+
+      const trialDays = await loadTrialDays(supabase)
+      const trialEnds = new Date(Date.now() + trialDays * 86400000).toISOString()
+      await supabase.from('subscriptions').insert({
+        tenant_id: tenant.id,
+        plan_id: 'trial',
+        status: 'trialing',
+        trial_ends_at: trialEnds,
+        ends_at: trialEnds,
+      })
+
+      await supabase.from('tenant_members').upsert({
+        tenant_id: tenant.id,
+        username,
+        role: 'owner',
+      })
+
+      await supabase.from('org_registration_log').insert({
+        phone,
+        tenant_id: tenant.id,
+        org_name: orgName,
+      })
+
+      const tenants = [{
+        id: tenant.id,
+        name: tenant.name,
+        slug: tenant.slug,
+        status: tenant.status,
+        member_role: 'owner',
+        plan_id: 'trial',
+        subscription_status: 'trialing',
+      }]
+
+      return json({
+        success: true,
+        purpose: 'register',
+        session,
+        tenants,
+        user: {
+          username,
+          first_name: firstName,
+          last_name: lastName,
+          phone,
+          display_name: displayName,
+          role: 'admin',
+          permissions: null,
+          auth_user_id: authUserId,
+        },
       })
     }
 

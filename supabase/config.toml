@@ -9,3 +9,6 @@ verify_jwt = false
 
 [functions.platform-api]
 verify_jwt = false
+
+[functions.tenant-api]
+verify_jwt = false

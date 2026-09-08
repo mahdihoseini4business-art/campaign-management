@@ -121,6 +121,11 @@ import {
   applyEntitlementUI,
   assertFeature
 } from './entitlements.js'
+import {
+  openSubscriptionStatusModal,
+  closeSubscriptionStatusModal,
+  syncSubscriptionMenuVisibility
+} from './onboarding.js'
 
 // ============================================
 // Tab Switching
@@ -387,6 +392,8 @@ const app = {
   showToast,
   hasPermission,
   openSettingsModal,
+  openSubscriptionStatusModal,
+  closeSubscriptionStatusModal,
   closeSettingsModal,
   addUser,
   deleteUser,
@@ -830,6 +837,7 @@ async function init() {
   try {
     await loadEntitlements()
     applyEntitlementUI()
+    syncSubscriptionMenuVisibility()
   } catch (e) {
     console.error('entitlements error:', e)
   }

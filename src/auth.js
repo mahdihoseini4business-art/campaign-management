@@ -20,9 +20,11 @@ import {
   resolveViewUserPhonesForSession,
   clearUserViewPhones
 } from './groups.js'
+import { clearAuthSession, ensureTenantContextOnBoot } from './tenant.js'
 import {
   applyFeaturePermissionsOverlay
 } from './entitlements.js'
+import { inviteTenantMember } from './onboarding.js'
 
 function loginPageHref() {
   return typeof window !== 'undefined' && window.__CARNO_OFFLINE__ ? './login.html' : '/login.html'
@@ -733,29 +735,16 @@ export async function addUser() {
     showToast('شماره موبایل صحیح نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹)'); return
   }
 
-  let users
   try {
-    users = await getUsers()
-  } catch (e) {
-    showToast('خطا در خواندن لیست کاربران')
-    return
-  }
-  if (users.find(u => normalizePhone(u.phone) === phone)) {
-    showToast('این شماره موبایل قبلاً ثبت شده')
-    return
-  }
-
-  const displayName = `${firstName} ${lastName}`
-  try {
-    await saveUser({
-      username: `user_${phone}`,
-      first_name: firstName,
-      last_name: lastName,
-      phone,
-      display_name: displayName,
-      role,
-      permissions: role === 'admin' ? null : getDefaultPermissions()
-    })
+    await inviteTenantMember({ phone, firstName, lastName, role })
+    // If new user with role=user, set default permissions via upsert patch
+    if (role !== 'admin') {
+      try {
+        await supabase.from('users').update({
+          permissions: getDefaultPermissions()
+        }).eq('phone', phone)
+      } catch (_) { /* ignore */ }
+    }
     document.getElementById('newFirstName').value = ''
     document.getElementById('newLastName').value = ''
     document.getElementById('newPhone').value = ''
@@ -763,10 +752,10 @@ export async function addUser() {
     const details = document.getElementById('settingsAddUserDetails')
     if (details) details.open = false
     await renderUsersList()
-    showToast('کاربر اضافه شد')
+    showToast('کاربر به سازمان دعوت شد')
   } catch (e) {
     console.error('addUser error:', e)
-    showToast('خطا در اضافه کردن کاربر')
+    showToast(e.message || 'خطا در دعوت کاربر')
   }
 }
 

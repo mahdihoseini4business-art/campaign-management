@@ -30,14 +30,16 @@ function versionPlugin() {
   }
 }
 
-/** Map /platform and /platform/ to platform.html in Vite dev/preview. */
+/** Map /platform and /signup clean URLs in Vite dev/preview. */
 function platformPathPlugin() {
   const rewrite = (req) => {
     const raw = req.url || ''
     const pathOnly = raw.split('?')[0]
+    const qs = raw.includes('?') ? raw.slice(raw.indexOf('?')) : ''
     if (pathOnly === '/platform' || pathOnly === '/platform/') {
-      const qs = raw.includes('?') ? raw.slice(raw.indexOf('?')) : ''
       req.url = `/platform.html${qs}`
+    } else if (pathOnly === '/signup' || pathOnly === '/signup/') {
+      req.url = `/signup.html${qs}`
     }
   }
 
@@ -65,7 +67,8 @@ export default defineConfig({
       input: {
         main: 'index.html',
         login: 'login.html',
-        platform: 'platform.html'
+        platform: 'platform.html',
+        signup: 'signup.html'
       }
     }
   }
