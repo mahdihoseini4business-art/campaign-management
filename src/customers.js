@@ -7,10 +7,10 @@ import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
   canViewCustomer, canManageCustomer, canEditCustomerInfo, canChangeCustomerAdvisor, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
   getTodayJalaliStr, jalaliAddDays, ownsCustomer, isAdmin, canViewOrgWideData,
-  canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canScheduleFollowupOnCustomer, canDeleteSalePayment, matchesTabSearch, getCustomerSearchExtras,
+  canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canScheduleFollowupOnCustomer, canDeleteFollowupOnCustomer, canDeleteSalePayment, matchesTabSearch, getCustomerSearchExtras,
   canClaimUnassignedCustomer, canRevealUnassignedByPhoneSearch, isHistoricalImportSale,
   resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
-  getPlatformUrl, getLastActivity, hasRecentActivityByOther, findCustomerByPhone,
+  getPlatformUrl, getLastActivity, findCustomerByPhone,
   findCustomerByPlatformId, findCustomersByPhonePrefix,
   getCustomerPhones, normalizeCustomerPhones, getPrimaryPhone, formatPhonesDisplay,
   MAX_CUSTOMER_PHONES, MAX_CUSTOMER_ADDRESSES,
@@ -1271,54 +1271,11 @@ async function applyCustomerEdit(editId, fields) {
       toAdvisor: advisor,
       toAdvisorPhone: advisorPhone,
       reason: 'handoff',
-      fieldOverrides: { platformId, platform, name, ...phoneFields, ...addressFields, status, notes },
-      skipPermissionCheck: true
+      fieldOverrides: { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, customerCode: customerCode || '' }
     })
   }
 
   return { id: resultId, toast }
-}
-
-async function transferCustomerOwnership(existing, fields, users) {
-  const data = getData()
-  const currentUser = getCurrentUser()
-  const idx = data.customers.findIndex(c => c.id === existing.id)
-  if (idx === -1) { showToast('مشتری یافت نشد'); return }
-
-  if (hasRecentActivityByOther(existing, data.followups, currentUser?.phone, 30)) {
-    onCustomerPhoneInput()
-    showToast('امکان انتقال نیست؛ اخیراً توسط کارشناس دیگری فعالیت ثبت شده')
-    return
-  }
-
-  const { advisor, advisorPhone } = fields
-  const phones = normalizeCustomerPhones(fields.phones || fields.phone || existing)
-  const fieldOverrides = {
-    platformId: fields.platformId || existing.platformId,
-    platform: fields.platform || existing.platform,
-    name: fields.name || existing.name,
-    phones,
-    phone: phones[0] || '',
-    status: fields.status || existing.status,
-    notes: fields.notes !== undefined && fields.notes !== '' ? fields.notes : existing.notes
-  }
-
-  try {
-    await reassignCustomerOwnership({
-      customer: existing,
-      toAdvisor: advisor,
-      toAdvisorPhone: advisorPhone,
-      reason: 'reclaim',
-      fieldOverrides,
-      skipPermissionCheck: true
-    })
-    await renderCustomers()
-    openCustomerDetail(existing.id)
-    showToast(`مشتری ${existing.id} از ${existing.advisor || '—'} به ${advisor} منتقل شد`)
-  } catch (e) {
-    console.error('transferCustomerOwnership error:', e)
-    showToast(e?.message || 'خطا در انتقال مشتری')
-  }
 }
 
 /**
@@ -2355,7 +2312,6 @@ export async function openCustomerDetail(id, options = {}) {
     : data.customers.find(x => x.id === id)
 
   const canEdit = isNew || canEditCustomerInfo(c)
-  const canChangeAdvisor = isNew || canChangeCustomerAdvisor(c)
   const canTransfer = !isNew && canTransferCustomer(c)
   const canDelete = !isNew && hasPermission('customers_delete') && canManageCustomer(c)
   const canClaim = !isNew && canClaimUnassignedCustomer(c)
@@ -2405,15 +2361,15 @@ export async function openCustomerDetail(id, options = {}) {
     return `<option value="${escapeAttr(phone)}" ${selected}>${escapeHtml(userDisplayName(u))}</option>`
   }).join('')
 
-  // Editable when managing; edit-others users see read-only advisor; transfer-only get onchange select
+  // New: editable advisor. Existing: transfer wins over edit_others (read-only advisor).
   let advisorHtml
-  if (canEdit && canChangeAdvisor) {
+  if (isNew && canEdit) {
     advisorHtml = `<select class="form-select" id="detailAdvisor">${advisorOptions}</select>`
-  } else if (canEdit) {
-    advisorHtml = escapeHtml(c.advisor || '—')
   } else if (canTransfer) {
     advisorHtml = `<select class="form-select" id="detailAdvisor" onchange="app.updateCustomerAdvisor('${escapeAttr(c.id)}', this.value)">${advisorOptions}</select>
       <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">با تغییر، مالکیت فوراً منتقل می‌شود</div>`
+  } else if (canEdit) {
+    advisorHtml = escapeHtml(c.advisor || '—')
   } else {
     advisorHtml = escapeHtml(c.advisor || '—')
     if (canClaim) {
@@ -2609,8 +2565,8 @@ export async function openCustomerDetail(id, options = {}) {
     if (customerFollowups.length === 0) {
       timelineHtml = `<div class="detail-tab-empty">پیگیری ثبت نشده</div>`
     } else {
-      const canEditNote = hasPermission('followups_add')
-      const canDeleteNote = hasPermission('followups_delete')
+      const canEditNote = canAddNoteOnCustomer(c)
+      const canDeleteNote = canDeleteFollowupOnCustomer(c)
       timelineHtml = `<div class="timeline">`
       const showAllFollowups = detailFollowupsShowAll.has(c.id)
       const visibleFollowups = showAllFollowups
@@ -3203,6 +3159,15 @@ export async function addQuickNote(customerId) {
     newFollowup.id = id
     data.followups.push(newFollowup)
     invalidateDerivedCache('followups')
+
+    // ارجاع باز به من با ثبت یادداشت بسته می‌شود (یک‌بارمصرف، مگر ارجاع دوباره)
+    try {
+      const { closeMyOpenAssignedFollowups } = await import('./followups.js')
+      const closed = await closeMyOpenAssignedFollowups(customerId, { note: notes, dateTime })
+      if (closed) invalidateDerivedCache('followups')
+    } catch (closeErr) {
+      console.error('closeMyOpenAssignedFollowups error:', closeErr)
+    }
 
     // ارجاع: صف مالک دست‌نخورده؛ فقط ردیف assigned در صف همکار می‌آید
     if (nextDate && !isReferral) {

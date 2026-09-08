@@ -1,6 +1,6 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB, markFollowupDoneInDB } from './data.js'
 import { getUsersSafe } from './auth.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone, formatSoldAt24h, soldAtTimePart, jalaliDatePart, formatTeamFilterLabel, isPaymentFilled, isGiftSale, isProductPriceLocked, ensureProductPayments } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, canDeleteFollowupOnCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone, formatSoldAt24h, soldAtTimePart, jalaliDatePart, formatTeamFilterLabel, isPaymentFilled, isGiftSale, isProductPriceLocked, ensureProductPayments } from './utils.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig } from './table-sort.js'
@@ -225,15 +225,67 @@ function canSeeFollowupInTab(customer, currentUser, createdByPhone, assignedToPh
 
 /**
  * Pending queue visibility for a customer with nextFollowupDate:
- * owner/team/org-wide, or anyone who created a still-pending follow-up
- * on this customer while not being the owner.
+ * owner/team/org-wide, or a non-owner who scheduled *this* pending date
+ * (matching nextDate). Older pending notes must not keep granting queue access
+ * after that cycle is done / the date changes.
  */
 function canSeePendingCustomerInTab(customer, currentUser, customerFollowups) {
   if (!canSeeCustomerType(customer)) return false
   if (canViewScopedCustomer(customer, currentUser)) return true
+  const next = normalizeJalaliDate(customer?.nextFollowupDate)
+  if (!next) return false
   return (customerFollowups || []).some(f =>
-    !isDoneFollowup(f) && isNonOwnerFollowupCreator(customer, f.createdByPhone, currentUser)
+    !isDoneFollowup(f)
+    && isNonOwnerFollowupCreator(customer, f.createdByPhone, currentUser)
+    && normalizeJalaliDate(f.nextDate) === next
+    // ارجاع باز فقط از صف assigned دیده می‌شود، نه از مسیر سازنده
+    && !normalizePhone(f.assignedToPhone)
   )
+}
+
+/**
+ * When the assignee registers a note on a referred follow-up, close open
+ * assignment rows referred *by someone else* so the referral is one-shot.
+ * Self-continued «پیگیری بعدی ارجاعی» (assignedBy === me) stays open.
+ */
+export async function closeMyOpenAssignedFollowups(customerId, { note = '', dateTime = '' } = {}) {
+  if (!customerId) return 0
+  const data = getData()
+  const currentUser = getCurrentUser()
+  const me = normalizePhone(currentUser?.phone)
+  if (!me) return 0
+  const doneAt = dateTime || getNowJalaliDateTime().dateTime
+  let closed = 0
+  for (const f of data.followups) {
+    if (f.customerId !== customerId) continue
+    if (!isOpenAssignedFollowup(f)) continue
+    if (!isFollowupAssignee(f.assignedToPhone, currentUser)) continue
+    const by = normalizePhone(f.assignedByPhone)
+    // ادامهٔ ارجاعی که خودم برای خودم ست کردم را با یادداشت معمولی نبند
+    if (by && by === me) continue
+    const cat = classifyDate(f.nextDate)
+    const wasOverdue = cat === 'overdue'
+    await markFollowupDoneInDB(f.id, {
+      doneAt,
+      doneByPhone: me,
+      doneNote: note || f.notes || '',
+      wasOverdue
+    })
+    const memIdx = data.followups.indexOf(f)
+    if (memIdx !== -1) {
+      data.followups[memIdx] = {
+        ...f,
+        status: 'done',
+        doneAt,
+        doneByPhone: me,
+        doneNote: note || f.notes || '',
+        wasOverdue,
+        notes: note || f.notes
+      }
+    }
+    closed++
+  }
+  return closed
 }
 
 /** Prefer creator of the follow-up that matches the scheduled next date. */
@@ -680,7 +732,7 @@ function followupCardBadge(item) {
   return ''
 }
 
-function renderFollowupItemActions(item, { canEdit }) {
+function renderFollowupItemActions(item, { canEdit, canDelete }) {
   let actionBtns = ''
   if (item.kind === 'pending' || item.kind === 'assigned') {
     const followupIdArg = item.kind === 'assigned' && item.id != null
@@ -691,14 +743,14 @@ function renderFollowupItemActions(item, { canEdit }) {
     if (canEdit) {
       actionBtns += `<button type="button" class="btn-icon" title="ویرایش" onclick="event.stopPropagation();app.editFollowup('${escapeAttr(String(item.id))}')">✏</button>`
     }
-    if (hasPermission('followups_delete')) {
+    if (canDelete) {
       actionBtns += ` <button type="button" class="btn-icon" title="حذف" onclick="event.stopPropagation();app.deleteFollowup('${escapeAttr(String(item.id))}')">🗑</button>`
     }
   }
   return actionBtns
 }
 
-function renderFollowupCard(item, { canEdit, nameByPhone }) {
+function renderFollowupCard(item, { canEdit, canDelete, nameByPhone }) {
   const badge = followupCardBadge(item)
   const phoneHtml = renderFollowupPhoneCell(item.customerPhone, {
     extra: item.customerPhoneExtra || 0
@@ -717,7 +769,7 @@ function renderFollowupCard(item, { canEdit, nameByPhone }) {
     ? `<div class="followup-card-meta">${escapeHtml(item.type || '—')} · ${escapeHtml(item.result || '—')}</div>`
     : ''
   const catClass = item.category ? ` is-${item.category}` : ''
-  const actionBtns = renderFollowupItemActions(item, { canEdit })
+  const actionBtns = renderFollowupItemActions(item, { canEdit, canDelete })
 
   return `<article class="followup-card${catClass}" onclick="app.onCustomerRowClick(event, '${escapeAttr(item.customerId)}')">
     <div class="followup-card-header">
@@ -799,7 +851,7 @@ export async function renderFollowups() {
 
     const search = toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
     const page = paginateList('followups', filtered, `${followupFilter}|${search}|${dateSig}|${sortSig(followupSortState)}`)
-    const canEdit = hasPermission('followups_add')
+    const customersById = getCustomersById()
     const users = await getUsersSafe()
     const nameByPhone = (phone) => {
       const p = normalizePhone(phone)
@@ -807,15 +859,25 @@ export async function renderFollowups() {
       const u = users.find(x => normalizePhone(x.phone) === p)
       return u ? userDisplayName(u) : ''
     }
+    const followupActionPerms = (item) => {
+      const customer = customersById.get(item.customerId)
+      return {
+        canEdit: !!customer && canAddNoteOnCustomer(customer),
+        canDelete: !!customer && canDeleteFollowupOnCustomer(customer)
+      }
+    }
 
     tbody.innerHTML = page.items.map((item) => {
+      const { canEdit, canDelete } = followupActionPerms(item)
       const selectCell = hasPermission('followups_delete')
         ? (showSelectCol
-          ? `<td><input type="checkbox" data-id="${escapeAttr(String(item.id || ''))}" onchange="app.toggleRowSelect('followups', '${escapeAttr(String(item.id || ''))}', this.checked)"></td>`
+          ? (canDelete
+            ? `<td><input type="checkbox" data-id="${escapeAttr(String(item.id || ''))}" onchange="app.toggleRowSelect('followups', '${escapeAttr(String(item.id || ''))}', this.checked)"></td>`
+            : `<td><input type="checkbox" disabled title="بدون دسترسی حذف برای این پیگیری" aria-label="غیرقابل انتخاب"></td>`)
           : '<td></td>')
         : ''
 
-      const actionBtns = renderFollowupItemActions(item, { canEdit })
+      const actionBtns = renderFollowupItemActions(item, { canEdit, canDelete })
       const assignedBadge = item.kind === 'assigned'
         ? ' <span class="followup-card-badge is-assigned">ارجاعی</span>'
         : ''
@@ -853,9 +915,10 @@ export async function renderFollowups() {
     }).join('')
 
     if (cards) {
-      cards.innerHTML = page.items.map(item =>
-        renderFollowupCard(item, { canEdit, nameByPhone })
-      ).join('')
+      cards.innerHTML = page.items.map(item => {
+        const { canEdit, canDelete } = followupActionPerms(item)
+        return renderFollowupCard(item, { canEdit, canDelete, nameByPhone })
+      }).join('')
     }
 
     renderPaginationBar('followupPagination', 'followups', page)
@@ -1227,8 +1290,18 @@ export async function confirmFollowupDone() {
 // ============================================
 
 export async function openFollowupModal(editFollowupId) {
-  if (!requirePermission('followups_add')) return
   const data = getData()
+  if (editFollowupId) {
+    const existing = data.followups.find(x => String(x.id) === String(editFollowupId) || `idx_${data.followups.indexOf(x)}` === editFollowupId)
+    const customer = existing && data.customers.find(c => c.id === existing.customerId)
+    if (!customer || !canAddNoteOnCustomer(customer)) {
+      showToast('شما دسترسی ثبت یادداشت برای این مشتری را ندارید')
+      return
+    }
+  } else if (!data.customers.some(c => canAddNoteOnCustomer(c))) {
+    showToast('شما دسترسی ثبت یادداشت ندارید')
+    return
+  }
   const modal = document.getElementById('followupModal')
   const title = document.getElementById('followupModalTitle')
   const select = document.getElementById('followupCustomer')
@@ -1293,7 +1366,6 @@ export function closeFollowupModal() {
 }
 
 export async function saveFollowup() {
-  if (!requirePermission('followups_add')) return
   const data = getData()
   const editFollowupId = document.getElementById('editFollowupIndex').value
   const customerId = document.getElementById('followupCustomer').value
@@ -1379,6 +1451,8 @@ export async function saveFollowup() {
       const id = await saveFollowupToDB(newFollowup)
       newFollowup.id = id
       data.followups.push(newFollowup)
+      // ثبت یادداشت توسط گیرندهٔ ارجاع → بستن ارجاع‌های باز به او
+      await closeMyOpenAssignedFollowups(customerId, { note: notes, dateTime: date })
     } catch (e) {
       console.error('saveFollowup error:', e)
       showToast(e.message || 'خطا در ذخیره پیگیری')
@@ -1403,15 +1477,26 @@ export async function saveFollowup() {
 }
 
 export function editFollowup(followupId) {
-  if (!requirePermission('followups_add')) return
+  const data = getData()
+  const f = data.followups.find(x => String(x.id) === String(followupId) || `idx_${data.followups.indexOf(x)}` === followupId)
+  if (!f) { showToast('پیگیری یافت نشد'); return }
+  const customer = data.customers.find(c => c.id === f.customerId)
+  if (!customer || !canAddNoteOnCustomer(customer)) {
+    showToast('شما دسترسی ثبت یادداشت برای این مشتری را ندارید')
+    return
+  }
   openFollowupModal(followupId)
 }
 
 export async function deleteFollowup(followupId) {
-  if (!requirePermission('followups_delete')) return
   const data = getData()
   const f = data.followups.find(x => String(x.id) === String(followupId) || `idx_${data.followups.indexOf(x)}` === followupId)
   if (!f) { showToast('پیگیری یافت نشد'); return }
+  const customer = data.customers.find(c => c.id === f.customerId)
+  if (!customer || !canDeleteFollowupOnCustomer(customer)) {
+    showToast('شما دسترسی حذف پیگیری برای این مشتری را ندارید')
+    return
+  }
 
   document.getElementById('deleteMessage').textContent =
     `آیا از حذف پیگیری ${f.customerId} در تاریخ ${f.date} مطمئن هستید؟`

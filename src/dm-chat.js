@@ -17,7 +17,7 @@ import {
 } from './utils.js'
 
 const CHANNEL_NAME = 'dm-chat-live'
-const NOTIF_SOUND_URL = '/notif.mp3'
+const NOTIF_SOUND_URL = '/chat-notif.mp3'
 const MESSAGE_PAGE = 80
 const MAX_OPEN_TABS = 6
 const HEARTBEAT_MS = 15_000

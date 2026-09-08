@@ -14,7 +14,7 @@ import {
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
   normalizePhone, userDisplayName, formatTeamFilterLabel,
   getCompletedSaleEconomics, isGiftSale, isHistoricalImportSale, getProductRefundBadge, isDealCancelled,
-  getCurrentJalaliMonthDateRange, isEmptySaleProductDraft
+  getCurrentJalaliMonthDateRange, isEmptySaleProductDraft, canBulkDeleteSaleProduct
 } from './utils.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig, compareSortValues } from './table-sort.js'
@@ -317,6 +317,7 @@ export function getFilteredSales(dateFilterOverride = null) {
 function renderSalesRows(allSales) {
   const todayNum = getTodayJalaliNum()
   const showSelectCol = hasPermission('customers_add')
+  const customersById = getCustomersById()
   return allSales.map(s => {
     const pClass = getPlatformClass(s.platform)
     const pLabel = getPlatformLabels()[s.platform] || s.platform
@@ -325,8 +326,13 @@ function renderSalesRows(allSales) {
       : (s.status === 'تکمیل' ? 'var(--success)' : 'var(--warning)')
     const balanceClass = s.balance > 0 ? 'color:var(--danger);' : ''
     const saleKey = makeSaleRowKey(s.customerId, s.productIndex)
+    const product = customersById.get(s.customerId)?.products?.[s.productIndex]
+    const canSelectSale = showSelectCol && canBulkDeleteSaleProduct(product)
     const selectCell = showSelectCol
-      ? `<td><input type="checkbox" data-id="${escapeAttr(saleKey)}" onchange="app.toggleRowSelect('sales', '${escapeAttr(saleKey)}', this.checked)"></td>`
+      ? `<td>${canSelectSale
+        ? `<input type="checkbox" data-id="${escapeAttr(saleKey)}" onchange="app.toggleRowSelect('sales', '${escapeAttr(saleKey)}', this.checked)">`
+        : `<input type="checkbox" disabled title="بدون دسترسی حذف این فروش" aria-label="غیرقابل انتخاب">`
+      }</td>`
       : ''
 
     let settlementHtml = '—'

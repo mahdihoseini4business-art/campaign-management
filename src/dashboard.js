@@ -1183,33 +1183,50 @@ function transferTouchesSelected(transfer) {
   return (from && selectedAdvisorPhones.has(from)) || (to && selectedAdvisorPhones.has(to))
 }
 
+function saleDateInTransferWindow(sold, transferAtMs, transferNum, deadlineNum, withinDays) {
+  const j = jalaliDatePart(sold)
+  const jNum = j ? jalaliToNum(j) : 99999999
+  // Jalali soldAt (13xx/14xx) must NOT go through Date(): year 1404 is a valid Gregorian year,
+  // so new Date("1404/06/15") "succeeds" with a wrong century and skips the Jalali branch.
+  if (jNum !== 99999999 && jNum >= 13000101 && jNum < 15000101) {
+    return jNum >= transferNum && jNum <= deadlineNum
+  }
+  const d = new Date(sold)
+  if (Number.isNaN(d.getTime())) return false
+  const t = d.getTime()
+  const deadline = transferAtMs + withinDays * 24 * 60 * 60 * 1000
+  return t >= transferAtMs && t <= deadline
+}
+
 function customerConvertedAfter(customer, transferAtMs, withinDays) {
   if (!customer) return false
-  const deadline = transferAtMs + withinDays * 24 * 60 * 60 * 1000
-  if (customer.status === 'purchased') {
-    // Status alone has no timestamp — count if currently purchased and has countable sale
-  }
-  const products = customer.products || []
-  for (const p of products) {
+  const transferJ = gregorianToJalaliStr(new Date(transferAtMs))
+  if (!transferJ) return false
+  const transferNum = jalaliToNum(transferJ)
+  const deadlineNum = jalaliAddDays(transferJ, withinDays)
+
+  for (const p of customer.products || []) {
     ensureProductPayments(p)
     if (!isProductCountableInSales(p)) continue
-    for (const pay of getProductPayments(p)) {
-      const sold = pay.soldAt || p.soldAt
-      if (!sold) continue
-      // soldAt is Jalali datetime — approximate via gregorian if ISO, else accept as post-transfer if countable
-      const d = new Date(sold)
-      if (!Number.isNaN(d.getTime())) {
-        const t = d.getTime()
-        if (t >= transferAtMs && t <= deadline) return true
-        continue
+
+    const soldDates = []
+    const pays = getProductPayments(p)
+    if (pays.length === 0) {
+      if (p.soldAt) soldDates.push(p.soldAt)
+    } else {
+      for (const pay of pays) {
+        if (getPaymentEntryStatus(pay) === PAYMENT_STATUS.rejected) continue
+        if ((parseFloat(pay.amount) || 0) <= 0) continue
+        const sold = pay.soldAt || p.soldAt
+        if (sold) soldDates.push(sold)
       }
-      // Jalali soldAt: treat countable sale as conversion signal within window if no reliable clock
-      const j = jalaliDatePart(sold)
-      if (!j) continue
-      const jNum = jalaliToNum(j)
-      const transferJ = gregorianToJalaliStr(new Date(transferAtMs))
-      const deadlineJ = gregorianToJalaliStr(new Date(deadline))
-      if (jNum >= jalaliToNum(transferJ) && jNum <= jalaliToNum(deadlineJ)) return true
+    }
+    if (!soldDates.length && p.soldAt) soldDates.push(p.soldAt)
+
+    for (const sold of soldDates) {
+      if (saleDateInTransferWindow(sold, transferAtMs, transferNum, deadlineNum, withinDays)) {
+        return true
+      }
     }
   }
   return false
@@ -1321,7 +1338,8 @@ export async function renderDashboard() {
   const dateFrom = document.getElementById('dashDateFrom')?.value.trim() || ''
   const dateTo = document.getElementById('dashDateTo')?.value.trim() || ''
   const userSig = selectedAdvisorPhones ? [...selectedAdvisorPhones].sort().join(',') : 'all'
-  const cacheKey = `${dateFrom}|${dateTo}|${userSig}|${dashFilterApplied ? 1 : 0}|${dashOverdueShowAll ? 1 : 0}|${dashSoonShowAll ? 1 : 0}|${dashOverdueSort.field}:${dashOverdueSort.asc}|${dashSoonSort.field}:${dashSoonSort.asc}`
+  const conversionCode = document.getElementById('dashConversionCustomerCode')?.value || ''
+  const cacheKey = `${dateFrom}|${dateTo}|${userSig}|${dashFilterApplied ? 1 : 0}|${dashOverdueShowAll ? 1 : 0}|${dashSoonShowAll ? 1 : 0}|${dashOverdueSort.field}:${dashOverdueSort.asc}|${dashSoonSort.field}:${dashSoonSort.asc}|${conversionCode}`
   if (shouldSkipTabRender('dashboard', cacheKey)) return
 
   const data = getData()
@@ -1767,6 +1785,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     populateDashConversionCodeFilter()
     const codeFilter = document.getElementById('dashConversionCustomerCode')?.value || ''
     const data = getData()
+    const customersById = getCustomersById()
     const customersWithActivity = new Set()
     data.followups.forEach(f => {
       const dateStr = jalaliDatePart(f.doneAt || f.date)
@@ -3055,6 +3074,7 @@ function mapFollowupTableRows(list) {
 
 function collectTransferMetricsForExport(dateFromNum, dateToNum) {
   const data = getData()
+  const customersById = getCustomersById()
   const transfers = (data.ownershipTransfers || []).filter(t =>
     transferInDateRange(t, dateFromNum, dateToNum) && transferTouchesSelected(t)
   )
