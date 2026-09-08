@@ -367,10 +367,13 @@ export async function checkSession() {
 
   const tenantBoot = await ensureTenantContextOnBoot()
   if (!tenantBoot.ok) {
+    if (tenantBoot.reason === 'needs_picker') {
+      window.location.href = '/login.html?selectTenant=1'
+      return null
+    }
     clearCurrentUser()
     await clearAuthSession()
-    const q = tenantBoot.reason === 'needs_picker' ? '?selectTenant=1' : ''
-    window.location.href = loginPageHref() + (loginPageHref().includes('?') ? '' : q)
+    window.location.href = loginPageHref()
     return null
   }
 

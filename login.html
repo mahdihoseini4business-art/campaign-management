@@ -555,8 +555,16 @@
       return
     }
     if (boot.reason === 'needs_picker' && boot.tenants?.length) {
-      pendingLoginUser = local
-      if (local) showTenantPicker(boot.tenants)
+      pendingLoginUser = local || {
+        username: local?.username,
+        phone: local?.phone,
+        role: local?.role,
+        permissions: local?.permissions
+      }
+      // Prefer reloading profile from tenants flow after OTP; if only Auth left, force re-login
+      if (local) {
+        showTenantPicker(boot.tenants)
+      }
     }
   })()
 
