@@ -125,6 +125,9 @@ export function getBackupTableConfig(table) {
   return { ascending: true, ...cfg }
 }
 
+/** ASCII unit separator — must match log_deletion_for_backup() (chr(31)). Postgres TEXT rejects NUL. */
+export const RECORD_KEY_SEP = '\u001f'
+
 /**
  * Stable string id for merge/dedup.
  * @param {string} table
@@ -136,7 +139,7 @@ export function recordKey(table, row) {
   if (!cfg) return ''
   const pk = cfg.primaryKey
   if (Array.isArray(pk)) {
-    return pk.map(k => String(row[k] ?? '')).join('\0')
+    return pk.map(k => String(row[k] ?? '')).join(RECORD_KEY_SEP)
   }
   return String(row[pk] ?? '')
 }
