@@ -1,0 +1,125 @@
+import { supabase } from './supabase.js'
+
+const TENANT_KEY = 'carno_current_tenant_id'
+
+export function getStoredTenantId() {
+  try {
+    return localStorage.getItem(TENANT_KEY) || null
+  } catch {
+    return null
+  }
+}
+
+export function storeTenantId(tenantId) {
+  try {
+    if (tenantId) localStorage.setItem(TENANT_KEY, tenantId)
+    else localStorage.removeItem(TENANT_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Apply Auth tokens from verify-otp Edge response.
+ * @param {{ access_token: string, refresh_token: string }} session
+ */
+export async function applyAuthSession(session) {
+  if (!session?.access_token || !session?.refresh_token) {
+    throw new Error('session missing tokens')
+  }
+  const { error } = await supabase.auth.setSession({
+    access_token: session.access_token,
+    refresh_token: session.refresh_token
+  })
+  if (error) throw error
+}
+
+export async function clearAuthSession() {
+  storeTenantId(null)
+  try {
+    await supabase.auth.signOut()
+  } catch (e) {
+    console.warn('signOut', e)
+  }
+}
+
+/**
+ * Set RLS tenant context on the server.
+ * @param {string} tenantId
+ */
+export async function setCurrentTenant(tenantId) {
+  if (!tenantId) throw new Error('tenantId required')
+  const { data, error } = await supabase.rpc('set_current_tenant', {
+    p_tenant_id: tenantId
+  })
+  if (error) throw error
+  storeTenantId(tenantId)
+  return data || tenantId
+}
+
+export async function listMyTenants() {
+  const { data, error } = await supabase.rpc('list_my_tenants')
+  if (error) throw error
+  return data || []
+}
+
+/**
+ * After login: if one tenant, select it; if many, return list for UI picker.
+ * @param {Array<{id: string}>} tenantsFromVerify
+ */
+export async function resolveTenantAfterLogin(tenantsFromVerify = []) {
+  let tenants = Array.isArray(tenantsFromVerify) ? tenantsFromVerify : []
+  if (!tenants.length) {
+    try {
+      tenants = await listMyTenants()
+    } catch (e) {
+      console.warn('listMyTenants', e)
+    }
+  }
+
+  if (tenants.length === 1) {
+    await setCurrentTenant(tenants[0].id)
+    return { needsPicker: false, tenant: tenants[0], tenants }
+  }
+  if (tenants.length > 1) {
+    const stored = getStoredTenantId()
+    const match = stored && tenants.find((t) => t.id === stored)
+    if (match) {
+      await setCurrentTenant(match.id)
+      return { needsPicker: false, tenant: match, tenants }
+    }
+    return { needsPicker: true, tenant: null, tenants }
+  }
+  return { needsPicker: false, tenant: null, tenants: [] }
+}
+
+/** Restore Auth + tenant context on app boot. */
+export async function ensureTenantContextOnBoot() {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { ok: false, reason: 'no_auth' }
+
+  const stored = getStoredTenantId()
+  if (stored) {
+    try {
+      await setCurrentTenant(stored)
+      return { ok: true, tenantId: stored }
+    } catch (e) {
+      console.warn('restore tenant failed', e)
+      storeTenantId(null)
+    }
+  }
+
+  try {
+    const tenants = await listMyTenants()
+    if (tenants.length === 1) {
+      await setCurrentTenant(tenants[0].id)
+      return { ok: true, tenantId: tenants[0].id }
+    }
+    if (tenants.length > 1) {
+      return { ok: false, reason: 'needs_picker', tenants }
+    }
+  } catch (e) {
+    console.warn('ensureTenantContextOnBoot', e)
+  }
+  return { ok: false, reason: 'no_tenant' }
+}

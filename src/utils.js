@@ -2233,7 +2233,9 @@ export async function setCurrentUser(user) {
     viewUserPhones: normalizeViewUserPhones(user.viewUserPhones ?? permissions?.viewUserPhones),
     groupId: user.groupId || null,
     groupName: user.groupName || null,
-    isGroupManager: !!user.isGroupManager
+    isGroupManager: !!user.isGroupManager,
+    tenantId: user.tenantId || null,
+    tenantName: user.tenantName || null
   }
   const expiresAt = Date.now() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
   const payload = { data, expiresAt }

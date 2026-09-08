@@ -70,8 +70,19 @@ CARNO امروز تک‌مستأجر است: OTP سفارشی، session با HMA
 - مجوز UI مکمل RLS است، جایگزین آن نیست.
 - وب‌هوک پرداخت (فاز ۴) باید idempotent و با검증 باشد.
 
+## استقرار فاز ۱ (الزامی)
+
+1. اعمال migration: `supabase/migrations/031_tenancy_foundation.sql`
+2. دیپلوی Edge Functions: `send-otp`, `verify-otp`, `platform-api`
+3. Secrets سرور:
+   - `SMS_USERNAME` / `SMS_PASSWORD` / `SMS_SENDER` (و اختیاری `SMS_API_URL` / `SMS_MESSAGE_TEMPLATE`)
+   - `PLATFORM_ADMIN_PHONES` (لیست با کاما)
+   - `SUPABASE_ANON_KEY` باید برای `verify-otp` در دسترس Edge باشد (معمولاً خودکار است)
+4. بعد از migration، ورود فقط با OTP + JWT کار می‌کند؛ کلید anon دیگر به داده تجاری دسترسی ندارد.
+
 ## پیامدها
 
 - فاز ۱ باید migration `tenant_id` + بستن RLS باز + پل OTP→Auth را قبل از فروش انجام دهد.
 - اپ آفلاین (`offline-app`) تا فاز جدا tenant-aware نمی‌شود مگر صریحاً در اسکوپ بعدی بیاید.
 - برای پروداکشن، وب‌سرور باید `/platform` را به `platform.html` سرو کند (در dev توسط Vite؛ در Liara با `liara_nginx.conf`).
+- UI HMAC session فقط برای نمایش هویت/مجوز است؛ مرز امنیتی داده JWT + RLS است.

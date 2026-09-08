@@ -1,38 +1,22 @@
 /**
- * قرارداد session پلتفرم / سازمان (فاز ۰ — مستندسازی؛ پیاده‌سازی واقعی در فاز ۱).
+ * قرارداد session پلتفرم / سازمان.
  *
- * جریان هدف:
- * 1) send-otp (Edge) — rate limit؛ SMS از secrets سرور
+ * جریان:
+ * 1) send-otp (Edge) — rate limit؛ SMS از secrets سرور؛ purpose=tenant|platform
  * 2) verify-otp (Edge) — تأیید کد → صدور session با Supabase Auth Admin API
- * 3) کلاینت: supabase.auth.setSession({ access_token, refresh_token })
- * 4) درخواست‌های PostgREST با JWT؛ RLS با auth.uid() + tenant_members
+ * 3) کلاینت: applyAuthSession → supabase.auth.setSession
+ * 4) set_current_tenant RPC → auth_context برای RLS
+ * 5) درخواست‌های PostgREST با JWT؛ RLS با auth.uid() + current_tenant_id()
  *
- * سوپرادمین:
- * - همان OTP، ولی Edge فقط اگر phone در PLATFORM_ADMIN_PHONES (secret سرور) باشد ادامه می‌دهد
- * - هرگز allowlist را در VITE_* نگذارید
+ * سوپرادمین: purpose=platform و phone در PLATFORM_ADMIN_PHONES
  */
 
 export const PLATFORM_SESSION_STORAGE_KEY = 'carno_platform_session_v1'
 
-/** کلیدهای secret سرور (فقط Edge / داشبورد Supabase — نه فرانت) */
 export const SERVER_SECRET_NAMES = Object.freeze({
   platformAdminPhones: 'PLATFORM_ADMIN_PHONES',
-  supabaseServiceRole: 'SUPABASE_SERVICE_ROLE_KEY'
+  supabaseServiceRole: 'SUPABASE_SERVICE_ROLE_KEY',
+  smsUsername: 'SMS_USERNAME',
+  smsPassword: 'SMS_PASSWORD',
+  smsSender: 'SMS_SENDER'
 })
-
-/**
- * فاز ۰: هنوز به سرور وصل نیست — همیشه رد.
- * فاز ۱ این تابع را به Edge Function واقعی وصل می‌کند.
- *
- * @param {string} _phone
- * @param {string} [_otp]
- * @returns {Promise<{ ok: false, code: string, message: string }>}
- */
-export async function requestPlatformSession(_phone, _otp) {
-  return {
-    ok: false,
-    code: 'PHASE0_STUB',
-    message:
-      'احراز هویت سوپرادمین در فاز ۱ به Edge و allowlist سرور (PLATFORM_ADMIN_PHONES) متصل می‌شود.'
-  }
-}

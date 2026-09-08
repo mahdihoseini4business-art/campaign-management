@@ -1,6 +1,6 @@
-// Edge Function برای ارسال OTP از طریق SmartSMS API
-// مسیر: /functions/v1/send-otp
-// تنظیمات پنل از app_settings.key = sms_panel خوانده می‌شود؛ در صورت نبود، از env
+// Edge Function: send-otp
+// SMS credentials: SMS_* env only (not client-readable app_settings)
+// Supports purpose: "tenant" (default) | "platform"
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8"
@@ -12,128 +12,110 @@ const corsHeaders = {
 
 const DEFAULT_API_URL = 'https://rest.payamak-panel.com/api/SmartSMS/Send'
 const DEFAULT_MESSAGE_TEMPLATE = 'کد تأیید شما: {code}\n اعتبار: ۵ دقیقه'
+const OTP_RATE_LIMIT_PER_HOUR = 5
 
-function normalizeSmsPanel(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-  return {
-    username: String(raw.username ?? '').trim(),
-    password: String(raw.password ?? ''),
-    sender: String(raw.sender ?? '').trim(),
-    apiUrl: String(raw.apiUrl ?? '').trim(),
-    messageTemplate: String(raw.messageTemplate ?? '').trim(),
-  }
+function json(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
 }
 
-async function loadSmsPanelConfig(supabase) {
-  let fromDb = {}
-  try {
-    const { data, error } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'sms_panel')
-      .limit(1)
-      .maybeSingle()
+function parseAllowlist(): Set<string> {
+  const raw = Deno.env.get('PLATFORM_ADMIN_PHONES') || ''
+  return new Set(
+    raw
+      .split(',')
+      .map((p) => p.trim())
+      .filter((p) => /^09\d{9}$/.test(p))
+  )
+}
 
-    if (!error && data?.value != null) {
-      fromDb = normalizeSmsPanel(data.value)
-    }
-  } catch (e) {
-    console.error('Failed to load sms_panel from app_settings:', e)
-  }
-
-  const username = fromDb.username || Deno.env.get('SMS_USERNAME') || ''
-  const password = fromDb.password || Deno.env.get('SMS_PASSWORD') || ''
-  const sender = fromDb.sender || Deno.env.get('SMS_SENDER') || ''
-  const apiUrl = fromDb.apiUrl || Deno.env.get('SMS_API_URL') || DEFAULT_API_URL
-  const messageTemplate = fromDb.messageTemplate || Deno.env.get('SMS_MESSAGE_TEMPLATE') || DEFAULT_MESSAGE_TEMPLATE
-
+function loadSmsConfigFromEnv() {
+  const username = Deno.env.get('SMS_USERNAME') || ''
+  const password = Deno.env.get('SMS_PASSWORD') || ''
+  const sender = Deno.env.get('SMS_SENDER') || ''
+  const apiUrl = Deno.env.get('SMS_API_URL') || DEFAULT_API_URL
+  const messageTemplate = Deno.env.get('SMS_MESSAGE_TEMPLATE') || DEFAULT_MESSAGE_TEMPLATE
   if (!username || !password || !sender) return null
-
   return { username, password, sender, apiUrl, messageTemplate }
 }
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { phone } = await req.json()
+    const body = await req.json()
+    const phone = String(body?.phone || '').trim()
+    const purpose = body?.purpose === 'platform' ? 'platform' : 'tenant'
 
-    // اعتبارسنجی شماره موبایل
     if (!phone || !/^09\d{9}$/.test(phone)) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'شماره موبایل صحیح نیست' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return json({ success: false, error: 'شماره موبایل صحیح نیست' }, 400)
     }
 
-    // ایجاد اتصال به دیتابیس با service role key
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-
     if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
-      return new Response(
-        JSON.stringify({ success: false, error: 'خطای سرور' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return json({ success: false, error: 'خطای سرور' }, 500)
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // بررسی وجود کاربر با این شماره
-    const { data: users, error: userError } = await supabase
-      .from('users')
-      .select('id, username, first_name, last_name')
-      .eq('phone', phone)
-      .limit(1)
+    if (purpose === 'platform') {
+      const allow = parseAllowlist()
+      if (!allow.has(phone)) {
+        // Do not reveal whether phone is allowlisted
+        return json({ success: false, error: 'دسترسی مجاز نیست' }, 403)
+      }
+    } else {
+      const { data: users, error: userError } = await supabase
+        .from('users')
+        .select('id, username')
+        .eq('phone', phone)
+        .limit(1)
 
-    if (userError) {
-      console.error('Error checking user:', userError)
-      return new Response(
-        JSON.stringify({ success: false, error: 'خطا در بررسی کاربر' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      if (userError) {
+        console.error('Error checking user:', userError)
+        return json({ success: false, error: 'خطا در بررسی کاربر' }, 500)
+      }
+      if (!users?.length) {
+        return json({ success: false, error: 'شماره موبایل در سیستم ثبت نشده' }, 404)
+      }
     }
 
-    if (!users || users.length === 0) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'شماره موبایل در سیستم ثبت نشده' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // تولید کد ۴ رقمی تصادفی
-    const code = Math.floor(1000 + Math.random() * 9000).toString()
-
-    // ذخیره OTP در دیتابیس
-    const { error: insertError } = await supabase
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    const { count, error: countError } = await supabase
       .from('otp_sessions')
-      .insert({
-        phone,
-        code,
-        expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // ۵ دقیقه
-        attempts: 0,
-        verified: false
-      })
+      .select('id', { count: 'exact', head: true })
+      .eq('phone', phone)
+      .gte('created_at', since)
+
+    if (countError) {
+      console.error('OTP rate limit check failed:', countError)
+    } else if ((count ?? 0) >= OTP_RATE_LIMIT_PER_HOUR) {
+      return json({ success: false, error: 'تعداد درخواست کد بیش از حد مجاز است. بعداً تلاش کنید' }, 429)
+    }
+
+    const code = Math.floor(1000 + Math.random() * 9000).toString()
+    const { error: insertError } = await supabase.from('otp_sessions').insert({
+      phone,
+      code,
+      expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      attempts: 0,
+      verified: false,
+    })
 
     if (insertError) {
       console.error('Error inserting OTP:', insertError)
-      return new Response(
-        JSON.stringify({ success: false, error: 'خطا در ذخیره کد' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return json({ success: false, error: 'خطا در ذخیره کد' }, 500)
     }
 
-    const smsConfig = await loadSmsPanelConfig(supabase)
+    const smsConfig = loadSmsConfigFromEnv()
     if (!smsConfig) {
-      console.error('Missing SMS credentials (app_settings.sms_panel or SMS_* env)')
-      return new Response(
-        JSON.stringify({ success: false, error: 'تنظیمات SMS پیکربندی نشده' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      console.error('Missing SMS_* env credentials')
+      return json({ success: false, error: 'تنظیمات SMS پیکربندی نشده' }, 500)
     }
 
     const smsText = smsConfig.messageTemplate.includes('{code}')
@@ -148,32 +130,19 @@ serve(async (req) => {
         password: smsConfig.password,
         from: smsConfig.sender,
         to: phone,
-        text: smsText
-      })
+        text: smsText,
+      }),
     })
 
     const smsResult = await smsResponse.json()
-
-    // بررسی نتیجه ارسال
     if (smsResult.RetStatus === 1) {
-      console.log(`OTP sent successfully to ${phone}`)
-      return new Response(
-        JSON.stringify({ success: true, message: 'کد تأیید ارسال شد' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    } else {
-      console.error('SMS send failed:', smsResult)
-      return new Response(
-        JSON.stringify({ success: false, error: 'خطا در ارسال پیامک' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return json({ success: true, message: 'کد تأیید ارسال شد' })
     }
 
+    console.error('SMS send failed:', smsResult)
+    return json({ success: false, error: 'خطا در ارسال پیامک' }, 500)
   } catch (error) {
     console.error('Unexpected error:', error)
-    return new Response(
-      JSON.stringify({ success: false, error: 'خطای غیرمنتظره' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return json({ success: false, error: 'خطای غیرمنتظره' }, 500)
   }
 })

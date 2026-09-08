@@ -4,6 +4,7 @@
 
 import { supabase } from './supabase.js'
 import { invalidateDerivedCache } from './derived-cache.js'
+import { getStoredTenantId } from './tenant.js'
 
 const LOCAL_WRITE_SUPPRESS_MS = 2000
 let localWriteUntil = 0
@@ -2900,7 +2901,12 @@ export function coerceAppSettingBool(raw, fallback = false) {
 }
 
 export async function saveSetting(key, value) {
-  const { error } = await supabase.from('app_settings').upsert({ key, value }, { onConflict: 'key' })
+  const tenantId = getStoredTenantId()
+  const row = { key, value }
+  if (tenantId) row.tenant_id = tenantId
+  const { error } = await supabase
+    .from('app_settings')
+    .upsert(row, { onConflict: tenantId ? 'tenant_id,key' : 'key' })
   if (error) throw new Error('خطا در ذخیره تنظیمات: ' + error.message)
 }
 
@@ -2949,6 +2955,8 @@ export function getSmsPanel() {
 
 export async function saveSmsPanel(config) {
   const cleaned = normalizeSmsPanel(config)
+  // Credentials live in Edge SMS_* secrets — never persist password client-side.
+  cleaned.password = ''
   data.smsPanel = cleaned
   await saveSetting('sms_panel', cleaned)
 }

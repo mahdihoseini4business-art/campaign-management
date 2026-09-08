@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.verify-otp]
 verify_jwt = false
+
+[functions.platform-api]
+verify_jwt = false

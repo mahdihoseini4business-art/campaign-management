@@ -462,14 +462,27 @@
       ← بازگشت
     </button>
   </div>
+
+  <!-- مرحله ۳: انتخاب سازمان (فقط اگر بیش از یک عضویت) -->
+  <div id="step3" style="display:none;">
+    <h2>انتخاب سازمان</h2>
+    <div class="otp-info">بیش از یک سازمان دارید؛ یکی را انتخاب کنید.</div>
+    <div class="login-error" id="error3"></div>
+    <div id="tenantList" style="display:flex;flex-direction:column;gap:10px;margin:16px 0;"></div>
+  </div>
 </div>
 
 <script type="module">
-  import { supabase } from './src/supabase.js'
   import { setCurrentUser, restoreSession, toEnDigits } from './src/utils.js'
   import { sendOTP, verifyOTP } from './src/sms.js'
   import { resolveGroupSessionInfo } from './src/groups.js'
   import { initAppUpdate } from './src/app-update.js'
+  import {
+    applyAuthSession,
+    resolveTenantAfterLogin,
+    setCurrentTenant,
+    ensureTenantContextOnBoot
+  } from './src/tenant.js'
 
   initAppUpdate().catch(e => console.warn('app update init error:', e))
 
@@ -477,11 +490,75 @@
   let currentPhone = ''
   let resendInterval = null
   let resendTimeout = 120 // 2 minutes in seconds
+  let pendingLoginUser = null
 
-  // Check if already logged in (signed session only)
-  restoreSession().then(user => {
-    if (user) window.location.href = '/index.html'
-  })
+  async function finishLogin(userPayload, tenant) {
+    const groupInfo = await resolveGroupSessionInfo({
+      phone: userPayload.phone,
+      role: userPayload.role,
+      permissions: userPayload.permissions || null
+    })
+    const permissions = userPayload.role === 'admin'
+      ? null
+      : { ...(userPayload.permissions || {}), viewUserPhones: groupInfo.viewUserPhones }
+    await setCurrentUser({
+      username: userPayload.username,
+      displayName: userPayload.display_name || `${userPayload.first_name || ''} ${userPayload.last_name || ''}`.trim(),
+      firstName: userPayload.first_name,
+      lastName: userPayload.last_name,
+      phone: userPayload.phone,
+      role: userPayload.role,
+      permissions,
+      viewUserPhones: groupInfo.viewUserPhones,
+      groupId: groupInfo.groupId,
+      groupName: groupInfo.groupName,
+      isGroupManager: groupInfo.isGroupManager,
+      tenantId: tenant?.id || null,
+      tenantName: tenant?.name || null
+    })
+    window.location.href = '/index.html'
+  }
+
+  function showTenantPicker(tenants) {
+    document.getElementById('step1').style.display = 'none'
+    document.getElementById('step2').style.display = 'none'
+    document.getElementById('step3').style.display = 'block'
+    const list = document.getElementById('tenantList')
+    list.innerHTML = ''
+    for (const t of tenants) {
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'btn-login'
+      btn.style.margin = '0'
+      btn.innerHTML = `<span class="btn-text">${t.name || t.slug || t.id}</span>`
+      btn.onclick = async () => {
+        try {
+          await setCurrentTenant(t.id)
+          await finishLogin(pendingLoginUser, t)
+        } catch (e) {
+          console.error(e)
+          const err = document.getElementById('error3')
+          err.textContent = 'انتخاب سازمان ناموفق بود'
+          err.classList.add('show')
+        }
+      }
+      list.appendChild(btn)
+    }
+  }
+
+  // Check if already logged in
+  ;(async () => {
+    const local = await restoreSession()
+    const boot = await ensureTenantContextOnBoot()
+    if (local && boot.ok) {
+      window.location.href = '/index.html'
+      return
+    }
+    if (boot.reason === 'needs_picker' && boot.tenants?.length) {
+      pendingLoginUser = local
+      if (local) showTenantPicker(boot.tenants)
+    }
+  })()
 
   // ============================================
   // Step 1: Send OTP
@@ -555,48 +632,32 @@
     try {
       const result = await verifyOTP(currentPhone, code)
 
-      if (result.success && result.user) {
+      if (result.success && result.user && result.session) {
+        await applyAuthSession(result.session)
+        pendingLoginUser = result.user
+        const resolved = await resolveTenantAfterLogin(result.tenants || [])
+        if (!resolved.tenants.length) {
+          errorEl.textContent = 'هیچ سازمانی برای این کاربر یافت نشد'
+          errorEl.classList.add('show')
+          otpInputs.forEach(input => { input.disabled = false })
+          return
+        }
+        if (resolved.needsPicker) {
+          showTenantPicker(resolved.tenants)
+          return
+        }
         successEl.textContent = 'تأیید موفقیت‌آمیز! در حال انتقال...'
         successEl.classList.add('show')
-
-        // Set user session (group scope derived from membership)
-        const groupInfo = await resolveGroupSessionInfo({
-          phone: result.user.phone,
-          role: result.user.role,
-          permissions: result.user.permissions || null
-        })
-        const permissions = result.user.role === 'admin'
-          ? null
-          : { ...(result.user.permissions || {}), viewUserPhones: groupInfo.viewUserPhones }
-        await setCurrentUser({
-          username: result.user.username,
-          displayName: result.user.display_name || `${result.user.first_name || ''} ${result.user.last_name || ''}`.trim(),
-          firstName: result.user.first_name,
-          lastName: result.user.last_name,
-          phone: result.user.phone,
-          role: result.user.role,
-          permissions,
-          viewUserPhones: groupInfo.viewUserPhones,
-          groupId: groupInfo.groupId,
-          groupName: groupInfo.groupName,
-          isGroupManager: groupInfo.isGroupManager
-        })
-
-        // Redirect after short delay
-        setTimeout(() => {
-          window.location.href = '/index.html'
-        }, 800)
+        await finishLogin(result.user, resolved.tenant)
       } else {
         errorEl.textContent = result.error || 'کد تأیید نادرست است'
         errorEl.classList.add('show')
 
-        // Mark inputs as error
         otpInputs.forEach(input => {
           input.classList.add('error')
           setTimeout(() => input.classList.remove('error'), 500)
         })
 
-        // Clear inputs
         otpInputs.forEach(input => { input.value = ''; input.disabled = false })
         otpInputs[0].focus()
         updateVerifyButton()
@@ -668,6 +729,7 @@
 
   function goToStep2(phone) {
     document.getElementById('step1').style.display = 'none'
+    document.getElementById('step3').style.display = 'none'
     document.getElementById('step2').style.display = 'block'
     document.getElementById('otpPhoneDisplay').textContent = formatPhoneDisplay(phone)
 
@@ -683,6 +745,7 @@
   window.goToStep1 = function() {
     if (resendInterval) clearInterval(resendInterval)
     document.getElementById('step2').style.display = 'none'
+    document.getElementById('step3').style.display = 'none'
     document.getElementById('step1').style.display = 'block'
     document.getElementById('error2').classList.remove('show')
     document.getElementById('success2').classList.remove('show')

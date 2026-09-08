@@ -20,6 +20,7 @@ import {
   resolveViewUserPhonesForSession,
   clearUserViewPhones
 } from './groups.js'
+import { clearAuthSession, ensureTenantContextOnBoot } from './tenant.js'
 
 function loginPageHref() {
   return typeof window !== 'undefined' && window.__CARNO_OFFLINE__ ? './login.html' : '/login.html'
@@ -223,8 +224,11 @@ export async function deleteUserFromDB(username) {
 // ============================================
 
 export async function seedAdmin() {
-  // Never seed if we cannot read users (e.g. RLS/network) — empty [] used to
-  // falsely trigger creating a new admin and orphaning ownership links.
+  // Under tenant RLS, anonymous seed is impossible. Only repair admin phone when authenticated.
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return
+
+  const adminPhone = normalizePhone(ADMIN_PHONE)
   let users
   try {
     users = await getUsers()
@@ -233,44 +237,10 @@ export async function seedAdmin() {
     return
   }
 
-  const adminPhone = normalizePhone(ADMIN_PHONE)
-
-  // Ensure a stable admin row keyed by username; do not wipe others
   const existingAdmin = users.find(u => u.username === 'admin')
-  if (existingAdmin) {
-    // Keep phone stable if missing
-    if (!existingAdmin.phone && adminPhone) {
-      await saveUser({ ...existingAdmin, phone: adminPhone })
-    }
-    return
+  if (existingAdmin && normalizePhone(existingAdmin.phone) !== adminPhone && adminPhone) {
+    await saveUser({ ...existingAdmin, phone: adminPhone })
   }
-
-  if (users.length > 0) {
-    // Table has users but no admin — create admin without touching others
-    await saveUser({
-      username: 'admin',
-      first_name: 'مدیر',
-      last_name: 'سیستم',
-      phone: adminPhone,
-      display_name: 'مدیر سیستم',
-      role: 'admin',
-      permissions: null
-    })
-    console.log('Admin user created with phone:', adminPhone)
-    return
-  }
-
-  // Truly empty users table
-  await saveUser({
-    username: 'admin',
-    first_name: 'مدیر',
-    last_name: 'سیستم',
-    phone: adminPhone,
-    display_name: 'مدیر سیستم',
-    role: 'admin',
-    permissions: null
-  })
-  console.log('Default admin created. Phone:', adminPhone)
 }
 
 // ============================================
@@ -374,16 +344,40 @@ export async function doLogin() {
 
 export function doLogout() {
   clearCurrentUser()
-  window.location.href = loginPageHref()
+  clearAuthSession().finally(() => {
+    window.location.href = loginPageHref()
+  })
 }
 
 /**
- * Restore signed session, then revalidate role/permissions from Supabase (SEC-M1, SEC-M2).
- * Client session is never trusted as the source of truth for privileges.
+ * Restore Auth JWT + tenant context, then signed UI session and revalidate from DB.
  */
 export async function checkSession() {
+  if (typeof window !== 'undefined' && window.__CARNO_OFFLINE__) {
+    const localUser = await restoreSession()
+    if (!localUser) {
+      window.location.href = loginPageHref()
+      return null
+    }
+    if (localUser.phone && window.offlineApi?.setActorPhone) {
+      await window.offlineApi.setActorPhone(localUser.phone)
+    }
+    return localUser
+  }
+
+  const tenantBoot = await ensureTenantContextOnBoot()
+  if (!tenantBoot.ok) {
+    clearCurrentUser()
+    await clearAuthSession()
+    const q = tenantBoot.reason === 'needs_picker' ? '?selectTenant=1' : ''
+    window.location.href = loginPageHref() + (loginPageHref().includes('?') ? '' : q)
+    return null
+  }
+
   const localUser = await restoreSession()
   if (!localUser) {
+    clearCurrentUser()
+    await clearAuthSession()
     window.location.href = loginPageHref()
     return null
   }
@@ -391,12 +385,9 @@ export async function checkSession() {
   const refreshed = await refreshSessionFromServer(localUser)
   if (!refreshed) {
     clearCurrentUser()
+    await clearAuthSession()
     window.location.href = loginPageHref()
     return null
-  }
-
-  if (typeof window !== 'undefined' && window.__CARNO_OFFLINE__ && refreshed.phone && window.offlineApi?.setActorPhone) {
-    await window.offlineApi.setActorPhone(refreshed.phone)
   }
 
   return refreshed

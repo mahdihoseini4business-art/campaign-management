@@ -4,14 +4,13 @@
 import { supabase } from './supabase.js'
 
 /**
- * ارسال کد OTP به شماره موبایل
- * @param {string} phone - شماره موبایل (فرمت: 09xxxxxxxxx)
- * @returns {Promise<{success: boolean, error?: string}>}
+ * @param {string} phone
+ * @param {{ purpose?: 'tenant' | 'platform' }} [opts]
  */
-export async function sendOTP(phone) {
+export async function sendOTP(phone, opts = {}) {
   try {
     const { data, error } = await supabase.functions.invoke('send-otp', {
-      body: { phone }
+      body: { phone, purpose: opts.purpose === 'platform' ? 'platform' : 'tenant' }
     })
 
     if (error) {
@@ -27,15 +26,18 @@ export async function sendOTP(phone) {
 }
 
 /**
- * تأیید کد OTP
- * @param {string} phone - شماره موبایل
- * @param {string} code - کد ۴ رقمی
- * @returns {Promise<{success: boolean, user?: object, error?: string, locked?: boolean}>}
+ * @param {string} phone
+ * @param {string} code
+ * @param {{ purpose?: 'tenant' | 'platform' }} [opts]
  */
-export async function verifyOTP(phone, code) {
+export async function verifyOTP(phone, code, opts = {}) {
   try {
     const { data, error } = await supabase.functions.invoke('verify-otp', {
-      body: { phone, code }
+      body: {
+        phone,
+        code,
+        purpose: opts.purpose === 'platform' ? 'platform' : 'tenant'
+      }
     })
 
     if (error) {
@@ -51,15 +53,13 @@ export async function verifyOTP(phone, code) {
 }
 
 /**
- * بررسی وجود شماره موبایل در دیتابیس
- * @param {string} phone - شماره موبایل
- * @returns {Promise<boolean>}
+ * @deprecated Prefer server-side checks; may fail under RLS without session.
  */
 export async function checkPhoneExists(phone) {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('id')
+      .select('username')
       .eq('phone', phone)
       .limit(1)
 
