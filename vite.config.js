@@ -30,13 +30,42 @@ function versionPlugin() {
   }
 }
 
+/** Map /platform and /platform/ to platform.html in Vite dev/preview. */
+function platformPathPlugin() {
+  const rewrite = (req) => {
+    const raw = req.url || ''
+    const pathOnly = raw.split('?')[0]
+    if (pathOnly === '/platform' || pathOnly === '/platform/') {
+      const qs = raw.includes('?') ? raw.slice(raw.indexOf('?')) : ''
+      req.url = `/platform.html${qs}`
+    }
+  }
+
+  return {
+    name: 'platform-path-rewrite',
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        rewrite(req)
+        next()
+      })
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        rewrite(req)
+        next()
+      })
+    }
+  }
+}
+
 export default defineConfig({
-  plugins: [versionPlugin()],
+  plugins: [versionPlugin(), platformPathPlugin()],
   build: {
     rollupOptions: {
       input: {
         main: 'index.html',
-        login: 'login.html'
+        login: 'login.html',
+        platform: 'platform.html'
       }
     }
   }

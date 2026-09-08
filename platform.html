@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0f172a">
+<meta name="robots" content="noindex, nofollow">
+<title>Platform Admin — CARNO</title>
+<link rel="icon" type="image/webp" href="/icon.webp">
+<link rel="stylesheet" href="/fonts/vazirmatn.css">
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --danger: #f87171;
+    --ok: #4ade80;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif;
+    min-height: 100vh;
+    background: radial-gradient(1200px 600px at 10% -10%, #1e3a5f 0%, var(--bg) 55%);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 32px 20px 48px;
+  }
+  h1 { font-size: 1.35rem; font-weight: 700; margin-bottom: 6px; }
+  .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 24px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+  }
+  label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  input {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: #0b1220;
+    color: var(--text);
+    font: inherit;
+    margin-bottom: 14px;
+  }
+  input:focus {
+    outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+    border-color: var(--accent);
+  }
+  button {
+    font: inherit;
+    border: 0;
+    border-radius: 10px;
+    padding: 12px 18px;
+    background: var(--accent);
+    color: #0f172a;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.55; cursor: not-allowed; }
+  .status {
+    margin-top: 14px;
+    font-size: 0.88rem;
+    line-height: 1.6;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #0b1220;
+    border: 1px solid var(--border);
+  }
+  .status[data-tone="error"] { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
+  .status[data-tone="info"] { color: var(--muted); }
+  .badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: #0b1220;
+    border: 1px solid var(--border);
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  ul { margin: 12px 0 0; padding-right: 18px; color: var(--muted); font-size: 0.9rem; line-height: 1.8; }
+  ul strong { color: var(--text); font-weight: 600; }
+  .grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 800px) {
+    .grid { grid-template-columns: 1fr 1fr; }
+  }
+  a { color: var(--accent); }
+  .shell-note { color: var(--ok); font-size: 0.9rem; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <span class="badge">PHASE 0 · SKELETON</span>
+    <h1>پنل سوپرادمین پلتفرم</h1>
+    <p class="sub">مسیر <code>/platform</code> — جدا از اپ سازمان‌ها. Allowlist فقط روی سرور (فاز ۱).</p>
+
+    <div id="platformGate" class="grid" hidden>
+      <section class="card" aria-labelledby="gateTitle">
+        <h2 id="gateTitle" style="font-size:1.05rem;margin-bottom:14px;">ورود سوپرادمین</h2>
+        <form id="platformLoginForm" autocomplete="one-time-code">
+          <label for="platformPhone">موبایل</label>
+          <input id="platformPhone" name="phone" type="tel" inputmode="tel" placeholder="09xxxxxxxxx" required>
+
+          <label for="platformOtp">کد تأیید</label>
+          <input id="platformOtp" name="otp" type="text" inputmode="numeric" placeholder="------" required>
+
+          <button type="submit" id="platformLoginBtn">ورود</button>
+        </form>
+        <div id="platformGateStatus" class="status" hidden></div>
+      </section>
+
+      <section class="card" aria-labelledby="defaultsTitle">
+        <h2 id="defaultsTitle" style="font-size:1.05rem;margin-bottom:8px;">پیش‌فرض‌های فاز ۰</h2>
+        <p style="color:var(--muted);font-size:0.88rem;line-height:1.6;">
+          این مقادیر seed هستند؛ از فاز ۲ در تنظیمات سوپرادمین ویرایش می‌شوند.
+          جزئیات در <code>docs/adr/001-saas-security-and-tenancy.md</code> داخل ریپو.
+        </p>
+        <ul id="platformDefaultsSummary"></ul>
+      </section>
+    </div>
+
+    <div id="platformShell" class="card" hidden>
+      <h2 style="font-size:1.05rem;">دسترسی تأیید شد</h2>
+      <p class="shell-note">اسکلت پوسته آماده است. فهرست tenantها و ابزارها در فاز ۱ اضافه می‌شوند.</p>
+    </div>
+  </div>
+  <script type="module" src="/src/platform/main.js"></script>
+</body>
+</html>
