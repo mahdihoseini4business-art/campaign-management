@@ -1795,6 +1795,7 @@ export function getDefaultPermissions() {
   Object.keys(ALL_PERMISSIONS).forEach(k => p[k] = true)
   p.customers_delete = false
   p.customers_merge = false
+  p.customers_transfer = false
   p.followups_delete = false
   p.followups_add_others = false
   p.customers_edit_others = false
@@ -2089,9 +2090,11 @@ export function isOtherAdvisorsCustomer(customer, user = getCurrentUser()) {
 }
 
 /**
- * Edit customer profile (name, phones, status, …).
- * Owner with customers_add, or customers_edit_others for another advisor's customers
- * in customers/team scope (not product-matrix-wide).
+ * Edit customer profile fields (name, phones, status, …) — never advisor/ownership.
+ * Complementary to canTransferCustomer:
+ * - customers_add → own customers' profile
+ * - customers_edit_others → another advisor's customers in customers/team scope
+ * Advisor stays locked; ownership changes only via customers_transfer.
  */
 export function canEditCustomerInfo(customer, user = getCurrentUser()) {
   if (!customer || !canViewCustomer(customer, user)) return false
@@ -2103,8 +2106,9 @@ export function canEditCustomerInfo(customer, user = getCurrentUser()) {
 }
 
 /**
- * Transfer ownership: admin, or user with customers_transfer who owns
- * the customer or has the owner in viewUserPhones (زیرمجموعه).
+ * Change advisor / ownership only (not other profile fields).
+ * Complementary to canEditCustomerInfo: requires customers_transfer and
+ * ownership of the customer or the owner in viewUserPhones (زیرمجموعه).
  */
 export function canTransferCustomer(customer, user = getCurrentUser()) {
   if (!user || !customer) return false
@@ -2116,14 +2120,6 @@ export function canTransferCustomer(customer, user = getCurrentUser()) {
   if (!ownerPhone) return false
   const team = normalizeViewUserPhones(user.viewUserPhones ?? user.permissions?.viewUserPhones)
   return team.includes(ownerPhone)
-}
-
-/**
- * Change customer advisor / ownership from the edit form.
- * Same gate as transfer: requires customers_transfer (or admin).
- */
-export function canChangeCustomerAdvisor(customer, user = getCurrentUser()) {
-  return canTransferCustomer(customer, user)
 }
 
 /** @deprecated use canViewCustomer / canManageCustomer */

@@ -5,7 +5,7 @@ import { updateTransferInboxBadge } from './transfers.js'
 import { broadcastSaleToast, buildSaleToastPayload, broadcastAppSetting } from './sale-toasts.js'
 import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
-  canViewCustomer, canManageCustomer, canEditCustomerInfo, canChangeCustomerAdvisor, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
+  canViewCustomer, canManageCustomer, canEditCustomerInfo, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
   getTodayJalaliStr, jalaliAddDays, ownsCustomer, isAdmin, canViewOrgWideData,
   canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canScheduleFollowupOnCustomer, canDeleteFollowupOnCustomer, canDeleteSalePayment, matchesTabSearch, getCustomerSearchExtras,
   canClaimUnassignedCustomer, canRevealUnassignedByPhoneSearch, isHistoricalImportSale,
@@ -1198,10 +1198,9 @@ export async function saveCustomer() {
  * @returns {{ id: string, toast: string }}
  */
 async function applyCustomerEdit(editId, fields) {
-  const { platformId, platform, name, phones, addresses, status, notes, advisor, advisorPhone, customerCode } = fields
+  const { platformId, platform, name, phones, addresses, status, notes, customerCode } = fields
   const phoneFields = { phone: phones[0] || '', phones }
   const addressFields = { addresses: normalizeCustomerAddresses(addresses || []) }
-  const advisorFields = { advisor, advisorPhone }
   const data = getData()
 
   for (const p of phones) {
@@ -1228,23 +1227,25 @@ async function applyCustomerEdit(editId, fields) {
     throw new Error('شما مجاز به ویرایش این مشتری نیستید')
   }
 
-  const canChangeAdvisor = canChangeCustomerAdvisor(oldCustomer)
-  const wasLD = oldCustomer.id.startsWith('LD')
-  const nowHasPhone = phones.length > 0
-  const advisorChanged = canChangeAdvisor
-    && normalizePhone(oldCustomer.advisorPhone) !== normalizePhone(advisorPhone)
-  const lockedAdvisorFields = {
+  // Profile save never changes ownership — that is customers_transfer only
+  // (updateCustomerAdvisor / bulk transfer / claim).
+  const baseFields = {
+    platformId,
+    platform,
+    name,
+    ...phoneFields,
+    ...addressFields,
+    status,
+    notes,
+    customerCode: customerCode || '',
     advisor: oldCustomer.advisor,
     advisorPhone: oldCustomer.advisorPhone
   }
-  const effectiveAdvisorFields = canChangeAdvisor ? advisorFields : lockedAdvisorFields
-  // Keep previous owner until after conversion; reassign logs the handoff separately
-  const baseFields = advisorChanged
-    ? { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, customerCode: customerCode || '', ...lockedAdvisorFields }
-    : { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, customerCode: customerCode || '', ...effectiveAdvisorFields }
 
   let resultId = editId
   let toast = 'اطلاعات مشتری ذخیره شد'
+  const wasLD = oldCustomer.id.startsWith('LD')
+  const nowHasPhone = phones.length > 0
 
   if (wasLD && nowHasPhone) {
     const newId = await generateId('CS')
@@ -1258,21 +1259,10 @@ async function applyCustomerEdit(editId, fields) {
     await rekeyCustomerId(oldCustomer.id, cloneCustomerRecord(oldCustomer, { id: newId, ...baseFields }))
     resultId = newId
     toast = `شماره حذف شد — ${oldCustomer.id} تبدیل شد به ${newId}`
-  } else if (!advisorChanged) {
+  } else {
     const updated = { ...oldCustomer, ...baseFields }
     await saveCustomerToDB(updated)
     data.customers[idx] = updated
-  }
-
-  if (advisorChanged) {
-    const current = data.customers.find(c => c.id === resultId) || oldCustomer
-    await reassignCustomerOwnership({
-      customer: current,
-      toAdvisor: advisor,
-      toAdvisorPhone: advisorPhone,
-      reason: 'handoff',
-      fieldOverrides: { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, customerCode: customerCode || '' }
-    })
   }
 
   return { id: resultId, toast }
@@ -2361,13 +2351,13 @@ export async function openCustomerDetail(id, options = {}) {
     return `<option value="${escapeAttr(phone)}" ${selected}>${escapeHtml(userDisplayName(u))}</option>`
   }).join('')
 
-  // New: editable advisor. Existing: transfer wins over edit_others (read-only advisor).
+  // Complementary: edit_others/customers_add → profile fields; transfer → advisor only.
   let advisorHtml
   if (isNew && canEdit) {
     advisorHtml = `<select class="form-select" id="detailAdvisor">${advisorOptions}</select>`
   } else if (canTransfer) {
     advisorHtml = `<select class="form-select" id="detailAdvisor" onchange="app.updateCustomerAdvisor('${escapeAttr(c.id)}', this.value)">${advisorOptions}</select>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">با تغییر، مالکیت فوراً منتقل می‌شود</div>`
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">با تغییر، مالکیت فوراً منتقل می‌شود (مستقل از ذخیره پروفایل)</div>`
   } else if (canEdit) {
     advisorHtml = escapeHtml(c.advisor || '—')
   } else {
