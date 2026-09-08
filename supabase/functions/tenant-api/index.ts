@@ -144,6 +144,16 @@ serve(async (req) => {
       })
       if (mErr) return json({ success: false, error: mErr.message }, 500)
 
+      await admin.from('audit_log').insert({
+        tenant_id: tenantId,
+        actor_username: me.username,
+        actor_auth_user_id: userData.user.id,
+        action: 'tenant.invite_member',
+        entity_type: 'user',
+        entity_id: username,
+        meta: { phone: invitePhone, role },
+      })
+
       return json({
         success: true,
         member: { username, phone: invitePhone, role },
@@ -167,7 +177,7 @@ serve(async (req) => {
 
       const { data: tenant } = await admin
         .from('tenants')
-        .select('id, name, slug, status')
+        .select('id, name, slug, status, subdomain, archived_at')
         .eq('id', tenantId)
         .maybeSingle()
       const { data: sub } = await admin

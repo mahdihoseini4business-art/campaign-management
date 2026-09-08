@@ -90,6 +90,15 @@ async function activatePaidSubscription(
     updated_at: new Date().toISOString(),
   }).eq('id', payment.id)
 
+  await admin.from('audit_log').insert({
+    tenant_id: payment.tenant_id,
+    actor_username: 'system:zarinpal',
+    action: 'billing.payment_paid',
+    entity_type: 'payment',
+    entity_id: payment.id,
+    meta: { plan_id: payment.plan_id, period: payment.period, ref_id: String(refId), ends_at: endsAt },
+  })
+
   return { invoiceNumber: invoice?.number || invoiceNumber, endsAt }
 }
 

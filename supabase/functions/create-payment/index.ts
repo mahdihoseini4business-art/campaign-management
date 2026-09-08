@@ -165,6 +165,16 @@ serve(async (req) => {
       updated_at: new Date().toISOString(),
     }).eq('id', payment.id)
 
+    await admin.from('audit_log').insert({
+      tenant_id: tenantId,
+      actor_username: me.username,
+      actor_auth_user_id: userData.user.id,
+      action: 'billing.payment_created',
+      entity_type: 'payment',
+      entity_id: payment.id,
+      meta: { plan_id: planId, period, amount_irr: amount, authority },
+    })
+
     return json({
       success: true,
       payment_id: payment.id,

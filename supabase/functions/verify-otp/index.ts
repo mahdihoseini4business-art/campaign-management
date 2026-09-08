@@ -377,6 +377,16 @@ serve(async (req) => {
         org_name: orgName,
       })
 
+      await supabase.from('audit_log').insert({
+        tenant_id: tenant.id,
+        actor_username: username,
+        actor_auth_user_id: authUserId,
+        action: 'tenant.register',
+        entity_type: 'tenant',
+        entity_id: tenant.id,
+        meta: { org_name: orgName, phone },
+      })
+
       const tenants = [{
         id: tenant.id,
         name: tenant.name,

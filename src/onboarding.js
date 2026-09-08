@@ -1,11 +1,12 @@
 /**
- * Phase 3: org subscription status UI + tenant-api helpers
+ * Phase 3–5: org subscription status UI + tenant-api / tenant-ops helpers
  */
 import { supabase } from './supabase.js'
 import { getStoredTenantId } from './tenant.js'
-import { getEntitlements, loadEntitlements, applyEntitlementUI } from './entitlements.js'
+import { getEntitlements, loadEntitlements, applyEntitlementUI, canUseFeature } from './entitlements.js'
 import { getCurrentUser, isMainAdmin, showToast } from './utils.js'
 import { PLAN_IDS } from './platform/defaults.js'
+import { validateSubdomainLabel, fetchRootDomain } from './subdomain.js'
 
 const PLAN_LABELS = {
   [PLAN_IDS.trial]: 'آزمایشی',
@@ -30,6 +31,18 @@ async function tenantApi(action, payload = {}) {
   })
   if (error) throw error
   if (!data?.success) throw new Error(data?.error || 'خطای tenant-api')
+  return data
+}
+
+export async function tenantOps(action, payload = {}) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) throw new Error('نشست معتبر نیست')
+  const { data, error } = await supabase.functions.invoke('tenant-ops', {
+    body: { action, ...payload },
+    headers: { Authorization: `Bearer ${session.access_token}` }
+  })
+  if (error) throw error
+  if (!data?.success) throw new Error(data?.error || 'خطای tenant-ops')
   return data
 }
 
@@ -95,7 +108,7 @@ function ensureSubscriptionModal() {
   el.id = 'subscriptionStatusModal'
   el.className = 'modal-overlay'
   el.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="subscriptionStatusTitle" style="max-width:440px;">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="subscriptionStatusTitle" style="max-width:480px;">
       <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
         <h3 id="subscriptionStatusTitle" style="margin:0;">وضعیت اشتراک</h3>
         <button type="button" class="btn btn-sm" id="subscriptionStatusClose">بستن</button>
@@ -141,6 +154,10 @@ export async function openSubscriptionStatusModal() {
       .filter(([, v]) => v)
       .map(([k]) => k)
       .join(' · ') || '—'
+    const currentSub = remote?.tenant?.subdomain || ''
+    const rootDomain = await fetchRootDomain()
+    const canSub = canUseFeature('custom_subdomain')
+    const isOwnerish = remote?.member_role === 'owner' || isMainAdmin(getCurrentUser())
 
     body.innerHTML = `
       <p><strong>سازمان:</strong> ${escape(orgName)}</p>
@@ -151,6 +168,22 @@ export async function openSubscriptionStatusModal() {
       <p><strong>پایان اعتبار:</strong> ${escape(formatDate(remote?.subscription?.ends_at || ent?.endsAt))}</p>
       <p><strong>نقش شما:</strong> ${escape(remote?.member_role || '—')}</p>
       <p><strong>قابلیت‌های پلن:</strong> ${escape(featureLines)}</p>
+      <div id="subscriptionSubdomainBox" style="margin-top:16px;padding-top:12px;border-top:1px solid #e2e8f0;">
+        <p style="margin:0 0 8px;"><strong>ساب‌دامین اختصاصی</strong> (فقط الماسی)</p>
+        ${canSub && isOwnerish ? `
+          <p style="font-size:12px;color:#64748b;margin:0 0 8px;">آدرس: <code>نام.${escape(rootDomain)}</code></p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <input type="text" id="subdomainInput" dir="ltr" placeholder="acme" value="${escape(currentSub)}" style="flex:1;min-width:120px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;">
+            <button type="button" class="btn btn-primary btn-sm" id="subdomainSaveBtn">ذخیره</button>
+            ${currentSub ? '<button type="button" class="btn btn-sm" id="subdomainClearBtn">حذف</button>' : ''}
+          </div>
+          <p id="subdomainMsg" style="display:none;font-size:12px;margin-top:8px;"></p>
+        ` : `
+          <p style="font-size:13px;color:#64748b;margin:0;">
+            ${currentSub ? `فعلی: <code dir="ltr">${escape(currentSub)}.${escape(rootDomain)}</code>` : 'در پلن الماسی می‌توانید ساب‌دامین تنظیم کنید.'}
+          </p>
+        `}
+      </div>
       <div style="margin-top:16px;display:grid;gap:8px;">
         <button type="button" class="btn btn-primary" data-checkout="gold" data-period="monthly">خرید طلایی (ماهانه)</button>
         <button type="button" class="btn btn-primary" data-checkout="diamond" data-period="monthly">خرید الماسی (ماهانه)</button>
@@ -178,6 +211,62 @@ export async function openSubscriptionStatusModal() {
           btn.disabled = false
         }
       })
+    })
+
+    const saveBtn = document.getElementById('subdomainSaveBtn')
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async () => {
+        const msg = document.getElementById('subdomainMsg')
+        const raw = document.getElementById('subdomainInput')?.value || ''
+        const v = validateSubdomainLabel(raw)
+        if (!v.ok) {
+          if (msg) {
+            msg.style.display = 'block'
+            msg.style.color = '#b91c1c'
+            msg.textContent = v.error
+          }
+          return
+        }
+        saveBtn.disabled = true
+        try {
+          const tenantId = getStoredTenantId()
+          await tenantOps('set_subdomain', { tenant_id: tenantId, subdomain: v.label })
+          if (msg) {
+            msg.style.display = 'block'
+            msg.style.color = '#15803d'
+            msg.textContent = `ذخیره شد: ${v.label}.${rootDomain}`
+          }
+          showToast('ساب‌دامین ذخیره شد')
+        } catch (e) {
+          if (msg) {
+            msg.style.display = 'block'
+            msg.style.color = '#b91c1c'
+            msg.textContent = e.message || 'خطا'
+          }
+        } finally {
+          saveBtn.disabled = false
+        }
+      })
+    }
+    document.getElementById('subdomainClearBtn')?.addEventListener('click', async () => {
+      const msg = document.getElementById('subdomainMsg')
+      try {
+        await tenantOps('clear_subdomain', { tenant_id: getStoredTenantId() })
+        const input = document.getElementById('subdomainInput')
+        if (input) input.value = ''
+        if (msg) {
+          msg.style.display = 'block'
+          msg.style.color = '#15803d'
+          msg.textContent = 'ساب‌دامین حذف شد'
+        }
+        showToast('ساب‌دامین حذف شد')
+      } catch (e) {
+        if (msg) {
+          msg.style.display = 'block'
+          msg.style.color = '#b91c1c'
+          msg.textContent = e.message || 'خطا'
+        }
+      }
     })
 
     try {

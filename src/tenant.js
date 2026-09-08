@@ -77,6 +77,17 @@ export async function resolveTenantAfterLogin(tenantsFromVerify = []) {
     }
   }
 
+  // Prefer custom-subdomain host hint when user is a member of that tenant
+  try {
+    const { preferHostTenantIfMember } = await import('./subdomain.js')
+    const hostMatch = await preferHostTenantIfMember(tenants)
+    if (hostMatch) {
+      return { needsPicker: false, tenant: hostMatch, tenants }
+    }
+  } catch (e) {
+    console.warn('host tenant prefer', e)
+  }
+
   if (tenants.length === 1) {
     await setCurrentTenant(tenants[0].id)
     return { needsPicker: false, tenant: tenants[0], tenants }

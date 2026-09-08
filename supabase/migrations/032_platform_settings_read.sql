@@ -10,6 +10,8 @@ CREATE POLICY platform_settings_read_public_keys ON public.platform_settings
       'trial_days',
       'sms_daily_limit_trial',
       'sms_daily_limit_gold',
-      'sms_daily_limit_diamond'
+      'sms_daily_limit_diamond',
+      'root_domain',
+      'subdomain_min_length'
     )
   );

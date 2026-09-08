@@ -94,6 +94,17 @@ Cron نمونه (روزانه):
    - `SUPABASE_ANON_KEY` باید برای `verify-otp` در دسترس Edge باشد (معمولاً خودکار است)
 4. بعد از migration، ورود فقط با OTP + JWT کار می‌کند؛ کلید anon دیگر به داده تجاری دسترسی ندارد.
 
+## فاز ۵ — ساب‌دامین + audit + آرشیو
+
+- Migration: `035_subdomain_audit.sql` (`tenants.subdomain`, `archived_at`, `audit_log`, `resolve_tenant_by_subdomain`)
+- Edge: `tenant-ops` (`set_subdomain`, `clear_subdomain`, `archive_tenant`, `list_audit`)
+- کلاینت: `src/subdomain.js` + hint روی login/boot؛ UI ساب‌دامین در وضعیت اشتراک و `/platform`
+- Audit از مسیرهای ثبت‌نام، دعوت، پرداخت، cron، تغییر پلن
+- بکاپ: نیاز به tenant context + entitlement ایمپورت/اکسپورت؛ بازیابی فقط در حالت writable
+- Env: `VITE_ROOT_DOMAIN` (fallback؛ منبع اصلی `platform_settings.root_domain`)
+
+برای ساب‌دامین پروداکشن، DNS wildcard (`*.carno.ir`) و TLS لازم است؛ nginx فعلی مسیرهای SPA را پوشش می‌دهد.
+
 ## پیامدها
 
 - فاز ۱ باید migration `tenant_id` + بستن RLS باز + پل OTP→Auth را قبل از فروش انجام دهد.

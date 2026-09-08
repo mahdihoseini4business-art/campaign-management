@@ -801,6 +801,14 @@ async function init() {
   const loadingOverlay = document.getElementById('loadingOverlay')
   if (loadingOverlay) loadingOverlay.style.display = 'flex'
 
+  // Phase 5: pin host→tenant hint before session (custom subdomain)
+  try {
+    const { applyHostTenantHint } = await import('./subdomain.js')
+    await applyHostTenantHint()
+  } catch (e) {
+    console.warn('host tenant hint', e)
+  }
+
   // Check session - verify signature + revalidate privileges from server
   const user = await checkSession()
   if (!user) {

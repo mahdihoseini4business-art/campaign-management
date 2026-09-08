@@ -487,8 +487,10 @@
     setCurrentTenant,
     ensureTenantContextOnBoot
   } from './src/tenant.js'
+  import { applyHostTenantHint } from './src/subdomain.js'
 
   initAppUpdate().catch(e => console.warn('app update init error:', e))
+  applyHostTenantHint().catch(e => console.warn('host tenant hint', e))
 
   // State
   let currentPhone = ''

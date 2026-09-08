@@ -14,6 +14,17 @@ import {
 import { loadData } from './data.js'
 import { loadGroupsData } from './groups.js'
 import { diffRowFields, formatDiffValue, listMergeConflicts } from './backup/backup-merge.js'
+import { getStoredTenantId } from './tenant.js'
+import { assertImportExport, assertWritable } from './entitlements.js'
+import { writeAudit } from './subdomain.js'
+
+function assertBackupTenantContext() {
+  if (!getStoredTenantId()) {
+    showToast('سازمان فعلی مشخص نیست — ابتدا وارد شوید', 'error')
+    return false
+  }
+  return true
+}
 
 /** @type {import('./backup/backup-format.js').BackupManifest | null} */
 let _restoreManifest = null
@@ -73,6 +84,8 @@ function setRestoreProgress(text, visible = true) {
 
 export async function exportFullBackup() {
   if (!requireMainAdmin()) return
+  if (!assertBackupTenantContext()) return
+  if (!assertImportExport()) return
   if (_restoreBusy) return
 
   _restoreBusy = true
@@ -86,7 +99,8 @@ export async function exportFullBackup() {
         phone: user?.phone || '',
         role: user?.role || '',
         displayName: user?.displayName || '',
-        username: user?.username || ''
+        username: user?.username || '',
+        tenantId: getStoredTenantId() || ''
       },
       source: 'online',
       includeDeletions: true,
@@ -97,6 +111,10 @@ export async function exportFullBackup() {
     })
 
     backup.downloadBackupFile(bytes, filename)
+    await writeAudit('backup.export_full', {
+      entityType: 'backup',
+      meta: { filename, tables: Object.keys(manifest?.tables || {}).length }
+    })
     const delCount = backup.countPendingDeletions(manifest.deletions || {})
     showToast(delCount > 0
       ? `بکاپ کامل دانلود شد (${delCount} حذف از آخرین بکاپ)`
@@ -112,6 +130,8 @@ export async function exportFullBackup() {
 
 export async function exportSplitDistribution() {
   if (!requireMainAdmin()) return
+  if (!assertBackupTenantContext()) return
+  if (!assertImportExport()) return
   if (_restoreBusy) return
 
   _restoreBusy = true
@@ -125,7 +145,8 @@ export async function exportSplitDistribution() {
         phone: user?.phone || '',
         role: user?.role || '',
         displayName: user?.displayName || '',
-        username: user?.username || ''
+        username: user?.username || '',
+        tenantId: getStoredTenantId() || ''
       },
       source: 'online',
       onProgress: ({ table, done, total }) => {
@@ -138,6 +159,10 @@ export async function exportSplitDistribution() {
     })
 
     await backup.downloadDistributionFile(bytes, filename)
+    await writeAudit('backup.export_split', {
+      entityType: 'backup',
+      meta: { filename, userCount: splitIndex?.userCount ?? 0 }
+    })
     const userCount = splitIndex?.userCount ?? 0
     showToast(`بسته توزیع آفلاین دانلود شد (${userCount} کاربر)`)
   } catch (e) {
@@ -151,6 +176,8 @@ export async function exportSplitDistribution() {
 
 export function openBackupRestoreModal() {
   if (!requireMainAdmin()) return
+  if (!assertBackupTenantContext()) return
+  if (!assertWritable()) return
   resetRestoreState()
   const fileInput = document.getElementById('backupRestoreFileInput')
   if (fileInput) fileInput.value = ''
@@ -444,6 +471,9 @@ export function resolveAllBackupConflicts(choice) {
 
 export async function applyBackupRestore() {
   if (!requireMainAdmin()) return
+  if (!assertBackupTenantContext()) return
+  if (!assertWritable()) return
+  if (!assertImportExport()) return
   if (!_restorePlan || _restoreBusy) return
 
   const conflicts = listMergeConflicts(_restorePlan)
@@ -472,6 +502,15 @@ export async function applyBackupRestore() {
     await backup.applyMergePlanToSupabase(_restorePlan, _restoreResolutions, ({ phase, done, total, detail }) => {
       const label = detail ? (TABLE_LABELS[detail] || detail) : ''
       setRestoreProgress(`${phase === 'delete' ? 'حذف' : 'ذخیره'} ${label}… (${done}/${total})`)
+    })
+
+    await writeAudit('backup.restore_applied', {
+      entityType: 'backup',
+      meta: {
+        inserts: _restorePlan.totals.inserts,
+        updates: _restorePlan.totals.updates,
+        deletes: _restorePlan.totals.deletes
+      }
     })
 
     await loadData()

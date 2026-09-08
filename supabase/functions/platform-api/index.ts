@@ -76,7 +76,7 @@ serve(async (req) => {
     if (action === 'list_tenants') {
       const { data: tenants, error } = await admin
         .from('tenants')
-        .select('id, name, slug, status, created_at')
+        .select('id, name, slug, status, subdomain, archived_at, created_at')
         .order('created_at', { ascending: false })
       if (error) return json({ success: false, error: error.message }, 500)
 
@@ -147,6 +147,16 @@ serve(async (req) => {
         })
       }
 
+      await admin.from('audit_log').insert({
+        tenant_id: tenant.id,
+        actor_username: phone,
+        actor_auth_user_id: userData.user.id,
+        action: 'platform.create_tenant',
+        entity_type: 'tenant',
+        entity_id: tenant.id,
+        meta: { name, plan_id: planId, owner_phone: ownerPhone || null },
+      })
+
       return json({ success: true, tenant })
     }
 
@@ -169,6 +179,8 @@ serve(async (req) => {
         'sms_daily_limit_trial',
         'sms_daily_limit_gold',
         'sms_daily_limit_diamond',
+        'root_domain',
+        'subdomain_min_length',
       ])
       for (const [key, value] of Object.entries(entries)) {
         if (!allowed.has(key)) continue
@@ -229,6 +241,16 @@ serve(async (req) => {
         })
         if (error) return json({ success: false, error: error.message }, 500)
       }
+      await admin.from('audit_log').insert({
+        tenant_id: tenantId,
+        actor_username: phone,
+        actor_auth_user_id: userData.user.id,
+        action: 'platform.set_subscription',
+        entity_type: 'subscription',
+        entity_id: tenantId,
+        meta: { plan_id: planId, status, ends_in_days: endsInDays },
+      })
+      // Downgrade away from custom_subdomain entitlement: keep label but host resolve will fail
       return json({ success: true })
     }
 
@@ -321,6 +343,16 @@ serve(async (req) => {
           ...subPatch,
         })
       }
+
+      await admin.from('audit_log').insert({
+        tenant_id: tenantId,
+        actor_username: phone,
+        actor_auth_user_id: userData.user.id,
+        action: 'platform.manual_payment',
+        entity_type: 'payment',
+        entity_id: payment.id,
+        meta: { plan_id: planId, period, amount_irr: amount, ends_at: endsAt, note },
+      })
 
       return json({ success: true, payment_id: payment.id, ends_at: endsAt })
     }

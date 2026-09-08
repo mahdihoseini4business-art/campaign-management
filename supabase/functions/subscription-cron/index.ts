@@ -61,6 +61,14 @@ serve(async (req) => {
           status: 'readonly',
           updated_at: nowIso,
         }).eq('id', sub.id)
+        await admin.from('audit_log').insert({
+          tenant_id: sub.tenant_id,
+          actor_username: 'system:cron',
+          action: 'subscription.trial_to_readonly',
+          entity_type: 'subscription',
+          entity_id: sub.id,
+          meta: { plan_id: sub.plan_id },
+        })
         trialToReadonly++
         continue
       }
@@ -70,6 +78,14 @@ serve(async (req) => {
           status: 'grace',
           updated_at: nowIso,
         }).eq('id', sub.id)
+        await admin.from('audit_log').insert({
+          tenant_id: sub.tenant_id,
+          actor_username: 'system:cron',
+          action: 'subscription.active_to_grace',
+          entity_type: 'subscription',
+          entity_id: sub.id,
+          meta: { plan_id: sub.plan_id, ends_at: sub.ends_at },
+        })
         activeToGrace++
         continue
       }
@@ -81,6 +97,14 @@ serve(async (req) => {
             status: 'readonly',
             updated_at: nowIso,
           }).eq('id', sub.id)
+          await admin.from('audit_log').insert({
+            tenant_id: sub.tenant_id,
+            actor_username: 'system:cron',
+            action: 'subscription.grace_to_readonly',
+            entity_type: 'subscription',
+            entity_id: sub.id,
+            meta: { plan_id: sub.plan_id, grace_days: graceDays },
+          })
           graceToReadonly++
         }
       }

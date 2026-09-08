@@ -97,7 +97,7 @@
 </head>
 <body>
   <div class="wrap">
-    <span class="badge">PHASE 1 · PLATFORM</span>
+    <span class="badge">PHASE 5 · PLATFORM</span>
     <h1>پنل سوپرادمین پلتفرم</h1>
     <p class="sub">مسیر <code>/platform</code> — allowlist فقط از secret سرور <code>PLATFORM_ADMIN_PHONES</code>.</p>
 
@@ -207,6 +207,23 @@
           <button type="button" class="secondary" id="platformRefreshPaymentsBtn" style="margin-top:12px;">بروزرسانی لیست پرداخت‌ها</button>
           <ul id="platformPaymentsList" style="margin-top:12px;"></ul>
         </section>
+        <section class="card">
+          <h2>ساب‌دامین / آرشیو سازمان</h2>
+          <form id="platformSubdomainForm">
+            <label for="opsTenantId">شناسه tenant</label>
+            <input id="opsTenantId" required placeholder="uuid">
+            <label for="opsSubdomain">ساب‌دامین (مثلاً acme)</label>
+            <input id="opsSubdomain" dir="ltr" placeholder="acme">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="submit">تنظیم ساب‌دامین</button>
+              <button type="button" class="secondary" id="platformClearSubdomainBtn">حذف ساب‌دامین</button>
+              <button type="button" class="secondary" id="platformArchiveTenantBtn" style="border-color:var(--danger);color:var(--danger);">آرشیو سازمان</button>
+            </div>
+          </form>
+          <div id="platformOpsStatus" class="status" hidden></div>
+          <button type="button" class="secondary" id="platformRefreshAuditBtn" style="margin-top:12px;">نمایش audit (۱۰۰ مورد اخیر)</button>
+          <ul id="platformAuditList" style="margin-top:12px;font-size:0.82rem;"></ul>
+        </section>
       </div>
 
       <section class="card">
@@ -215,6 +232,10 @@
           <div>
             <label for="settingGraceDays">روزهای grace</label>
             <input id="settingGraceDays" type="number" min="0" step="1">
+          </div>
+          <div>
+            <label for="settingRootDomain">دامنه ریشه ساب‌دامین</label>
+            <input id="settingRootDomain" dir="ltr" placeholder="carno.ir">
           </div>
           <div>
             <label for="settingSmsTrial">سقف SMS/روز — Trial</label>
