@@ -151,6 +151,39 @@ async function ensurePlatformAccess() {
   }
 }
 
+let tenantsCache = []
+
+function setFormBusy(form, busy) {
+  if (!form) return
+  form.querySelectorAll('button, input, select, textarea').forEach((el) => {
+    if (el.dataset.keepEnabled === '1') return
+    el.disabled = !!busy
+  })
+}
+
+function setButtonBusy(btn, busy) {
+  if (!btn) return
+  btn.disabled = !!busy
+}
+
+function findCachedTenant(tenantId) {
+  return tenantsCache.find((t) => t.id === tenantId) || null
+}
+
+function tenantHasDiamondSubdomain(tenant) {
+  const plan = tenant?.subscription?.plan_id
+  return plan === 'diamond'
+}
+
+function formatAuditMeta(meta) {
+  if (meta == null) return ''
+  try {
+    return JSON.stringify(meta, null, 0)
+  } catch {
+    return String(meta)
+  }
+}
+
 async function enterShell(phone) {
   markAuthed(phone)
   showShell()
@@ -189,6 +222,7 @@ async function refreshTenants() {
   try {
     const data = await platformApi('list_tenants')
     const tenants = data.tenants || []
+    tenantsCache = tenants
     if (!tenants.length) {
       list.innerHTML = '<li style="color:var(--muted)">سازمانی ثبت نشده</li>'
       return
@@ -221,6 +255,7 @@ async function refreshTenants() {
       })
     })
   } catch (e) {
+    tenantsCache = []
     list.innerHTML = `<li style="color:var(--danger)">${escapeHtml(e.message || 'خطا')}</li>`
   }
 }
@@ -296,10 +331,12 @@ async function onVerify(event) {
 
 async function onCreateTenant(event) {
   event.preventDefault()
+  const form = $('platformCreateForm')
   const name = ($('newTenantName')?.value || '').trim()
   const ownerPhone = ($('newTenantOwnerPhone')?.value || '').trim()
   const planId = ($('newTenantPlan')?.value || 'trial')
   const status = $('platformCreateStatus')
+  setFormBusy(form, true)
   try {
     await platformApi('create_tenant', { name, owner_phone: ownerPhone || undefined, plan_id: planId })
     if (status) {
@@ -307,8 +344,8 @@ async function onCreateTenant(event) {
       status.textContent = 'سازمان ساخته شد.'
       status.dataset.tone = 'info'
     }
-    $('newTenantName').value = ''
-    $('newTenantOwnerPhone').value = ''
+    if ($('newTenantName')) $('newTenantName').value = ''
+    if ($('newTenantOwnerPhone')) $('newTenantOwnerPhone').value = ''
     await refreshTenants()
   } catch (e) {
     if (status) {
@@ -316,6 +353,8 @@ async function onCreateTenant(event) {
       status.textContent = e.message || 'خطا'
       status.dataset.tone = 'error'
     }
+  } finally {
+    setFormBusy(form, false)
   }
 }
 
@@ -376,7 +415,9 @@ async function onSaveSettings(event) {
 
 async function onSetSubscription(event) {
   event.preventDefault()
+  const form = $('platformSubForm')
   const status = $('platformSubStatus')
+  setFormBusy(form, true)
   try {
     const subStatus = $('subStatus')?.value || 'active'
     const payload = {
@@ -402,6 +443,8 @@ async function onSetSubscription(event) {
       status.textContent = e.message || 'خطا'
       status.dataset.tone = 'error'
     }
+  } finally {
+    setFormBusy(form, false)
   }
 }
 
@@ -427,7 +470,9 @@ async function refreshPayments() {
 
 async function onManualPay(event) {
   event.preventDefault()
+  const form = $('platformManualPayForm')
   const status = $('platformManualPayStatus')
+  setFormBusy(form, true)
   try {
     const amount = Number($('manualAmount')?.value)
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -459,19 +504,40 @@ async function onManualPay(event) {
       status.textContent = e.message || 'خطا'
       status.dataset.tone = 'error'
     }
+  } finally {
+    setFormBusy(form, false)
   }
 }
 
 async function onSetSubdomain(event) {
   event.preventDefault()
+  const form = $('platformSubdomainForm')
   const status = $('platformOpsStatus')
+  const tenantId = ($('opsTenantId')?.value || '').trim()
+  const subdomain = ($('opsSubdomain')?.value || '').trim()
+  const cached = findCachedTenant(tenantId)
+  if (cached && !tenantHasDiamondSubdomain(cached)) {
+    const ok = window.confirm(
+      'این سازمان پلن الماسی ندارد. تنظیم ساب‌دامین به‌عنوان سوپرادمین override entitlement است. ادامه می‌دهید؟'
+    )
+    if (!ok) return
+  } else if (!cached && tenantId) {
+    const ok = window.confirm(
+      'پلن این سازمان در کش فهرست نیست. اگر entitlement الماس نداشته باشد، باز هم به‌عنوان سوپرادمین override می‌شود. ادامه؟'
+    )
+    if (!ok) return
+  }
+  setFormBusy(form, true)
+  setButtonBusy($('platformClearSubdomainBtn'), true)
+  setButtonBusy($('platformArchiveTenantBtn'), true)
+  setButtonBusy($('platformUnarchiveTenantBtn'), true)
   try {
-    const tenantId = ($('opsTenantId')?.value || '').trim()
-    const subdomain = ($('opsSubdomain')?.value || '').trim()
-    await tenantOps('set_subdomain', { tenant_id: tenantId, subdomain })
+    const data = await tenantOps('set_subdomain', { tenant_id: tenantId, subdomain })
     if (status) {
       status.hidden = false
-      status.textContent = `ساب‌دامین تنظیم شد: ${subdomain}`
+      status.textContent = data?.entitlement_override
+        ? `ساب‌دامین تنظیم شد (override بدون entitlement): ${subdomain}`
+        : `ساب‌دامین تنظیم شد: ${subdomain}`
       status.dataset.tone = 'info'
     }
     await refreshTenants()
@@ -481,11 +547,21 @@ async function onSetSubdomain(event) {
       status.textContent = e.message || 'خطا'
       status.dataset.tone = 'error'
     }
+  } finally {
+    setFormBusy(form, false)
+    setButtonBusy($('platformClearSubdomainBtn'), false)
+    setButtonBusy($('platformArchiveTenantBtn'), false)
+    setButtonBusy($('platformUnarchiveTenantBtn'), false)
   }
 }
 
 async function onClearSubdomain() {
   const status = $('platformOpsStatus')
+  const form = $('platformSubdomainForm')
+  setFormBusy(form, true)
+  setButtonBusy($('platformClearSubdomainBtn'), true)
+  setButtonBusy($('platformArchiveTenantBtn'), true)
+  setButtonBusy($('platformUnarchiveTenantBtn'), true)
   try {
     await tenantOps('clear_subdomain', { tenant_id: ($('opsTenantId')?.value || '').trim() })
     if (status) {
@@ -501,11 +577,18 @@ async function onClearSubdomain() {
       status.textContent = e.message || 'خطا'
       status.dataset.tone = 'error'
     }
+  } finally {
+    setFormBusy(form, false)
+    setButtonBusy($('platformClearSubdomainBtn'), false)
+    setButtonBusy($('platformArchiveTenantBtn'), false)
+    setButtonBusy($('platformUnarchiveTenantBtn'), false)
   }
 }
 
 async function onArchiveTenant() {
   const status = $('platformOpsStatus')
+  const form = $('platformSubdomainForm')
+  const btn = $('platformArchiveTenantBtn')
   const tenantId = ($('opsTenantId')?.value || '').trim()
   if (!tenantId) {
     if (status) {
@@ -516,6 +599,10 @@ async function onArchiveTenant() {
     return
   }
   if (!window.confirm('آرشیو این سازمان؟ ساب‌دامین پاک و اشتراک معلق می‌شود.')) return
+  setFormBusy(form, true)
+  setButtonBusy(btn, true)
+  setButtonBusy($('platformUnarchiveTenantBtn'), true)
+  setButtonBusy($('platformClearSubdomainBtn'), true)
   try {
     await tenantOps('archive_tenant', { tenant_id: tenantId })
     if (status) {
@@ -530,6 +617,51 @@ async function onArchiveTenant() {
       status.textContent = e.message || 'خطا'
       status.dataset.tone = 'error'
     }
+  } finally {
+    setFormBusy(form, false)
+    setButtonBusy(btn, false)
+    setButtonBusy($('platformUnarchiveTenantBtn'), false)
+    setButtonBusy($('platformClearSubdomainBtn'), false)
+  }
+}
+
+async function onUnarchiveTenant() {
+  const status = $('platformOpsStatus')
+  const form = $('platformSubdomainForm')
+  const btn = $('platformUnarchiveTenantBtn')
+  const tenantId = ($('opsTenantId')?.value || '').trim()
+  if (!tenantId) {
+    if (status) {
+      status.hidden = false
+      status.textContent = 'شناسه tenant لازم است'
+      status.dataset.tone = 'error'
+    }
+    return
+  }
+  if (!window.confirm('خروج از آرشیو؟ سازمان دوباره active می‌شود و وضعیت اشتراک بر اساس تاریخ انقضا تنظیم می‌گردد.')) return
+  setFormBusy(form, true)
+  setButtonBusy(btn, true)
+  setButtonBusy($('platformArchiveTenantBtn'), true)
+  setButtonBusy($('platformClearSubdomainBtn'), true)
+  try {
+    const data = await tenantOps('unarchive_tenant', { tenant_id: tenantId })
+    if (status) {
+      status.hidden = false
+      status.textContent = `از آرشیو خارج شد · اشتراک: ${data?.subscription_status || '—'}`
+      status.dataset.tone = 'info'
+    }
+    await refreshTenants()
+  } catch (e) {
+    if (status) {
+      status.hidden = false
+      status.textContent = e.message || 'خطا'
+      status.dataset.tone = 'error'
+    }
+  } finally {
+    setFormBusy(form, false)
+    setButtonBusy(btn, false)
+    setButtonBusy($('platformArchiveTenantBtn'), false)
+    setButtonBusy($('platformClearSubdomainBtn'), false)
   }
 }
 
@@ -545,11 +677,16 @@ async function refreshAudit() {
       list.innerHTML = '<li style="color:var(--muted)">لاگی نیست</li>'
       return
     }
-    list.innerHTML = rows.map((r) =>
-      `<li><code>${escapeHtml(r.created_at || '')}</code> · <strong>${escapeHtml(r.action)}</strong>` +
-      `${r.tenant_id ? ` · ${escapeHtml(String(r.tenant_id).slice(0, 8))}…` : ''}` +
-      `${r.actor_username ? ` · ${escapeHtml(r.actor_username)}` : ''}</li>`
-    ).join('')
+    list.innerHTML = rows.map((r) => {
+      const meta = formatAuditMeta(r.meta)
+      return `<li style="margin-bottom:10px;">
+        <code>${escapeHtml(r.created_at || '')}</code> · <strong>${escapeHtml(r.action)}</strong>
+        ${r.tenant_id ? ` · tenant <code style="user-select:all">${escapeHtml(r.tenant_id)}</code>` : ''}
+        ${r.entity_id ? ` · entity <code style="user-select:all">${escapeHtml(r.entity_id)}</code>` : ''}
+        ${r.actor_username ? ` · ${escapeHtml(r.actor_username)}` : ''}
+        ${meta ? `<details style="margin-top:4px;"><summary style="cursor:pointer;color:var(--muted);">meta</summary><pre style="white-space:pre-wrap;direction:ltr;text-align:left;margin:6px 0 0;font-size:0.75rem;color:var(--muted);">${escapeHtml(meta)}</pre></details>` : ''}
+      </li>`
+    }).join('')
   } catch (e) {
     list.innerHTML = `<li style="color:var(--danger)">${escapeHtml(e.message || 'خطا')}</li>`
   }
@@ -572,6 +709,8 @@ async function boot() {
   $('platformSubdomainForm')?.addEventListener('submit', onSetSubdomain)
   $('platformClearSubdomainBtn')?.addEventListener('click', onClearSubdomain)
   $('platformArchiveTenantBtn')?.addEventListener('click', onArchiveTenant)
+  $('platformUnarchiveTenantBtn')?.addEventListener('click', onUnarchiveTenant)
+  $('platformRefreshTenantsBtn')?.addEventListener('click', () => refreshTenants())
   $('platformRefreshAuditBtn')?.addEventListener('click', () => refreshAudit())
   $('platformRefreshPaymentsBtn')?.addEventListener('click', () => refreshPayments())
   $('platformLogoutBtn')?.addEventListener('click', onLogout)

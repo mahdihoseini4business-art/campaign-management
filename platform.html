@@ -137,6 +137,7 @@
       <div class="grid grid-2">
         <section class="card">
           <h2>فهرست tenantها</h2>
+          <button type="button" class="secondary" id="platformRefreshTenantsBtn" style="margin-bottom:12px;">بروزرسانی فهرست</button>
           <ul id="platformTenantList"></ul>
         </section>
 
@@ -218,7 +219,11 @@
               <button type="submit">تنظیم ساب‌دامین</button>
               <button type="button" class="secondary" id="platformClearSubdomainBtn">حذف ساب‌دامین</button>
               <button type="button" class="secondary" id="platformArchiveTenantBtn" style="border-color:var(--danger);color:var(--danger);">آرشیو سازمان</button>
+              <button type="button" class="secondary" id="platformUnarchiveTenantBtn">خروج از آرشیو</button>
             </div>
+            <p style="color:var(--muted);font-size:0.8rem;margin-top:10px;line-height:1.5;">
+              سوپرادمین می‌تواند ساب‌دامین را حتی بدون پلن الماسی تنظیم کند؛ در آن حالت هشدار تأیید نشان داده می‌شود.
+            </p>
           </form>
           <div id="platformOpsStatus" class="status" hidden></div>
           <button type="button" class="secondary" id="platformRefreshAuditBtn" style="margin-top:12px;">نمایش audit (۱۰۰ مورد اخیر)</button>

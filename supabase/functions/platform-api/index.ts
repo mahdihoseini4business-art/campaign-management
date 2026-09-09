@@ -203,74 +203,94 @@ serve(async (req) => {
         .single()
       if (tErr || !tenant) return json({ success: false, error: tErr?.message || 'ساخت سازمان ناموفق' }, 500)
 
-      const trialDays = await readSettingNumber(admin, 'trial_days', 7)
-      const paidEndsDays = positiveDays(body?.ends_in_days, 30)
-      const now = Date.now()
-      let trialEnds: string | null = null
-      let endsAt: string
-      let subStatus: string
-      if (planId === 'trial') {
-        subStatus = 'trialing'
-        trialEnds = new Date(now + trialDays * 86400000).toISOString()
-        endsAt = trialEnds
-      } else {
-        subStatus = 'active'
-        endsAt = new Date(now + paidEndsDays * 86400000).toISOString()
+      const rollbackTenant = async () => {
+        try {
+          await admin.from('tenant_members').delete().eq('tenant_id', tenant.id)
+          await admin.from('subscriptions').delete().eq('tenant_id', tenant.id)
+          await admin.from('audit_log').delete().eq('tenant_id', tenant.id).eq('action', 'platform.create_tenant')
+          await admin.from('tenants').delete().eq('id', tenant.id)
+        } catch (rollbackErr) {
+          console.error('create_tenant rollback failed', rollbackErr)
+        }
       }
 
-      await admin.from('subscriptions').insert({
-        tenant_id: tenant.id,
-        plan_id: planId,
-        status: subStatus,
-        trial_ends_at: trialEnds,
-        ends_at: endsAt,
-      })
-
-      if (ownerPhone) {
-        const { data: owner } = await admin
-          .from('users')
-          .select('username, role')
-          .eq('phone', ownerPhone)
-          .maybeSingle()
-
-        let username = owner?.username
-        if (!username) {
-          username = `u_${ownerPhone}`
-          await admin.from('users').upsert({
-            username,
-            phone: ownerPhone,
-            first_name: '',
-            last_name: '',
-            display_name: ownerPhone,
-            role: 'admin',
-            permissions: null,
-          }, { onConflict: 'username' })
+      try {
+        const trialDays = await readSettingNumber(admin, 'trial_days', 7)
+        const paidEndsDays = positiveDays(body?.ends_in_days, 30)
+        const now = Date.now()
+        let trialEnds: string | null = null
+        let endsAt: string
+        let subStatus: string
+        if (planId === 'trial') {
+          subStatus = 'trialing'
+          trialEnds = new Date(now + trialDays * 86400000).toISOString()
+          endsAt = trialEnds
+        } else {
+          subStatus = 'active'
+          endsAt = new Date(now + paidEndsDays * 86400000).toISOString()
         }
 
-        await admin.from('tenant_members').upsert({
+        const { error: subErr } = await admin.from('subscriptions').insert({
           tenant_id: tenant.id,
-          username,
-          role: 'owner',
-        })
-      }
-
-      await admin.from('audit_log').insert({
-        tenant_id: tenant.id,
-        actor_username: phone,
-        actor_auth_user_id: userData.user.id,
-        action: 'platform.create_tenant',
-        entity_type: 'tenant',
-        entity_id: tenant.id,
-        meta: {
-          name,
           plan_id: planId,
-          owner_phone: ownerPhone || null,
+          status: subStatus,
+          trial_ends_at: trialEnds,
           ends_at: endsAt,
-          trial_days: planId === 'trial' ? trialDays : null,
-        },
-      })
+        })
+        if (subErr) throw new Error(subErr.message || 'ساخت اشتراک ناموفق')
 
-      return json({ success: true, tenant, ends_at: endsAt })
+        if (ownerPhone) {
+          const { data: owner } = await admin
+            .from('users')
+            .select('username, role')
+            .eq('phone', ownerPhone)
+            .maybeSingle()
+
+          let username = owner?.username
+          if (!username) {
+            username = `u_${ownerPhone}`
+            const { error: userErr } = await admin.from('users').upsert({
+              username,
+              phone: ownerPhone,
+              first_name: '',
+              last_name: '',
+              display_name: ownerPhone,
+              role: 'admin',
+              permissions: null,
+            }, { onConflict: 'username' })
+            if (userErr) throw new Error(userErr.message || 'ساخت کاربر مالک ناموفق')
+          }
+
+          const { error: memErr } = await admin.from('tenant_members').upsert({
+            tenant_id: tenant.id,
+            username,
+            role: 'owner',
+          })
+          if (memErr) throw new Error(memErr.message || 'عضویت مالک ناموفق')
+        }
+
+        await admin.from('audit_log').insert({
+          tenant_id: tenant.id,
+          actor_username: phone,
+          actor_auth_user_id: userData.user.id,
+          action: 'platform.create_tenant',
+          entity_type: 'tenant',
+          entity_id: tenant.id,
+          meta: {
+            name,
+            plan_id: planId,
+            owner_phone: ownerPhone || null,
+            ends_at: endsAt,
+            trial_days: planId === 'trial' ? trialDays : null,
+          },
+        })
+
+        return json({ success: true, tenant, ends_at: endsAt })
+      } catch (createErr) {
+        await rollbackTenant()
+        const msg = createErr instanceof Error ? createErr.message : 'ساخت سازمان ناموفق'
+        return json({ success: false, error: msg }, 500)
+      }
     }
 
     if (action === 'get_settings') {

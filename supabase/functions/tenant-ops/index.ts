@@ -1,4 +1,4 @@
-// Set/clear tenant subdomain + archive tenant (platform or diamond owner)
+// Set/clear tenant subdomain + archive/unarchive tenant (platform or diamond owner)
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8"
@@ -117,7 +117,8 @@ serve(async (req) => {
       if (!tenantId) return json({ success: false, error: 'tenant_id لازم است' }, 400)
       const gate = await assertCanManageTenant(tenantId)
       if (!gate.ok) return json({ success: false, error: gate.error }, 403)
-      if (!isPlatform && !(await tenantHasSubdomainFeature(tenantId))) {
+      const hasFeature = await tenantHasSubdomainFeature(tenantId)
+      if (!isPlatform && !hasFeature) {
         return json({ success: false, error: 'ساب‌دامین فقط در پلن الماسی فعال است' }, 403)
       }
       if (!validLabel(label)) {
@@ -138,6 +139,7 @@ serve(async (req) => {
       }).eq('id', tenantId)
       if (error) return json({ success: false, error: error.message }, 500)
 
+      const entitlementOverride = !!(isPlatform && !hasFeature)
       await writeAudit(admin, {
         tenant_id: tenantId,
         actor_username: me.username,
@@ -145,10 +147,10 @@ serve(async (req) => {
         action: 'tenant.subdomain_set',
         entity_type: 'tenant',
         entity_id: tenantId,
-        meta: { subdomain: label },
+        meta: { subdomain: label, entitlement_override: entitlementOverride },
       })
 
-      return json({ success: true, subdomain: label })
+      return json({ success: true, subdomain: label, entitlement_override: entitlementOverride })
     }
 
     if (action === 'clear_subdomain') {
@@ -203,6 +205,66 @@ serve(async (req) => {
         meta: {},
       })
       return json({ success: true })
+    }
+
+    if (action === 'unarchive_tenant') {
+      if (!isPlatform) return json({ success: false, error: 'فقط سوپرادمین' }, 403)
+      const tenantId = String(body?.tenant_id || '').trim()
+      if (!tenantId) return json({ success: false, error: 'tenant_id لازم است' }, 400)
+
+      const { data: existing, error: exErr } = await admin
+        .from('tenants')
+        .select('id, archived_at')
+        .eq('id', tenantId)
+        .maybeSingle()
+      if (exErr) return json({ success: false, error: exErr.message }, 500)
+      if (!existing) return json({ success: false, error: 'سازمان یافت نشد' }, 404)
+      if (!existing.archived_at) {
+        return json({ success: false, error: 'این سازمان آرشیو نشده است' }, 400)
+      }
+
+      const { error } = await admin.from('tenants').update({
+        status: 'active',
+        archived_at: null,
+        updated_at: new Date().toISOString(),
+      }).eq('id', tenantId)
+      if (error) return json({ success: false, error: error.message }, 500)
+
+      const { data: sub } = await admin
+        .from('subscriptions')
+        .select('plan_id, status, ends_at, trial_ends_at')
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+
+      let nextSubStatus = 'readonly'
+      if (sub) {
+        const now = Date.now()
+        const endsAt = sub.ends_at ? new Date(sub.ends_at).getTime() : null
+        const trialEnds = sub.trial_ends_at ? new Date(sub.trial_ends_at).getTime() : null
+        if (sub.plan_id === 'trial' && trialEnds && trialEnds > now) {
+          nextSubStatus = 'trialing'
+        } else if (endsAt && endsAt > now) {
+          nextSubStatus = 'active'
+        } else if (!endsAt && sub.plan_id !== 'trial') {
+          // legacy unpaid open-ended active — keep usable but admin should set ends_at
+          nextSubStatus = 'active'
+        }
+        await admin.from('subscriptions').update({
+          status: nextSubStatus,
+          updated_at: new Date().toISOString(),
+        }).eq('tenant_id', tenantId)
+      }
+
+      await writeAudit(admin, {
+        tenant_id: tenantId,
+        actor_username: me.username,
+        actor_auth_user_id: userData.user.id,
+        action: 'tenant.unarchive',
+        entity_type: 'tenant',
+        entity_id: tenantId,
+        meta: { subscription_status: nextSubStatus },
+      })
+      return json({ success: true, subscription_status: nextSubStatus })
     }
 
     if (action === 'list_audit') {
