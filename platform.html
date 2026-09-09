@@ -93,13 +93,25 @@
   @media (min-width: 860px) { .grid-2 { grid-template-columns: 1fr 1fr; } }
   .shell-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
   .stack { display: grid; gap: 16px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .toolbar input, .toolbar select { margin-bottom: 0; flex: 1; min-width: 140px; }
+  .toolbar button { white-space: nowrap; }
+  .inline-actions { display: inline-flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
+  .inline-actions button { padding: 4px 8px; font-size: 0.75rem; }
+  .boot-card { text-align: center; color: var(--muted); }
+  a.sub-link { color: var(--accent); text-decoration: none; }
+  a.sub-link:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
   <div class="wrap">
-    <span class="badge">PHASE 5 · PLATFORM</span>
+    <span class="badge">PLATFORM · SUPERADMIN</span>
     <h1>پنل سوپرادمین پلتفرم</h1>
     <p class="sub">مسیر <code>/platform</code> — allowlist فقط از secret سرور <code>PLATFORM_ADMIN_PHONES</code>.</p>
+
+    <div id="platformBoot" class="card boot-card">
+      در حال بررسی نشست سوپرادمین…
+    </div>
 
     <div id="platformGate" class="grid grid-2" hidden>
       <section class="card">
@@ -137,7 +149,10 @@
       <div class="grid grid-2">
         <section class="card">
           <h2>فهرست tenantها</h2>
-          <button type="button" class="secondary" id="platformRefreshTenantsBtn" style="margin-bottom:12px;">بروزرسانی فهرست</button>
+          <div class="toolbar">
+            <input id="platformTenantSearch" type="search" placeholder="جستجو: نام، slug، id، ساب‌دامین">
+            <button type="button" class="secondary" id="platformRefreshTenantsBtn">بروزرسانی</button>
+          </div>
           <ul id="platformTenantList"></ul>
         </section>
 
@@ -205,7 +220,17 @@
             <button type="submit">ثبت پرداخت دستی و فعال‌سازی</button>
           </form>
           <div id="platformManualPayStatus" class="status" hidden></div>
-          <button type="button" class="secondary" id="platformRefreshPaymentsBtn" style="margin-top:12px;">بروزرسانی لیست پرداخت‌ها</button>
+          <div class="toolbar" style="margin-top:12px;">
+            <select id="platformPaymentStatusFilter" aria-label="فیلتر وضعیت پرداخت">
+              <option value="">همه وضعیت‌ها</option>
+              <option value="manual">manual</option>
+              <option value="paid">paid</option>
+              <option value="pending">pending</option>
+              <option value="failed">failed</option>
+              <option value="cancelled">cancelled</option>
+            </select>
+            <button type="button" class="secondary" id="platformRefreshPaymentsBtn">بروزرسانی پرداخت‌ها</button>
+          </div>
           <ul id="platformPaymentsList" style="margin-top:12px;"></ul>
         </section>
         <section class="card">
