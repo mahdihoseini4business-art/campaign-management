@@ -1,6 +1,6 @@
 import { sendOTP, verifyOTP } from '../sms.js'
-import { applyAuthSession, clearAuthSession } from '../tenant.js'
-import { supabase } from '../supabase.js'
+import { normalizePhone } from '../utils.js'
+import { platformSupabase } from './client.js'
 import { PLATFORM_SETTING_DEFAULTS, DIAMOND_ONLY_FEATURES, PLAN_IDS } from './defaults.js'
 import {
   attemptPlatformLogin,
@@ -8,8 +8,7 @@ import {
   isPlatformAccessGranted,
   readPlatformGateSession
 } from './gate.js'
-
-const PLATFORM_AUTH_FLAG = 'carno_platform_authed_v1'
+import { PLATFORM_AUTH_FLAG_KEY } from './session-contract.js'
 
 function $(id) {
   return document.getElementById(id)
@@ -35,7 +34,7 @@ function showShell() {
 
 function markAuthed(phone) {
   try {
-    sessionStorage.setItem(PLATFORM_AUTH_FLAG, JSON.stringify({ phone, at: Date.now() }))
+    sessionStorage.setItem(PLATFORM_AUTH_FLAG_KEY, JSON.stringify({ phone, at: Date.now() }))
   } catch {
     /* ignore */
   }
@@ -43,45 +42,130 @@ function markAuthed(phone) {
 
 function clearAuthedFlag() {
   try {
-    sessionStorage.removeItem(PLATFORM_AUTH_FLAG)
+    sessionStorage.removeItem(PLATFORM_AUTH_FLAG_KEY)
   } catch {
     /* ignore */
   }
 }
 
-function readAuthedFlag() {
-  try {
-    const raw = sessionStorage.getItem(PLATFORM_AUTH_FLAG)
-    if (!raw) return null
-    return JSON.parse(raw)
-  } catch {
+function readPhoneFromForm() {
+  const el = $('platformPhone')
+  const phone = normalizePhone(el?.value || '')
+  if (el && phone) el.value = phone
+  return phone
+}
+
+function requireValidPhone() {
+  const phone = readPhoneFromForm()
+  if (!/^09\d{9}$/.test(phone)) {
+    setStatus('شماره موبایل معتبر نیست (09xxxxxxxxx)')
     return null
+  }
+  return phone
+}
+
+async function applyPlatformSession(session) {
+  if (!session?.access_token || !session?.refresh_token) {
+    throw new Error('session missing tokens')
+  }
+  const { error } = await platformSupabase.auth.setSession({
+    access_token: session.access_token,
+    refresh_token: session.refresh_token
+  })
+  if (error) throw error
+}
+
+async function clearPlatformAuth() {
+  clearAuthedFlag()
+  clearPlatformGateSession()
+  try {
+    await platformSupabase.auth.signOut()
+  } catch (e) {
+    console.warn('platform signOut', e)
   }
 }
 
 async function platformApi(action, payload = {}) {
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { session } } = await platformSupabase.auth.getSession()
   if (!session?.access_token) throw new Error('نشست سوپرادمین موجود نیست')
 
-  const { data, error } = await supabase.functions.invoke('platform-api', {
+  const { data, error } = await platformSupabase.functions.invoke('platform-api', {
     body: { action, ...payload },
     headers: { Authorization: `Bearer ${session.access_token}` }
   })
-  if (error) throw error
+  if (error) {
+    let detail = error.message || 'خطای platform-api'
+    try {
+      const body = typeof error.context?.json === 'function'
+        ? await error.context.json()
+        : null
+      if (body?.error) detail = body.error
+    } catch {
+      /* ignore */
+    }
+    const err = new Error(detail)
+    err.status = error.context?.status
+    throw err
+  }
   if (!data?.success) throw new Error(data?.error || 'خطای platform-api')
   return data
 }
 
 async function tenantOps(action, payload = {}) {
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { session } } = await platformSupabase.auth.getSession()
   if (!session?.access_token) throw new Error('نشست سوپرادمین موجود نیست')
-  const { data, error } = await supabase.functions.invoke('tenant-ops', {
+  const { data, error } = await platformSupabase.functions.invoke('tenant-ops', {
     body: { action, ...payload },
     headers: { Authorization: `Bearer ${session.access_token}` }
   })
-  if (error) throw error
+  if (error) {
+    let detail = error.message || 'خطای tenant-ops'
+    try {
+      const body = typeof error.context?.json === 'function'
+        ? await error.context.json()
+        : null
+      if (body?.error) detail = body.error
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail)
+  }
   if (!data?.success) throw new Error(data?.error || 'خطای tenant-ops')
   return data
+}
+
+/**
+ * Server allowlist check — client flag alone never grants shell.
+ * @returns {Promise<{ ok: true, phone: string } | { ok: false, message: string, forbidden?: boolean }>}
+ */
+async function ensurePlatformAccess() {
+  const { data: { session } } = await platformSupabase.auth.getSession()
+  if (!session?.access_token) {
+    return { ok: false, message: 'نشست سوپرادمین موجود نیست' }
+  }
+  try {
+    const data = await platformApi('whoami')
+    const phone = String(data?.phone || '').trim()
+    if (!phone) return { ok: false, message: 'دسترسی مجاز نیست', forbidden: true }
+    return { ok: true, phone }
+  } catch (e) {
+    const msg = e?.message || ''
+    const status = e?.status
+    const forbidden = status === 403 || /مجاز نیست|Forbidden/i.test(msg)
+    return {
+      ok: false,
+      message: forbidden ? 'دسترسی مجاز نیست' : (msg || 'تأیید دسترسی ناموفق بود'),
+      forbidden
+    }
+  }
+}
+
+async function enterShell(phone) {
+  markAuthed(phone)
+  showShell()
+  await refreshTenants()
+  await loadSettingsForm()
+  await refreshPayments()
 }
 
 function renderDefaultsSummary() {
@@ -157,12 +241,13 @@ function escapeAttr(s) {
 
 async function onSendOtp(event) {
   event.preventDefault()
-  const phone = ($('platformPhone')?.value || '').trim()
+  const phone = requireValidPhone()
+  if (!phone) return
   const btn = $('platformSendOtpBtn')
   if (btn) btn.disabled = true
   setStatus('')
   try {
-    const result = await sendOTP(phone, { purpose: 'platform' })
+    const result = await sendOTP(phone, { purpose: 'platform', client: platformSupabase })
     if (!result.success) {
       setStatus(result.error || 'ارسال ناموفق')
       return
@@ -176,28 +261,31 @@ async function onSendOtp(event) {
 
 async function onVerify(event) {
   event.preventDefault()
-  const phone = ($('platformPhone')?.value || '').trim()
+  const phone = requireValidPhone()
   const otp = ($('platformOtp')?.value || '').trim()
   const btn = $('platformLoginBtn')
   if (btn) btn.disabled = true
   setStatus('')
   try {
-    // Gate stub still validates empty fields; real path uses Edge
-    if (!phone || !otp) {
-      setStatus('شماره و کد لازم است')
+    if (!phone) return
+    if (!otp) {
+      setStatus('کد تأیید لازم است')
       return
     }
-    const result = await verifyOTP(phone, otp, { purpose: 'platform' })
+    const result = await verifyOTP(phone, otp, { purpose: 'platform', client: platformSupabase })
     if (!result.success || !result.session) {
       setStatus(result.error || 'ورود ناموفق')
       return
     }
-    await applyAuthSession(result.session)
-    markAuthed(phone)
-    showShell()
-    await refreshTenants()
-    await loadSettingsForm()
-    await refreshPayments()
+    await applyPlatformSession(result.session)
+    const access = await ensurePlatformAccess()
+    if (!access.ok) {
+      await clearPlatformAuth()
+      showGate()
+      setStatus(access.message || 'دسترسی مجاز نیست')
+      return
+    }
+    await enterShell(access.phone)
   } catch (e) {
     setStatus(e.message || 'خطا')
   } finally {
@@ -464,11 +552,9 @@ async function refreshAudit() {
 }
 
 async function onLogout() {
-  clearAuthedFlag()
-  clearPlatformGateSession()
-  await clearAuthSession()
+  await clearPlatformAuth()
   showGate()
-  setStatus('خارج شدید.', false)
+  setStatus('از پنل پلتفرم خارج شدید. نشست اپ سازمان (در صورت باز بودن) جداست و پاک نشده.', false)
 }
 
 async function boot() {
@@ -486,19 +572,21 @@ async function boot() {
   $('platformRefreshPaymentsBtn')?.addEventListener('click', () => refreshPayments())
   $('platformLogoutBtn')?.addEventListener('click', onLogout)
 
-  // Phase 0 stub no longer blocks after real OTP; keep helpers referenced
+  // Phase 0 stub retained until phase 6 cleanup
   void attemptPlatformLogin
   void isPlatformAccessGranted
   void readPlatformGateSession
 
-  const { data: { session } } = await supabase.auth.getSession()
-  const flag = readAuthedFlag()
-  if (session && flag) {
-    showShell()
-    await refreshTenants()
-    await loadSettingsForm()
-    await refreshPayments()
+  const access = await ensurePlatformAccess()
+  if (access.ok) {
+    await enterShell(access.phone)
   } else {
+    if (access.forbidden) {
+      await clearPlatformAuth()
+      showGate()
+      setStatus('دسترسی مجاز نیست. با شماره allowlist دوباره وارد شوید.')
+      return
+    }
     showGate()
     setStatus('فقط شماره‌های allowlist سرور (PLATFORM_ADMIN_PHONES) مجازند.', false)
   }

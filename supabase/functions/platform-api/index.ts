@@ -1,5 +1,5 @@
 // Platform admin API — requires JWT of allowlisted platform admin
-// Actions: list_tenants | create_tenant | get_settings | update_settings |
+// Actions: whoami | list_tenants | create_tenant | get_settings | update_settings |
 //          set_subscription | list_payments | record_manual_payment
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
@@ -7,16 +7,24 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8"
 
 type AdminClient = ReturnType<typeof createClient>
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+const corsBaseHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-function json(body: Record<string, unknown>, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  })
+/** PLATFORM_CORS_ORIGINS / ALLOWED_ORIGINS: comma list; unset or * = allow all */
+function corsFor(req: Request): Record<string, string> {
+  const raw = Deno.env.get('PLATFORM_CORS_ORIGINS') || Deno.env.get('ALLOWED_ORIGINS') || '*'
+  const allowed = raw.split(',').map((s) => s.trim()).filter(Boolean)
+  const origin = req.headers.get('Origin') || ''
+  let allowOrigin = '*'
+  if (!allowed.includes('*')) {
+    allowOrigin = allowed.includes(origin) ? origin : (allowed[0] || 'null')
+  }
+  return {
+    ...corsBaseHeaders,
+    'Access-Control-Allow-Origin': allowOrigin,
+    Vary: 'Origin',
+  }
 }
 
 function parseAllowlist(): Set<string> {
@@ -64,8 +72,15 @@ function positiveDays(value: unknown, fallback: number): number {
 }
 
 serve(async (req) => {
+  const cors = corsFor(req)
+  const json = (body: Record<string, unknown>, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    })
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: cors })
   }
 
   try {
@@ -99,6 +114,15 @@ serve(async (req) => {
     const admin = createClient(supabaseUrl, serviceKey)
     const body = await req.json().catch(() => ({}))
     const action = String(body?.action || '')
+
+    if (action === 'whoami') {
+      return json({
+        success: true,
+        phone,
+        role: 'platform_admin',
+        auth_user_id: userData.user.id,
+      })
+    }
 
     if (action === 'list_tenants') {
       const { data: tenants, error } = await admin

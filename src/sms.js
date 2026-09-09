@@ -5,12 +5,13 @@ import { supabase } from './supabase.js'
 
 /**
  * @param {string} phone
- * @param {{ purpose?: 'tenant' | 'platform' | 'register' }} [opts]
+ * @param {{ purpose?: 'tenant' | 'platform' | 'register', client?: import('@supabase/supabase-js').SupabaseClient }} [opts]
  */
 export async function sendOTP(phone, opts = {}) {
   try {
+    const client = opts.client || supabase
     const purpose = ['platform', 'register'].includes(opts.purpose) ? opts.purpose : 'tenant'
-    const { data, error } = await supabase.functions.invoke('send-otp', {
+    const { data, error } = await client.functions.invoke('send-otp', {
       body: { phone, purpose }
     })
 
@@ -29,10 +30,11 @@ export async function sendOTP(phone, opts = {}) {
 /**
  * @param {string} phone
  * @param {string} code
- * @param {{ purpose?: 'tenant' | 'platform' | 'register', org_name?: string, first_name?: string, last_name?: string }} [opts]
+ * @param {{ purpose?: 'tenant' | 'platform' | 'register', org_name?: string, first_name?: string, last_name?: string, client?: import('@supabase/supabase-js').SupabaseClient }} [opts]
  */
 export async function verifyOTP(phone, code, opts = {}) {
   try {
+    const client = opts.client || supabase
     const purpose = ['platform', 'register'].includes(opts.purpose) ? opts.purpose : 'tenant'
     const body = { phone, code, purpose }
     if (purpose === 'register') {
@@ -40,7 +42,7 @@ export async function verifyOTP(phone, code, opts = {}) {
       body.first_name = opts.first_name
       body.last_name = opts.last_name
     }
-    const { data, error } = await supabase.functions.invoke('verify-otp', { body })
+    const { data, error } = await client.functions.invoke('verify-otp', { body })
 
     if (error) {
       console.error('verifyOTP error:', error)
