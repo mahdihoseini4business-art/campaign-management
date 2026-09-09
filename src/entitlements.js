@@ -236,6 +236,7 @@ export function ensurePaywallDom() {
         padding: 10px 16px; text-align: center; font-size: 13px;
         display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center;
       }
+      .entitlement-banner[hidden] { display: none !important; }
       .entitlement-banner[data-tone="danger"] { background: #991b1b; }
       .entitlement-banner button {
         font: inherit; cursor: pointer; border: 1px solid rgba(255,255,255,.45);
