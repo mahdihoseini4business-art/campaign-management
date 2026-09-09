@@ -176,7 +176,7 @@
               <option value="readonly">readonly</option>
               <option value="suspended">suspended</option>
             </select>
-            <label for="subEndsInDays">مدت اعتبار از امروز (روز) — برای active</label>
+            <label for="subEndsInDays">مدت اعتبار از امروز (روز) — فقط وقتی وضعیت active است</label>
             <input id="subEndsInDays" type="number" min="1" value="30">
             <button type="submit">اعمال</button>
           </form>
@@ -198,7 +198,7 @@
               <option value="yearly">سالانه</option>
             </select>
             <label for="manualAmount">مبلغ (ریال)</label>
-            <input id="manualAmount" type="number" min="0" value="0">
+            <input id="manualAmount" type="number" min="1" step="1" required placeholder="مثلاً 1500000">
             <label for="manualNote">یادداشت / شماره پیگیری</label>
             <input id="manualNote" placeholder="واریز کارت به کارت ...">
             <button type="submit">ثبت پرداخت دستی و فعال‌سازی</button>

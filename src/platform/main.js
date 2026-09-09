@@ -286,12 +286,18 @@ async function onSetSubscription(event) {
   event.preventDefault()
   const status = $('platformSubStatus')
   try {
-    await platformApi('set_subscription', {
+    const subStatus = $('subStatus')?.value || 'active'
+    const payload = {
       tenant_id: ($('subTenantId')?.value || '').trim(),
       plan_id: $('subPlanId')?.value || 'gold',
-      status: $('subStatus')?.value || 'active',
-      ends_in_days: Number($('subEndsInDays')?.value || 30)
-    })
+      status: subStatus,
+    }
+    // Only active renews ends_at from the form. trialing uses server trial_days;
+    // grace/readonly/suspended must not rewrite ends_at.
+    if (subStatus === 'active') {
+      payload.ends_in_days = Number($('subEndsInDays')?.value || 30)
+    }
+    await platformApi('set_subscription', payload)
     if (status) {
       status.hidden = false
       status.textContent = 'اشتراک به‌روز شد.'
@@ -331,11 +337,20 @@ async function onManualPay(event) {
   event.preventDefault()
   const status = $('platformManualPayStatus')
   try {
+    const amount = Number($('manualAmount')?.value)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      if (status) {
+        status.hidden = false
+        status.textContent = 'مبلغ باید بزرگ‌تر از صفر باشد'
+        status.dataset.tone = 'error'
+      }
+      return
+    }
     await platformApi('record_manual_payment', {
       tenant_id: ($('manualTenantId')?.value || '').trim(),
       plan_id: $('manualPlanId')?.value || 'gold',
       period: $('manualPeriod')?.value || 'monthly',
-      amount_irr: Number($('manualAmount')?.value || 0),
+      amount_irr: amount,
       note: ($('manualNote')?.value || '').trim(),
       ends_in_days: ($('manualPeriod')?.value === 'yearly') ? 365 : 30
     })

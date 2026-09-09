@@ -1,8 +1,11 @@
 // Platform admin API — requires JWT of allowlisted platform admin
-// Actions: list_tenants | create_tenant | get_settings | update_settings
+// Actions: list_tenants | create_tenant | get_settings | update_settings |
+//          set_subscription | list_payments | record_manual_payment
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8"
+
+type AdminClient = ReturnType<typeof createClient>
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,6 +37,30 @@ function slugify(name: string) {
     .replace(/[^a-z0-9\u0600-\u06ff-]/gi, '')
     .slice(0, 40)
   return base || `t-${Date.now().toString(36)}`
+}
+
+/** Read a positive numeric platform_settings value (jsonb number or numeric string). */
+async function readSettingNumber(
+  admin: AdminClient,
+  key: string,
+  fallback: number,
+): Promise<number> {
+  const { data } = await admin.from('platform_settings').select('value').eq('key', key).maybeSingle()
+  let raw: unknown = data?.value
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw)
+    } catch {
+      /* keep string */
+    }
+  }
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : fallback
+}
+
+function positiveDays(value: unknown, fallback: number): number {
+  const n = Number(value)
+  return Number.isFinite(n) && n > 0 ? n : fallback
 }
 
 serve(async (req) => {
@@ -106,17 +133,27 @@ serve(async (req) => {
         .single()
       if (tErr || !tenant) return json({ success: false, error: tErr?.message || 'ساخت سازمان ناموفق' }, 500)
 
-      const trialDays = 7
-      const trialEnds = planId === 'trial'
-        ? new Date(Date.now() + trialDays * 86400000).toISOString()
-        : null
+      const trialDays = await readSettingNumber(admin, 'trial_days', 7)
+      const paidEndsDays = positiveDays(body?.ends_in_days, 30)
+      const now = Date.now()
+      let trialEnds: string | null = null
+      let endsAt: string
+      let subStatus: string
+      if (planId === 'trial') {
+        subStatus = 'trialing'
+        trialEnds = new Date(now + trialDays * 86400000).toISOString()
+        endsAt = trialEnds
+      } else {
+        subStatus = 'active'
+        endsAt = new Date(now + paidEndsDays * 86400000).toISOString()
+      }
 
       await admin.from('subscriptions').insert({
         tenant_id: tenant.id,
         plan_id: planId,
-        status: planId === 'trial' ? 'trialing' : 'active',
+        status: subStatus,
         trial_ends_at: trialEnds,
-        ends_at: trialEnds,
+        ends_at: endsAt,
       })
 
       if (ownerPhone) {
@@ -154,10 +191,16 @@ serve(async (req) => {
         action: 'platform.create_tenant',
         entity_type: 'tenant',
         entity_id: tenant.id,
-        meta: { name, plan_id: planId, owner_phone: ownerPhone || null },
+        meta: {
+          name,
+          plan_id: planId,
+          owner_phone: ownerPhone || null,
+          ends_at: endsAt,
+          trial_days: planId === 'trial' ? trialDays : null,
+        },
       })
 
-      return json({ success: true, tenant })
+      return json({ success: true, tenant, ends_at: endsAt })
     }
 
     if (action === 'get_settings') {
@@ -203,23 +246,28 @@ serve(async (req) => {
       if (!allowedPlans.has(planId)) return json({ success: false, error: 'plan_id نامعتبر است' }, 400)
       if (!allowedStatus.has(status)) return json({ success: false, error: 'status نامعتبر است' }, 400)
 
-      const trialDays = Number(body?.trial_days) || 7
-      const endsInDays = body?.ends_in_days != null ? Number(body.ends_in_days) : null
+      const trialDaysBody = Number(body?.trial_days)
+      const trialDays = Number.isFinite(trialDaysBody) && trialDaysBody > 0
+        ? trialDaysBody
+        : await readSettingNumber(admin, 'trial_days', 7)
+      const endsInDays = body?.ends_in_days != null && body?.ends_in_days !== ''
+        ? Number(body.ends_in_days)
+        : null
       const now = Date.now()
       const patch: Record<string, unknown> = {
         plan_id: planId,
         status,
         updated_at: new Date().toISOString(),
       }
+      // Only trialing/active rewrite end dates. grace/readonly/suspended keep existing ends_at.
       if (status === 'trialing') {
         patch.trial_ends_at = new Date(now + trialDays * 86400000).toISOString()
         patch.ends_at = patch.trial_ends_at
-      } else if (endsInDays != null && Number.isFinite(endsInDays)) {
-        patch.ends_at = new Date(now + endsInDays * 86400000).toISOString()
-        patch.trial_ends_at = null
       } else if (status === 'active') {
         patch.trial_ends_at = null
-        if (!body?.keep_ends_at) {
+        if (endsInDays != null && Number.isFinite(endsInDays) && endsInDays > 0) {
+          patch.ends_at = new Date(now + endsInDays * 86400000).toISOString()
+        } else if (!body?.keep_ends_at) {
           patch.ends_at = new Date(now + 30 * 86400000).toISOString()
         }
       }
@@ -279,6 +327,9 @@ serve(async (req) => {
       if (!['gold', 'diamond'].includes(planId)) {
         return json({ success: false, error: 'plan_id نامعتبر' }, 400)
       }
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return json({ success: false, error: 'مبلغ باید بزرگ‌تر از صفر باشد' }, 400)
+      }
 
       const { data: payment, error: pErr } = await admin
         .from('billing_payments')
@@ -286,7 +337,7 @@ serve(async (req) => {
           tenant_id: tenantId,
           plan_id: planId,
           period,
-          amount_irr: Number.isFinite(amount) ? amount : 0,
+          amount_irr: amount,
           status: 'manual',
           gateway: 'manual',
           ref_id: note.slice(0, 80),
@@ -306,7 +357,7 @@ serve(async (req) => {
           number: invoiceNumber,
           plan_id: planId,
           period,
-          amount_irr: Number.isFinite(amount) ? amount : 0,
+          amount_irr: amount,
           status: 'paid',
           payload: { manual: true, note },
         })
