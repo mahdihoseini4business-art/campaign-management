@@ -164,6 +164,18 @@ export const DEFAULT_PRODUCT_CATALOG = [
   'تنظیم موتور', 'دیاگ لانچ', 'دیاگ I700', 'دیاگ blu', 'دیاگ newlite', 'تست باکس شبکه'
 ]
 
+export const PRODUCT_KIND = {
+  educational: 'educational',
+  physical: 'physical'
+}
+
+/** @deprecated kept for migrate; prefer PRODUCT_KIND */
+export const PROFIT_MODE = {
+  gross: 'gross',
+  net: 'net',
+  mixed: 'mixed'
+}
+
 /** Normalize one catalog entry (string legacy, profitMode legacy, or productKind). */
 export function normalizeCatalogEntry(raw) {
   if (typeof raw === 'string') {

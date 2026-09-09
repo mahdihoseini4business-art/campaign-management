@@ -178,11 +178,6 @@ async function ensurePlatformAccess() {
   }
 }
 
-let tenantsCache = []
-let paymentsCache = []
-let rootDomainCache = PLATFORM_SETTING_DEFAULTS.root_domain
-const statusClearTimers = new Map()
-
 function setFormBusy(form, busy) {
   if (!form) return
   form.querySelectorAll('button, input, select, textarea').forEach((el) => {
