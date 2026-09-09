@@ -13,6 +13,13 @@ import {
   PLATFORM_AUTH_FLAG_KEY,
   LEGACY_PLATFORM_SESSION_STORAGE_KEY
 } from './session-contract.js'
+import { buildPlatformShellHtml } from './shell-template.js'
+
+let shellMounted = false
+let tenantsCache = []
+let paymentsCache = []
+let rootDomainCache = PLATFORM_SETTING_DEFAULTS.root_domain
+const statusClearTimers = new Map()
 
 function $(id) {
   return document.getElementById(id)
@@ -26,16 +33,33 @@ function setStatus(message, isError = true) {
   el.dataset.tone = isError ? 'error' : 'info'
 }
 
+function teardownShell() {
+  const host = $('platformShellHost')
+  if (host) host.innerHTML = ''
+  shellMounted = false
+  tenantsCache = []
+  paymentsCache = []
+}
+
+function mountShell() {
+  const host = $('platformShellHost')
+  if (!host) throw new Error('platformShellHost missing')
+  if (shellMounted && $('platformShell')) return
+  host.innerHTML = buildPlatformShellHtml()
+  shellMounted = true
+  bindShellEvents()
+}
+
 function showGate() {
+  teardownShell()
   $('platformBoot')?.setAttribute('hidden', '')
   $('platformGate')?.removeAttribute('hidden')
-  $('platformShell')?.setAttribute('hidden', '')
 }
 
 function showShell() {
+  mountShell()
   $('platformBoot')?.setAttribute('hidden', '')
   $('platformGate')?.setAttribute('hidden', '')
-  $('platformShell')?.removeAttribute('hidden')
 }
 
 function markAuthed(phone) {
@@ -339,6 +363,28 @@ async function enterShell(phone) {
   await refreshTenants()
   await loadSettingsForm()
   await refreshPayments()
+}
+
+function bindGateEvents() {
+  $('platformSendOtpForm')?.addEventListener('submit', onSendOtp)
+  $('platformLoginForm')?.addEventListener('submit', onVerify)
+}
+
+function bindShellEvents() {
+  $('platformCreateForm')?.addEventListener('submit', onCreateTenant)
+  $('platformSettingsForm')?.addEventListener('submit', onSaveSettings)
+  $('platformSubForm')?.addEventListener('submit', onSetSubscription)
+  $('platformManualPayForm')?.addEventListener('submit', onManualPay)
+  $('platformSubdomainForm')?.addEventListener('submit', onSetSubdomain)
+  $('platformClearSubdomainBtn')?.addEventListener('click', onClearSubdomain)
+  $('platformArchiveTenantBtn')?.addEventListener('click', onArchiveTenant)
+  $('platformUnarchiveTenantBtn')?.addEventListener('click', onUnarchiveTenant)
+  $('platformRefreshTenantsBtn')?.addEventListener('click', () => refreshTenants())
+  $('platformRefreshAuditBtn')?.addEventListener('click', () => refreshAudit())
+  $('platformRefreshPaymentsBtn')?.addEventListener('click', () => refreshPayments())
+  $('platformTenantSearch')?.addEventListener('input', () => renderTenantList())
+  $('platformPaymentStatusFilter')?.addEventListener('change', () => renderPaymentsList())
+  $('platformLogoutBtn')?.addEventListener('click', onLogout)
 }
 
 function renderDefaultsSummary(settings = PLATFORM_SETTING_DEFAULTS) {
@@ -735,27 +781,11 @@ async function refreshAudit() {
 async function onLogout() {
   await clearPlatformAuth()
   showGate()
-  setStatus('از پنل پلتفرم خارج شدید. نشست اپ سازمان (در صورت باز بودن) جداست و پاک نشده.', false)
+  setStatus('از پنل پلتفرم خارج شدید.', false)
 }
 
 async function boot() {
-  renderDefaultsSummary()
-  $('platformSendOtpForm')?.addEventListener('submit', onSendOtp)
-  $('platformLoginForm')?.addEventListener('submit', onVerify)
-  $('platformCreateForm')?.addEventListener('submit', onCreateTenant)
-  $('platformSettingsForm')?.addEventListener('submit', onSaveSettings)
-  $('platformSubForm')?.addEventListener('submit', onSetSubscription)
-  $('platformManualPayForm')?.addEventListener('submit', onManualPay)
-  $('platformSubdomainForm')?.addEventListener('submit', onSetSubdomain)
-  $('platformClearSubdomainBtn')?.addEventListener('click', onClearSubdomain)
-  $('platformArchiveTenantBtn')?.addEventListener('click', onArchiveTenant)
-  $('platformUnarchiveTenantBtn')?.addEventListener('click', onUnarchiveTenant)
-  $('platformRefreshTenantsBtn')?.addEventListener('click', () => refreshTenants())
-  $('platformRefreshAuditBtn')?.addEventListener('click', () => refreshAudit())
-  $('platformRefreshPaymentsBtn')?.addEventListener('click', () => refreshPayments())
-  $('platformTenantSearch')?.addEventListener('input', () => renderTenantList())
-  $('platformPaymentStatusFilter')?.addEventListener('change', () => renderPaymentsList())
-  $('platformLogoutBtn')?.addEventListener('click', onLogout)
+  bindGateEvents()
 
   const access = await ensurePlatformAccess()
   if (access.ok) {
@@ -768,7 +798,7 @@ async function boot() {
       return
     }
     showGate()
-    setStatus('فقط شماره‌های allowlist سرور (PLATFORM_ADMIN_PHONES) مجازند.', false)
+    setStatus('فقط شماره‌های مجاز سرور می‌توانند وارد شوند.', false)
   }
 }
 
