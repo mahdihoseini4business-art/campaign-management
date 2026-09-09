@@ -2,6 +2,7 @@
 // فراخوانی Edge Function‌های Supabase
 
 import { supabase } from './supabase.js'
+import { readFunctionsInvokeError } from './edge-error.js'
 
 /**
  * @param {string} phone
@@ -17,7 +18,8 @@ export async function sendOTP(phone, opts = {}) {
 
     if (error) {
       console.error('sendOTP error:', error)
-      return { success: false, error: 'خطا در ارسال کد تأیید' }
+      const detail = await readFunctionsInvokeError(error, 'خطا در ارسال کد تأیید')
+      return { success: false, error: data?.error || detail }
     }
 
     return data || { success: false, error: 'پاسخ نامعتبر از سرور' }
@@ -46,7 +48,8 @@ export async function verifyOTP(phone, code, opts = {}) {
 
     if (error) {
       console.error('verifyOTP error:', error)
-      return { success: false, error: 'خطا در تأیید کد' }
+      const detail = await readFunctionsInvokeError(error, 'خطا در تأیید کد')
+      return { success: false, error: data?.error || detail }
     }
 
     return data || { success: false, error: 'پاسخ نامعتبر از سرور' }

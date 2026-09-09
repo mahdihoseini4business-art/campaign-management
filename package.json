@@ -10,7 +10,8 @@
     "test:split": "node scripts/test-backup-split.mjs",
     "test:entitlements": "node scripts/test-entitlements.mjs",
     "test:subdomain": "node scripts/test-subdomain.mjs",
-    "test:saas-unit": "npm run test:entitlements && npm run test:subdomain",
+    "test:platform-settings": "node scripts/test-platform-settings.mjs",
+    "test:saas-unit": "npm run test:entitlements && npm run test:subdomain && npm run test:platform-settings",
     "smoke:saas": "node scripts/saas-smoke-check.mjs"
   },
   "dependencies": {

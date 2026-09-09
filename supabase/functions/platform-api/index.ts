@@ -71,6 +71,52 @@ function positiveDays(value: unknown, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback
 }
 
+const SETTINGS_NUMBER_KEYS = new Set([
+  'grace_days',
+  'trial_days',
+  'sms_daily_limit_trial',
+  'sms_daily_limit_gold',
+  'sms_daily_limit_diamond',
+  'subdomain_min_length',
+])
+const SETTINGS_STRING_KEYS = new Set(['root_domain'])
+
+/** Coerce platform_settings jsonb to stable number/string (fixes legacy quote wrapping). */
+function coerceSettingValue(key: string, value: unknown): unknown {
+  if (SETTINGS_NUMBER_KEYS.has(key)) {
+    let raw: unknown = value
+    if (typeof raw === 'string') {
+      try {
+        raw = JSON.parse(raw.trim())
+      } catch {
+        raw = raw.trim()
+      }
+    }
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : null
+  }
+  if (SETTINGS_STRING_KEYS.has(key)) {
+    let s = value == null ? '' : String(value).trim()
+    for (let i = 0; i < 2; i++) {
+      if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+        try {
+          const parsed = JSON.parse(s)
+          if (typeof parsed === 'string') {
+            s = parsed.trim()
+            continue
+          }
+        } catch {
+          s = s.slice(1, -1).trim()
+          continue
+        }
+      }
+      break
+    }
+    return s
+  }
+  return value
+}
+
 serve(async (req) => {
   const cors = corsFor(req)
   const json = (body: Record<string, unknown>, status = 200) =>
@@ -231,7 +277,10 @@ serve(async (req) => {
       const { data, error } = await admin.from('platform_settings').select('key, value')
       if (error) return json({ success: false, error: error.message }, 500)
       const settings: Record<string, unknown> = {}
-      for (const row of data || []) settings[row.key] = row.value
+      for (const row of data || []) {
+        const key = String(row.key)
+        settings[key] = coerceSettingValue(key, row.value)
+      }
       return json({ success: true, settings })
     }
 
@@ -251,9 +300,16 @@ serve(async (req) => {
       ])
       for (const [key, value] of Object.entries(entries)) {
         if (!allowed.has(key)) continue
+        const coerced = coerceSettingValue(key, value)
+        if (SETTINGS_NUMBER_KEYS.has(key) && (coerced == null || typeof coerced !== 'number')) {
+          return json({ success: false, error: `مقدار ${key} نامعتبر است` }, 400)
+        }
+        if (SETTINGS_STRING_KEYS.has(key) && (typeof coerced !== 'string' || !coerced)) {
+          return json({ success: false, error: `مقدار ${key} نامعتبر است` }, 400)
+        }
         await admin.from('platform_settings').upsert({
           key,
-          value,
+          value: coerced,
           updated_at: new Date().toISOString(),
         })
       }

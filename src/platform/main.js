@@ -1,7 +1,14 @@
 import { sendOTP, verifyOTP } from '../sms.js'
+import { readFunctionsInvokeError, functionsErrorStatus } from '../edge-error.js'
 import { normalizePhone } from '../utils.js'
 import { platformSupabase } from './client.js'
-import { PLATFORM_SETTING_DEFAULTS, DIAMOND_ONLY_FEATURES, PLAN_IDS } from './defaults.js'
+import {
+  PLATFORM_SETTING_DEFAULTS,
+  DIAMOND_ONLY_FEATURES,
+  PLAN_IDS,
+  mergePlatformSettings,
+  coercePlatformSetting
+} from './defaults.js'
 import {
   attemptPlatformLogin,
   clearPlatformGateSession,
@@ -94,17 +101,9 @@ async function platformApi(action, payload = {}) {
     headers: { Authorization: `Bearer ${session.access_token}` }
   })
   if (error) {
-    let detail = error.message || 'خطای platform-api'
-    try {
-      const body = typeof error.context?.json === 'function'
-        ? await error.context.json()
-        : null
-      if (body?.error) detail = body.error
-    } catch {
-      /* ignore */
-    }
-    const err = new Error(detail)
-    err.status = error.context?.status
+    const detail = await readFunctionsInvokeError(error, 'خطای platform-api')
+    const err = new Error(data?.error || detail)
+    err.status = functionsErrorStatus(error)
     throw err
   }
   if (!data?.success) throw new Error(data?.error || 'خطای platform-api')
@@ -119,16 +118,8 @@ async function tenantOps(action, payload = {}) {
     headers: { Authorization: `Bearer ${session.access_token}` }
   })
   if (error) {
-    let detail = error.message || 'خطای tenant-ops'
-    try {
-      const body = typeof error.context?.json === 'function'
-        ? await error.context.json()
-        : null
-      if (body?.error) detail = body.error
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail)
+    const detail = await readFunctionsInvokeError(error, 'خطای tenant-ops')
+    throw new Error(data?.error || detail)
   }
   if (!data?.success) throw new Error(data?.error || 'خطای tenant-ops')
   return data
@@ -168,17 +159,27 @@ async function enterShell(phone) {
   await refreshPayments()
 }
 
-function renderDefaultsSummary() {
+function renderDefaultsSummary(settings = PLATFORM_SETTING_DEFAULTS) {
   const el = $('platformDefaultsSummary')
   if (!el) return
-  const d = PLATFORM_SETTING_DEFAULTS
+  const d = mergePlatformSettings(settings)
   el.innerHTML = [
-    `<li>Trial: <strong>${d.trial_days}</strong> روز</li>`,
-    `<li>Grace پیش‌فرض: <strong>${d.grace_days}</strong> روز</li>`,
-    `<li>سقف SMS/روز — Trial / طلایی / الماسی: <strong>${d.sms_daily_limit_trial}</strong> / <strong>${d.sms_daily_limit_gold}</strong> / <strong>${d.sms_daily_limit_diamond}</strong></li>`,
-    `<li>پلن‌ها: ${Object.values(PLAN_IDS).join(' · ')}</li>`,
-    `<li>فقط الماس: ${DIAMOND_ONLY_FEATURES.join(', ')}</li>`
+    `<li>Trial: <strong>${escapeHtml(d.trial_days)}</strong> روز</li>`,
+    `<li>Grace: <strong>${escapeHtml(d.grace_days)}</strong> روز</li>`,
+    `<li>دامنه ریشه: <strong dir="ltr">${escapeHtml(d.root_domain)}</strong></li>`,
+    `<li>حداقل طول ساب‌دامین: <strong>${escapeHtml(d.subdomain_min_length)}</strong></li>`,
+    `<li>سقف SMS/روز — Trial / طلایی / الماسی: <strong>${escapeHtml(d.sms_daily_limit_trial)}</strong> / <strong>${escapeHtml(d.sms_daily_limit_gold)}</strong> / <strong>${escapeHtml(d.sms_daily_limit_diamond)}</strong></li>`,
+    `<li>پلن‌ها: ${escapeHtml(Object.values(PLAN_IDS).join(' · '))}</li>`,
+    `<li>فقط الماس: ${escapeHtml(DIAMOND_ONLY_FEATURES.join(', '))}</li>`
   ].join('')
+}
+
+function setSettingsStatus(message, isError = false) {
+  const status = $('platformSettingsStatus')
+  if (!status) return
+  status.hidden = !message
+  status.textContent = message || ''
+  status.dataset.tone = isError ? 'error' : 'info'
 }
 
 async function refreshTenants() {
@@ -321,25 +322,26 @@ async function onCreateTenant(event) {
 async function loadSettingsForm() {
   try {
     const data = await platformApi('get_settings')
-    const s = data.settings || {}
+    const merged = mergePlatformSettings(data.settings || {})
     const map = {
+      trial_days: 'settingTrialDays',
       grace_days: 'settingGraceDays',
       sms_daily_limit_trial: 'settingSmsTrial',
       sms_daily_limit_gold: 'settingSmsGold',
       sms_daily_limit_diamond: 'settingSmsDiamond',
-      root_domain: 'settingRootDomain'
+      root_domain: 'settingRootDomain',
+      subdomain_min_length: 'settingSubdomainMinLength'
     }
     for (const [key, id] of Object.entries(map)) {
       const el = $(id)
       if (!el) continue
-      let v = s[key]
-      if (typeof v === 'string' && (v.startsWith('"') || v.endsWith('"'))) {
-        try { v = JSON.parse(v) } catch { /* keep */ }
-      }
-      el.value = v == null ? (key === 'root_domain' ? 'carno.ir' : PLATFORM_SETTING_DEFAULTS[key] ?? '') : v
+      el.value = merged[key]
     }
+    renderDefaultsSummary(merged)
+    setSettingsStatus('')
   } catch (e) {
     console.warn('loadSettingsForm', e)
+    setSettingsStatus(e.message || 'بارگذاری تنظیمات ناموفق بود', true)
   }
 }
 
@@ -347,15 +349,17 @@ async function onSaveSettings(event) {
   event.preventDefault()
   const status = $('platformSettingsStatus')
   try {
-    await platformApi('update_settings', {
-      settings: {
-        grace_days: Number($('settingGraceDays')?.value || 3),
-        sms_daily_limit_trial: Number($('settingSmsTrial')?.value || 20),
-        sms_daily_limit_gold: Number($('settingSmsGold')?.value || 50),
-        sms_daily_limit_diamond: Number($('settingSmsDiamond')?.value || 200),
-        root_domain: String($('settingRootDomain')?.value || 'carno.ir').trim()
-      }
-    })
+    const settings = {
+      trial_days: coercePlatformSetting('trial_days', $('settingTrialDays')?.value),
+      grace_days: coercePlatformSetting('grace_days', $('settingGraceDays')?.value),
+      sms_daily_limit_trial: coercePlatformSetting('sms_daily_limit_trial', $('settingSmsTrial')?.value),
+      sms_daily_limit_gold: coercePlatformSetting('sms_daily_limit_gold', $('settingSmsGold')?.value),
+      sms_daily_limit_diamond: coercePlatformSetting('sms_daily_limit_diamond', $('settingSmsDiamond')?.value),
+      root_domain: coercePlatformSetting('root_domain', $('settingRootDomain')?.value),
+      subdomain_min_length: coercePlatformSetting('subdomain_min_length', $('settingSubdomainMinLength')?.value)
+    }
+    await platformApi('update_settings', { settings })
+    renderDefaultsSummary(settings)
     if (status) {
       status.hidden = false
       status.textContent = 'ذخیره شد.'

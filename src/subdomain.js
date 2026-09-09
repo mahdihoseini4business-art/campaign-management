@@ -5,6 +5,7 @@ import { supabase } from './supabase.js'
 import { canUseFeature } from './entitlements.js'
 import { getStoredTenantId, setCurrentTenant } from './tenant.js'
 import { extractSubdomainLabel, validateSubdomainLabel } from './subdomain-core.js'
+import { PLATFORM_SETTING_DEFAULTS, coercePlatformSetting } from './platform/defaults.js'
 
 export { extractSubdomainLabel, validateSubdomainLabel } from './subdomain-core.js'
 
@@ -28,16 +29,13 @@ export async function fetchRootDomain() {
       .select('value')
       .eq('key', 'root_domain')
       .maybeSingle()
-    const v = data?.value
-    if (typeof v === 'string' && v.trim()) return v.trim().replace(/^"|"$/g, '')
-    if (v && typeof v === 'object' && typeof v.toString === 'function') {
-      const s = String(v).replace(/^"|"$/g, '')
-      if (s) return s
+    if (data && data.value != null) {
+      return coercePlatformSetting('root_domain', data.value)
     }
   } catch {
     /* ignore */
   }
-  return import.meta.env.VITE_ROOT_DOMAIN || 'carno.ir'
+  return import.meta.env.VITE_ROOT_DOMAIN || PLATFORM_SETTING_DEFAULTS.root_domain
 }
 
 /**
