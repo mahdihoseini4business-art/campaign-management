@@ -30,13 +30,15 @@ function versionPlugin() {
   }
 }
 
-/** Map /platform and /signup clean URLs in Vite dev/preview. */
+/** Map clean URLs in Vite dev/preview. */
 function platformPathPlugin() {
   const rewrite = (req) => {
     const raw = req.url || ''
     const pathOnly = raw.split('?')[0]
     const qs = raw.includes('?') ? raw.slice(raw.indexOf('?')) : ''
-    if (pathOnly === '/platform' || pathOnly === '/platform/') {
+    if (pathOnly === '/login' || pathOnly === '/login/') {
+      req.url = `/login.html${qs}`
+    } else if (pathOnly === '/platform' || pathOnly === '/platform/') {
       req.url = `/platform.html${qs}`
     } else if (pathOnly === '/signup' || pathOnly === '/signup/') {
       req.url = `/signup.html${qs}`
@@ -61,6 +63,9 @@ function platformPathPlugin() {
 }
 
 export default defineConfig({
+  // Multi-page app: missing /assets/* must not fall back to index.html
+  // (SPA fallback returns text/html and breaks module scripts).
+  appType: 'mpa',
   plugins: [versionPlugin(), platformPathPlugin()],
   build: {
     rollupOptions: {
