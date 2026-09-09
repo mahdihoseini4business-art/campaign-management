@@ -495,6 +495,7 @@ function captureWatermarksFromFullLoad(raw) {
  * @param {string} [opts.select]
  * @param {string} [opts.orderCol]
  * @param {boolean} [opts.ascending]
+ * @param {boolean} [opts.scopeTenant] push tenant_id filter (helps planner + RLS)
  * @param {(q: any) => any} [opts.apply] mutate the query (filters, etc.)
  * @returns {Promise<{ data: any[], error: any }>}
  */
@@ -503,12 +504,15 @@ async function fetchAllRows(table, opts = {}) {
     select = '*',
     orderCol = 'id',
     ascending = true,
+    scopeTenant = false,
     apply
   } = opts
+  const tenantId = scopeTenant ? getStoredTenantId() : null
   const all = []
   let from = 0
   for (;;) {
     let q = supabase.from(table).select(select)
+    if (tenantId) q = q.eq('tenant_id', tenantId)
     if (typeof apply === 'function') q = apply(q) || q
     if (orderCol) q = q.order(orderCol, { ascending })
     q = q.range(from, from + SUPABASE_PAGE_SIZE - 1)
@@ -522,14 +526,22 @@ async function fetchAllRows(table, opts = {}) {
 }
 
 async function fetchRowsSince(table, opts = {}) {
-  const { select, orderCol = 'updated_at', since, sinceCol = 'updated_at', ascending = true } = opts
+  const {
+    select,
+    orderCol = 'updated_at',
+    since,
+    sinceCol = 'updated_at',
+    ascending = true,
+    scopeTenant = false
+  } = opts
   if (!since) {
-    return fetchAllRows(table, { select, orderCol, ascending })
+    return fetchAllRows(table, { select, orderCol, ascending, scopeTenant })
   }
   return fetchAllRows(table, {
     select,
     orderCol,
     ascending,
+    scopeTenant,
     apply: q => q.gte(sinceCol, since)
   })
 }
@@ -586,14 +598,19 @@ export async function loadData() {
 async function loadDataInner() {
   const listSelectCustomers = CUSTOMER_LIST_SELECT
   const listSelectFollowups = FOLLOWUP_SELECT
+  const tenantScope = { scopeTenant: true }
+
+  let settingsQuery = supabase.from('app_settings').select('key,value')
+  const bootTenantId = getStoredTenantId()
+  if (bootTenantId) settingsQuery = settingsQuery.eq('tenant_id', bootTenantId)
 
   let [customersRes, followupsRes, settingsRes, transfersRes, acksRes, refundsRes] = await Promise.all([
-    fetchAllRows('customers', { select: listSelectCustomers, orderCol: 'id' }),
-    fetchAllRows('followups', { select: listSelectFollowups, orderCol: 'id' }),
-    supabase.from('app_settings').select('key,value'),
-    fetchAllRows('ownership_transfers', { select: OWNERSHIP_TRANSFER_SELECT, orderCol: 'id', ascending: true }),
-    fetchAllRows('ownership_transfer_acks', { select: OWNERSHIP_ACK_SELECT, orderCol: 'id' }),
-    fetchAllRows('refunds', { select: REFUND_SELECT, orderCol: 'id', ascending: false })
+    fetchAllRows('customers', { select: listSelectCustomers, orderCol: 'id', ...tenantScope }),
+    fetchAllRows('followups', { select: listSelectFollowups, orderCol: 'id', ...tenantScope }),
+    settingsQuery,
+    fetchAllRows('ownership_transfers', { select: OWNERSHIP_TRANSFER_SELECT, orderCol: 'id', ascending: true, ...tenantScope }),
+    fetchAllRows('ownership_transfer_acks', { select: OWNERSHIP_ACK_SELECT, orderCol: 'id', ...tenantScope }),
+    fetchAllRows('refunds', { select: REFUND_SELECT, orderCol: 'id', ascending: false, ...tenantScope })
   ])
 
   // Fallback if updated_at not migrated yet
@@ -601,21 +618,24 @@ async function loadDataInner() {
     syncMeta.supportsUpdatedAt = false
     customersRes = await fetchAllRows('customers', {
       select: CUSTOMER_LIST_SELECT.replace(/,?updated_at/, ''),
-      orderCol: 'id'
+      orderCol: 'id',
+      ...tenantScope
     })
   }
   // Fallback before migration 024 (customer_code)
   if (customersRes.error && /customer_code/i.test(customersRes.error.message || '')) {
     customersRes = await fetchAllRows('customers', {
       select: CUSTOMER_LIST_SELECT.replace(/,?customer_code/, ''),
-      orderCol: 'id'
+      orderCol: 'id',
+      ...tenantScope
     })
   }
   if (followupsRes.error && isMissingUpdatedAtError(followupsRes.error)) {
     syncMeta.supportsUpdatedAt = false
     followupsRes = await fetchAllRows('followups', {
       select: FOLLOWUP_SELECT.replace(/,?updated_at/, ''),
-      orderCol: 'id'
+      orderCol: 'id',
+      ...tenantScope
     })
   }
 
@@ -624,23 +644,25 @@ async function loadDataInner() {
     transfersData = await fetchAllRows('ownership_transfers', {
       select: OWNERSHIP_TRANSFER_SELECT.replace(/,?updated_at/, ''),
       orderCol: 'id',
-      ascending: true
+      ascending: true,
+      ...tenantScope
     })
   } else if (transfersRes.error && /column|schema cache/i.test(transfersRes.error.message || '')) {
-    transfersData = await fetchAllRows('ownership_transfers', { orderCol: 'id', ascending: true })
+    transfersData = await fetchAllRows('ownership_transfers', { orderCol: 'id', ascending: true, ...tenantScope })
   }
 
   let acksData = acksRes
   if (acksRes.error && isMissingUpdatedAtError(acksRes.error)) {
     acksData = await fetchAllRows('ownership_transfer_acks', {
       select: 'id,user_phone,batch_id,seen_at',
-      orderCol: 'id'
+      orderCol: 'id',
+      ...tenantScope
     })
   }
 
   let refundsData = refundsRes
   if (refundsRes.error && /column|does not exist|schema cache/i.test(refundsRes.error.message || '')) {
-    refundsData = await fetchAllRows('refunds', { orderCol: 'id', ascending: false })
+    refundsData = await fetchAllRows('refunds', { orderCol: 'id', ascending: false, ...tenantScope })
   }
 
   const errors = []
@@ -742,30 +764,36 @@ export async function syncDataIncremental() {
 
   const [customersRes, followupsRes, settingsRes, transfersRes, acksRes, refundsRes] = await Promise.all([
     sinceCustomers
-      ? fetchRowsSince('customers', { select: CUSTOMER_LIST_SELECT, since: sinceCustomers, orderCol: 'updated_at' })
+      ? fetchRowsSince('customers', { select: CUSTOMER_LIST_SELECT, since: sinceCustomers, orderCol: 'updated_at', scopeTenant: true })
       : Promise.resolve({ data: [], error: null }),
     sinceFollowups
-      ? fetchRowsSince('followups', { select: FOLLOWUP_SELECT, since: sinceFollowups, orderCol: 'updated_at' })
+      ? fetchRowsSince('followups', { select: FOLLOWUP_SELECT, since: sinceFollowups, orderCol: 'updated_at', scopeTenant: true })
       : Promise.resolve({ data: [], error: null }),
-    supabase.from('app_settings').select('key,value'),
+    (() => {
+      let q = supabase.from('app_settings').select('key,value')
+      const tid = getStoredTenantId()
+      return tid ? q.eq('tenant_id', tid) : q
+    })(),
     sinceTransfers
       ? fetchRowsSince('ownership_transfers', {
         select: OWNERSHIP_TRANSFER_SELECT,
         since: sinceTransfers,
         sinceCol: 'updated_at',
-        orderCol: 'updated_at'
+        orderCol: 'updated_at',
+        scopeTenant: true
       })
-      : fetchAllRows('ownership_transfers', { select: OWNERSHIP_TRANSFER_SELECT, orderCol: 'id', ascending: true }),
+      : fetchAllRows('ownership_transfers', { select: OWNERSHIP_TRANSFER_SELECT, orderCol: 'id', ascending: true, scopeTenant: true }),
     sinceAcks
       ? fetchRowsSince('ownership_transfer_acks', {
         select: OWNERSHIP_ACK_SELECT,
         since: sinceAcks,
         sinceCol: 'updated_at',
-        orderCol: 'updated_at'
+        orderCol: 'updated_at',
+        scopeTenant: true
       })
-      : fetchAllRows('ownership_transfer_acks', { select: OWNERSHIP_ACK_SELECT, orderCol: 'id' }),
+      : fetchAllRows('ownership_transfer_acks', { select: OWNERSHIP_ACK_SELECT, orderCol: 'id', scopeTenant: true }),
     sinceRefunds
-      ? fetchRowsSince('refunds', { select: REFUND_SELECT, since: sinceRefunds, orderCol: 'updated_at' })
+      ? fetchRowsSince('refunds', { select: REFUND_SELECT, since: sinceRefunds, orderCol: 'updated_at', scopeTenant: true })
       : Promise.resolve({ data: [], error: null })
   ])
 
@@ -847,9 +875,9 @@ export async function syncDataIncremental() {
  */
 export async function reconcileDeletedRows() {
   const [customersRes, followupsRes, refundsRes] = await Promise.all([
-    fetchAllRows('customers', { select: 'id', orderCol: 'id' }),
-    fetchAllRows('followups', { select: 'id', orderCol: 'id' }),
-    fetchAllRows('refunds', { select: 'id', orderCol: 'id' })
+    fetchAllRows('customers', { select: 'id', orderCol: 'id', scopeTenant: true }),
+    fetchAllRows('followups', { select: 'id', orderCol: 'id', scopeTenant: true }),
+    fetchAllRows('refunds', { select: 'id', orderCol: 'id', scopeTenant: true })
   ])
 
   if (!customersRes.error && customersRes.data) {
@@ -2741,9 +2769,9 @@ export async function updateRefundInDB(id, patch) {
 }
 
 export async function refreshRefundsFromDB() {
-  let res = await fetchAllRows('refunds', { select: REFUND_SELECT, orderCol: 'id', ascending: false })
+  let res = await fetchAllRows('refunds', { select: REFUND_SELECT, orderCol: 'id', ascending: false, scopeTenant: true })
   if (res.error && /column|does not exist|schema cache/i.test(res.error.message || '')) {
-    res = await fetchAllRows('refunds', { orderCol: 'id', ascending: false })
+    res = await fetchAllRows('refunds', { orderCol: 'id', ascending: false, scopeTenant: true })
   }
   if (res.error) {
     if (/refunds|does not exist|relation/i.test(res.error.message || '')) {
@@ -2968,12 +2996,16 @@ export async function saveSmsPanel(config) {
 // High-water mark so deleted IDs are never reused (DATA-H3)
 async function getNextIdNumber(prefix) {
   const counterKey = `id_counter_${prefix}`
+  const tenantId = getStoredTenantId()
+  let settingsQ = supabase.from('app_settings').select('value').eq('key', counterKey).limit(1)
+  if (tenantId) settingsQ = settingsQ.eq('tenant_id', tenantId)
 
   const [{ data: settingsRows }, { data: rows, error: idsError }] = await Promise.all([
-    supabase.from('app_settings').select('value').eq('key', counterKey).limit(1),
+    settingsQ,
     fetchAllRows('customers', {
       select: 'id',
       orderCol: 'id',
+      scopeTenant: true,
       apply: q => q.like('id', prefix + '%')
     })
   ])

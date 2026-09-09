@@ -11,6 +11,7 @@
 - [ ] `033_org_registration_log.sql`
 - [ ] `034_billing_payments.sql`
 - [ ] `035_subdomain_audit.sql`
+- [ ] `036_rls_tenant_query_perf.sql` (ایندکس + RLS برای جلوگیری از timeout لود مشتریان/پیگیری‌ها)
 
 بعد از apply: `NOTIFY pgrst, 'reload schema'` (معمولاً داخل migration هست).
 
