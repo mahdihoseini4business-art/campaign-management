@@ -157,32 +157,12 @@ const DEFAULT_STATUSES = [
 /** Admin-defined customer codes (کد مشتری); empty until configured in settings */
 const DEFAULT_CUSTOMER_CODES = []
 
-/** Default product names seeded into settings until admin customizes */
+/** Legacy Carno catalog names (kept for reference / import helpers; not auto-seeded) */
 export const DEFAULT_PRODUCT_CATALOG = [
   'آنلاین چینی', 'حضوری چینی', 'کتاب', 'کره ای حضوری', 'کره ای آنلاین',
   'حضوری فرمان', 'آنلاین فرمان', 'دوره زبان فنی', 'دوره GDS', 'آنلاین داخلی',
   'تنظیم موتور', 'دیاگ لانچ', 'دیاگ I700', 'دیاگ blu', 'دیاگ newlite', 'تست باکس شبکه'
 ]
-
-export const PRODUCT_KIND = {
-  educational: 'educational',
-  physical: 'physical'
-}
-
-/** @deprecated kept for migrate; prefer PRODUCT_KIND */
-export const PROFIT_MODE = {
-  gross: 'gross',
-  net: 'net',
-  mixed: 'mixed'
-}
-
-function defaultCatalogEntries() {
-  return DEFAULT_PRODUCT_CATALOG.map(name => ({
-    name,
-    productKind: PRODUCT_KIND.educational,
-    allowGift: false
-  }))
-}
 
 /** Normalize one catalog entry (string legacy, profitMode legacy, or productKind). */
 export function normalizeCatalogEntry(raw) {
@@ -965,7 +945,7 @@ function normalizeProductCatalog(raw) {
     seen.add(key)
     out.push(entry)
   }
-  return out.length ? out : defaultCatalogEntries()
+  return out
 }
 
 // ============================================
@@ -1052,7 +1032,7 @@ export function getProductCatalog() {
     seen.add(key)
     normalized.push(entry)
   }
-  if (!normalized.length) return defaultCatalogEntries()
+  if (!normalized.length) return []
   // Heal in-memory cache if legacy strings / corrupt rows are still present
   data.productCatalog = normalized
   return normalized.map(e => ({ ...e }))
@@ -1099,7 +1079,7 @@ export async function saveProductCatalog(products) {
     seen.add(key)
     cleaned.push(entry)
   }
-  data.productCatalog = cleaned.length ? cleaned : defaultCatalogEntries()
+  data.productCatalog = cleaned
   await saveSetting('product_catalog', data.productCatalog)
   return getProductCatalog()
 }
