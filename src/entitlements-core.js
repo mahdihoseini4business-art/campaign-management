@@ -1,31 +1,13 @@
 /**
  * Pure entitlement helpers (no DOM / Supabase) — usable in Node smoke tests.
  */
-import { PLATFORM_SETTING_DEFAULTS, PLAN_IDS } from './platform/defaults.js'
+import {
+  PLATFORM_SETTING_DEFAULTS,
+  PLAN_IDS,
+  PLAN_FEATURE_FALLBACK
+} from './platform/defaults.js'
 
-export const PLAN_FEATURE_FALLBACK = {
-  [PLAN_IDS.trial]: {
-    dm_chat: true,
-    products_matrix: true,
-    refunds: true,
-    shipments: true,
-    custom_subdomain: false
-  },
-  [PLAN_IDS.gold]: {
-    dm_chat: false,
-    products_matrix: false,
-    refunds: false,
-    shipments: false,
-    custom_subdomain: false
-  },
-  [PLAN_IDS.diamond]: {
-    dm_chat: true,
-    products_matrix: true,
-    refunds: true,
-    shipments: true,
-    custom_subdomain: true
-  }
-}
+export { PLAN_FEATURE_FALLBACK }
 
 export function defaultFeatures(planId) {
   return { ...(PLAN_FEATURE_FALLBACK[planId] || PLAN_FEATURE_FALLBACK[PLAN_IDS.gold]) }

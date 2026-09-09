@@ -1,7 +1,7 @@
 # ADR 001 — امنیت و چندمستأجری SaaS
 
-**وضعیت:** پذیرفته‌شده (فاز ۰)  
-**تاریخ:** 2026-09-08
+**وضعیت:** پذیرفته‌شده و پیاده‌سازی‌شده (فازهای پلتفرم ۱–۶)  
+**تاریخ:** 2026-09-08 · به‌روزرسانی: 2026-09-09
 
 ## زمینه
 
@@ -32,11 +32,13 @@ CARNO امروز تک‌مستأجر است: OTP سفارشی، session با HMA
 3. کلاینت session را با `supabase.auth.setSession` نگه می‌دارد و درخواست‌های DB با JWT کاربر می‌رود.
 4. **دسترسی داده دیگر به `VITE_HASH_SECRET` / HMAC محلی وابسته نیست** (HMAC فعلی فقط تا مهاجرت فاز ۱ ممکن است برای سازگاری موقت بماند، نه به‌عنوان مرز امنیتی DB).
 5. `service_role` فقط داخل Edge Functions استفاده می‌شود.
+6. **جداسازی نشست `/platform`:** storageKey جدا (`carno-platform-supabase-auth`)؛ قبل از `showShell` اکشن `whoami` روی `platform-api` allowlist را تأیید می‌کند.
 
 ### ۴) Allowlist سوپرادمین
 
-- شماره‌های مجاز فقط در **secret سرور** (مثلاً `PLATFORM_ADMIN_PHONES`) — **نه** در `VITE_*` و نه در باندل فرانت.
-- اسکلت `/platform` در فاز ۰ به‌صورت پیش‌فرض deny است تا Edge فاز ۱ به allowlist وصل شود.
+- شماره‌های مجاز فقط در **secret سرور** (`PLATFORM_ADMIN_PHONES`) — **نه** در `VITE_*` و نه در باندل فرانت.
+- ورود `/platform` فقط از OTP با `purpose=platform` و تأیید Edge؛ فلگ کلاینتی به‌تنهایی شل را باز نمی‌کند.
+- CORS اختیاری `platform-api` با `PLATFORM_CORS_ORIGINS` (پیش‌فرض `*`).
 
 ### ۵) ماتریس پلن
 
@@ -51,17 +53,20 @@ CARNO امروز تک‌مستأجر است: OTP سفارشی، session با HMA
 | سقف SMS روزانه | از تنظیمات سوپرادمین | همان | همان |
 | حجم بکاپ | از تنظیمات / پلن | همان | همان |
 
+منبع کد: `PLAN_FEATURE_FALLBACK` و `DIAMOND_ONLY_FEATURES` (derived) در `src/platform/defaults.js`.
+
 - پایان Trial: قطع ایمپورت/اکسپورت + فقط‌خواندنی + paywall.
 - پایان اشتراک پولی: `grace_days` (پویا در سوپرادمین) سپس فقط‌خواندنی.
 - فعال‌سازی: دستی توسط سوپرادمین **و** زرین‌پال؛ بعد از پرداخت موفق، پنل سازمان فعال می‌شود.
 
 ### ۶) تنظیمات پلتفرم (پیش‌فرض اولیه)
 
-مقادیر پیش‌فرض در `src/platform/defaults.js`؛ منبع حقیقت بعد از فاز ۲ جدول/ذخیره سروری `platform_settings` است:
+مقادیر پیش‌فرض در `src/platform/defaults.js`؛ منبع حقیقت جدول سروری `platform_settings` است:
 
 - `sms_daily_limit_trial` / `gold` / `diamond`
 - `grace_days`
 - `trial_days` = 7
+- `root_domain`، `subdomain_min_length`
 
 ### ۷) اصول امنیتی ثابت
 
@@ -97,7 +102,7 @@ Cron نمونه (روزانه):
 ## فاز ۵ — ساب‌دامین + audit + آرشیو
 
 - Migration: `035_subdomain_audit.sql` (`tenants.subdomain`, `archived_at`, `audit_log`, `resolve_tenant_by_subdomain`)
-- Edge: `tenant-ops` (`set_subdomain`, `clear_subdomain`, `archive_tenant`, `list_audit`)
+- Edge: `tenant-ops` (`set_subdomain`, `clear_subdomain`, `archive_tenant`, `unarchive_tenant`, `list_audit`)
 - کلاینت: `src/subdomain.js` + hint روی login/boot؛ UI ساب‌دامین در وضعیت اشتراک و `/platform`
 - Audit از مسیرهای ثبت‌نام، دعوت، پرداخت، cron، تغییر پلن
 - بکاپ: نیاز به tenant context + entitlement ایمپورت/اکسپورت؛ بازیابی فقط در حالت writable
@@ -109,7 +114,7 @@ Cron نمونه (روزانه):
 
 - چک‌لیست: [`docs/go-live-checklist.md`](go-live-checklist.md)
 - سناریوهای دستی: [`docs/e2e-saas-scenarios.md`](e2e-saas-scenarios.md)
-- تست واحد بدون شبکه: `npm run test:saas-unit` (`entitlements-core` + `subdomain-core`)
+- تست واحد بدون شبکه: `npm run test:saas-unit` (`entitlements` + `subdomain` + `platform-settings` + `edge-error`)
 - Smoke بعد از دیپلوی: `npm run smoke:saas` (با `SUPABASE_URL` / `SUPABASE_ANON_KEY`)
 - UX: paywall با عنوان پویا، dismiss تا انتهای session، بنر grace با روز باقی‌مانده، لینک جزئیات اشتراک، پیام‌های فارسی نتیجه پرداخت
 

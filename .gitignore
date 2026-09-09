@@ -33,3 +33,6 @@ supabase/**/node_modules/
 supabase/**/.deno/
 !.npmrc
 !.liaraignore
+# Local platform audit checklist (working notes; not shipped)
+docs/platform-issues.md
+

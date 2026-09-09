@@ -10,12 +10,9 @@ import {
   coercePlatformSetting
 } from './defaults.js'
 import {
-  attemptPlatformLogin,
-  clearPlatformGateSession,
-  isPlatformAccessGranted,
-  readPlatformGateSession
-} from './gate.js'
-import { PLATFORM_AUTH_FLAG_KEY } from './session-contract.js'
+  PLATFORM_AUTH_FLAG_KEY,
+  LEGACY_PLATFORM_SESSION_STORAGE_KEY
+} from './session-contract.js'
 
 function $(id) {
   return document.getElementById(id)
@@ -86,7 +83,11 @@ async function applyPlatformSession(session) {
 
 async function clearPlatformAuth() {
   clearAuthedFlag()
-  clearPlatformGateSession()
+  try {
+    localStorage.removeItem(LEGACY_PLATFORM_SESSION_STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
   try {
     await platformSupabase.auth.signOut()
   } catch (e) {
@@ -755,11 +756,6 @@ async function boot() {
   $('platformTenantSearch')?.addEventListener('input', () => renderTenantList())
   $('platformPaymentStatusFilter')?.addEventListener('change', () => renderPaymentsList())
   $('platformLogoutBtn')?.addEventListener('click', onLogout)
-
-  // Phase 0 stub retained until phase 6 cleanup
-  void attemptPlatformLogin
-  void isPlatformAccessGranted
-  void readPlatformGateSession
 
   const access = await ensurePlatformAccess()
   if (access.ok) {

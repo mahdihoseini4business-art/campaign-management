@@ -87,11 +87,39 @@ export const PLAN_IDS = Object.freeze({
   diamond: 'diamond'
 })
 
-/** قابلیت‌هایی که فقط در Trial موقت و پلن الماسی دائم فعال‌اند */
-export const DIAMOND_ONLY_FEATURES = Object.freeze([
-  'dm_chat',
-  'products_matrix',
-  'refunds',
-  'shipments',
-  'custom_subdomain'
-])
+/**
+ * ماتریس فیچر پیش‌فرض پلن‌ها — منبع واحد برای entitlements و UI platform.
+ * Trial موقتاً همان قابلیت‌های الماس را دارد به‌جز ساب‌دامین.
+ */
+export const PLAN_FEATURE_FALLBACK = Object.freeze({
+  [PLAN_IDS.trial]: Object.freeze({
+    dm_chat: true,
+    products_matrix: true,
+    refunds: true,
+    shipments: true,
+    custom_subdomain: false
+  }),
+  [PLAN_IDS.gold]: Object.freeze({
+    dm_chat: false,
+    products_matrix: false,
+    refunds: false,
+    shipments: false,
+    custom_subdomain: false
+  }),
+  [PLAN_IDS.diamond]: Object.freeze({
+    dm_chat: true,
+    products_matrix: true,
+    refunds: true,
+    shipments: true,
+    custom_subdomain: true
+  })
+})
+
+/** Features enabled on diamond but not on gold (derived — do not edit by hand). */
+export const DIAMOND_ONLY_FEATURES = Object.freeze(
+  Object.keys(PLAN_FEATURE_FALLBACK[PLAN_IDS.diamond]).filter(
+    (key) =>
+      PLAN_FEATURE_FALLBACK[PLAN_IDS.diamond][key] === true &&
+      PLAN_FEATURE_FALLBACK[PLAN_IDS.gold][key] !== true
+  )
+)
