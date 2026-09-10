@@ -371,71 +371,27 @@
     display: block;
   }
 
-  .login-stage.is-entering-forward {
-    display: block;
-    animation: stageEnterForward 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-
-  .login-stage.is-entering-back {
-    display: block;
-    animation: stageEnterBack 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-
-  .login-stage.is-leaving-forward {
-    display: block;
-    position: absolute;
-    inset-inline: 0;
-    top: 0;
-    width: 100%;
-    pointer-events: none;
-    animation: stageLeaveForward 0.32s ease both;
-  }
-
-  .login-stage.is-leaving-back {
-    display: block;
-    position: absolute;
-    inset-inline: 0;
-    top: 0;
-    width: 100%;
-    pointer-events: none;
-    animation: stageLeaveBack 0.32s ease both;
+  .login-stage.is-animating-in {
+    animation: stageFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .login-card.is-stage-shifting {
-    animation: cardStageShift 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: cardStageShift 0.4s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  @keyframes stageEnterForward {
-    from { opacity: 0; transform: translateX(-28px); }
-    to { opacity: 1; transform: translateX(0); }
-  }
-
-  @keyframes stageLeaveForward {
-    from { opacity: 1; transform: translateX(0); }
-    to { opacity: 0; transform: translateX(28px); }
-  }
-
-  @keyframes stageEnterBack {
-    from { opacity: 0; transform: translateX(28px); }
-    to { opacity: 1; transform: translateX(0); }
-  }
-
-  @keyframes stageLeaveBack {
-    from { opacity: 1; transform: translateX(0); }
-    to { opacity: 0; transform: translateX(-28px); }
+  @keyframes stageFadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   @keyframes cardStageShift {
     0% { transform: translateY(0) scale(1); }
-    40% { transform: translateY(4px) scale(0.985); }
+    45% { transform: translateY(3px) scale(0.99); }
     100% { transform: translateY(0) scale(1); }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .login-stage.is-entering-forward,
-    .login-stage.is-entering-back,
-    .login-stage.is-leaving-forward,
-    .login-stage.is-leaving-back,
+    .login-stage.is-animating-in,
     .login-card.is-stage-shifting {
       animation: none;
     }
@@ -690,6 +646,7 @@
     if (!phone || phone.length < 10 || !phone.startsWith('09')) {
       errorEl.textContent = 'لطفاً شماره موبایل صحیح وارد کنید (مثال: ۰۹۱۲۳۴۵۶۷۸۹)'
       errorEl.classList.add('show')
+      errorEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
       return
     }
 
@@ -706,11 +663,13 @@
       } else {
         errorEl.textContent = result.error || 'خطا در ارسال کد تأیید'
         errorEl.classList.add('show')
+        errorEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
       }
     } catch (e) {
       console.error('Send OTP error:', e)
       errorEl.textContent = 'خطا در اتصال به سرور'
       errorEl.classList.add('show')
+      errorEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     } finally {
       sendBtn.classList.remove('loading')
       sendBtn.disabled = false
@@ -871,64 +830,36 @@
   }
 
   function transitionToStep(nextStep, direction = 'forward') {
-    if (nextStep === currentLoginStep) {
-      updateStepIndicator(nextStep)
-      return
-    }
-
     const card = document.getElementById('loginCard')
-    const fromEl = document.getElementById(`step${currentLoginStep}`)
     const toEl = document.getElementById(`step${nextStep}`)
     if (!toEl) return
 
-    const token = ++stageTransitionToken
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const leaveClass = direction === 'back' ? 'is-leaving-back' : 'is-leaving-forward'
-    const enterClass = direction === 'back' ? 'is-entering-back' : 'is-entering-forward'
-
     updateStepIndicator(nextStep)
-
-    if (card) {
-      card.classList.remove('is-stage-shifting')
-      void card.offsetWidth
-      if (!reduceMotion) card.classList.add('is-stage-shifting')
-    }
-
-    document.querySelectorAll('.login-stage').forEach((el) => {
-      el.classList.remove(
-        'is-active',
-        'is-entering-forward',
-        'is-entering-back',
-        'is-leaving-forward',
-        'is-leaving-back'
-      )
-    })
-
-    if (fromEl && !reduceMotion) {
-      fromEl.classList.add(leaveClass)
-    }
-
-    toEl.classList.add('is-active')
-    if (!reduceMotion) toEl.classList.add(enterClass)
-
     currentLoginStep = nextStep
 
-    const cleanup = () => {
-      if (token !== stageTransitionToken) return
-      document.querySelectorAll('.login-stage').forEach((el) => {
-        el.classList.remove('is-leaving-forward', 'is-leaving-back', 'is-entering-forward', 'is-entering-back')
-        if (el !== toEl) el.classList.remove('is-active')
-      })
-      toEl.classList.add('is-active')
-      card?.classList.remove('is-stage-shifting')
-    }
+    document.querySelectorAll('.login-stage').forEach((el) => {
+      el.classList.remove('is-active', 'is-animating-in')
+    })
 
-    if (reduceMotion) {
-      cleanup()
-      return
-    }
+    // Show target first (display:block), then animate — avoids opacity stuck at 0
+    toEl.classList.add('is-active')
+    void toEl.offsetWidth
 
-    window.setTimeout(cleanup, 420)
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (!reduceMotion) {
+      toEl.classList.add('is-animating-in')
+      if (card) {
+        card.classList.remove('is-stage-shifting')
+        void card.offsetWidth
+        card.classList.add('is-stage-shifting')
+      }
+      const token = ++stageTransitionToken
+      window.setTimeout(() => {
+        if (token !== stageTransitionToken) return
+        toEl.classList.remove('is-animating-in')
+        card?.classList.remove('is-stage-shifting')
+      }, 400)
+    }
   }
 
   function goToStep2(phone) {
@@ -1031,7 +962,7 @@
   const phoneInput = document.getElementById('phoneNumber')
 
   phoneInput.addEventListener('input', (e) => {
-    let value = e.target.value.replace(/[^0-9]/g, '')
+    let value = toEnDigits(e.target.value).replace(/[^\d]/g, '')
     if (value.length > 11) value = value.slice(0, 11)
     e.target.value = value
   })
