@@ -153,7 +153,7 @@ function renderTransferBatchDetail(batch) {
     const name = c.name || c.customerId
     return `
       <tr class="clickable-row" onclick="app.openCustomerFromTransfer('${escapeAttr(c.customerId)}')">
-        <td style="font-family:monospace;direction:ltr;text-align:right;">${escapeHtml(phone)}</td>
+        <td style="font-family:inherit;direction:ltr;text-align:right;">${escapeHtml(phone)}</td>
         <td>${escapeHtml(name)}</td>
         <td style="font-size:11px;color:var(--text-muted);">${escapeHtml(c.customerId)}</td>
       </tr>`

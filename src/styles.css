@@ -50,7 +50,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: 'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif;
+    font-family: 'Vazirmatn', sans-serif;
     background: var(--paper);
     color: var(--text);
     line-height: 1.6;
@@ -394,7 +394,7 @@
   }
 
   .markdown-body code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: 'Vazirmatn', sans-serif;
     font-size: 0.9em;
     padding: 0.12em 0.35em;
     border-radius: 4px;
@@ -2508,7 +2508,7 @@
   #completeRefundModal input,
   #completeRefundModal textarea,
   #completeRefundModal button {
-    font-family: 'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif;
+    font-family: 'Vazirmatn', sans-serif;
   }
 
   .refund-kanban {
@@ -3302,7 +3302,7 @@
   .customer-card-phone {
     direction: ltr;
     text-align: right;
-    font-family: monospace;
+    font-family: inherit;
     font-size: 13px;
   }
 
@@ -7269,7 +7269,7 @@
     line-height: 1.1;
     color: var(--timer-color, var(--accent-hover));
     font-variant-numeric: tabular-nums;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: inherit;
   }
 
   .sales-target-countdown-lbl {

@@ -15,7 +15,7 @@
 
 body {
   margin: 0;
-  font-family: Vazirmatn, Tahoma, sans-serif;
+  font-family: Vazirmatn, sans-serif;
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;

@@ -76,6 +76,12 @@ export function toEnDigits(str) {
   )
 }
 
+/** Latin/Arabic-Indic digits → Persian ۰-۹ */
+export function toFaDigits(str) {
+  return String(str ?? '').replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d])
+    .replace(/[\u0660-\u0669]/g, ch => '۰۱۲۳۴۵۶۷۸۹'[ch.charCodeAt(0) - 0x0660])
+}
+
 export function formatNumber(n) {
   if (n === '' || n === null || n === undefined) return ''
   const num = typeof n === 'string' ? n.replace(/[^\d.-]/g, '') : n

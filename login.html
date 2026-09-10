@@ -14,7 +14,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: 'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif;
+    font-family: 'Vazirmatn', sans-serif;
     min-height: 100vh;
     display: flex;
     align-items: center;
@@ -259,7 +259,9 @@
 
   .otp-phone-mask {
     direction: ltr;
-    font-family: monospace;
+    unicode-bidi: isolate;
+    font-family: inherit;
+    font-weight: 600;
   }
 
   .resend-section {
@@ -271,10 +273,12 @@
   .resend-timer {
     color: #25b88b;
     font-weight: 600;
-    font-family: monospace;
+    font-family: inherit;
     direction: ltr;
+    unicode-bidi: isolate;
     display: inline-block;
-    min-width: 50px;
+    min-width: 3.5em;
+    font-variant-numeric: tabular-nums;
   }
 
   .resend-btn {
@@ -346,7 +350,7 @@
     background: #0f172a;
     color: #f8fafc;
     font-size: 13px;
-    font-family: 'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif;
+    font-family: 'Vazirmatn', sans-serif;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
   }
   .app-update-banner.is-visible { display: flex; }
@@ -428,8 +432,8 @@
   <div id="step2" style="display:none;">
     <h2>کد تأیید را وارد کنید</h2>
     <div class="otp-info">
-      کد ۴ رقمی به شماره<br>
-      <strong class="otp-phone-mask" id="otpPhoneDisplay"></strong><br>
+      کد ۴ رقمی به شماره
+      <strong class="otp-phone-mask" id="otpPhoneDisplay"></strong>
       ارسال شد
     </div>
 
@@ -477,7 +481,7 @@
 </div>
 
 <script type="module">
-  import { setCurrentUser, restoreSession, toEnDigits } from './src/utils.js'
+  import { setCurrentUser, restoreSession, toEnDigits, toFaDigits } from './src/utils.js'
   import { sendOTP, verifyOTP } from './src/sms.js'
   import { resolveGroupSessionInfo } from './src/groups.js'
   import { initAppUpdate } from './src/app-update.js'
@@ -711,6 +715,13 @@
     }
   }
 
+  function formatResendTimer(totalSeconds) {
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    const raw = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+    return toFaDigits(raw)
+  }
+
   function startResendTimer() {
     resendTimeout = 120
     const timerDisplay = document.getElementById('resendTimer')
@@ -719,14 +730,13 @@
 
     timerDisplay.style.display = 'inline'
     resendBtn.style.display = 'none'
+    timerValue.textContent = formatResendTimer(resendTimeout)
 
     if (resendInterval) clearInterval(resendInterval)
 
     resendInterval = setInterval(() => {
       resendTimeout--
-      const minutes = Math.floor(resendTimeout / 60)
-      const seconds = resendTimeout % 60
-      timerValue.textContent = `${String(minutes).padStart(2, '۰')}:${String(seconds).padStart(2, '۰')}`
+      timerValue.textContent = formatResendTimer(Math.max(0, resendTimeout))
 
       if (resendTimeout <= 0) {
         clearInterval(resendInterval)

@@ -2887,7 +2887,7 @@ function renderProductSalesChart(productSales = null, productCounts = null) {
         y: {
           beginAtZero: true,
           ticks: {
-            font: { family: 'monospace' },
+            font: { family: 'Vazirmatn' },
             callback: v => (metric === 'count' && !Number.isInteger(v)) ? undefined : formatNumber(v)
           }
         }
@@ -2993,7 +2993,7 @@ function renderAdvisorCompareChart(dateFromNum, dateToNum) {
       },
       scales: {
         x: { ticks: { font: CHART_FONT } },
-        y: { ticks: { font: { family: 'monospace' }, callback: v => formatNumber(v) } }
+        y: { ticks: { font: { family: 'Vazirmatn' }, callback: v => formatNumber(v) } }
       }
     }
   })

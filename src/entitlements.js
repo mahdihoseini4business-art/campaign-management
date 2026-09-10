@@ -252,7 +252,7 @@ export function ensurePaywallDom() {
       .entitlement-paywall-card {
         background: #fff; border-radius: 16px; max-width: 460px; width: 100%;
         padding: 24px; box-shadow: 0 16px 48px rgba(0,0,0,.2);
-        font-family: Vazirmatn, Tahoma, sans-serif;
+        font-family: Vazirmatn, sans-serif;
       }
       .entitlement-paywall-card h2 { margin: 0 0 10px; font-size: 1.15rem; }
       .entitlement-paywall-card p { margin: 0 0 12px; color: #475569; line-height: 1.7; font-size: 0.92rem; }

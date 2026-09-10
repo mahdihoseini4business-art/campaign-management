@@ -670,7 +670,7 @@ export async function renderCustomers() {
       <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>
       <td class="customer-name-cell">${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}${nameBadges}</td>
       <td>${levelCell}</td>
-      <td style="font-family: monospace; direction: ltr; text-align: right;">${(() => {
+      <td style="font-family:inherit; direction: ltr; text-align: right;">${(() => {
         const disp = formatPhonesDisplay(c)
         if (!disp.text) return '<span style="color:var(--text-muted)">—</span>'
         const extra = disp.extra > 0
