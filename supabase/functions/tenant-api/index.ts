@@ -61,7 +61,7 @@ serve(async (req) => {
 
     const { data: me } = await admin
       .from('users')
-      .select('username, phone, role')
+      .select('username, phone')
       .eq('auth_user_id', authUserId)
       .maybeSingle()
 
@@ -94,7 +94,9 @@ serve(async (req) => {
         .eq('username', me.username)
         .maybeSingle()
 
-      if (!isPlatform && membership?.role !== 'owner' && me.role !== 'admin') {
+      // Gate on tenant_members.role only — users.role=admin is global and must not
+      // authorize cross-tenant invites.
+      if (!isPlatform && membership?.role !== 'owner') {
         return json({ success: false, error: 'فقط مالک سازمان می‌تواند دعوت کند' }, 403)
       }
 

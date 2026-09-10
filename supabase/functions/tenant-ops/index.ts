@@ -76,7 +76,7 @@ serve(async (req) => {
 
     const { data: me } = await admin
       .from('users')
-      .select('username, role')
+      .select('username')
       .eq('auth_user_id', userData.user.id)
       .maybeSingle()
     if (!me?.username) return json({ success: false, error: 'کاربر یافت نشد' }, 403)
@@ -92,7 +92,8 @@ serve(async (req) => {
         .eq('tenant_id', tenantId)
         .eq('username', me.username)
         .maybeSingle()
-      if (membership?.role === 'owner' || me.role === 'admin') return { ok: true as const }
+      // users.role=admin is global — never treat it as manage-any-tenant.
+      if (membership?.role === 'owner') return { ok: true as const }
       return { ok: false as const, error: 'دسترسی ندارید' }
     }
 

@@ -1,5 +1,5 @@
 // Create Zarinpal payment request for plan upgrade/renewal
-// Requires Bearer JWT of tenant owner/admin
+// Requires Bearer JWT of tenant owner (tenant_members.role === 'owner')
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8"
@@ -80,7 +80,7 @@ serve(async (req) => {
 
     const { data: me } = await admin
       .from('users')
-      .select('username, role')
+      .select('username')
       .eq('auth_user_id', userData.user.id)
       .maybeSingle()
     if (!me?.username) return json({ success: false, error: 'کاربر یافت نشد' }, 403)
@@ -92,8 +92,10 @@ serve(async (req) => {
       .eq('username', me.username)
       .maybeSingle()
 
-    if (!membership || (membership.role !== 'owner' && me.role !== 'admin')) {
-      return json({ success: false, error: 'فقط مالک/ادمین سازمان می‌تواند پرداخت کند' }, 403)
+    // Require ownership of this tenant — users.role=admin must not authorize
+    // payment on another org where the caller is only a member (or not a member).
+    if (!membership || membership.role !== 'owner') {
+      return json({ success: false, error: 'فقط مالک سازمان می‌تواند پرداخت کند' }, 403)
     }
 
     const { data: plan } = await admin
