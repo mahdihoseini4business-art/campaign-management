@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, effectiveSalesTargetBarStages, scaleShareStagesFromValue } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue } from './data.js'
 import {
   loadGroupsData,
   getGroupsCache,
@@ -3377,6 +3377,10 @@ export function renderPlatformsSettings() {
   if (!list) return
   const platforms = getPlatforms()
   _editingPlatformIdx = (_editingPlatformIdx != null && _editingPlatformIdx < platforms.length) ? _editingPlatformIdx : null
+  if (!platforms.length) {
+    list.innerHTML = '<div class="settings-empty-detail">هنوز پلتفرمی تعریف نشده. می‌توانید دستی اضافه کنید یا پیش‌فرض‌ها را بارگذاری کنید.</div>'
+    return
+  }
   list.innerHTML = platforms.map((p, idx) => {
     if (_editingPlatformIdx === idx) {
       return `
@@ -3411,6 +3415,26 @@ export function renderPlatformsSettings() {
         <button type="button" class="btn-icon" title="حذف" onclick="app.removePlatform(${idx})" style="color:var(--danger);">🗑</button>
       </div>`
   }).join('')
+}
+
+export async function loadDefaultPlatforms() {
+  if (!requireMainAdmin()) return
+  const apply = async () => {
+    try {
+      await savePlatforms(getDefaultPlatforms())
+      _editingPlatformIdx = null
+      renderPlatformsSettings()
+      showToast('پلتفرم‌های پیش‌فرض بارگذاری شد')
+    } catch (e) {
+      console.error('loadDefaultPlatforms', e)
+      showToast('خطا در بارگذاری پیش‌فرض')
+    }
+  }
+  if (getPlatforms().length) {
+    openSettingsConfirm('لیست فعلی پلتفرم‌ها با پیش‌فرض‌ها جایگزین شود؟', apply, 'جایگزینی')
+  } else {
+    await apply()
+  }
 }
 
 export async function addPlatform() {
@@ -3505,6 +3529,10 @@ export function renderStatusesSettings() {
   if (!list) return
   const statuses = getStatuses()
   _editingStatusIdx = (_editingStatusIdx != null && _editingStatusIdx < statuses.length) ? _editingStatusIdx : null
+  if (!statuses.length) {
+    list.innerHTML = '<div class="settings-empty-detail">هنوز وضعیتی تعریف نشده. می‌توانید دستی اضافه کنید یا پیش‌فرض‌ها را بارگذاری کنید.</div>'
+    return
+  }
   list.innerHTML = statuses.map((s, idx) => {
     if (_editingStatusIdx === idx) {
       return `
@@ -3529,6 +3557,27 @@ export function renderStatusesSettings() {
 }
 
 let draggedStatusIdx = null
+
+export async function loadDefaultStatuses() {
+  if (!requireMainAdmin()) return
+  const apply = async () => {
+    try {
+      await saveStatuses(getDefaultStatuses())
+      _editingStatusIdx = null
+      renderStatusesSettings()
+      showToast('وضعیت‌های پیش‌فرض بارگذاری شد')
+    } catch (e) {
+      console.error('loadDefaultStatuses', e)
+      showToast('خطا در بارگذاری پیش‌فرض')
+    }
+  }
+  if (getStatuses().length) {
+    openSettingsConfirm('لیست فعلی وضعیت‌ها با پیش‌فرض‌ها جایگزین شود؟', apply, 'جایگزینی')
+  } else {
+    await apply()
+  }
+}
+
 export function onStatusDragStart(e, idx) { draggedStatusIdx = idx; e.dataTransfer.effectAllowed = 'move' }
 export function onStatusDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }
 export async function onStatusDrop(e, targetIdx) {
@@ -3982,8 +4031,14 @@ export function renderSmsPanelSettings() {
 
   if (usernameEl) usernameEl.value = cfg.username || ''
   if (senderEl) senderEl.value = cfg.sender || ''
-  if (apiUrlEl) apiUrlEl.value = cfg.apiUrl || DEFAULT_SMS_PANEL.apiUrl
-  if (templateEl) templateEl.value = cfg.messageTemplate || DEFAULT_SMS_PANEL.messageTemplate
+  if (apiUrlEl) {
+    apiUrlEl.value = cfg.apiUrl || ''
+    apiUrlEl.placeholder = DEFAULT_SMS_PANEL.apiUrl
+  }
+  if (templateEl) {
+    templateEl.value = cfg.messageTemplate || ''
+    templateEl.placeholder = DEFAULT_SMS_PANEL.messageTemplate
+  }
   if (passwordEl) {
     passwordEl.value = ''
     passwordEl.placeholder = _smsPasswordStored ? '••••••••  (برای تغییر، رمز جدید وارد کنید)' : 'رمز عبور پنل'

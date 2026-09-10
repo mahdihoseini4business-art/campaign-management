@@ -103,12 +103,13 @@ let data = {
   customerCodes: [],
   salesTargets: [],
   salesTargetDeadlineUrgency: null,
-  saleToastEnabled: true,
-  dmChatEnabled: true,
-  requireFollowupOnCreate: true,
+  saleToastEnabled: false,
+  dmChatEnabled: false,
+  requireFollowupOnCreate: false,
   smsPanel: null
 }
 
+/** Placeholders for SMS settings form — not auto-persisted for new tenants. */
 export const DEFAULT_SMS_PANEL = {
   username: '',
   password: '',
@@ -117,19 +118,28 @@ export const DEFAULT_SMS_PANEL = {
   messageTemplate: 'کد تأیید شما: {code}\n اعتبار: ۵ دقیقه'
 }
 
+const EMPTY_SMS_PANEL = {
+  username: '',
+  password: '',
+  sender: '',
+  apiUrl: '',
+  messageTemplate: ''
+}
+
+/** Normalize stored SMS config. Missing/partial values stay blank (no silent defaults). */
 export function normalizeSmsPanel(raw) {
-  const base = { ...DEFAULT_SMS_PANEL }
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return base
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...EMPTY_SMS_PANEL }
   return {
     username: String(raw.username ?? '').trim(),
     password: String(raw.password ?? ''),
     sender: String(raw.sender ?? '').trim(),
-    apiUrl: String(raw.apiUrl ?? '').trim() || DEFAULT_SMS_PANEL.apiUrl,
-    messageTemplate: String(raw.messageTemplate ?? '').trim() || DEFAULT_SMS_PANEL.messageTemplate
+    apiUrl: String(raw.apiUrl ?? '').trim(),
+    messageTemplate: String(raw.messageTemplate ?? '').trim()
   }
 }
 
-const DEFAULT_PLATFORMS = [
+/** Starter pack for settings UI «بارگذاری پیش‌فرض» — not applied on boot. */
+export const DEFAULT_PLATFORMS = [
   { key: 'instagram', label: 'اینستاگرام', color: '#E1306C', linkTemplate: 'https://instagram.com/{id}' },
   { key: 'telegram', label: 'تلگرام', color: '#0088cc', linkTemplate: 'https://telegram.me/{id}' },
   { key: 'whatsapp', label: 'واتساپ', color: '#25D366', linkTemplate: 'https://wa.me/{phone}' },
@@ -142,7 +152,8 @@ const DEFAULT_PLATFORMS = [
   { key: 'referral', label: 'ارجاعی', color: '#78716C', linkTemplate: '' },
 ]
 
-const DEFAULT_STATUSES = [
+/** Starter pack for settings UI «بارگذاری پیش‌فرض» — not applied on boot. */
+export const DEFAULT_STATUSES = [
   { key: 'new', label: 'جدید', bgColor: '#e9ecef', textColor: '#495057', order: 0 },
   { key: 'contacted', label: 'تماس گرفته', bgColor: '#cce5ff', textColor: '#084298', order: 1 },
   { key: 'chatting', label: 'در حال چت', bgColor: '#d0bfff', textColor: '#581c87', order: 2 },
@@ -153,6 +164,14 @@ const DEFAULT_STATUSES = [
   { key: 'purchased', label: 'خرید کرد', bgColor: '#d1e7dd', textColor: '#0f5132', order: 7 },
   { key: 'cancelled', label: 'منصرف شده', bgColor: '#e9ecef', textColor: '#495057', order: 8 },
 ]
+
+export function getDefaultPlatforms() {
+  return DEFAULT_PLATFORMS.map(p => ({ ...p }))
+}
+
+export function getDefaultStatuses() {
+  return DEFAULT_STATUSES.map(s => ({ ...s }))
+}
 
 /** Admin-defined customer codes (کد مشتری); empty until configured in settings */
 const DEFAULT_CUSTOMER_CODES = []
@@ -545,16 +564,17 @@ function applySettingsRows(rows) {
   data.destinationBanks = normalizeDestinationBanks(settings.destination_banks)
   data.productCatalog = normalizeProductCatalog(settings.product_catalog)
   data.productBundles = normalizeProductBundles(settings.product_bundles)
-  data.platforms = Array.isArray(settings.platforms) && settings.platforms.length > 0 ? settings.platforms : [...DEFAULT_PLATFORMS]
-  data.statuses = Array.isArray(settings.statuses) && settings.statuses.length > 0
+  // Missing keys stay empty/off — do not seed DEFAULT_* for new tenants.
+  data.platforms = Array.isArray(settings.platforms) ? settings.platforms : []
+  data.statuses = Array.isArray(settings.statuses)
     ? [...settings.statuses].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    : [...DEFAULT_STATUSES]
-  data.customerCodes = Array.isArray(settings.customer_codes) && settings.customer_codes.length > 0
+    : []
+  data.customerCodes = Array.isArray(settings.customer_codes)
     ? [...settings.customer_codes].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [...DEFAULT_CUSTOMER_CODES]
-  data.saleToastEnabled = settings.sale_toast_enabled !== false && settings.sale_toast_enabled !== 'false'
-  data.dmChatEnabled = coerceAppSettingBool(settings.dm_chat_enabled, true)
-  data.requireFollowupOnCreate = coerceAppSettingBool(settings.require_followup_on_create, true)
+  data.saleToastEnabled = coerceAppSettingBool(settings.sale_toast_enabled, false)
+  data.dmChatEnabled = coerceAppSettingBool(settings.dm_chat_enabled, false)
+  data.requireFollowupOnCreate = coerceAppSettingBool(settings.require_followup_on_create, false)
   try {
     data.smsPanel = normalizeSmsPanel(settings.sms_panel)
   } catch (e) {
@@ -965,7 +985,7 @@ function normalizeProductCatalog(raw) {
 // ============================================
 
 export function getPlatforms() {
-  return Array.isArray(data.platforms) && data.platforms.length > 0 ? data.platforms : DEFAULT_PLATFORMS
+  return Array.isArray(data.platforms) ? data.platforms : []
 }
 
 export async function savePlatforms(platforms) {
@@ -975,7 +995,7 @@ export async function savePlatforms(platforms) {
 }
 
 export function getStatuses() {
-  return Array.isArray(data.statuses) && data.statuses.length > 0 ? data.statuses : DEFAULT_STATUSES
+  return Array.isArray(data.statuses) ? data.statuses : []
 }
 
 export async function saveStatuses(statuses) {
@@ -2931,7 +2951,7 @@ export async function saveSetting(key, value) {
 }
 
 export function getSaleToastEnabled() {
-  return data.saleToastEnabled !== false
+  return !!data.saleToastEnabled
 }
 
 export function setSaleToastEnabledLocal(enabled) {
@@ -2944,7 +2964,7 @@ export async function saveSaleToastEnabled(enabled) {
 }
 
 export function getDmChatEnabled() {
-  return data.dmChatEnabled !== false
+  return !!data.dmChatEnabled
 }
 
 export function setDmChatEnabledLocal(enabled) {
@@ -2957,7 +2977,7 @@ export async function saveDmChatEnabled(enabled) {
 }
 
 export function getRequireFollowupOnCreate() {
-  return data.requireFollowupOnCreate !== false
+  return !!data.requireFollowupOnCreate
 }
 
 export function setRequireFollowupOnCreateLocal(enabled) {
