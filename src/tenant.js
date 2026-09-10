@@ -45,16 +45,61 @@ export async function clearAuthSession() {
 
 /**
  * Set RLS tenant context on the server.
+ * Clears local caches so a tenant switch cannot show another org's data.
  * @param {string} tenantId
  */
 export async function setCurrentTenant(tenantId) {
   if (!tenantId) throw new Error('tenantId required')
+  const prev = getStoredTenantId()
   const { data, error } = await supabase.rpc('set_current_tenant', {
     p_tenant_id: tenantId
   })
   if (error) throw error
   storeTenantId(tenantId)
+  if (prev !== tenantId) {
+    await clearTenantLocalCaches()
+  }
   return data || tenantId
+}
+
+/** Invalidate process-local caches tied to the previous tenant context. */
+async function clearTenantLocalCaches() {
+  try {
+    const { invalidateDerivedCache } = await import('./derived-cache.js')
+    invalidateDerivedCache('all')
+  } catch (e) {
+    console.warn('clear derived-cache', e)
+  }
+  try {
+    const { invalidateProductSalesCountCache } = await import('./data.js')
+    invalidateProductSalesCountCache()
+  } catch (e) {
+    console.warn('clear product sales cache', e)
+  }
+  try {
+    const { clearTabRenderCache } = await import('./tab-cache.js')
+    clearTabRenderCache()
+  } catch (e) {
+    console.warn('clear tab-cache', e)
+  }
+  try {
+    const { clearNotificationsCache } = await import('./notifications.js')
+    clearNotificationsCache()
+  } catch (e) {
+    console.warn('clear notifications cache', e)
+  }
+  try {
+    const { clearGroupsCache } = await import('./groups.js')
+    clearGroupsCache()
+  } catch (e) {
+    console.warn('clear groups cache', e)
+  }
+  try {
+    const { clearEntitlementsState } = await import('./entitlements.js')
+    clearEntitlementsState()
+  } catch (e) {
+    console.warn('clear entitlements', e)
+  }
 }
 
 export async function listMyTenants() {

@@ -27,3 +27,8 @@ export function markTabRendered(tab, cacheKey) {
 export function tabPageKey(paginationKey, page) {
   return `${paginationKey}|p${page || 1}`
 }
+
+/** Drop all tab skip-render state (e.g. after tenant switch). */
+export function clearTabRenderCache() {
+  for (const key of Object.keys(tabState)) delete tabState[key]
+}

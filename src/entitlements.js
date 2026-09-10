@@ -112,6 +112,10 @@ export function assertImportExport({ silent = false } = {}) {
   return false
 }
 
+export function clearEntitlementsState() {
+  state = null
+}
+
 export async function loadEntitlements() {
   const tenantId = getStoredTenantId()
   let graceDays = PLATFORM_SETTING_DEFAULTS.grace_days

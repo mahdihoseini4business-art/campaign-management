@@ -441,18 +441,24 @@ serve(async (req) => {
       .eq('username', user.username)
 
     if (!memberships?.length) {
-      const { data: defaultTenant } = await supabase
-        .from('tenants')
-        .select('id')
-        .eq('slug', 'default')
-        .maybeSingle()
-      if (defaultTenant?.id) {
-        await supabase.from('tenant_members').upsert({
-          tenant_id: defaultTenant.id,
+      // Do not auto-join slug=default — SaaS users must be invited or register an org.
+      return json({
+        success: true,
+        purpose: 'tenant',
+        session,
+        tenants: [],
+        user: {
+          id: user.id,
           username: user.username,
-          role: user.role === 'admin' || user.username === 'admin' ? 'owner' : 'user',
-        })
-      }
+          first_name: user.first_name,
+          last_name: user.last_name,
+          phone: user.phone,
+          display_name: user.display_name,
+          role: user.role,
+          permissions: user.permissions,
+          auth_user_id: authUserId,
+        },
+      })
     }
 
     const tenants = await loadTenantsForUsername(supabase, user.username)

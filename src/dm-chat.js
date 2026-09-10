@@ -380,21 +380,26 @@ async function getOrCreateConversation(peerPhone) {
   const [phone_a, phone_b] = ordered
   if (phone_a === phone_b) throw new Error('نمی‌توانید با خودتان چت کنید')
 
-  const { data: existing, error: selErr } = await supabase
+  const { getStoredTenantId } = await import('./tenant.js')
+  const tenantId = getStoredTenantId()
+
+  let q = supabase
     .from('dm_conversations')
     .select('*')
     .eq('kind', 'dm')
     .eq('phone_a', phone_a)
     .eq('phone_b', phone_b)
-    .maybeSingle()
+  if (tenantId) q = q.eq('tenant_id', tenantId)
+  const { data: existing, error: selErr } = await q.maybeSingle()
   if (selErr) {
     // pre-029 without kind column
-    const { data: legacy, error: legErr } = await supabase
+    let legacyQ = supabase
       .from('dm_conversations')
       .select('*')
       .eq('phone_a', phone_a)
       .eq('phone_b', phone_b)
-      .maybeSingle()
+    if (tenantId) legacyQ = legacyQ.eq('tenant_id', tenantId)
+    const { data: legacy, error: legErr } = await legacyQ.maybeSingle()
     if (legErr) throw selErr
     if (legacy) {
       await ensureDmMembers(legacy)
@@ -412,12 +417,13 @@ async function getOrCreateConversation(peerPhone) {
     .select('*')
     .single()
   if (insErr) {
-    const { data: again } = await supabase
+    let againQ = supabase
       .from('dm_conversations')
       .select('*')
       .eq('phone_a', phone_a)
       .eq('phone_b', phone_b)
-      .maybeSingle()
+    if (tenantId) againQ = againQ.eq('tenant_id', tenantId)
+    const { data: again } = await againQ.maybeSingle()
     if (again) {
       await ensureDmMembers(again)
       return again

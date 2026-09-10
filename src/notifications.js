@@ -234,6 +234,12 @@ export async function refreshNotifications() {
   renderSentNotificationsList()
 }
 
+/** Drop in-memory notification caches (e.g. after tenant switch). */
+export function clearNotificationsCache() {
+  cachedNotifications = []
+  cachedReads = new Set()
+}
+
 export function closeNotificationMenu() {
   const dropdown = document.getElementById('notificationDropdown')
   const btn = document.getElementById('notificationMenuBtn')

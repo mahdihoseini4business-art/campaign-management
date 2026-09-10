@@ -23,6 +23,11 @@ export function getMembersCache() {
   return _membersCache
 }
 
+export function clearGroupsCache() {
+  _groupsCache = []
+  _membersCache = []
+}
+
 export async function loadGroupsData() {
   const [gRes, mRes] = await Promise.all([
     supabase.from('groups').select('*').order('name'),

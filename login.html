@@ -712,7 +712,7 @@
         pendingLoginUser = result.user
         const resolved = await resolveTenantAfterLogin(result.tenants || [])
         if (!resolved.tenants.length) {
-          errorEl.textContent = 'هیچ سازمانی برای این کاربر یافت نشد'
+          errorEl.textContent = 'شما عضو هیچ سازمانی نیستید. از مالک بخواهید دعوت‌تان کند یا سازمان جدید بسازید.'
           errorEl.classList.add('show')
           otpInputs.forEach(input => { input.disabled = false })
           return
