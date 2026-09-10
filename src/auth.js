@@ -1,5 +1,4 @@
 import { supabase } from './supabase.js'
-import { ADMIN_PHONE } from './config.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
 import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, effectiveSalesTargetBarStages, scaleShareStagesFromValue } from './data.js'
 import {
@@ -227,25 +226,8 @@ export async function deleteUserFromDB(username) {
 // Seed Admin
 // ============================================
 
-export async function seedAdmin() {
-  // Under tenant RLS, anonymous seed is impossible. Only repair admin phone when authenticated.
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) return
-
-  const adminPhone = normalizePhone(ADMIN_PHONE)
-  let users
-  try {
-    users = await getUsers()
-  } catch (e) {
-    console.error('seedAdmin skipped: cannot load users', e)
-    return
-  }
-
-  const existingAdmin = users.find(u => u.username === 'admin')
-  if (existingAdmin && normalizePhone(existingAdmin.phone) !== adminPhone && adminPhone) {
-    await saveUser({ ...existingAdmin, phone: adminPhone })
-  }
-}
+/** @deprecated No-op. Previously forced username=admin phone to VITE_ADMIN_PHONE on every load. */
+export async function seedAdmin() {}
 
 // ============================================
 // Login / Logout
