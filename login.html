@@ -322,6 +322,16 @@
     justify-content: center;
     gap: 8px;
     margin-bottom: 24px;
+    transition: opacity 0.25s ease, transform 0.25s ease, max-height 0.25s ease, margin 0.25s ease;
+  }
+
+  .step-indicator.is-hidden {
+    opacity: 0;
+    transform: scale(0.9);
+    max-height: 0;
+    margin-bottom: 0;
+    overflow: hidden;
+    pointer-events: none;
   }
 
   .step-dot {
@@ -329,11 +339,108 @@
     height: 8px;
     border-radius: 50%;
     background: #D6D3D1;
-    transition: all 0.3s ease;
+    transition:
+      width 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+      background 0.35s ease,
+      border-radius 0.35s ease,
+      transform 0.35s ease;
   }
 
-  .step-dot.active { background: #25b88b; width: 24px; border-radius: 4px; }
-  .step-dot.completed { background: #16A34A; }
+  .step-dot.active {
+    background: #25b88b;
+    width: 24px;
+    border-radius: 4px;
+    transform: scaleY(1.15);
+  }
+
+  .step-dot.completed {
+    background: #16A34A;
+    transform: scale(1.05);
+  }
+
+  .login-stages {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .login-stage {
+    display: none;
+  }
+
+  .login-stage.is-active {
+    display: block;
+  }
+
+  .login-stage.is-entering-forward {
+    display: block;
+    animation: stageEnterForward 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .login-stage.is-entering-back {
+    display: block;
+    animation: stageEnterBack 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .login-stage.is-leaving-forward {
+    display: block;
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    width: 100%;
+    pointer-events: none;
+    animation: stageLeaveForward 0.32s ease both;
+  }
+
+  .login-stage.is-leaving-back {
+    display: block;
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    width: 100%;
+    pointer-events: none;
+    animation: stageLeaveBack 0.32s ease both;
+  }
+
+  .login-card.is-stage-shifting {
+    animation: cardStageShift 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @keyframes stageEnterForward {
+    from { opacity: 0; transform: translateX(-28px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  @keyframes stageLeaveForward {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(28px); }
+  }
+
+  @keyframes stageEnterBack {
+    from { opacity: 0; transform: translateX(28px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  @keyframes stageLeaveBack {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(-28px); }
+  }
+
+  @keyframes cardStageShift {
+    0% { transform: translateY(0) scale(1); }
+    40% { transform: translateY(4px) scale(0.985); }
+    100% { transform: translateY(0) scale(1); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .login-stage.is-entering-forward,
+    .login-stage.is-entering-back,
+    .login-stage.is-leaving-forward,
+    .login-stage.is-leaving-back,
+    .login-card.is-stage-shifting {
+      animation: none;
+    }
+    .step-dot { transition: none; }
+  }
 
   .app-update-banner {
     display: none;
@@ -391,92 +498,85 @@
   <button type="button" class="app-update-btn" id="appUpdateReloadBtn">بروزرسانی</button>
 </div>
 
-<div class="login-card">
+<div class="login-card" id="loginCard">
   <img src="/logo.webp" alt="سیستم مدیریت عملکرد سازمان کارنو" class="login-logo">
 
-  <!-- مرحله ۱: ورود شماره -->
-  <div id="step1">
-    <h2>ورود با شماره موبایل</h2>
-    <div class="login-subtitle">شماره موبایل خود را وارد کنید</div>
-
-    <div class="step-indicator">
-      <div class="step-dot active"></div>
-      <div class="step-dot"></div>
-    </div>
-
-    <div class="login-error" id="error1"></div>
-
-    <div class="form-group">
-      <label for="phoneNumber">شماره موبایل</label>
-      <div class="phone-input-wrapper">
-        <input type="tel" class="phone-input" id="phoneNumber"
-               placeholder="09123456789"
-               inputmode="tel"
-               maxlength="11"
-               autocomplete="tel">
-        <div class="phone-prefix">🇮🇷</div>
-      </div>
-    </div>
-
-    <button type="button" class="btn-login" id="sendOtpBtn" onclick="handleSendOTP()">
-      <span class="btn-text">ارسال کد تأیید</span>
-      <div class="spinner"></div>
-    </button>
-    <p style="margin-top:18px;font-size:0.9rem;color:#64748b;">
-      سازمان جدید؟
-      <a href="/signup.html" style="color:#0155d2;font-weight:600;text-decoration:none;">ثبت‌نام رایگان ۷ روزه</a>
-    </p>
+  <div class="step-indicator" id="stepIndicator" aria-hidden="true">
+    <div class="step-dot active" data-dot="1"></div>
+    <div class="step-dot" data-dot="2"></div>
   </div>
 
-  <!-- مرحله ۲: تأیید کد -->
-  <div id="step2" style="display:none;">
-    <h2>کد تأیید را وارد کنید</h2>
-    <div class="otp-info">
-      کد ۴ رقمی به شماره
-      <strong class="otp-phone-mask" id="otpPhoneDisplay"></strong>
-      ارسال شد
-    </div>
+  <div class="login-stages">
+    <!-- مرحله ۱: ورود شماره -->
+    <div id="step1" class="login-stage is-active">
+      <h2>ورود با شماره موبایل</h2>
+      <div class="login-subtitle">شماره موبایل خود را وارد کنید</div>
 
-    <div class="step-indicator">
-      <div class="step-dot completed"></div>
-      <div class="step-dot active"></div>
-    </div>
+      <div class="login-error" id="error1"></div>
 
-    <div class="login-error" id="error2"></div>
-    <div class="login-success" id="success2"></div>
+      <div class="form-group">
+        <label for="phoneNumber">شماره موبایل</label>
+        <div class="phone-input-wrapper">
+          <input type="tel" class="phone-input" id="phoneNumber"
+                 placeholder="09123456789"
+                 inputmode="tel"
+                 maxlength="11"
+                 autocomplete="tel">
+          <div class="phone-prefix">🇮🇷</div>
+        </div>
+      </div>
 
-    <div class="otp-inputs">
-      <input type="tel" class="otp-input" maxlength="1" inputmode="numeric" data-index="0">
-      <input type="tel" class="otp-input" maxlength="1" inputmode="numeric" data-index="1">
-      <input type="tel" class="otp-input" maxlength="1" inputmode="numeric" data-index="2">
-      <input type="tel" class="otp-input" maxlength="1" inputmode="numeric" data-index="3">
-    </div>
-
-    <button type="button" class="btn-login" id="verifyOtpBtn" onclick="handleVerifyOTP()" disabled>
-      <span class="btn-text">تأیید کد</span>
-      <div class="spinner"></div>
-    </button>
-
-    <div class="resend-section">
-      <span id="resendTimer" style="display:none;">
-        ارسال مجدد کد در <span class="resend-timer" id="timerDisplay">۰۲:۰۰</span>
-      </span>
-      <button type="button" class="resend-btn" id="resendBtn" onclick="handleResendOTP()" style="display:none;">
-        ارسال مجدد کد
+      <button type="button" class="btn-login" id="sendOtpBtn" onclick="handleSendOTP()">
+        <span class="btn-text">ارسال کد تأیید</span>
+        <div class="spinner"></div>
       </button>
     </div>
 
-    <button type="button" class="back-btn" onclick="goToStep1()">
-      ← بازگشت
-    </button>
-  </div>
+    <!-- مرحله ۲: تأیید کد -->
+    <div id="step2" class="login-stage">
+      <h2>کد تأیید را وارد کنید</h2>
+      <div class="otp-info">
+        کد ۴ رقمی به شماره
+        <strong class="otp-phone-mask" id="otpPhoneDisplay"></strong>
+        ارسال شد
+      </div>
 
-  <!-- مرحله ۳: انتخاب سازمان (فقط اگر بیش از یک عضویت) -->
-  <div id="step3" style="display:none;">
-    <h2>انتخاب سازمان</h2>
-    <div class="otp-info">بیش از یک سازمان دارید؛ یکی را انتخاب کنید.</div>
-    <div class="login-error" id="error3"></div>
-    <div id="tenantList" style="display:flex;flex-direction:column;gap:10px;margin:16px 0;"></div>
+      <div class="login-error" id="error2"></div>
+      <div class="login-success" id="success2"></div>
+
+      <div class="otp-inputs">
+        <input type="tel" class="otp-input" maxlength="1" inputmode="numeric" data-index="0">
+        <input type="tel" class="otp-input" maxlength="1" inputmode="numeric" data-index="1">
+        <input type="tel" class="otp-input" maxlength="1" inputmode="numeric" data-index="2">
+        <input type="tel" class="otp-input" maxlength="1" inputmode="numeric" data-index="3">
+      </div>
+
+      <button type="button" class="btn-login" id="verifyOtpBtn" onclick="handleVerifyOTP()" disabled>
+        <span class="btn-text">تأیید کد</span>
+        <div class="spinner"></div>
+      </button>
+
+      <div class="resend-section">
+        <span id="resendTimer" style="display:none;">
+          ارسال مجدد کد در <span class="resend-timer" id="timerDisplay">۰۲:۰۰</span>
+        </span>
+        <button type="button" class="resend-btn" id="resendBtn" onclick="handleResendOTP()" style="display:none;">
+          ارسال مجدد کد
+        </button>
+      </div>
+
+      <button type="button" class="back-btn" onclick="goToStep1()">
+        ← بازگشت
+      </button>
+    </div>
+
+    <!-- مرحله ۳: انتخاب سازمان (فقط اگر بیش از یک عضویت) -->
+    <div id="step3" class="login-stage">
+      <h2>انتخاب سازمان</h2>
+      <div class="otp-info">بیش از یک سازمان دارید؛ یکی را انتخاب کنید.</div>
+      <div class="login-error" id="error3"></div>
+      <div id="tenantList" style="display:flex;flex-direction:column;gap:10px;margin:16px 0;"></div>
+    </div>
   </div>
 </div>
 
@@ -530,9 +630,7 @@
   }
 
   function showTenantPicker(tenants) {
-    document.getElementById('step1').style.display = 'none'
-    document.getElementById('step2').style.display = 'none'
-    document.getElementById('step3').style.display = 'block'
+    transitionToStep(3, 'forward')
     const list = document.getElementById('tenantList')
     list.innerHTML = ''
     for (const t of tenants) {
@@ -751,16 +849,95 @@
   // Navigation
   // ============================================
 
-  function goToStep2(phone) {
-    document.getElementById('step1').style.display = 'none'
-    document.getElementById('step3').style.display = 'none'
-    document.getElementById('step2').style.display = 'block'
-    document.getElementById('otpPhoneDisplay').textContent = formatPhoneDisplay(phone)
+  let currentLoginStep = 1
+  let stageTransitionToken = 0
 
-    // Clear and focus first OTP input
+  function updateStepIndicator(step) {
+    const indicator = document.getElementById('stepIndicator')
+    const dots = indicator?.querySelectorAll('.step-dot')
+    if (!indicator || !dots?.length) return
+
+    if (step >= 3) {
+      indicator.classList.add('is-hidden')
+      return
+    }
+
+    indicator.classList.remove('is-hidden')
+    dots.forEach((dot) => {
+      const n = Number(dot.dataset.dot)
+      dot.classList.toggle('completed', n < step)
+      dot.classList.toggle('active', n === step)
+    })
+  }
+
+  function transitionToStep(nextStep, direction = 'forward') {
+    if (nextStep === currentLoginStep) {
+      updateStepIndicator(nextStep)
+      return
+    }
+
+    const card = document.getElementById('loginCard')
+    const fromEl = document.getElementById(`step${currentLoginStep}`)
+    const toEl = document.getElementById(`step${nextStep}`)
+    if (!toEl) return
+
+    const token = ++stageTransitionToken
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const leaveClass = direction === 'back' ? 'is-leaving-back' : 'is-leaving-forward'
+    const enterClass = direction === 'back' ? 'is-entering-back' : 'is-entering-forward'
+
+    updateStepIndicator(nextStep)
+
+    if (card) {
+      card.classList.remove('is-stage-shifting')
+      void card.offsetWidth
+      if (!reduceMotion) card.classList.add('is-stage-shifting')
+    }
+
+    document.querySelectorAll('.login-stage').forEach((el) => {
+      el.classList.remove(
+        'is-active',
+        'is-entering-forward',
+        'is-entering-back',
+        'is-leaving-forward',
+        'is-leaving-back'
+      )
+    })
+
+    if (fromEl && !reduceMotion) {
+      fromEl.classList.add(leaveClass)
+    }
+
+    toEl.classList.add('is-active')
+    if (!reduceMotion) toEl.classList.add(enterClass)
+
+    currentLoginStep = nextStep
+
+    const cleanup = () => {
+      if (token !== stageTransitionToken) return
+      document.querySelectorAll('.login-stage').forEach((el) => {
+        el.classList.remove('is-leaving-forward', 'is-leaving-back', 'is-entering-forward', 'is-entering-back')
+        if (el !== toEl) el.classList.remove('is-active')
+      })
+      toEl.classList.add('is-active')
+      card?.classList.remove('is-stage-shifting')
+    }
+
+    if (reduceMotion) {
+      cleanup()
+      return
+    }
+
+    window.setTimeout(cleanup, 420)
+  }
+
+  function goToStep2(phone) {
+    document.getElementById('otpPhoneDisplay').textContent = formatPhoneDisplay(phone)
+    transitionToStep(2, 'forward')
+
     const otpInputs = document.querySelectorAll('.otp-input')
     otpInputs.forEach(input => { input.value = ''; input.classList.remove('filled', 'error') })
-    otpInputs[0].focus()
+    window.setTimeout(() => otpInputs[0]?.focus(), 220)
 
     startResendTimer()
     updateVerifyButton()
@@ -768,11 +945,9 @@
 
   window.goToStep1 = function() {
     if (resendInterval) clearInterval(resendInterval)
-    document.getElementById('step2').style.display = 'none'
-    document.getElementById('step3').style.display = 'none'
-    document.getElementById('step1').style.display = 'block'
     document.getElementById('error2').classList.remove('show')
     document.getElementById('success2').classList.remove('show')
+    transitionToStep(1, 'back')
   }
 
   function formatPhoneDisplay(phone) {
