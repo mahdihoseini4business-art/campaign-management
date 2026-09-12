@@ -37,6 +37,11 @@ let salesChartDefaultsReady = false
 let dashFilterApplied = false
 /** Cached aggregates for product chart metric toggle */
 let productChartCache = { amounts: {}, counts: {} }
+/** Present→purchase + basket-size KPIs for cards/chart/export */
+let presentBasketMetricsCache = {
+  presentToPurchase: { sampleSize: 0, skippedNoPresent: 0, avgDays: null, byChannel: {} },
+  basketSize: { buyers: 0, saleLines: 0, multiBuyers: 0, avgItemsPerBuyer: null, multiBuyRatePct: null }
+}
 const PRODUCT_CHART_TOP_N = 5
 const PRODUCT_CHART_OTHER_LABEL = 'سایر'
 
@@ -706,6 +711,268 @@ function computeDashSalesMetrics(hasDateFilter, inDateRange) {
     totalPending,
     completedGrossProfit
   }
+}
+
+const PRESENT_FOLLOWUP_RESULTS = new Set(['ارسال قیمت', 'ارسال اطلاعات'])
+const CHANNEL_LABELS = { hozori: 'حضوری', online: 'آنلاین', other: 'سایر' }
+
+function normalizeDashProductKey(name) {
+  return String(coerceProductName(name) || name || '').trim().toLowerCase()
+}
+
+function classifySaleChannel(productName) {
+  const n = String(productName || '')
+  if (n.includes('حضوری')) return 'hozori'
+  if (n.includes('آنلاین')) return 'online'
+  return 'other'
+}
+
+function followupMentionsProduct(followup, productName) {
+  const target = normalizeDashProductKey(productName)
+  if (!target) return false
+  const raw = String(followup?.productName || '').trim()
+  if (!raw) return false
+  return raw.split(/[،,]/).map(part => normalizeDashProductKey(part)).some(p => p && p === target)
+}
+
+/** Earliest product-tagged follow-up on/before purchase; prefer ارسال قیمت/اطلاعات. */
+function findPresentDateForProduct(followupsForCustomer, productName, purchaseDateStr) {
+  const purchaseNum = purchaseDateStr ? jalaliToNum(purchaseDateStr) : 0
+  const candidates = (followupsForCustomer || []).filter(f => {
+    if (!followupMentionsProduct(f, productName)) return false
+    const d = jalaliDatePart(f.date)
+    if (!d) return false
+    if (purchaseNum && jalaliToNum(d) > purchaseNum) return false
+    return true
+  })
+  if (!candidates.length) return null
+
+  const preferred = candidates.filter(f => PRESENT_FOLLOWUP_RESULTS.has(String(f.result || '').trim()))
+  const pool = preferred.length ? preferred : candidates
+  pool.sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''), 'fa'))
+  return jalaliDatePart(pool[0].date) || null
+}
+
+function getFirstApprovedPayment(product) {
+  return getProductPayments(product)
+    .filter(pay => getPaymentEntryStatus(pay) === PAYMENT_STATUS.approved && (parseFloat(pay.amount) || 0) > 0)
+    .slice()
+    .sort((a, b) => String(a.soldAt || '').localeCompare(String(b.soldAt || ''), 'fa'))[0] || null
+}
+
+function buildFollowupsByCustomerId() {
+  const map = new Map()
+  for (const f of getData().followups || []) {
+    const id = f?.customerId
+    if (!id) continue
+    if (!map.has(id)) map.set(id, [])
+    map.get(id).push(f)
+  }
+  return map
+}
+
+/**
+ * میانگین روز از پرزنت (پیگیری محصول‌دار) تا اولین پرداخت تأییدشده.
+ * خرید بدون پیگیری مرتبط حذف می‌شود — نه fallback به createdAt.
+ */
+function computePresentToPurchaseMetrics(hasDateFilter, inDateRange) {
+  const followupsByCustomer = buildFollowupsByCustomerId()
+  const byChannel = {
+    hozori: { sumDays: 0, count: 0 },
+    online: { sumDays: 0, count: 0 },
+    other: { sumDays: 0, count: 0 }
+  }
+  let sumDays = 0
+  let count = 0
+  let skippedNoPresent = 0
+
+  const data = getData()
+  data.customers.forEach(customer => {
+    if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return
+    if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return
+    ;(customer.products || []).forEach(product => {
+      ensureProductPayments(product)
+      syncProductStatus(product)
+      if (!isProductCountableInSales(product)) return
+
+      const firstPay = getFirstApprovedPayment(product)
+      if (!firstPay) return
+      if (!matchesSelectedSaleRegistrant({ customer, product, payment: firstPay })) return
+
+      const purchaseDate = jalaliDatePart(firstPay.soldAt)
+      if (!purchaseDate) return
+      if (hasDateFilter && !inDateRange(purchaseDate)) return
+
+      const presentDate = findPresentDateForProduct(
+        followupsByCustomer.get(customer.id) || [],
+        product.name,
+        purchaseDate
+      )
+      if (!presentDate) {
+        skippedNoPresent++
+        return
+      }
+
+      const days = jalaliDiffDays(presentDate, purchaseDate)
+      if (days == null || days < 0) {
+        skippedNoPresent++
+        return
+      }
+
+      sumDays += days
+      count++
+      const ch = classifySaleChannel(product.name)
+      byChannel[ch].sumDays += days
+      byChannel[ch].count++
+    })
+  })
+
+  const channelAvgs = {}
+  for (const key of Object.keys(byChannel)) {
+    const row = byChannel[key]
+    channelAvgs[key] = {
+      label: CHANNEL_LABELS[key] || key,
+      count: row.count,
+      avgDays: row.count > 0 ? Math.round((row.sumDays / row.count) * 10) / 10 : null
+    }
+  }
+
+  return {
+    sampleSize: count,
+    skippedNoPresent,
+    avgDays: count > 0 ? Math.round((sumDays / count) * 10) / 10 : null,
+    byChannel: channelAvgs
+  }
+}
+
+/** میانگین تعداد ردیف فروش به ازای خریدار + نرخ چندخریدی در بازه. */
+function computeBasketSizeMetrics(hasDateFilter, inDateRange) {
+  const byCustomer = new Map()
+  forEachDashSalePayment(
+    matchesSelectedSaleRegistrant,
+    hasDateFilter,
+    inDateRange,
+    null,
+    ({ customer }) => {
+      const id = customer.id
+      byCustomer.set(id, (byCustomer.get(id) || 0) + 1)
+    }
+  )
+
+  let saleLines = 0
+  let multiBuyers = 0
+  for (const n of byCustomer.values()) {
+    saleLines += n
+    if (n >= 2) multiBuyers++
+  }
+  const buyers = byCustomer.size
+  return {
+    buyers,
+    saleLines,
+    multiBuyers,
+    avgItemsPerBuyer: buyers > 0 ? Math.round((saleLines / buyers) * 100) / 100 : null,
+    multiBuyRatePct: buyers > 0 ? Math.round((multiBuyers / buyers) * 100) : null
+  }
+}
+
+function resolvePresentAndBasketMetrics(hasUserDateFilter, inDateRange) {
+  if (hasUserDateFilter) {
+    return {
+      presentToPurchase: computePresentToPurchaseMetrics(true, inDateRange),
+      basketSize: computeBasketSizeMetrics(true, inDateRange)
+    }
+  }
+  const month = getCurrentJalaliMonthInfo()
+  const inMonth = (dateStr) => isInJalaliMonth(dateStr, month.prefix)
+  return {
+    presentToPurchase: computePresentToPurchaseMetrics(true, inMonth),
+    basketSize: computeBasketSizeMetrics(true, inMonth)
+  }
+}
+
+function paintPresentAndBasketCards(presentToPurchase, basketSize) {
+  const ttpEl = document.getElementById('dash-present-to-purchase')
+  const hintEl = document.getElementById('dash-present-to-purchase-hint')
+  if (ttpEl) {
+    ttpEl.textContent = presentToPurchase.avgDays != null
+      ? `${formatNumber(presentToPurchase.avgDays)} روز`
+      : '—'
+  }
+  if (hintEl) {
+    const n = presentToPurchase.sampleSize || 0
+    const skip = presentToPurchase.skippedNoPresent || 0
+    hintEl.textContent = n > 0
+      ? `بر اساس ${formatNumber(n)} خرید با پیگیری محصول` + (skip > 0 ? ` (بدون پرزنت: ${formatNumber(skip)})` : '')
+      : (skip > 0 ? `بدون نمونه؛ ${formatNumber(skip)} خرید بدون پیگیری محصول` : '')
+  }
+
+  const avgItemsEl = document.getElementById('dash-avg-items-per-buyer')
+  if (avgItemsEl) {
+    avgItemsEl.textContent = basketSize.avgItemsPerBuyer != null
+      ? formatNumber(basketSize.avgItemsPerBuyer)
+      : '—'
+  }
+
+  const multiEl = document.getElementById('dash-multi-buy-rate')
+  if (multiEl) {
+    multiEl.textContent = basketSize.multiBuyRatePct != null
+      ? `${formatNumber(basketSize.multiBuyRatePct)}٪`
+      : '—'
+  }
+}
+
+function renderPresentToPurchaseChart(presentToPurchase) {
+  const canvas = document.getElementById('chartPresentToPurchase')
+  if (!canvas) return
+  destroyDashChart('presentToPurchase')
+  destroyDashChart(canvas)
+
+  const order = ['hozori', 'online', 'other']
+  const labels = order.map(k => CHANNEL_LABELS[k])
+  const values = order.map(k => {
+    const avg = presentToPurchase?.byChannel?.[k]?.avgDays
+    return avg == null ? 0 : avg
+  })
+  const colors = ['#0d6efd', '#198754', '#adb5bd']
+
+  dashCharts.presentToPurchase = new ChartLib(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'میانگین روز',
+        data: values,
+        backgroundColor: colors,
+        borderRadius: 6
+      }]
+    },
+    options: {
+      ...CHART_RESPONSIVE,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              const key = order[ctx.dataIndex]
+              const row = presentToPurchase?.byChannel?.[key]
+              if (!row || row.avgDays == null) return ' نمونه کافی نیست'
+              return ` ${formatNumber(row.avgDays)} روز (${formatNumber(row.count)} خرید)`
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { font: CHART_FONT } },
+        y: {
+          beginAtZero: true,
+          ticks: {
+            font: CHART_FONT,
+            callback: v => formatNumber(v)
+          }
+        }
+      }
+    }
+  })
 }
 
 /**
@@ -1454,6 +1721,16 @@ export async function renderDashboard() {
   document.getElementById('dash-avg-sale').textContent = formatNumber(avgSale) + ' ریال'
 
   try {
+    presentBasketMetricsCache = resolvePresentAndBasketMetrics(hasDateFilter, inDateRange)
+    paintPresentAndBasketCards(
+      presentBasketMetricsCache.presentToPurchase,
+      presentBasketMetricsCache.basketSize
+    )
+  } catch (e) {
+    console.error('present/basket metrics error:', e)
+  }
+
+  try {
     const refundsTotal = sumCompletedRefundsForDash({
       dateFromNum,
       dateToNum,
@@ -1536,7 +1813,7 @@ function destroyDashChart(keyOrCanvas) {
 function destroyAllDashCharts() {
   Object.keys(dashCharts).forEach(key => destroyDashChart(key))
   dashCharts = {}
-  ;['chartCustomers', 'chartSalesStatus', 'chartFollowupConversion', 'chartPlatforms', 'chartProducts', 'chartAdvisorCompare', 'chartSalesTimeline', 'chartAovMa']
+  ;['chartCustomers', 'chartSalesStatus', 'chartFollowupConversion', 'chartPlatforms', 'chartPresentToPurchase', 'chartProducts', 'chartAdvisorCompare', 'chartSalesTimeline', 'chartAovMa']
     .forEach(id => {
       const canvas = document.getElementById(id)
       if (canvas) destroyDashChart(canvas)
@@ -1892,6 +2169,12 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     renderAovMaChart(dateFromNum, dateToNum)
   } catch (e) {
     console.error('aovMa chart error:', e)
+  }
+
+  try {
+    renderPresentToPurchaseChart(presentBasketMetricsCache.presentToPurchase)
+  } catch (e) {
+    console.error('presentToPurchase chart error:', e)
   }
 
   try {
@@ -3056,7 +3339,7 @@ function updateDashClearFilterBtn() {
 // ============================================
 
 const DASHBOARD_AI_HINT =
-  'این snapshot داشبورد کمپین است؛ فیلترها و کارت‌ها و سری نمودارها را تحلیل کن و روندها/ریسک‌ها را بگو.'
+  'این snapshot داشبورد کمپین است؛ فیلترها و کارت‌ها و سری نمودارها را تحلیل کن و روندها/ریسک‌ها را بگو. presentToPurchaseAvgDays = میانگین روز از پیگیری محصول‌دار (پرزنت) تا اولین پرداخت؛ خرید بدون پیگیری محصول در این میانگین نیست. avgItemsPerBuyer و multiBuyRatePct = اندازه سبد تعدادی.'
 
 function mapFollowupTableRows(list) {
   return (list || []).map(c => {
@@ -3371,6 +3654,8 @@ export async function buildDashboardExportPayload() {
     ? Math.round(salesMetrics.totalApproved / salesMetrics.salesCount)
     : 0
 
+  const presentBasket = resolvePresentAndBasketMetrics(hasDateFilter, inDateRange)
+
   let refundsCompleted = 0
   let refundsRequested = 0
   let refundsAwaiting = 0
@@ -3593,6 +3878,13 @@ export async function buildDashboardExportPayload() {
       grossProfit: salesMetrics.completedGrossProfit,
       pendingAccounting: salesMetrics.totalPending,
       avgSale,
+      presentToPurchaseAvgDays: presentBasket.presentToPurchase.avgDays,
+      presentToPurchaseSampleSize: presentBasket.presentToPurchase.sampleSize,
+      presentToPurchaseSkippedNoPresent: presentBasket.presentToPurchase.skippedNoPresent,
+      avgItemsPerBuyer: presentBasket.basketSize.avgItemsPerBuyer,
+      multiBuyRatePct: presentBasket.basketSize.multiBuyRatePct,
+      multiBuyBuyers: presentBasket.basketSize.multiBuyers,
+      basketBuyers: presentBasket.basketSize.buyers,
       refundsRequested,
       refundsAwaiting,
       refundsCompleted
@@ -3603,6 +3895,12 @@ export async function buildDashboardExportPayload() {
       salesStatus: salesStatusChart,
       followupConversion: followupConversionChart,
       platforms,
+      presentToPurchaseByChannel: Object.entries(presentBasket.presentToPurchase.byChannel || {}).map(([key, row]) => ({
+        key,
+        label: row.label,
+        avgDays: row.avgDays,
+        count: row.count
+      })),
       products: productsChart,
       advisorCompare,
       salesTimeline: collectSalesTimelineForExport(),

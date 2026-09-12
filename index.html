@@ -739,6 +739,19 @@
       <div class="stat-card"><div class="label">سود ناخالص</div><div class="value" style="color:var(--success);font-size:20px;" id="dash-sales-gross">۰</div></div>
       <div class="stat-card"><div class="label">در انتظار تأیید حسابداری</div><div class="value" style="color:var(--warning);font-size:20px;" id="dash-sales-pending">۰</div></div>
       <div class="stat-card"><div class="label">میانگین مبلغ فروش</div><div class="value" style="color:var(--text)" id="dash-avg-sale">۰</div></div>
+      <div class="stat-card" title="از اولین پیگیری مرتبط با همان محصول (ترجیحاً ارسال قیمت/اطلاعات) تا اولین پرداخت تأییدشده؛ خرید بدون پیگیری محصول‌دار در میانگین نیست">
+        <div class="label">میانگین روز از پرزنت تا خرید</div>
+        <div class="value" style="color:var(--secondary)" id="dash-present-to-purchase">—</div>
+        <div class="sales-chart-hint" style="margin-top:4px;" id="dash-present-to-purchase-hint"></div>
+      </div>
+      <div class="stat-card" title="تعداد ردیف فروش شمارش‌پذیر در بازه ÷ تعداد خریداران همان بازه">
+        <div class="label">میانگین محصول / خریدار</div>
+        <div class="value" style="color:var(--text)" id="dash-avg-items-per-buyer">—</div>
+      </div>
+      <div class="stat-card" title="درصد خریدارانی که در بازه ۲ محصول یا بیشتر گرفته‌اند">
+        <div class="label">نرخ چندخریدی</div>
+        <div class="value" style="color:var(--accent)" id="dash-multi-buy-rate">—</div>
+      </div>
       <div class="stat-card followup-summary-card">
         <div class="label">تعداد عودت‌ها</div>
         <div class="followup-summary">
@@ -781,6 +794,13 @@
       </div>
     </div>
     <div class="chart-grid">
+      <div class="chart-card">
+        <div class="chart-title">روز از پرزنت تا خرید</div>
+        <div class="sales-chart-hint" style="margin:0 0 8px;">میانگین روز از پیگیری محصول‌دار تا اولین پرداخت؛ تفکیک از نام محصول</div>
+        <div class="chart-container chart-container-sm">
+          <canvas id="chartPresentToPurchase"></canvas>
+        </div>
+      </div>
       <div class="chart-card">
         <div class="chart-title-row">
           <div class="chart-title">فروش بر اساس محصول</div>
