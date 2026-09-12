@@ -30,7 +30,7 @@
 </div>
 
 <!-- Loading Overlay -->
-<div id="loadingOverlay" style="display:none;position:fixed;inset:0;background:rgba(255,255,255,0.9);z-index:10000;align-items:center;justify-content:center;flex-direction:column;gap:16px;">
+<div id="loadingOverlay" style="display:none;position:fixed;inset:0;background:rgba(255,255,255,1);z-index:10000;align-items:center;justify-content:center;flex-direction:column;gap:16px;">
   <span class="loader" aria-hidden="true"></span>
   <div style="font-size:14px;color:var(--text-muted);">در حال بارگذاری...</div>
 </div>
@@ -739,15 +739,15 @@
       <div class="stat-card"><div class="label">سود ناخالص</div><div class="value" style="color:var(--success);font-size:20px;" id="dash-sales-gross">۰</div></div>
       <div class="stat-card"><div class="label">در انتظار تأیید حسابداری</div><div class="value" style="color:var(--warning);font-size:20px;" id="dash-sales-pending">۰</div></div>
       <div class="stat-card"><div class="label">میانگین مبلغ فروش</div><div class="value" style="color:var(--text)" id="dash-avg-sale">۰</div></div>
-      <div class="stat-card lrfm-avg-card" title="میانگین شاخص‌های LRFM برای مشتریانی که حداقل یک خرید شمارش‌پذیر دارند">
+      <div class="stat-card lrfm-avg-card" title="میانگین L/F/M خریداران؛ R = آخرین تاریخ پیگیری بین همان خریداران">
         <div class="label">میانگین LRFM خریداران</div>
         <div class="lrfm-avg-grid">
           <div>
-            <span class="lrfm-avg-key" title="Length — طول مدت ارتباط">L</span>
+            <span class="lrfm-avg-key" title="Length — میانگین طول مدت ارتباط">L</span>
             <span class="lrfm-avg-value" id="dash-avg-lrfm-l">—</span>
           </div>
           <div>
-            <span class="lrfm-avg-key" title="Recency — آخرین پیگیری">R</span>
+            <span class="lrfm-avg-key" title="Recency — آخرین تاریخ پیگیری خریداران">R</span>
             <span class="lrfm-avg-value" id="dash-avg-lrfm-r">—</span>
           </div>
           <div>
@@ -755,11 +755,10 @@
             <span class="lrfm-avg-value" id="dash-avg-lrfm-f">—</span>
           </div>
           <div>
-            <span class="lrfm-avg-key" title="Monetary — مجموع پرداختی‌ها">M</span>
+            <span class="lrfm-avg-key" title="Monetary — میانگین مجموع پرداختی‌ها">M</span>
             <span class="lrfm-avg-value" id="dash-avg-lrfm-m">—</span>
           </div>
         </div>
-        <div class="sales-chart-hint" style="margin-top:4px;" id="dash-avg-lrfm-hint"></div>
       </div>
       <div class="stat-card" title="از اولین پیگیری مرتبط با همان محصول (ترجیحاً ارسال قیمت/اطلاعات) تا اولین پرداخت تأییدشده؛ خرید بدون پیگیری محصول‌دار در میانگین نیست">
         <div class="label">میانگین روز از پرزنت تا خرید</div>

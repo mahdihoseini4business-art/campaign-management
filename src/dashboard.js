@@ -891,7 +891,7 @@ function resolvePresentAndBasketMetrics(hasUserDateFilter, inDateRange) {
   }
 }
 
-/** میانگین L/R/F/M برای مشتریانی که حداقل یک خرید شمارش‌پذیر دارند. */
+/** میانگین L/F/M خریداران + آخرین R بین همان خریداران. */
 function computeAvgBuyerLrfm(customers, followups) {
   let sumL = 0
   let nL = 0
@@ -899,9 +899,8 @@ function computeAvgBuyerLrfm(customers, followups) {
   let nF = 0
   let sumM = 0
   let nM = 0
-  let sumROffset = 0
-  let nR = 0
-  const today = getTodayJalaliStr()
+  let latestR = ''
+  let latestRNum = 0
   let buyers = 0
 
   for (const customer of customers) {
@@ -919,19 +918,18 @@ function computeAvgBuyerLrfm(customers, followups) {
     sumM += lrfm.M || 0
     nM++
     if (lrfm.R) {
-      const offset = jalaliDiffDays(lrfm.R, today)
-      if (offset != null) {
-        sumROffset += offset
-        nR++
+      const n = jalaliToNum(lrfm.R)
+      if (n !== 99999999 && n >= latestRNum) {
+        latestRNum = n
+        latestR = lrfm.R
       }
     }
   }
 
-  const avgROffset = nR > 0 ? Math.round(sumROffset / nR) : null
   return {
     buyers,
     L: nL > 0 ? Math.round(sumL / nL) : null,
-    R: avgROffset != null ? jalaliAddDaysStr(today, -avgROffset) : null,
+    R: latestR || null,
     F: nF > 0 ? Math.round(sumF / nF) : null,
     M: nM > 0 ? Math.round(sumM / nM) : null
   }
@@ -943,16 +941,10 @@ function paintAvgBuyerLrfmCard(avg) {
   const rEl = document.getElementById('dash-avg-lrfm-r')
   const fEl = document.getElementById('dash-avg-lrfm-f')
   const mEl = document.getElementById('dash-avg-lrfm-m')
-  const hintEl = document.getElementById('dash-avg-lrfm-hint')
   if (lEl) lEl.textContent = fmtDays(avg.L)
   if (rEl) rEl.textContent = avg.R || '—'
   if (fEl) fEl.textContent = fmtDays(avg.F)
   if (mEl) mEl.textContent = avg.M == null ? '—' : `${formatNumber(avg.M)} ریال`
-  if (hintEl) {
-    hintEl.textContent = avg.buyers > 0
-      ? `بر اساس ${formatNumber(avg.buyers)} خریدار`
-      : ''
-  }
 }
 
 function paintPresentAndBasketCards(presentToPurchase, basketSize) {
@@ -3410,7 +3402,7 @@ function updateDashClearFilterBtn() {
 // ============================================
 
 const DASHBOARD_AI_HINT =
-  'این snapshot داشبورد کمپین است؛ فیلترها و کارت‌ها و سری نمودارها را تحلیل کن و روندها/ریسک‌ها را بگو. presentToPurchaseAvgDays = میانگین روز از پیگیری محصول‌دار (پرزنت) تا اولین پرداخت؛ خرید بدون پیگیری محصول در این میانگین نیست. avgItemsPerBuyer و multiBuyRatePct = اندازه سبد تعدادی. avgBuyerLrfm = میانگین L/R/F/M مشتریان دارای خرید شمارش‌پذیر.'
+  'این snapshot داشبورد کمپین است؛ فیلترها و کارت‌ها و سری نمودارها را تحلیل کن و روندها/ریسک‌ها را بگو. presentToPurchaseAvgDays = میانگین روز از پیگیری محصول‌دار (پرزنت) تا اولین پرداخت؛ خرید بدون پیگیری محصول در این میانگین نیست. avgItemsPerBuyer و multiBuyRatePct = اندازه سبد تعدادی. avgBuyerLrfm = میانگین L/F/M خریداران؛ R آخرین تاریخ پیگیری بین همان خریداران است.'
 
 function mapFollowupTableRows(list) {
   return (list || []).map(c => {
