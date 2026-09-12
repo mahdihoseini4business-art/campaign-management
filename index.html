@@ -1193,6 +1193,12 @@
         <select class="form-select" id="filterSalesPaymentStatus" style="width:160px;" onchange="app.renderSales()">
           <option value="">همه وضعیت‌های واریزی</option>
         </select>
+        <div class="sales-product-filter product-matrix-advisor-filter" id="salesProductFilter">
+          <button type="button" class="btn product-matrix-advisor-btn" id="salesProductFilterBtn" onclick="app.toggleSalesProductDropdown(event)" aria-label="فیلتر محصول" title="فیلتر محصول">
+            محصولات <span class="product-matrix-advisor-count" id="salesProductFilterCount"></span>
+          </button>
+          <div class="product-matrix-advisor-dropdown" id="salesProductFilterDropdown" hidden onclick="event.stopPropagation()"></div>
+        </div>
         <div class="toolbar-actions" id="salesActionsMenu">
           <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
           <div class="toolbar-actions-dropdown" hidden>

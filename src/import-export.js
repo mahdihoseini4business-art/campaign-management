@@ -13,7 +13,7 @@ import {
 import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
 import { getFollowupsForExport, hasActiveFollowupExportFilter, renderFollowups } from './followups.js'
-import { renderSales, getFilteredSales, getSalesDateFilter } from './sales.js'
+import { renderSales, getFilteredSales, getSalesDateFilter, hasActiveSalesProductFilter } from './sales.js'
 import { getProductMatrixExportAoa, hasActiveProductMatrixFilter, renderProductMatrix } from './product-matrix.js'
 import { assertImportExport } from './entitlements.js'
 
@@ -124,6 +124,7 @@ function hasActiveExportScopeFilter(tab) {
       || document.getElementById('filterSalesCustomerCode')?.value
       || document.getElementById('filterSalesStatus')?.value
       || document.getElementById('filterSalesPaymentStatus')?.value
+      || hasActiveSalesProductFilter()
       || dateFilter?.hasDateFilter
     )
   }

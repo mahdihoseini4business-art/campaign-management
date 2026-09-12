@@ -1,4 +1,4 @@
-import { getData, getPlatforms, getCustomerCodes, coerceProductName, collapseDuplicateCustomersInCache } from './data.js'
+import { getData, getPlatforms, getCustomerCodes, coerceProductName, collapseDuplicateCustomersInCache, getSellableNames, getBundlesUsingProduct } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import {
@@ -31,6 +31,14 @@ import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js
 import { getPage } from './pagination.js'
 
 let salesSortState = { field: null, asc: true }
+
+/** @type {Set<string>} selected sellable names; empty = no product filter */
+let selectedSalesProductNames = new Set()
+/** @type {string[]} */
+let salesProductOptionsCache = []
+let salesProductDropdownOpen = false
+let salesProductOutsideClickBound = false
+let salesProductSearchQuery = ''
 
 // ============================================
 // Sales Data
@@ -171,6 +179,154 @@ function sumPayments(pays) {
   return pays.reduce((sum, pay) => sum + (parseFloat(pay.amount) || 0), 0)
 }
 
+export function hasActiveSalesProductFilter() {
+  return selectedSalesProductNames.size > 0
+}
+
+function salesProductFilterSig() {
+  if (!hasActiveSalesProductFilter()) return ''
+  return [...selectedSalesProductNames].map(n => n.toLowerCase()).sort().join('\0')
+}
+
+/** Sale names that match the current product multi-select (direct + bundles containing selected SKUs). */
+function buildSalesProductMatchSet() {
+  if (!hasActiveSalesProductFilter()) return null
+  const match = new Set()
+  for (const name of selectedSalesProductNames) {
+    const clean = coerceProductName(name)
+    if (!clean) continue
+    match.add(clean.toLowerCase())
+    for (const bundle of getBundlesUsingProduct(clean)) {
+      const bundleName = coerceProductName(bundle?.name)
+      if (bundleName) match.add(bundleName.toLowerCase())
+    }
+  }
+  return match
+}
+
+function saleMatchesSelectedProducts(productName, matchSet) {
+  if (!matchSet) return true
+  const key = coerceProductName(productName)?.toLowerCase()
+  return !!(key && matchSet.has(key))
+}
+
+function refreshSalesProductOptions() {
+  salesProductOptionsCache = getSellableNames()
+  const valid = new Set(salesProductOptionsCache.map(n => n.toLowerCase()))
+  selectedSalesProductNames = new Set(
+    [...selectedSalesProductNames].filter(n => valid.has(String(n).toLowerCase()))
+  )
+}
+
+function updateSalesProductFilterCount() {
+  const el = document.getElementById('salesProductFilterCount')
+  if (!el) return
+  el.textContent = hasActiveSalesProductFilter()
+    ? `(${selectedSalesProductNames.size})`
+    : ''
+}
+
+function buildSalesProductDropdownHtml() {
+  const q = toEnDigits(salesProductSearchQuery || '').toLowerCase().trim()
+  const selectedLower = new Set([...selectedSalesProductNames].map(n => n.toLowerCase()))
+  const options = salesProductOptionsCache
+    .filter(name => !q || toEnDigits(name).toLowerCase().includes(q))
+    .map(name => {
+      const checked = selectedLower.has(name.toLowerCase())
+      return `<label class="product-matrix-advisor-option" data-search="${escapeAttr(toEnDigits(name).toLowerCase())}">
+      <input type="checkbox" class="sales-product-filter-cb" value="${escapeAttr(name)}"${checked ? ' checked' : ''} onchange="app.toggleSalesProductFilter('${escapeAttr(name)}', this.checked)">
+      <span>${escapeHtml(name)}</span>
+    </label>`
+    }).join('')
+
+  const header = hasActiveSalesProductFilter()
+    ? `<button type="button" class="product-matrix-advisor-option product-matrix-advisor-option-all sales-product-filter-clear" onclick="app.clearSalesProductFilter()">
+      <span>پاک کردن انتخاب (${selectedSalesProductNames.size})</span>
+    </button>`
+    : `<div class="product-matrix-advisor-option product-matrix-advisor-option-all"><span>همه محصولات</span></div>`
+  return `
+    <input type="search" class="form-input sales-product-filter-search" id="salesProductFilterSearch" placeholder="جستجوی محصول..." value="${escapeAttr(salesProductSearchQuery)}" oninput="app.onSalesProductFilterSearch(this.value)" autocomplete="off" onclick="event.stopPropagation()">
+    ${header}
+    <div class="product-matrix-advisor-options">${options || '<div class="product-matrix-advisor-empty">محصولی یافت نشد</div>'}</div>`
+}
+
+function syncSalesProductFilterUI() {
+  refreshSalesProductOptions()
+  const dd = document.getElementById('salesProductFilterDropdown')
+  if (dd) {
+    dd.innerHTML = buildSalesProductDropdownHtml()
+    dd.hidden = !salesProductDropdownOpen
+    if (salesProductDropdownOpen) {
+      const searchEl = document.getElementById('salesProductFilterSearch')
+      if (searchEl && document.activeElement !== searchEl) {
+        const pos = searchEl.value.length
+        searchEl.focus()
+        try { searchEl.setSelectionRange(pos, pos) } catch (_) { /* ignore */ }
+      }
+    }
+  }
+  const btn = document.getElementById('salesProductFilterBtn')
+  if (btn) {
+    btn.classList.toggle('is-filtered', hasActiveSalesProductFilter())
+    btn.innerHTML = `محصولات <span class="product-matrix-advisor-count" id="salesProductFilterCount"></span>`
+  }
+  updateSalesProductFilterCount()
+  bindSalesProductOutsideClick()
+}
+
+function bindSalesProductOutsideClick() {
+  if (salesProductOutsideClickBound) return
+  salesProductOutsideClickBound = true
+  document.addEventListener('click', (e) => {
+    const wrap = document.getElementById('salesProductFilter')
+    if (wrap?.contains(e.target)) return
+    if (!salesProductDropdownOpen) return
+    salesProductDropdownOpen = false
+    const dd = document.getElementById('salesProductFilterDropdown')
+    if (dd) dd.hidden = true
+  })
+}
+
+export function toggleSalesProductDropdown(event) {
+  event?.stopPropagation?.()
+  salesProductDropdownOpen = !salesProductDropdownOpen
+  if (salesProductDropdownOpen) refreshSalesProductOptions()
+  syncSalesProductFilterUI()
+}
+
+export function onSalesProductFilterSearch(query) {
+  salesProductSearchQuery = String(query || '')
+  const dd = document.getElementById('salesProductFilterDropdown')
+  if (!dd || dd.hidden) return
+  dd.innerHTML = buildSalesProductDropdownHtml()
+  const searchEl = document.getElementById('salesProductFilterSearch')
+  if (searchEl) {
+    const pos = searchEl.value.length
+    searchEl.focus()
+    try { searchEl.setSelectionRange(pos, pos) } catch (_) { /* ignore */ }
+  }
+}
+
+export function toggleSalesProductFilter(name, checked) {
+  const clean = coerceProductName(name)
+  if (!clean) return
+  const key = clean.toLowerCase()
+  const canonical = salesProductOptionsCache.find(n => n.toLowerCase() === key) || clean
+  if (checked) selectedSalesProductNames.add(canonical)
+  else {
+    selectedSalesProductNames = new Set(
+      [...selectedSalesProductNames].filter(n => n.toLowerCase() !== key)
+    )
+  }
+  renderSales()
+}
+
+export function clearSalesProductFilter() {
+  selectedSalesProductNames = new Set()
+  salesProductSearchQuery = ''
+  renderSales()
+}
+
 export function getFilteredSales(dateFilterOverride = null) {
   const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
   const platformFilter = document.getElementById('filterSalesPlatform')?.value || ''
@@ -179,6 +335,7 @@ export function getFilteredSales(dateFilterOverride = null) {
   const codeFilter = document.getElementById('filterSalesCustomerCode')?.value || ''
   const statusFilter = document.getElementById('filterSalesStatus')?.value || ''
   const payStatusFilter = document.getElementById('filterSalesPaymentStatus')?.value || ''
+  const productMatchSet = buildSalesProductMatchSet()
   const dateFilter = dateFilterOverride || getSalesDateFilter()
   let allSales = getAllSales()
 
@@ -218,6 +375,7 @@ export function getFilteredSales(dateFilterOverride = null) {
     if (!canViewScopedCustomer(customer, currentUser, 'sales') && !registeredByMe) return false
     if (platformFilter && s.platform !== platformFilter) return false
     if (statusFilter && s.status !== statusFilter) return false
+    if (!saleMatchesSelectedProducts(s.productName, productMatchSet)) return false
     // Without a date scope, match product-level worst payment status.
     // With a date scope, status is applied to payments inside the range (below).
     if (payStatusFilter === 'gift') {
@@ -441,6 +599,7 @@ function populateSalesFilterDropdowns() {
     sSel.value = val
   }
   updateSalesAdvisorFilter()
+  syncSalesProductFilterUI()
 }
 
 async function updateSalesAdvisorFilter() {
@@ -481,7 +640,7 @@ export function onSalesSearchInput() {
 export async function renderSales() {
   const tbody = document.getElementById('salesBody')
   const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
-  const cacheKey = `${search}|${sortSig(salesSortState)}|${tabPageKey('sales', getPage('sales'))}`
+  const cacheKey = `${search}|${sortSig(salesSortState)}|${tabPageKey('sales', getPage('sales'))}|${salesProductFilterSig()}|${document.getElementById('filterSalesPlatform')?.value || ''}|${document.getElementById('filterSalesAdvisor')?.value || ''}|${document.getElementById('filterSalesLevel')?.value || ''}|${document.getElementById('filterSalesCustomerCode')?.value || ''}|${document.getElementById('filterSalesStatus')?.value || ''}|${document.getElementById('filterSalesPaymentStatus')?.value || ''}|${document.getElementById('filterSalesDateFrom')?.value || ''}|${document.getElementById('filterSalesDateTo')?.value || ''}`
   if (shouldSkipTabRender('sales', cacheKey)) return
 
   populateSalesFilterDropdowns()
