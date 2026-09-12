@@ -10,7 +10,8 @@ import {
   getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
   getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin,
   jalaliEndOfDayMs, getCompletedSaleEconomics, resolveProductCostConfig, isDealCancelled,
-  getCurrentJalaliMonthInfo, isInJalaliMonth, getPrimaryPhone
+  getCurrentJalaliMonthInfo, isInJalaliMonth, getPrimaryPhone,
+  computeCustomerLrfm, countCustomerPurchases
 } from './utils.js'
 import { sumCompletedRefundsForDash, countPendingRefundsForDash } from './refunds.js'
 import { toggleSortField, sortRecords, syncSortHeaders } from './table-sort.js'
@@ -890,6 +891,70 @@ function resolvePresentAndBasketMetrics(hasUserDateFilter, inDateRange) {
   }
 }
 
+/** میانگین L/R/F/M برای مشتریانی که حداقل یک خرید شمارش‌پذیر دارند. */
+function computeAvgBuyerLrfm(customers, followups) {
+  let sumL = 0
+  let nL = 0
+  let sumF = 0
+  let nF = 0
+  let sumM = 0
+  let nM = 0
+  let sumROffset = 0
+  let nR = 0
+  const today = getTodayJalaliStr()
+  let buyers = 0
+
+  for (const customer of customers) {
+    if (countCustomerPurchases(customer) <= 0) continue
+    buyers++
+    const lrfm = computeCustomerLrfm(customer, followups)
+    if (lrfm.L != null) {
+      sumL += lrfm.L
+      nL++
+    }
+    if (lrfm.F != null) {
+      sumF += lrfm.F
+      nF++
+    }
+    sumM += lrfm.M || 0
+    nM++
+    if (lrfm.R) {
+      const offset = jalaliDiffDays(lrfm.R, today)
+      if (offset != null) {
+        sumROffset += offset
+        nR++
+      }
+    }
+  }
+
+  const avgROffset = nR > 0 ? Math.round(sumROffset / nR) : null
+  return {
+    buyers,
+    L: nL > 0 ? Math.round(sumL / nL) : null,
+    R: avgROffset != null ? jalaliAddDaysStr(today, -avgROffset) : null,
+    F: nF > 0 ? Math.round(sumF / nF) : null,
+    M: nM > 0 ? Math.round(sumM / nM) : null
+  }
+}
+
+function paintAvgBuyerLrfmCard(avg) {
+  const fmtDays = (n) => (n == null ? '—' : `${formatNumber(n)} روز`)
+  const lEl = document.getElementById('dash-avg-lrfm-l')
+  const rEl = document.getElementById('dash-avg-lrfm-r')
+  const fEl = document.getElementById('dash-avg-lrfm-f')
+  const mEl = document.getElementById('dash-avg-lrfm-m')
+  const hintEl = document.getElementById('dash-avg-lrfm-hint')
+  if (lEl) lEl.textContent = fmtDays(avg.L)
+  if (rEl) rEl.textContent = avg.R || '—'
+  if (fEl) fEl.textContent = fmtDays(avg.F)
+  if (mEl) mEl.textContent = avg.M == null ? '—' : `${formatNumber(avg.M)} ریال`
+  if (hintEl) {
+    hintEl.textContent = avg.buyers > 0
+      ? `بر اساس ${formatNumber(avg.buyers)} خریدار`
+      : ''
+  }
+}
+
 function paintPresentAndBasketCards(presentToPurchase, basketSize) {
   const ttpEl = document.getElementById('dash-present-to-purchase')
   const hintEl = document.getElementById('dash-present-to-purchase-hint')
@@ -1719,6 +1784,12 @@ export async function renderDashboard() {
     ? Math.round(salesMetrics.totalApproved / salesMetrics.salesCount)
     : 0
   document.getElementById('dash-avg-sale').textContent = formatNumber(avgSale) + ' ریال'
+
+  try {
+    paintAvgBuyerLrfmCard(computeAvgBuyerLrfm(scopedCustomers, data.followups))
+  } catch (e) {
+    console.error('avg buyer LRFM error:', e)
+  }
 
   try {
     presentBasketMetricsCache = resolvePresentAndBasketMetrics(hasDateFilter, inDateRange)
@@ -3339,7 +3410,7 @@ function updateDashClearFilterBtn() {
 // ============================================
 
 const DASHBOARD_AI_HINT =
-  'این snapshot داشبورد کمپین است؛ فیلترها و کارت‌ها و سری نمودارها را تحلیل کن و روندها/ریسک‌ها را بگو. presentToPurchaseAvgDays = میانگین روز از پیگیری محصول‌دار (پرزنت) تا اولین پرداخت؛ خرید بدون پیگیری محصول در این میانگین نیست. avgItemsPerBuyer و multiBuyRatePct = اندازه سبد تعدادی.'
+  'این snapshot داشبورد کمپین است؛ فیلترها و کارت‌ها و سری نمودارها را تحلیل کن و روندها/ریسک‌ها را بگو. presentToPurchaseAvgDays = میانگین روز از پیگیری محصول‌دار (پرزنت) تا اولین پرداخت؛ خرید بدون پیگیری محصول در این میانگین نیست. avgItemsPerBuyer و multiBuyRatePct = اندازه سبد تعدادی. avgBuyerLrfm = میانگین L/R/F/M مشتریان دارای خرید شمارش‌پذیر.'
 
 function mapFollowupTableRows(list) {
   return (list || []).map(c => {
@@ -3655,6 +3726,7 @@ export async function buildDashboardExportPayload() {
     : 0
 
   const presentBasket = resolvePresentAndBasketMetrics(hasDateFilter, inDateRange)
+  const avgBuyerLrfm = computeAvgBuyerLrfm(scopedCustomers, data.followups)
 
   let refundsCompleted = 0
   let refundsRequested = 0
@@ -3878,6 +3950,7 @@ export async function buildDashboardExportPayload() {
       grossProfit: salesMetrics.completedGrossProfit,
       pendingAccounting: salesMetrics.totalPending,
       avgSale,
+      avgBuyerLrfm,
       presentToPurchaseAvgDays: presentBasket.presentToPurchase.avgDays,
       presentToPurchaseSampleSize: presentBasket.presentToPurchase.sampleSize,
       presentToPurchaseSkippedNoPresent: presentBasket.presentToPurchase.skippedNoPresent,

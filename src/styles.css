@@ -1105,6 +1105,39 @@
   .followup-summary-value.refund-requested { color: var(--warning); }
   .followup-summary-value.refund-awaiting { color: var(--secondary); }
 
+  .lrfm-avg-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .lrfm-avg-grid > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 7px 8px;
+    border-radius: 8px;
+    background: var(--bg);
+    min-width: 0;
+  }
+
+  .lrfm-avg-key {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .lrfm-avg-value {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.3;
+    color: var(--ink);
+    font-family: 'Vazirmatn', sans-serif;
+    word-break: break-word;
+  }
+
   /* --- Table --- */
   .table-wrapper {
     background: var(--surface);
