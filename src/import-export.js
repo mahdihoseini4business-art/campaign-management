@@ -537,6 +537,136 @@ export async function exportTabCSV(tab) {
   showToast(`${rows.length} ردیف در CSV ذخیره شد${filterHint}`)
 }
 
+/**
+ * TEST ONLY — keep at 2 until phone import is verified on real devices.
+ * Set to null/0 later to export every filtered customer with name+phone.
+ */
+const VCF_CONTACTS_TEST_LIMIT = 2
+
+function escapeVCardText(value) {
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\n/g, '\\n')
+    .replace(/,/g, '\\,')
+    .replace(/;/g, '\\;')
+}
+
+/** RFC 6350 line folding by UTF-8 octets (max 75). */
+function foldVCardLine(line) {
+  const encoder = new TextEncoder()
+  const decoder = new TextDecoder()
+  const bytes = encoder.encode(line)
+  if (bytes.length <= 75) return line
+
+  const parts = []
+  let offset = 0
+  let first = true
+  while (offset < bytes.length) {
+    const budget = first ? 75 : 74
+    let end = Math.min(offset + budget, bytes.length)
+    while (end > offset && end < bytes.length && (bytes[end] & 0xc0) === 0x80) end -= 1
+    if (end === offset) end = Math.min(offset + budget, bytes.length)
+    const chunk = decoder.decode(bytes.subarray(offset, end))
+    parts.push(first ? chunk : ` ${chunk}`)
+    first = false
+    offset = end
+  }
+  return parts.join('\r\n')
+}
+
+/** Local 09xxxxxxxxx → E.164 (+98…) for reliable phone contact dialing. */
+function toE164IranMobile(local09) {
+  const p = normalizePhone(local09)
+  if (!/^09\d{9}$/.test(p)) return ''
+  return `+98${p.slice(1)}`
+}
+
+function splitContactDisplayName(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return { family: '', given: '' }
+  if (parts.length === 1) return { family: parts[0], given: '' }
+  return { given: parts[0], family: parts.slice(1).join(' ') }
+}
+
+function buildCustomerVCard(customer) {
+  const fn = String(customer?.name || '').trim()
+  const phones = getCustomerPhones(customer)
+    .map(toE164IranMobile)
+    .filter(Boolean)
+  if (!fn || !phones.length) return ''
+
+  const { family, given } = splitContactDisplayName(fn)
+  const uid = customer.id
+    ? `urn:uuid:cm-customer-${String(customer.id).replace(/[^a-zA-Z0-9_-]/g, '')}`
+    : ''
+  const rev = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
+
+  const lines = [
+    'BEGIN:VCARD',
+    'VERSION:3.0',
+    'PRODID:-//Campaign Management//Customer Contacts//FA',
+    `N:${escapeVCardText(family)};${escapeVCardText(given)};;;`,
+    `FN:${escapeVCardText(fn)}`
+  ]
+  if (uid) lines.push(`UID:${uid}`)
+  for (const tel of phones) {
+    lines.push(`TEL;TYPE=CELL:${tel}`)
+  }
+  lines.push(`REV:${rev}`)
+  lines.push('END:VCARD')
+  return lines.map(foldVCardLine).join('\r\n')
+}
+
+function getCustomersForVcfExport() {
+  return getFilteredCustomers().filter(c => {
+    const name = String(c?.name || '').trim()
+    return name && getCustomerPhones(c).length > 0
+  })
+}
+
+/** Download a phone-contacts .vcf (vCard 3.0) from the current customers filter. */
+export function exportCustomersVcf() {
+  if (!assertImportExport()) return
+  if (!requirePermission('customers_export')) return
+
+  const eligible = getCustomersForVcfExport()
+  if (!eligible.length) {
+    showToast('مشتری واجد شرایط (نام + شماره) برای خروجی مخاطبین پیدا نشد')
+    return
+  }
+
+  const testLimit = VCF_CONTACTS_TEST_LIMIT > 0 ? VCF_CONTACTS_TEST_LIMIT : null
+  const selected = testLimit ? eligible.slice(0, testLimit) : eligible
+  const cards = selected.map(buildCustomerVCard).filter(Boolean)
+  if (!cards.length) {
+    showToast('ساخت فایل مخاطبین ممکن نشد')
+    return
+  }
+
+  // No UTF-8 BOM — safer for iOS/Android Contacts parsers
+  const content = `${cards.join('\r\n')}\r\n`
+  const blob = new Blob([content], { type: 'text/vcard;charset=utf-8' })
+  const day = new Date().toISOString().slice(0, 10)
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = testLimit
+    ? `مخاطبین_آزمایشی_${cards.length}نفر_${day}.vcf`
+    : `مخاطبین_${day}.vcf`
+  link.click()
+  URL.revokeObjectURL(link.href)
+
+  const filterHint = hasActiveExportScopeFilter('customers') ? ' — از لیست فیلترشده' : ''
+  if (testLimit) {
+    showToast(
+      `حالت آزمایشی: ${cards.length} مخاطب در VCF ذخیره شد${filterHint} — بعد از تست از Contacts حذفشان کنید`
+    )
+  } else {
+    showToast(`${cards.length} مخاطب در VCF ذخیره شد${filterHint}`)
+  }
+}
+
 /** Excel export for one in-person course session roster. */
 export async function exportInPersonSessionXlsx(session, rows) {
   const XLSX = await ensureXLSX()
