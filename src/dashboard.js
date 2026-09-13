@@ -891,7 +891,7 @@ function resolvePresentAndBasketMetrics(hasUserDateFilter, inDateRange) {
   }
 }
 
-/** میانگین L/F/M خریداران + آخرین R (آخرین خرید/پیگیری) بین همان خریداران. */
+/** میانگین L/F/M خریداران + آخرین R خرید (بر اساس ثبت‌کننده فروش، هم‌راستا با کارت‌های فروش). */
 function computeAvgBuyerLrfm(customers, followups) {
   let sumL = 0
   let nL = 0
@@ -899,8 +899,6 @@ function computeAvgBuyerLrfm(customers, followups) {
   let nF = 0
   let sumM = 0
   let nM = 0
-  let latestR = ''
-  let latestRNum = 0
   let buyers = 0
 
   for (const customer of customers) {
@@ -917,14 +915,24 @@ function computeAvgBuyerLrfm(customers, followups) {
     }
     sumM += lrfm.M || 0
     nM++
-    if (lrfm.R) {
-      const n = jalaliToNum(lrfm.R)
+  }
+
+  // R داشبورد = آخرین soldAt بین فروش‌های کارشناسان انتخاب‌شده (مثل کارت فروش)
+  let latestR = ''
+  let latestRNum = 0
+  forEachDashSalePayment(
+    matchesSelectedSaleRegistrant,
+    false,
+    () => true,
+    ({ payment, product }) => {
+      const d = jalaliDatePart(payment?.soldAt || product?.soldAt)
+      const n = jalaliToNum(d)
       if (n !== 99999999 && n >= latestRNum) {
         latestRNum = n
-        latestR = lrfm.R
+        latestR = d
       }
     }
-  }
+  )
 
   return {
     buyers,
@@ -3402,7 +3410,7 @@ function updateDashClearFilterBtn() {
 // ============================================
 
 const DASHBOARD_AI_HINT =
-  'این snapshot داشبورد کمپین است؛ فیلترها و کارت‌ها و سری نمودارها را تحلیل کن و روندها/ریسک‌ها را بگو. presentToPurchaseAvgDays = میانگین روز از پیگیری محصول‌دار (پرزنت) تا اولین پرداخت؛ خرید بدون پیگیری محصول در این میانگین نیست. avgItemsPerBuyer و multiBuyRatePct = اندازه سبد تعدادی. avgBuyerLrfm = میانگین L/F/M خریداران؛ R آخرین تاریخ خرید یا پیگیری (هرکدام جدیدتر) بین همان خریداران است.'
+  'این snapshot داشبورد کمپین است؛ فیلترها و کارت‌ها و سری نمودارها را تحلیل کن و روندها/ریسک‌ها را بگو. presentToPurchaseAvgDays = میانگین روز از پیگیری محصول‌دار (پرزنت) تا اولین پرداخت؛ خرید بدون پیگیری محصول در این میانگین نیست. avgItemsPerBuyer و multiBuyRatePct = اندازه سبد تعدادی. avgBuyerLrfm = میانگین L/F/M خریداران؛ R آخرین تاریخ خرید ثبت‌شده توسط کارشناسان انتخاب‌شده است.'
 
 function mapFollowupTableRows(list) {
   return (list || []).map(c => {

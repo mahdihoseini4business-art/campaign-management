@@ -2507,7 +2507,7 @@ export async function openCustomerDetail(id, options = {}) {
           <thead>
             <tr>
               <th title="Length — طول مدت ارتباط">L</th>
-              <th title="Recency — آخرین خرید یا پیگیری">R</th>
+              <th title="Recency — آخرین خرید">R</th>
               <th title="Frequency — میانگین فاصله ارتباط">F</th>
               <th title="Monetary — مجموع پرداختی‌ها">M</th>
             </tr>
@@ -2519,7 +2519,7 @@ export async function openCustomerDetail(id, options = {}) {
                 <span class="rfm-metric-value">${fmtDays(lrfm.L)}</span>
               </td>
               <td>
-                <span class="rfm-metric-label">آخرین خرید/پیگیری</span>
+                <span class="rfm-metric-label">آخرین خرید</span>
                 <span class="rfm-metric-value" style="font-family:'Vazirmatn',sans-serif;">${escapeHtml(lrfm.R) || '—'}</span>
               </td>
               <td>

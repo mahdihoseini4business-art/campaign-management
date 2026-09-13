@@ -555,7 +555,7 @@ export function gregorianToJalaliDateTimeStr(input) {
 /**
  * LRFM metrics for customer panel:
  * L = days since first entry into the program
- * R = last interaction date (purchase soldAt or follow-up), Jalali string
+ * R = last purchase date (Jalali); fallback = last follow-up date
  * F = average days between consecutive follow-up dates
  * M = sum of approved payments, plus historical-import product prices
  */
@@ -593,9 +593,12 @@ export function computeCustomerLrfm(customer, followups = []) {
     freqAvg = Math.round(sum / (uniqueFollowupDates.length - 1))
   }
 
-  // R = latest purchase or follow-up (ثبت خرید هم به‌عنوان آخرین تعامل شمرده می‌شود)
-  const lastActivity = getLastActivity(customer, followups)
-  const lastRecency = lastActivity ? jalaliDatePart(lastActivity.dateStr) : ''
+  // R = آخرین تاریخ خرید؛ اگر خریدی نباشد آخرین پیگیری
+  const lastPurchase = getLastPurchaseJalali(customer)
+  const lastFollowup = uniqueFollowupDates.length
+    ? uniqueFollowupDates[uniqueFollowupDates.length - 1]
+    : ''
+  const lastRecency = lastPurchase || lastFollowup
 
   let entryJalali = customer.createdAt ? gregorianToJalaliStr(customer.createdAt) : ''
   if (!entryJalali || jalaliToNum(entryJalali) === 99999999) {
@@ -811,11 +814,13 @@ export function getCustomerActivities(customer, followups = []) {
   const acts = []
 
   followups.filter(f => f.customerId === customer.id).forEach(f => {
-    const dateNum = activityDateNum(f.date)
+    // انجام‌شده‌ها با doneAt؛ در غیر این صورت date
+    const raw = f.doneAt || f.date
+    const dateNum = activityDateNum(raw)
     if (dateNum === 99999999) return
     acts.push({
       kind: 'followup',
-      dateStr: f.date,
+      dateStr: raw,
       dateNum,
       byPhone: normalizePhone(f.createdByPhone || customer.advisorPhone),
       label: 'پیگیری'
@@ -838,10 +843,12 @@ export function getCustomerActivities(customer, followups = []) {
       })
       return
     }
+    let addedPay = false
     pays.forEach(pay => {
       if (!pay.soldAt || isPaymentPristineDraft(pay)) return
       const dateNum = activityDateNum(pay.soldAt)
       if (dateNum === 99999999) return
+      addedPay = true
       acts.push({
         kind: 'sale',
         dateStr: pay.soldAt,
@@ -850,10 +857,65 @@ export function getCustomerActivities(customer, followups = []) {
         label: 'فروش'
       })
     })
+    // اگر پرداخت‌ها soldAt ندارند، به تاریخ سطح محصول برگرد
+    if (!addedPay && p.soldAt) {
+      const dateNum = activityDateNum(p.soldAt)
+      if (dateNum !== 99999999) {
+        acts.push({
+          kind: 'sale',
+          dateStr: p.soldAt,
+          dateNum,
+          byPhone: normalizePhone(p.soldByPhone || customer.advisorPhone),
+          label: 'فروش'
+        })
+      }
+    }
   })
 
   acts.sort((a, b) => b.dateNum - a.dateNum)
   return acts
+}
+
+/**
+ * Latest countable purchase date (Jalali YYYY/MM/DD).
+ * Uses payment.soldAt, with fallback to product.soldAt / giftReviewedAt.
+ */
+export function getLastPurchaseJalali(customer) {
+  if (!customer) return ''
+  let best = ''
+  let bestNum = 0
+  const consider = (raw) => {
+    const d = jalaliDatePart(raw)
+    const n = jalaliToNum(d)
+    if (n === 99999999) return
+    if (n >= bestNum) {
+      bestNum = n
+      best = d
+    }
+  }
+
+  ;(customer.products || []).forEach(p => {
+    ensureProductPayments(p)
+    if (!isProductCountableInSales(p)) return
+
+    if (isGiftSale(p)) {
+      consider(p.giftReviewedAt || p.soldAt)
+      return
+    }
+
+    const pays = getProductPayments(p)
+    let sawPayDate = false
+    pays.forEach(pay => {
+      if (getPaymentEntryStatus(pay) === PAYMENT_STATUS.rejected) return
+      if ((parseFloat(pay.amount) || 0) <= 0) return
+      if (!pay.soldAt) return
+      sawPayDate = true
+      consider(pay.soldAt)
+    })
+    if (!sawPayDate && p.soldAt) consider(p.soldAt)
+  })
+
+  return best
 }
 
 export function getLastActivity(customer, followups = []) {
