@@ -1,6 +1,6 @@
 import { getData, saveCustomerToDB, generateId, generateIdBatch, getStatuses, getCustomerCodes, saveFollowupToDB, updateFollowupInDB, getDestinationBanks, getSellableNames, putCustomerInCache, getProductCatalogNames, getCustomerOwnedProductNames, getPlatforms, coerceProductName } from './data.js'
 import {
-  toEnDigits, showToast, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
+  toEnDigits, showToast, showToastWithAction, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
   getProductBalance, getProductPayments, getPaymentEntryStatus,
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, createPayment, formatSoldAt24h, normalizePhone,
@@ -659,8 +659,13 @@ export function exportCustomersVcf() {
 
   const filterHint = hasActiveExportScopeFilter('customers') ? ' — از لیست فیلترشده' : ''
   if (testLimit) {
-    showToast(
-      `حالت آزمایشی: ${cards.length} مخاطب در VCF ذخیره شد${filterHint} — بعد از تست از Contacts حذفشان کنید`
+    const names = selected
+      .map(c => String(c?.name || '').trim())
+      .filter(Boolean)
+    const namesLabel = names.join(' | ')
+    showToastWithAction(
+      `آزمایشی (${cards.length} نفر)${filterHint} — در مخاطبین گوشی بگردید: ${namesLabel}`,
+      { durationMs: 15000 }
     )
   } else {
     showToast(`${cards.length} مخاطب در VCF ذخیره شد${filterHint}`)
