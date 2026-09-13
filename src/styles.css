@@ -6037,7 +6037,36 @@
   }
 
   .chart-grid-pies {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .chart-grid-pies .chart-card {
+    padding: 10px 12px;
+    min-height: 0;
+  }
+
+  .chart-grid-pies .chart-title {
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+
+  .chart-grid-pies .chart-title-row {
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .chart-grid-pies .chart-title-row .form-select {
+    width: auto;
+    min-width: 0;
+    max-width: 110px;
+    font-size: 11px;
+    padding: 2px 6px;
+    height: 26px;
+  }
+
+  .chart-grid-pies .chart-container-sm {
+    height: 140px;
   }
 
   .chart-card {
@@ -6320,11 +6349,17 @@
     height: 280px;
   }
 
+  @media (max-width: 1100px) {
+    .chart-grid-pies {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .chart-grid-pies .chart-container-sm {
+      height: 160px;
+    }
+  }
+
   @media (max-width: 900px) {
     .chart-grid {
-      grid-template-columns: 1fr 1fr;
-    }
-    .chart-grid-pies {
       grid-template-columns: 1fr 1fr;
     }
   }
@@ -6338,6 +6373,12 @@
     }
     .chart-card {
       min-height: 180px;
+    }
+    .chart-grid-pies .chart-card {
+      min-height: 0;
+    }
+    .chart-grid-pies .chart-container-sm {
+      height: 180px;
     }
   }
 
