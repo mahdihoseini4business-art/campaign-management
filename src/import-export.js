@@ -541,11 +541,12 @@ export async function exportTabCSV(tab) {
 export async function exportInPersonSessionXlsx(session, rows) {
   const XLSX = await ensureXLSX()
   const headers = [
-    'نام', 'شماره', 'نام دوره', 'تاریخ برگزاری',
+    'نام', 'نام انگلیسی', 'شماره', 'نام دوره', 'تاریخ برگزاری',
     'مبلغ فاکتور', 'پرداختی', 'بدهی دوره', 'بدهی سایر', 'وضعیت', 'شناسه مشتری'
   ]
   const aoaRows = (rows || []).map(r => [
     r.name || '',
+    r.nameEn || '',
     r.phone || '',
     r.courseName || '',
     r.sessionDate || '',
@@ -557,7 +558,7 @@ export async function exportInPersonSessionXlsx(session, rows) {
     r.customerId || ''
   ])
   const ws = sheetFromAoa(XLSX, headers, aoaRows)
-  forceSheetTextColumns(XLSX, ws, aoaRows.length, [1, 3, 9])
+  forceSheetTextColumns(XLSX, ws, aoaRows.length, [1, 2, 4, 10])
   const wb = XLSX.utils.book_new()
   const sheetName = String(session?.courseName || 'سانس').slice(0, 28) || 'سانس'
   XLSX.utils.book_append_sheet(wb, ws, sheetName)

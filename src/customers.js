@@ -1198,7 +1198,7 @@ export async function saveCustomer() {
  * @returns {{ id: string, toast: string }}
  */
 async function applyCustomerEdit(editId, fields) {
-  const { platformId, platform, name, phones, addresses, status, notes, customerCode } = fields
+  const { platformId, platform, name, nameEn, nationalId, birthDate, phones, addresses, status, notes, customerCode } = fields
   const phoneFields = { phone: phones[0] || '', phones }
   const addressFields = { addresses: normalizeCustomerAddresses(addresses || []) }
   const data = getData()
@@ -1233,6 +1233,9 @@ async function applyCustomerEdit(editId, fields) {
     platformId,
     platform,
     name,
+    nameEn: nameEn || '',
+    nationalId: nationalId || '',
+    birthDate: birthDate || '',
     ...phoneFields,
     ...addressFields,
     status,
@@ -1567,6 +1570,9 @@ async function mergeLdIntoPhoneOwner({ sourceId, survivorId, fields }) {
     phones: mergedPhones,
     phone: mergedPhones[0] || '',
     name: pickNonEmpty(survivor.name, fields?.name || source.name),
+    nameEn: pickNonEmpty(survivor.nameEn, fields?.nameEn || source.nameEn),
+    nationalId: pickNonEmpty(survivor.nationalId, fields?.nationalId || source.nationalId),
+    birthDate: pickNonEmpty(survivor.birthDate, fields?.birthDate || source.birthDate),
     platformId: pickNonEmpty(survivor.platformId, fields?.platformId || source.platformId),
     platform: pickNonEmpty(survivor.platform, fields?.platform || source.platform) || survivor.platform || 'instagram',
     status: pickNonEmpty(survivor.status, fields?.status || source.status) || survivor.status || 'new',
@@ -1856,6 +1862,9 @@ function applyDetailTab(tab) {
   if (next === 'sales' && window.jalaliDatepicker) {
     try { window.jalaliDatepicker.startWatch({ time: false, zIndex: 11000 }) } catch (_) { /* ignore */ }
   }
+  if (next === 'info' && window.jalaliDatepicker) {
+    try { window.jalaliDatepicker.startWatch({ time: false, zIndex: 11000 }) } catch (_) { /* ignore */ }
+  }
 }
 
 /** Switch tab inside the open customer detail modal — always re-render from fresh cache. */
@@ -1927,6 +1936,9 @@ function readDetailFormFields(users, fallback = {}) {
   const platformId = document.getElementById('detailPlatformId')?.value.trim() || ''
   const platform = document.getElementById('detailPlatform')?.value || fallback.platform || 'instagram'
   const name = document.getElementById('detailName')?.value.trim() || ''
+  const nameEn = document.getElementById('detailNameEn')?.value.trim() || ''
+  const nationalId = toEnDigits(document.getElementById('detailNationalId')?.value.trim() || '')
+  const birthDate = toEnDigits(document.getElementById('detailBirthDate')?.value.trim() || '')
   const phones = getFormPhones()
   const addresses = getFormAddresses()
   const status = document.getElementById('detailStatus')?.value || fallback.status || 'new'
@@ -1934,7 +1946,10 @@ function readDetailFormFields(users, fallback = {}) {
   const notes = fallback.notes || ''
   const advisorSelectValue = document.getElementById('detailAdvisor')?.value || fallback.advisorPhone || ''
   const { advisor, advisorPhone } = resolveAdvisor(advisorSelectValue, users)
-  return { platformId, platform, name, phones, addresses, status, customerCode, notes, advisor, advisorPhone }
+  return {
+    platformId, platform, name, nameEn, nationalId, birthDate,
+    phones, addresses, status, customerCode, notes, advisor, advisorPhone
+  }
 }
 
 /** @returns {{ ok: true, date: string } | { ok: false, message: string }} */
@@ -2095,7 +2110,7 @@ function validateDetailPhones() {
  */
 async function createCustomerFromDetail(fields) {
   const data = getData()
-  const { platformId, platform, name, phones, addresses, status, notes, advisor, advisorPhone, customerCode } = fields
+  const { platformId, platform, name, nameEn, nationalId, birthDate, phones, addresses, status, notes, advisor, advisorPhone, customerCode } = fields
   const nextFollowupDate = fields.nextFollowupDate || ''
   const phoneFields = { phone: phones[0] || '', phones }
   const addressFields = { addresses: normalizeCustomerAddresses(addresses || []) }
@@ -2120,7 +2135,14 @@ async function createCustomerFromDetail(fields) {
       const idx = data.customers.findIndex(c => c.id === existById.id)
       if (idx === -1) return null
       const wasLD = existById.id.startsWith('LD')
-      const updatedFields = { platformId, platform, name, ...phoneFields, ...addressFields, status, notes, customerCode: customerCode || '', advisor, advisorPhone }
+      const updatedFields = {
+        platformId, platform, name,
+        nameEn: nameEn || '',
+        nationalId: nationalId || '',
+        birthDate: birthDate || '',
+        ...phoneFields, ...addressFields, status, notes,
+        customerCode: customerCode || '', advisor, advisorPhone
+      }
 
       if (wasLD) {
         const newId = await generateId('CS')
@@ -2149,7 +2171,11 @@ async function createCustomerFromDetail(fields) {
   const type = phones.length ? 'CS' : 'LD'
   const id = await generateId(type)
   const newCustomer = {
-    id, platformId, platform, name, ...phoneFields, ...addressFields, status, notes, advisor, advisorPhone,
+    id, platformId, platform, name,
+    nameEn: nameEn || '',
+    nationalId: nationalId || '',
+    birthDate: birthDate || '',
+    ...phoneFields, ...addressFields, status, notes, advisor, advisorPhone,
     nextFollowupDate, products: [], createdAt: new Date().toISOString(),
     customerLevel: '', customerLevelLocked: false, referredByPhone: '',
     customerCode: customerCode || ''
@@ -2199,6 +2225,17 @@ export async function saveCustomerDetail(customerId) {
 
     const fields = readDetailFormFields(users, customer || {})
     const { listId } = phoneForm()
+
+    if (fields.nationalId && !/^\d{10}$/.test(fields.nationalId)) {
+      showToast('کد ملی باید ۱۰ رقم باشد')
+      document.getElementById('detailNationalId')?.focus()
+      return
+    }
+    if (fields.birthDate && !/^\d{4}\/\d{2}\/\d{2}$/.test(fields.birthDate)) {
+      showToast('فرمت تاریخ تولد صحیح نیست (مثلاً 1370/01/01)')
+      document.getElementById('detailBirthDate')?.focus()
+      return
+    }
 
     if (isNew) {
       if (!fields.phones.length && !fields.platformId) {
@@ -2420,6 +2457,18 @@ export async function openCustomerDetail(id, options = {}) {
         <span class="detail-label">نام</span>
         <input type="text" class="form-input" id="detailName" value="${escapeAttr(c.name || '')}" placeholder="اختیاری">
       </div>
+      <div class="detail-field">
+        <span class="detail-label">نام انگلیسی</span>
+        <input type="text" class="form-input" id="detailNameEn" value="${escapeAttr(c.nameEn || '')}" placeholder="First Last" dir="ltr" style="font-family:'Vazirmatn',sans-serif;">
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">کد ملی</span>
+        <input type="text" class="form-input" id="detailNationalId" value="${escapeAttr(c.nationalId || '')}" placeholder="۱۰ رقم" inputmode="numeric" maxlength="10" dir="ltr" style="font-family:'Vazirmatn',sans-serif;">
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">تاریخ تولد</span>
+        <input type="text" class="form-input" id="detailBirthDate" value="${escapeAttr(c.birthDate || '')}" placeholder="مثلاً 1370/01/01" data-jdp style="font-family:'Vazirmatn',sans-serif;max-width:180px;">
+      </div>
       ${idFieldHtml}
       ${levelFieldHtml}
       <div class="detail-field">
@@ -2462,6 +2511,18 @@ export async function openCustomerDetail(id, options = {}) {
       <div class="detail-field">
         <span class="detail-label">نام</span>
         <span class="detail-value">${escapeHtml(c.name) || '—'}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">نام انگلیسی</span>
+        <span class="detail-value" dir="ltr" style="font-family:'Vazirmatn',sans-serif;">${escapeHtml(c.nameEn) || '—'}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">کد ملی</span>
+        <span class="detail-value" dir="ltr" style="font-family:'Vazirmatn',sans-serif;">${escapeHtml(c.nationalId) || '—'}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">تاریخ تولد</span>
+        <span class="detail-value" style="font-family:'Vazirmatn',sans-serif;">${escapeHtml(c.birthDate) || '—'}</span>
       </div>
       ${idFieldHtml}
       ${levelFieldHtml}
@@ -2829,7 +2890,7 @@ export async function openCustomerDetail(id, options = {}) {
     focusNewSaleDraftFields()
   }
 
-  if ((activeTab === 'followups' || activeTab === 'sales' || requireFollowupOnCreate) && window.jalaliDatepicker) {
+  if ((activeTab === 'followups' || activeTab === 'sales' || activeTab === 'info' || requireFollowupOnCreate) && window.jalaliDatepicker) {
     try { window.jalaliDatepicker.startWatch({ time: false, zIndex: 11000 }) } catch (_) { /* ignore */ }
   }
 }
@@ -3728,10 +3789,16 @@ export async function renderProducts(customerId, users = null) {
     const matchingSessions = activeSessions.filter(s =>
       s.courseName.toLowerCase() === String(displayName || '').toLowerCase()
     )
-    const sessionOpts = (matchingSessions.length ? matchingSessions : activeSessions)
+    let sessionOpts = matchingSessions.length ? matchingSessions : activeSessions.slice()
     const currentSessionId = String(p.inPersonSessionId || '')
+    if (currentSessionId && !sessionOpts.some(s => s.id === currentSessionId)) {
+      const cur = getInPersonSessionById(currentSessionId)
+      if (cur) sessionOpts = [cur, ...sessionOpts]
+    }
+    // تاریخ برگزاری حتی برای فاکتور بسته‌شده قابل انتخاب/تغییر است (معامله لغو‌شده نه)
+    const canEditSession = canEdit && !cancelled && (isInPerson || !!currentSessionId)
     let sessionControl = ''
-    if (canEdit && !closed) {
+    if (canEditSession) {
       const optsHtml = sessionOpts.map(s =>
         `<option value="${escapeAttr(s.id)}"${s.id === currentSessionId ? ' selected' : ''}>${escapeHtml(formatInPersonSessionLabel(s))}</option>`
       ).join('')
@@ -3762,6 +3829,9 @@ export async function renderProducts(customerId, users = null) {
     const hasCompletedRefund = getProductRefundRecords(p).length > 0
     const productDetailsBtn = (canEdit && !closed && !hasEditablePay && !hasCompletedRefund)
       ? `<button type="button" class="btn btn-sm sale-product-save-btn" onclick="app.commitSaleProductDetails('${escapeAttr(customerId)}', ${i})">ذخیره جزئیات محصول</button>`
+      : ''
+    const sessionSaveBtn = (canEditSession && closed && isInPerson)
+      ? `<button type="button" class="btn btn-sm sale-session-save-btn" onclick="app.commitInPersonSession('${escapeAttr(customerId)}', ${i})">ذخیره تاریخ برگزاری</button>`
       : ''
     const adminPriceBtn = canAdminEditPrice
       ? `<button type="button" class="btn btn-sm btn-primary sale-admin-price-btn" onclick="app.updateSaleTotalPrice('${escapeAttr(customerId)}', ${i})">ذخیره قیمت کل</button>`
@@ -3824,7 +3894,7 @@ export async function renderProducts(customerId, users = null) {
           ${shippingFields}
           ${summaryHtml}
           ${refundSummariesHtml}
-          ${(productDetailsBtn || adminPriceBtn) ? `<div class="sale-product-actions">${productDetailsBtn}${adminPriceBtn}</div>` : ''}
+          ${(productDetailsBtn || sessionSaveBtn || adminPriceBtn) ? `<div class="sale-product-actions">${productDetailsBtn}${sessionSaveBtn}${adminPriceBtn}</div>` : ''}
           ${giftSubmitBtn}
         </section>
         <section class="sale-step sale-step-payments" data-sale-payments>
@@ -4415,6 +4485,64 @@ export async function commitSaleProductDetails(customerId, productIndex) {
   } catch (e) {
     console.error('commitSaleProductDetails error:', e)
     showToast('خطا در ذخیره جزئیات محصول')
+  } finally {
+    if (btn) {
+      btn.disabled = false
+      if (prevLabel) btn.textContent = prevLabel
+    }
+  }
+}
+
+/** Assign / change in-person session on a sale, including closed invoices. */
+export async function commitInPersonSession(customerId, productIndex) {
+  const customer = getData().customers.find(c => c.id === customerId)
+  if (!canAddSaleOnCustomer(customer)) {
+    showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
+    return
+  }
+  const block = document.querySelector(`#detailProductsList .product-block[data-product-index="${productIndex}"]`)
+  if (!block) return
+  const products = getProducts(customerId)
+  const product = products[productIndex]
+  if (!product) return
+  if (isDealCancelled(product)) {
+    showToast('معامله لغو شده و قابل ویرایش نیست')
+    return
+  }
+  if (!isInPersonProductName(product.name)) {
+    showToast('این فروش حضوری نیست')
+    return
+  }
+
+  const sessionEl = block.querySelector('[data-sale-field="inPersonSessionId"]')
+  const sessionId = sessionEl ? String(sessionEl.value || '').trim() : ''
+  clearSaleBlockInvalid(block)
+  if (!sessionId) {
+    markSaleFieldInvalid(sessionEl, true)
+    showToast('تاریخ برگزاری دوره را انتخاب کنید')
+    return
+  }
+  if (!getInPersonSessionById(sessionId)) {
+    markSaleFieldInvalid(sessionEl, true)
+    showToast('سانس انتخاب‌شده معتبر نیست')
+    return
+  }
+
+  const btn = block.querySelector('.sale-session-save-btn')
+  const prevLabel = btn?.textContent
+  if (btn) {
+    btn.disabled = true
+    btn.textContent = 'در حال ذخیره…'
+  }
+
+  try {
+    product.inPersonSessionId = sessionId
+    await setProducts(customerId, products)
+    showToast('تاریخ برگزاری ذخیره شد')
+    renderProducts(customerId)
+  } catch (e) {
+    console.error('commitInPersonSession error:', e)
+    showToast('خطا در ذخیره تاریخ برگزاری')
   } finally {
     if (btn) {
       btn.disabled = false

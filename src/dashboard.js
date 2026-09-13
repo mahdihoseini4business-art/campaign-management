@@ -2740,6 +2740,7 @@ function collectInPersonSessionRows(sessionId) {
       rows.push({
         customerId: customer.id,
         name: customer.name || customer.platformId || customer.id,
+        nameEn: customer.nameEn || '',
         phone,
         courseName: session.courseName || coerceProductName(product.name) || product.name || '—',
         sessionDate: session.sessionDate || '',
@@ -2756,6 +2757,7 @@ function collectInPersonSessionRows(sessionId) {
 
 function dashInPersonSortValue(row, field) {
   if (field === 'name') return { value: row.name || '', type: 'string' }
+  if (field === 'nameEn') return { value: row.nameEn || '', type: 'string' }
   if (field === 'phone') return { value: row.phone || '', type: 'string' }
   if (field === 'sessionDate') return { value: row.sessionDate || '', type: 'date' }
   if (field === 'price') return { value: row.price || 0, type: 'number' }
@@ -2796,7 +2798,7 @@ function paintInPersonSessionsCard() {
   const exportBtn = document.getElementById('dashInPersonExportBtn')
   if (!dashInPersonSelectedId) {
     dashInPersonRowsCache = []
-    if (body) body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);">سانسی انتخاب نشده</td></tr>'
+    if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);">سانسی انتخاب نشده</td></tr>'
     if (summary) summary.textContent = ''
     if (exportBtn) exportBtn.disabled = true
     return
@@ -2818,13 +2820,14 @@ function paintInPersonSessionsCard() {
 
   if (!body) return
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);">ردیفی نیست</td></tr>'
+    body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);">ردیفی نیست</td></tr>'
     return
   }
   body.innerHTML = rows.map(r => {
     const other = r.otherDebt > 0 ? formatNumber(r.otherDebt) : '—'
     return `<tr class="clickable-row" onclick="app.onCustomerRowClick(event, '${escapeAttr(r.customerId)}')">
       <td>${escapeHtml(r.name)}</td>
+      <td style="direction:ltr;text-align:left;font-family:'Vazirmatn',sans-serif;">${escapeHtml(r.nameEn || '—')}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${escapeHtml(r.phone || '—')}</td>
       <td>${escapeHtml(r.courseName)}</td>
       <td style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${escapeHtml(r.sessionDate || '—')}</td>
