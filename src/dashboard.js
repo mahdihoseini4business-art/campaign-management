@@ -891,7 +891,7 @@ function resolvePresentAndBasketMetrics(hasUserDateFilter, inDateRange) {
   }
 }
 
-/** میانگین L/F/M خریداران + آخرین R بین همان خریداران. */
+/** میانگین L/F/M خریداران + آخرین R (آخرین خرید/پیگیری) بین همان خریداران. */
 function computeAvgBuyerLrfm(customers, followups) {
   let sumL = 0
   let nL = 0
@@ -3402,7 +3402,7 @@ function updateDashClearFilterBtn() {
 // ============================================
 
 const DASHBOARD_AI_HINT =
-  'این snapshot داشبورد کمپین است؛ فیلترها و کارت‌ها و سری نمودارها را تحلیل کن و روندها/ریسک‌ها را بگو. presentToPurchaseAvgDays = میانگین روز از پیگیری محصول‌دار (پرزنت) تا اولین پرداخت؛ خرید بدون پیگیری محصول در این میانگین نیست. avgItemsPerBuyer و multiBuyRatePct = اندازه سبد تعدادی. avgBuyerLrfm = میانگین L/F/M خریداران؛ R آخرین تاریخ پیگیری بین همان خریداران است.'
+  'این snapshot داشبورد کمپین است؛ فیلترها و کارت‌ها و سری نمودارها را تحلیل کن و روندها/ریسک‌ها را بگو. presentToPurchaseAvgDays = میانگین روز از پیگیری محصول‌دار (پرزنت) تا اولین پرداخت؛ خرید بدون پیگیری محصول در این میانگین نیست. avgItemsPerBuyer و multiBuyRatePct = اندازه سبد تعدادی. avgBuyerLrfm = میانگین L/F/M خریداران؛ R آخرین تاریخ خرید یا پیگیری (هرکدام جدیدتر) بین همان خریداران است.'
 
 function mapFollowupTableRows(list) {
   return (list || []).map(c => {

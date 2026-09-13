@@ -555,7 +555,7 @@ export function gregorianToJalaliDateTimeStr(input) {
 /**
  * LRFM metrics for customer panel:
  * L = days since first entry into the program
- * R = last follow-up date (Jalali string)
+ * R = last interaction date (purchase soldAt or follow-up), Jalali string
  * F = average days between consecutive follow-up dates
  * M = sum of approved payments, plus historical-import product prices
  */
@@ -593,9 +593,9 @@ export function computeCustomerLrfm(customer, followups = []) {
     freqAvg = Math.round(sum / (uniqueFollowupDates.length - 1))
   }
 
-  const lastFollowup = uniqueFollowupDates.length
-    ? uniqueFollowupDates[uniqueFollowupDates.length - 1]
-    : ''
+  // R = latest purchase or follow-up (ثبت خرید هم به‌عنوان آخرین تعامل شمرده می‌شود)
+  const lastActivity = getLastActivity(customer, followups)
+  const lastRecency = lastActivity ? jalaliDatePart(lastActivity.dateStr) : ''
 
   let entryJalali = customer.createdAt ? gregorianToJalaliStr(customer.createdAt) : ''
   if (!entryJalali || jalaliToNum(entryJalali) === 99999999) {
@@ -611,7 +611,7 @@ export function computeCustomerLrfm(customer, followups = []) {
     lengthDays = Math.max(0, jalaliDiffDays(entryJalali, getTodayJalaliStr()) ?? 0)
   }
 
-  return { L: lengthDays, R: lastFollowup, F: freqAvg, M: monetary }
+  return { L: lengthDays, R: lastRecency, F: freqAvg, M: monetary }
 }
 
 // ============================================

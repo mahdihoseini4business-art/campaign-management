@@ -714,48 +714,48 @@
     </div>
 
     <div class="dashboard-stats dash-stats-fixed">
-      <div class="stat-card"><div class="label">کل مشتریان</div><div class="value" id="dash-total-customers">0</div></div>
-      <div class="stat-card"><div class="label">پیگیری تنظیم‌شده</div><div class="value" style="color:var(--warning)" id="dash-set-followup">0</div></div>
-      <div class="stat-card"><div class="label">پیگیری عقب‌افتاده</div><div class="value" style="color:var(--danger)" id="dash-overdue-followup">0</div></div>
-      <div class="stat-card"><div class="label">بدون تاریخ پیگیری</div><div class="value" id="dash-no-followup">0</div></div>
-      <div class="stat-card"><div class="label">پیگیری نزدیک (۳ روز)</div><div class="value" style="color:var(--success)" id="dash-soon-followup">0</div></div>
-      <div class="stat-card highlight"><div class="label">مشتریان فعال</div><div class="value" style="color:var(--accent)" id="dash-active-customers">0</div></div>
+      <div class="stat-card" title="تعداد کل مشتریان در اسکوپ کارشناسان و فیلتر تاریخ ثبت"><div class="label">کل مشتریان</div><div class="value" id="dash-total-customers">0</div></div>
+      <div class="stat-card" title="مشتریانی که تاریخ پیگیری بعدی برایشان تنظیم شده است"><div class="label">پیگیری تنظیم‌شده</div><div class="value" style="color:var(--warning)" id="dash-set-followup">0</div></div>
+      <div class="stat-card" title="مشتریانی که تاریخ پیگیری بعدی‌شان گذشته و هنوز انجام نشده"><div class="label">پیگیری عقب‌افتاده</div><div class="value" style="color:var(--danger)" id="dash-overdue-followup">0</div></div>
+      <div class="stat-card" title="مشتریان بدون تاریخ پیگیری بعدی (در بازه ثبت، در صورت اعمال فیلتر)"><div class="label">بدون تاریخ پیگیری</div><div class="value" id="dash-no-followup">0</div></div>
+      <div class="stat-card" title="پیگیری‌هایی که تا ۳ روز آینده سررسید می‌شوند"><div class="label">پیگیری نزدیک (۳ روز)</div><div class="value" style="color:var(--success)" id="dash-soon-followup">0</div></div>
+      <div class="stat-card highlight" title="مشتریانی که حداقل یک ردیف فروش/محصول ثبت‌شده دارند"><div class="label">مشتریان فعال</div><div class="value" style="color:var(--accent)" id="dash-active-customers">0</div></div>
     </div>
 
     <div class="dashboard-stats">
-      <div class="stat-card"><div class="label">لیدها</div><div class="value" style="color:var(--tag-ld)" id="dash-total-leads">0</div></div>
-      <div class="stat-card"><div class="label">مشتریان با شماره</div><div class="value" style="color:var(--tag-cs)" id="dash-total-cs">0</div></div>
-      <div class="stat-card followup-summary-card">
+      <div class="stat-card" title="تعداد لیدها (کد LD) در اسکوپ و فیلتر تاریخ"><div class="label">لیدها</div><div class="value" style="color:var(--tag-ld)" id="dash-total-leads">0</div></div>
+      <div class="stat-card" title="تعداد مشتریان دارای شماره (کد CS) در اسکوپ و فیلتر تاریخ"><div class="label">مشتریان با شماره</div><div class="value" style="color:var(--tag-cs)" id="dash-total-cs">0</div></div>
+      <div class="stat-card followup-summary-card" title="انجام‌شده: پیگیری‌های تکمیل‌شده در بازه؛ پیش‌رو: مشتریانی با پیگیری بعدی در آینده (و در بازه فیلتر)">
         <div class="label">تعداد پیگیری‌ها</div>
         <div class="followup-summary">
           <div><span class="followup-summary-label">انجام‌شده</span><span class="followup-summary-value completed" id="dash-followups-completed">0</span></div>
           <div><span class="followup-summary-label">پیش رو</span><span class="followup-summary-value upcoming" id="dash-followups-upcoming">0</span></div>
         </div>
       </div>
-      <div class="stat-card"><div class="label">تعداد کل فروش (تایید شده‌ها)</div><div class="value" id="dash-sales-count">0</div></div>
-      <div class="stat-card"><div class="label">بیعانه‌ها</div><div class="value" style="color:var(--warning)" id="dash-sales-deposit">۰</div></div>
-      <div class="stat-card"><div class="label">مانده حساب‌ها</div><div class="value" style="color:var(--danger)" id="dash-sales-balance">۰</div></div>
-      <div class="stat-card highlight"><div class="label">جمع فروش‌های تأییدشده</div><div class="value" style="color:var(--accent);font-size:24px;" id="dash-sales-total">۰</div></div>
-      <div class="stat-card"><div class="label">سود ناخالص</div><div class="value" style="color:var(--success);font-size:20px;" id="dash-sales-gross">۰</div></div>
-      <div class="stat-card"><div class="label">در انتظار تأیید حسابداری</div><div class="value" style="color:var(--warning);font-size:20px;" id="dash-sales-pending">۰</div></div>
-      <div class="stat-card"><div class="label">میانگین مبلغ فروش</div><div class="value" style="color:var(--text)" id="dash-avg-sale">۰</div></div>
-      <div class="stat-card lrfm-avg-card" title="میانگین L/F/M خریداران؛ R = آخرین تاریخ پیگیری بین همان خریداران">
+      <div class="stat-card" title="تعداد فروش‌های تکمیل‌شده و تأییدشده حسابداری در بازه"><div class="label">تعداد کل فروش (تایید شده‌ها)</div><div class="value" id="dash-sales-count">0</div></div>
+      <div class="stat-card" title="مجموع مبالغ پرداخت‌شده (بیعانه/واریزی) در بازه فیلتر"><div class="label">بیعانه‌ها</div><div class="value" style="color:var(--warning)" id="dash-sales-deposit">۰</div></div>
+      <div class="stat-card" title="مجموع مانده حساب فروش‌های باز در بازه"><div class="label">مانده حساب‌ها</div><div class="value" style="color:var(--danger)" id="dash-sales-balance">۰</div></div>
+      <div class="stat-card highlight" title="جمع مبلغ فروش‌های تأییدشده حسابداری در بازه"><div class="label">جمع فروش‌های تأییدشده</div><div class="value" style="color:var(--accent);font-size:24px;" id="dash-sales-total">۰</div></div>
+      <div class="stat-card" title="سود ناخالص فروش‌های تکمیل‌شده (مبلغ فروش منهای هزینه/تخفیف محاسبه‌شده)"><div class="label">سود ناخالص</div><div class="value" style="color:var(--success);font-size:20px;" id="dash-sales-gross">۰</div></div>
+      <div class="stat-card" title="مجموع مبالغ فروش که هنوز منتظر تأیید حسابداری هستند"><div class="label">در انتظار تأیید حسابداری</div><div class="value" style="color:var(--warning);font-size:20px;" id="dash-sales-pending">۰</div></div>
+      <div class="stat-card" title="میانگین مبلغ هر فروش تأییدشده (جمع تأییدشده ÷ تعداد فروش)"><div class="label">میانگین مبلغ فروش</div><div class="value" style="color:var(--text)" id="dash-avg-sale">۰</div></div>
+      <div class="stat-card lrfm-avg-card" title="میانگین L/F/M خریداران؛ R = آخرین تاریخ خرید یا پیگیری (هرکدام جدیدتر) بین همان خریداران">
         <div class="label">میانگین LRFM خریداران</div>
         <div class="lrfm-avg-grid">
           <div>
-            <span class="lrfm-avg-key" title="Length — میانگین طول مدت ارتباط">L</span>
+            <span class="lrfm-avg-key" title="Length — میانگین طول مدت ارتباط از ورود تا امروز">L</span>
             <span class="lrfm-avg-value" id="dash-avg-lrfm-l">—</span>
           </div>
           <div>
-            <span class="lrfm-avg-key" title="Recency — آخرین تاریخ پیگیری خریداران">R</span>
+            <span class="lrfm-avg-key" title="Recency — آخرین تاریخ خرید یا پیگیری خریداران">R</span>
             <span class="lrfm-avg-value" id="dash-avg-lrfm-r">—</span>
           </div>
           <div>
-            <span class="lrfm-avg-key" title="Frequency — میانگین فاصله ارتباط">F</span>
+            <span class="lrfm-avg-key" title="Frequency — میانگین فاصله روز بین پیگیری‌های متوالی">F</span>
             <span class="lrfm-avg-value" id="dash-avg-lrfm-f">—</span>
           </div>
           <div>
-            <span class="lrfm-avg-key" title="Monetary — میانگین مجموع پرداختی‌ها">M</span>
+            <span class="lrfm-avg-key" title="Monetary — میانگین مجموع پرداختی‌های تأییدشده خریداران">M</span>
             <span class="lrfm-avg-value" id="dash-avg-lrfm-m">—</span>
           </div>
         </div>
@@ -773,30 +773,30 @@
         <div class="label">نرخ چندخریدی</div>
         <div class="value" style="color:var(--accent)" id="dash-multi-buy-rate">—</div>
       </div>
-      <div class="stat-card followup-summary-card">
+      <div class="stat-card followup-summary-card" title="درخواست عودت: ثبت‌شده و در جریان؛ در انتظار عودت: تأییدشده و منتظر پرداخت وجه">
         <div class="label">تعداد عودت‌ها</div>
         <div class="followup-summary">
           <div><span class="followup-summary-label">درخواست عودت</span><span class="followup-summary-value refund-requested" id="dash-refunds-requested">0</span></div>
           <div><span class="followup-summary-label">در انتظار عودت</span><span class="followup-summary-value refund-awaiting" id="dash-refunds-awaiting">0</span></div>
         </div>
       </div>
-      <div class="stat-card"><div class="label">عودتی‌ها</div><div class="value" style="color:var(--danger);font-size:20px;" id="dash-refunds-total">۰</div></div>
+      <div class="stat-card" title="مجموع مبلغ عودت‌های ثبت‌شده در اسکوپ فعلی"><div class="label">عودتی‌ها</div><div class="value" style="color:var(--danger);font-size:20px;" id="dash-refunds-total">۰</div></div>
     </div>
 
     <div class="chart-grid chart-grid-pies">
-      <div class="chart-card">
+      <div class="chart-card" title="توزیع وضعیت‌های مشتریان (لید، در حال پیگیری، تبدیل‌شده و …)">
         <div class="chart-title">وضعیت مشتریان</div>
         <div class="chart-container chart-container-sm">
           <canvas id="chartCustomers"></canvas>
         </div>
       </div>
-      <div class="chart-card">
+      <div class="chart-card" title="توزیع وضعیت فروش‌ها (تأییدشده، در انتظار، ردشده و …)">
         <div class="chart-title">وضعیت فروش</div>
         <div class="chart-container chart-container-sm">
           <canvas id="chartSalesStatus"></canvas>
         </div>
       </div>
-      <div class="chart-card">
+      <div class="chart-card" title="نرخ تبدیل پیگیری به فروش؛ قابل فیلتر بر اساس کد مشتری">
         <div class="chart-title-row">
           <div class="chart-title">نرخ تبدیل پیگیری</div>
           <select class="form-select" id="dashConversionCustomerCode" style="width:140px;" onchange="app.renderDashboard()">
@@ -807,7 +807,7 @@
           <canvas id="chartFollowupConversion"></canvas>
         </div>
       </div>
-      <div class="chart-card">
+      <div class="chart-card" title="سهم هر پلتفرم جذب (اینستاگرام، تلگرام، حضوری و …) در مشتریان">
         <div class="chart-title">پلتفرم مشتریان</div>
         <div class="chart-container chart-container-sm">
           <canvas id="chartPlatforms"></canvas>
@@ -815,14 +815,14 @@
       </div>
     </div>
     <div class="chart-grid">
-      <div class="chart-card">
+      <div class="chart-card" title="میانگین روز از پیگیری محصول‌دار تا اولین پرداخت، به تفکیک نام محصول">
         <div class="chart-title">روز از پرزنت تا خرید</div>
         <div class="sales-chart-hint" style="margin:0 0 8px;">میانگین روز از پیگیری محصول‌دار تا اولین پرداخت؛ تفکیک از نام محصول</div>
         <div class="chart-container chart-container-sm">
           <canvas id="chartPresentToPurchase"></canvas>
         </div>
       </div>
-      <div class="chart-card">
+      <div class="chart-card" title="مقایسه فروش محصولات بر اساس مبلغ یا تعداد در بازه داشبورد">
         <div class="chart-title-row">
           <div class="chart-title">فروش بر اساس محصول</div>
           <select class="form-select" id="productChartMetric" style="width:150px;" onchange="app.onProductChartMetricChange()">
@@ -834,7 +834,7 @@
           <canvas id="chartProducts"></canvas>
         </div>
       </div>
-      <div class="chart-card" id="dashTargetsCard">
+      <div class="chart-card" id="dashTargetsCard" title="پیشرفت تحقق تارگت فروش سازمانی یا گروهی">
         <div class="chart-title-row">
           <div class="chart-title" id="dashTargetsCardTitle">پیشرفت تارگت فروش</div>
           <select class="form-select" id="dashTargetsScope" style="width:160px;" onchange="app.onDashTargetsScopeChange()" hidden>
@@ -843,7 +843,7 @@
         </div>
         <div id="dashTargetsProgress" class="dash-targets-progress"></div>
       </div>
-      <div class="chart-card chart-card-wide">
+      <div class="chart-card chart-card-wide" title="مقایسه عملکرد فروش کارشناسان بر اساس مبلغ خالص یا ناخالص">
         <div class="chart-title-row">
           <div class="chart-title">مقایسه فروش کارشناسان</div>
           <select class="form-select" id="advisorCompareMetric" style="width:150px;" onchange="app.onAdvisorCompareMetricChange()">
@@ -855,7 +855,7 @@
           <canvas id="chartAdvisorCompare"></canvas>
         </div>
       </div>
-      <div class="chart-card chart-card-wide">
+      <div class="chart-card chart-card-wide" title="روند فروش در طول زمان با بازه و مقیاس زمانی قابل تنظیم؛ اختیاری با میانگین متحرک ۳روزه">
         <div class="chart-title">فروش در طول زمان</div>
         <div class="sales-chart-controls">
           <input type="text" class="form-input" id="salesChartFrom" placeholder="از تاریخ" data-jdp style="width:140px;" onchange="app.onSalesChartControlsChange()">
@@ -880,7 +880,7 @@
           <canvas id="chartSalesTimeline"></canvas>
         </div>
       </div>
-      <div class="chart-card chart-card-wide">
+      <div class="chart-card chart-card-wide" title="میانگین ارزش سفارش (AOV) به‌صورت میانگین متحرک روزانه؛ خطوط رنگی کارشناسان و خط ضخیم میانگین کل">
         <div class="chart-title-row">
           <div>
             <div class="chart-title">میانگین متحرک AOV</div>
@@ -962,10 +962,10 @@
     </div>
     <div class="dash-collapsible-body" id="dash-transfer-body" role="region" aria-labelledby="dash-transfer-toggle">
       <div class="dashboard-stats" id="dashTransferStats" style="margin:0 0 12px;">
-        <div class="stat-card"><div class="label">انتقال‌ها (بازه)</div><div class="value" style="color:var(--secondary)" id="dash-transfer-count">0</div></div>
-        <div class="stat-card"><div class="label">دسته‌های انتقال</div><div class="value" id="dash-transfer-batches">0</div></div>
-        <div class="stat-card"><div class="label">میانگین ماندگاری (روز)</div><div class="value" id="dash-transfer-dwell">—</div></div>
-        <div class="stat-card"><div class="label">تبدیل تا ۳۰ روز بعد از انتقال</div><div class="value" style="color:var(--success)" id="dash-transfer-conversion">—</div></div>
+        <div class="stat-card" title="تعداد انتقال مالکیت شماره در بازه فیلتر داشبورد"><div class="label">انتقال‌ها (بازه)</div><div class="value" style="color:var(--secondary)" id="dash-transfer-count">0</div></div>
+        <div class="stat-card" title="تعداد دسته‌های انتقال (batch) متمایز در همان بازه"><div class="label">دسته‌های انتقال</div><div class="value" id="dash-transfer-batches">0</div></div>
+        <div class="stat-card" title="میانگین روز ماندگاری مالکیت بین دو انتقال متوالی همان مشتری"><div class="label">میانگین ماندگاری (روز)</div><div class="value" id="dash-transfer-dwell">—</div></div>
+        <div class="stat-card" title="درصد مشتریانی که تا ۳۰ روز پس از انتقال، حداقل یک خرید داشته‌اند"><div class="label">تبدیل تا ۳۰ روز بعد از انتقال</div><div class="value" style="color:var(--success)" id="dash-transfer-conversion">—</div></div>
       </div>
       <div class="chart-title" style="margin-bottom:8px;">ورودی / خروجی انتقال کارشناسان</div>
       <div class="table-wrapper">
