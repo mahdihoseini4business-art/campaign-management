@@ -1236,6 +1236,7 @@ export function countSalesLinkedToInPersonSession(sessionId) {
 
 /**
  * Unassigned in-person sale lines (name includes حضوری, no session id).
+ * Historical matrix imports are excluded from assignment.
  * @returns {Array<{customerId, customerName, phone, productIndex, productName, price, status}>}
  */
 export function listUnassignedInPersonSales() {
@@ -1245,6 +1246,7 @@ export function listUnassignedInPersonSales() {
     const phones = Array.isArray(c.phones) ? c.phones.join(' ') : String(c.phone || '')
     products.forEach((p, productIndex) => {
       if (!isInPersonProductName(p?.name)) return
+      if (p?.historicalImport) return
       if (String(p?.inPersonSessionId || '').trim()) return
       rows.push({
         customerId: c.id,
@@ -1261,6 +1263,40 @@ export function listUnassignedInPersonSales() {
   return rows
 }
 
+/**
+ * Sales already linked to an in-person session (excludes historical imports).
+ * @param {string} [sessionId] if set, only that session
+ */
+export function listAssignedInPersonSales(sessionId = '') {
+  const want = String(sessionId || '').trim()
+  const rows = []
+  for (const c of data.customers || []) {
+    const products = Array.isArray(c.products) ? c.products : []
+    const phones = Array.isArray(c.phones) ? c.phones.join(' ') : String(c.phone || '')
+    products.forEach((p, productIndex) => {
+      if (!isInPersonProductName(p?.name)) return
+      if (p?.historicalImport) return
+      const sid = String(p?.inPersonSessionId || '').trim()
+      if (!sid) return
+      if (want && sid !== want) return
+      const session = getInPersonSessionById(sid)
+      rows.push({
+        customerId: c.id,
+        customerName: c.name || c.id,
+        phone: phones,
+        platformId: c.platformId || '',
+        productIndex,
+        productName: coerceProductName(p.name) || p.name || '—',
+        price: parseFloat(p.price) || 0,
+        status: p.status || '—',
+        sessionId: sid,
+        sessionLabel: session ? formatInPersonSessionLabel(session) : sid
+      })
+    })
+  }
+  return rows
+}
+
 /** Assign an existing sale line to an in-person session (admin settings). */
 export async function assignInPersonSessionToSale(customerId, productIndex, sessionId) {
   const session = getInPersonSessionById(sessionId)
@@ -1271,9 +1307,52 @@ export async function assignInPersonSessionToSale(customerId, productIndex, sess
   const product = products[productIndex]
   if (!product) throw new Error('فروش یافت نشد')
   if (!isInPersonProductName(product.name)) throw new Error('این فروش حضوری نیست')
+  if (product.historicalImport) throw new Error('فروش ایمپورت تاریخی قابل تخصیص نیست')
   product.inPersonSessionId = session.id
   await saveCustomerToDB(customer)
   return product
+}
+
+/** Remove session assignment from a sale line. */
+export async function unassignInPersonSessionFromSale(customerId, productIndex) {
+  const customer = (data.customers || []).find(c => c.id === customerId)
+  if (!customer) throw new Error('مشتری یافت نشد')
+  const products = Array.isArray(customer.products) ? customer.products : []
+  const product = products[productIndex]
+  if (!product) throw new Error('فروش یافت نشد')
+  if (!String(product.inPersonSessionId || '').trim()) return product
+  delete product.inPersonSessionId
+  await saveCustomerToDB(customer)
+  return product
+}
+
+/**
+ * Clear inPersonSessionId on all sales linked to this session, then remove the session.
+ * @returns {{ cleared: number }}
+ */
+export async function deleteInPersonSessionAndClearAssignments(sessionId) {
+  const key = String(sessionId || '').trim()
+  if (!key) throw new Error('سانس نامعتبر است')
+  const list = getInPersonSessions()
+  if (!list.some(s => s.id === key)) throw new Error('سانس یافت نشد')
+
+  let cleared = 0
+  const touched = []
+  for (const c of data.customers || []) {
+    let changed = false
+    for (const p of c.products || []) {
+      if (String(p?.inPersonSessionId || '') !== key) continue
+      delete p.inPersonSessionId
+      cleared++
+      changed = true
+    }
+    if (changed) touched.push(c)
+  }
+  for (const c of touched) {
+    await saveCustomerToDB(c)
+  }
+  await saveInPersonSessions(list.filter(s => s.id !== key))
+  return { cleared }
 }
 
 // ============================================

@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, saveInPersonSessions, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, assignInPersonSessionToSale, formatInPersonSessionLabel } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel } from './data.js'
 import {
   loadGroupsData,
   getGroupsCache,
@@ -1673,8 +1673,10 @@ let _unassignedInPersonSalesCache = []
 export function renderInPersonSessionsSettings() {
   fillInPersonCourseNameSelect()
   fillUnassignedCourseFilter()
+  fillAssignedSessionFilter()
   renderInPersonSessionsList()
   renderUnassignedInPersonSales()
+  renderAssignedInPersonSales()
   if (window.jalaliDatepicker) {
     try { window.jalaliDatepicker.startWatch?.({ time: false, zIndex: 12000 }) } catch (_) { /* ignore */ }
   }
@@ -1765,7 +1767,7 @@ function renderInPersonSessionsList() {
           </span>
         </span>
         <button type="button" class="btn-icon" title="ویرایش" onclick="app.startInPersonSessionEdit('${escapeAttr(s.id)}')">✏️</button>
-        <button type="button" class="btn-icon" title="${linked > 0 ? 'غیرفعال‌سازی' : 'حذف'}" onclick="app.removeInPersonSession('${escapeAttr(s.id)}')" style="color:var(--danger);">🗑</button>
+        <button type="button" class="btn-icon" title="حذف سانس" onclick="app.removeInPersonSession('${escapeAttr(s.id)}')" style="color:var(--danger);">🗑</button>
       </div>`
   }).join('')
 }
@@ -1846,12 +1848,76 @@ export function filterUnassignedInPersonSales() {
   renderUnassignedInPersonSales()
 }
 
+function fillAssignedSessionFilter() {
+  const sel = document.getElementById('settingsAssignedSessionFilter')
+  if (!sel) return
+  const sessions = getInPersonSessions().slice().sort((a, b) => jalaliToNum(b.sessionDate) - jalaliToNum(a.sessionDate))
+  const prev = sel.value
+  sel.innerHTML = `<option value="">همه سانس‌ها</option>` +
+    sessions.map(s =>
+      `<option value="${escapeAttr(s.id)}"${s.id === prev ? ' selected' : ''}>${escapeHtml(formatInPersonSessionLabel(s))}${s.active ? '' : ' (غیرفعال)'}</option>`
+    ).join('')
+}
+
+function renderAssignedInPersonSales() {
+  const list = document.getElementById('settingsAssignedInPersonSales')
+  const countEl = document.getElementById('settingsAssignedSalesCount')
+  if (!list) return
+
+  const sessionFilter = document.getElementById('settingsAssignedSessionFilter')?.value || ''
+  const q = toEnDigits(document.getElementById('settingsAssignedSalesSearch')?.value || '').trim().toLowerCase()
+  let rows = listAssignedInPersonSales(sessionFilter)
+  const totalForFilter = rows.length
+  if (q) {
+    rows = rows.filter(r => {
+      const hay = [
+        r.customerName, r.phone, r.platformId, r.productName, r.status, r.sessionLabel, r.customerId
+      ].map(v => toEnDigits(String(v || '')).toLowerCase()).join(' ')
+      return hay.includes(q)
+    })
+  }
+
+  if (countEl) {
+    countEl.textContent = q && rows.length !== totalForFilter
+      ? `${formatNumber(rows.length)} از ${formatNumber(totalForFilter)}`
+      : `${formatNumber(totalForFilter)} تخصیص`
+  }
+
+  if (!listAssignedInPersonSales().length) {
+    list.innerHTML = '<div class="settings-empty-detail">هنوز تخصیصی ثبت نشده</div>'
+    return
+  }
+  if (!rows.length) {
+    list.innerHTML = `<div class="settings-empty-detail">${sessionFilter || q ? 'با این فیلتر/جستجو موردی نیست' : 'موردی نیست'}</div>`
+    return
+  }
+
+  list.innerHTML = rows.map(r => {
+    const phoneHint = r.phone
+      ? `<span class="ips-row-phone" style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${escapeHtml(String(r.phone).trim().split(/\s+/)[0] || '')}</span>`
+      : ''
+    return `
+      <div class="settings-config-row ips-row ips-assign-row">
+        <span class="settings-config-label" style="flex:1;min-width:160px;">
+          <span class="ips-row-title">${escapeHtml(r.customerName)} ${phoneHint}</span>
+          <span class="settings-config-meta" style="display:block;margin-top:2px;">
+            ${escapeHtml(r.productName)} · ${escapeHtml(r.sessionLabel)} · ${formatNumber(r.price)} ریال
+          </span>
+        </span>
+        <button type="button" class="btn btn-sm" onclick="app.unassignInPersonSale('${escapeAttr(r.customerId)}', ${r.productIndex})">برداشتن تخصیص</button>
+      </div>`
+  }).join('')
+}
+
+export function filterAssignedInPersonSales() {
+  renderAssignedInPersonSales()
+}
+
 /** When picking a course to add a session, also filter the assignment list to that course. */
 export function onInPersonAssignCourseFilterFromAdd() {
   const course = document.getElementById('newInPersonCourseName')?.value || ''
   const filter = document.getElementById('settingsUnassignedCourseFilter')
   if (filter && course) {
-    // Ensure option exists
     if (![...filter.options].some(o => o.value === course)) {
       const opt = document.createElement('option')
       opt.value = course
@@ -1906,22 +1972,49 @@ export async function saveInPersonSessionEdit(id) {
   }
 }
 
+function restoreInPersonListFilters() {
+  return {
+    unassignedCourse: document.getElementById('settingsUnassignedCourseFilter')?.value || '',
+    unassignedSearch: document.getElementById('settingsUnassignedSalesSearch')?.value || '',
+    assignedSession: document.getElementById('settingsAssignedSessionFilter')?.value || '',
+    assignedSearch: document.getElementById('settingsAssignedSalesSearch')?.value || '',
+    sessionsSearch: document.getElementById('settingsInPersonSessionsSearch')?.value || ''
+  }
+}
+
+function applyInPersonListFilters(saved) {
+  const setVal = (id, v) => {
+    const el = document.getElementById(id)
+    if (el && v != null) el.value = v
+  }
+  setVal('settingsUnassignedCourseFilter', saved.unassignedCourse)
+  setVal('settingsUnassignedSalesSearch', saved.unassignedSearch)
+  setVal('settingsAssignedSessionFilter', saved.assignedSession)
+  setVal('settingsAssignedSalesSearch', saved.assignedSearch)
+  setVal('settingsInPersonSessionsSearch', saved.sessionsSearch)
+}
+
 export async function removeInPersonSession(id) {
   if (!requireMainAdmin()) return
   const linked = countSalesLinkedToInPersonSession(id)
-  const list = getInPersonSessions()
-  const session = list.find(s => s.id === id)
+  const session = getInPersonSessions().find(s => s.id === id)
   if (!session) return
-  if (linked > 0) {
-    session.active = false
-    await saveInPersonSessions(list)
-    showToast('سانس فروش متصل دارد؛ غیرفعال شد')
-  } else {
-    await saveInPersonSessions(list.filter(s => s.id !== id))
-    showToast('سانس حذف شد')
-  }
-  _editingInPersonSessionId = null
-  renderInPersonSessionsSettings()
+  const label = formatInPersonSessionLabel(session)
+  const msg = linked > 0
+    ? `سانس «${label}» و ${formatNumber(linked)} تخصیص مرتبط حذف شود؟ تخصیص‌یافته‌ها آزاد می‌شوند.`
+    : `سانس «${label}» حذف شود؟`
+  openSettingsConfirm(msg, async () => {
+    try {
+      const { cleared } = await deleteInPersonSessionAndClearAssignments(id)
+      _editingInPersonSessionId = null
+      showToast(cleared > 0
+        ? `سانس حذف شد و ${formatNumber(cleared)} تخصیص آزاد شد`
+        : 'سانس حذف شد')
+      renderInPersonSessionsSettings()
+    } catch (e) {
+      showToast(e.message || 'خطا در حذف سانس')
+    }
+  }, 'حذف')
 }
 
 export async function assignUnassignedInPersonSale(customerId, productIndex, rowKey) {
@@ -1935,18 +2028,31 @@ export async function assignUnassignedInPersonSale(customerId, productIndex, row
   try {
     await assignInPersonSessionToSale(customerId, productIndex, sessionId)
     showToast('تخصیص انجام شد')
-    // Keep current filters after refresh
-    const course = document.getElementById('settingsUnassignedCourseFilter')?.value || ''
-    const search = document.getElementById('settingsUnassignedSalesSearch')?.value || ''
+    const saved = restoreInPersonListFilters()
+    if (!saved.assignedSession) saved.assignedSession = sessionId
     renderInPersonSessionsSettings()
-    const filterEl = document.getElementById('settingsUnassignedCourseFilter')
-    const searchEl = document.getElementById('settingsUnassignedSalesSearch')
-    if (filterEl && course) filterEl.value = course
-    if (searchEl) searchEl.value = search
+    applyInPersonListFilters(saved)
     renderUnassignedInPersonSales()
+    renderAssignedInPersonSales()
     renderInPersonSessionsList()
   } catch (e) {
     showToast(e.message || 'خطا در تخصیص')
+  }
+}
+
+export async function unassignInPersonSale(customerId, productIndex) {
+  if (!requireMainAdmin()) return
+  try {
+    await unassignInPersonSessionFromSale(customerId, productIndex)
+    showToast('تخصیص برداشته شد')
+    const saved = restoreInPersonListFilters()
+    renderInPersonSessionsSettings()
+    applyInPersonListFilters(saved)
+    renderUnassignedInPersonSales()
+    renderAssignedInPersonSales()
+    renderInPersonSessionsList()
+  } catch (e) {
+    showToast(e.message || 'خطا در برداشتن تخصیص')
   }
 }
 

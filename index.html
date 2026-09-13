@@ -259,7 +259,7 @@
 
           <div class="settings-subsection" style="margin-top:20px;">
             <h4 class="settings-subsection-title">تخصیص فروش‌های بدون سانس</h4>
-            <p class="settings-pane-desc">فروش‌های حضوری که هنوز تاریخ برگزاری ندارند. با انتخاب دوره فقط همان دوره نمایش داده می‌شود.</p>
+            <p class="settings-pane-desc">فروش‌های حضوری که هنوز تاریخ برگزاری ندارند (ایمپورت تاریخی نمایش داده نمی‌شود).</p>
             <div class="ips-toolbar">
               <select class="form-select" id="settingsUnassignedCourseFilter" onchange="app.filterUnassignedInPersonSales()" style="min-width:160px;max-width:220px;">
                 <option value="">همه دوره‌های حضوری</option>
@@ -268,6 +268,19 @@
               <span class="ips-count" id="settingsUnassignedSalesCount"></span>
             </div>
             <div id="settingsUnassignedInPersonSales" class="settings-config-list ips-scroll-list ips-scroll-list--tall"></div>
+          </div>
+
+          <div class="settings-subsection" style="margin-top:20px;">
+            <h4 class="settings-subsection-title">فروش‌های تخصیص‌شده</h4>
+            <p class="settings-pane-desc">از اینجا می‌توانید تخصیص را بردارید تا فروش دوباره بدون سانس شود.</p>
+            <div class="ips-toolbar">
+              <select class="form-select" id="settingsAssignedSessionFilter" onchange="app.filterAssignedInPersonSales()" style="min-width:180px;max-width:260px;">
+                <option value="">همه سانس‌ها</option>
+              </select>
+              <input type="search" class="form-input" id="settingsAssignedSalesSearch" placeholder="جستجوی نام، شماره، محصول…" oninput="app.filterAssignedInPersonSales()" autocomplete="off" style="flex:1;min-width:160px;">
+              <span class="ips-count" id="settingsAssignedSalesCount"></span>
+            </div>
+            <div id="settingsAssignedInPersonSales" class="settings-config-list ips-scroll-list ips-scroll-list--tall"></div>
           </div>
         </section>
 
