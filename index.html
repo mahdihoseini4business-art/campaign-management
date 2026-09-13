@@ -186,9 +186,13 @@
                 <input type="checkbox" id="newProductAllowGift">
                 <span>قابل هدیه</span>
               </label>
+              <label class="settings-gift-check" for="newProductIsEvent" title="اگر فعال باشد، در ثبت فروش تاریخ برگزاری اجباری می‌شود">
+                <input type="checkbox" id="newProductIsEvent">
+                <span>رویداد</span>
+              </label>
               <button type="button" class="btn btn-primary" onclick="app.addProductCatalogItem()">افزودن</button>
             </div>
-            <p class="settings-pane-desc" style="margin-top:8px;">فقط محصولاتی که «قابل هدیه» برایشان روشن است، در فرم فروش می‌توانند با قیمت ۰ به‌عنوان هدیه ثبت شوند.</p>
+            <p class="settings-pane-desc" style="margin-top:8px;">فقط محصولاتی که «قابل هدیه» برایشان روشن است، در فرم فروش می‌توانند با قیمت ۰ به‌عنوان هدیه ثبت شوند. محصولات «رویداد» در ثبت فروش فیلد تاریخ برگزاری اجباری دارند.</p>
             <div id="settingsProductsList" class="settings-config-list"></div>
           </div>
 
@@ -234,7 +238,7 @@
         <section class="settings-pane" data-settings-pane="in-person-sessions" hidden>
           <div class="settings-pane-header">
             <h3>سانس‌های حضوری</h3>
-            <p class="settings-pane-desc">تاریخ برگزاری دوره‌های حضوری را تعریف کنید، سپس فروش‌های بدون سانس را به همان دوره تخصیص دهید.</p>
+            <p class="settings-pane-desc">تاریخ برگزاری محصولات رویداد (تیک «رویداد» در کاتالوگ) را تعریف کنید، سپس فروش‌های بدون سانس را تخصیص دهید.</p>
           </div>
 
           <div class="settings-subsection">
@@ -259,10 +263,10 @@
 
           <div class="settings-subsection" style="margin-top:20px;">
             <h4 class="settings-subsection-title">تخصیص فروش‌های بدون سانس</h4>
-            <p class="settings-pane-desc">فروش‌های حضوری که هنوز تاریخ برگزاری ندارند (ایمپورت تاریخی نمایش داده نمی‌شود).</p>
+            <p class="settings-pane-desc">فروش‌های رویداد که هنوز تاریخ برگزاری ندارند (ایمپورت تاریخی نمایش داده نمی‌شود).</p>
             <div class="ips-toolbar">
               <select class="form-select" id="settingsUnassignedCourseFilter" onchange="app.filterUnassignedInPersonSales()" style="min-width:160px;max-width:220px;">
-                <option value="">همه دوره‌های حضوری</option>
+                <option value="">همه محصولات رویداد</option>
               </select>
               <input type="search" class="form-input" id="settingsUnassignedSalesSearch" placeholder="جستجوی نام، شماره، محصول…" oninput="app.filterUnassignedInPersonSales()" autocomplete="off" style="flex:1;min-width:160px;">
               <span class="ips-count" id="settingsUnassignedSalesCount"></span>

@@ -196,12 +196,23 @@ export const PROFIT_MODE = {
   mixed: 'mixed'
 }
 
+/** Resolve catalog isEvent; legacy entries without the flag used «حضوری» in the name. */
+function resolveCatalogIsEvent(raw, name) {
+  if (typeof raw?.isEvent === 'boolean') return raw.isEvent
+  return String(name || '').includes('حضوری')
+}
+
 /** Normalize one catalog entry (string legacy, profitMode legacy, or productKind). */
 export function normalizeCatalogEntry(raw) {
   if (typeof raw === 'string') {
     const name = raw.trim()
     if (!name || name.toLowerCase() === '[object object]') return null
-    return { name, productKind: PRODUCT_KIND.educational, allowGift: false }
+    return {
+      name,
+      productKind: PRODUCT_KIND.educational,
+      allowGift: false,
+      isEvent: resolveCatalogIsEvent(null, name)
+    }
   }
   if (!raw || typeof raw !== 'object') return null
   let nameRaw = raw.name
@@ -223,7 +234,12 @@ export function normalizeCatalogEntry(raw) {
     }
   }
 
-  const entry = { name, productKind, allowGift: raw.allowGift === true }
+  const entry = {
+    name,
+    productKind,
+    allowGift: raw.allowGift === true,
+    isEvent: resolveCatalogIsEvent(raw, name)
+  }
   if (productKind === PRODUCT_KIND.physical) {
     let cost = Number(raw.costAmount)
     if (!Number.isFinite(cost) || cost < 0) {
@@ -1095,6 +1111,20 @@ export function isProductGiftAllowed(productName) {
   return !!(entry && entry.allowGift === true)
 }
 
+/**
+ * True when catalog marks the product as an event (needs session / تاریخ برگزاری).
+ * Bundles are never events.
+ */
+export function isEventProductName(productName) {
+  const entry = getCatalogEntryByName(productName)
+  return !!(entry && entry.isEvent === true)
+}
+
+/** @deprecated use isEventProductName — kept for older call sites */
+export function isInPersonProductName(name) {
+  return isEventProductName(name)
+}
+
 /** Sale line registered as a gift (price 0, no payments). */
 export function isGiftSaleLine(line) {
   if (!line || typeof line !== 'object') return false
@@ -1126,10 +1156,6 @@ function makeInPersonSessionId() {
   return `ips_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
-export function isInPersonProductName(name) {
-  return String(name || '').includes('حضوری')
-}
-
 export function formatInPersonSessionLabel(session) {
   if (!session) return ''
   const course = String(session.courseName || '').trim() || '—'
@@ -1141,7 +1167,8 @@ export function normalizeInPersonSession(raw) {
   if (!raw || typeof raw !== 'object') return null
   const courseName = coerceProductName(raw.courseName || raw.name || '')
   const sessionDate = String(raw.sessionDate || raw.date || '').trim()
-  if (!courseName || !isInPersonProductName(courseName)) return null
+  // Keep existing sessions even if catalog flag changed; create/update validates isEvent.
+  if (!courseName) return null
   if (!sessionDate || sessionDate.split('/').length !== 3) return null
   const id = String(raw.id || '').trim() || makeInPersonSessionId()
   return {
@@ -1188,9 +1215,9 @@ export function getInPersonSessionById(id) {
   return getInPersonSessions().find(s => s.id === key) || null
 }
 
-/** Sellable / catalog names that include «حضوری». */
+/** Catalog product names marked as رویداد (event). */
 export function getInPersonCourseNames() {
-  const names = getSellableNames().filter(isInPersonProductName)
+  const names = getProductCatalogNames().filter(isEventProductName)
   return [...new Set(names)].sort((a, b) => a.localeCompare(b, 'fa'))
 }
 
@@ -1202,11 +1229,16 @@ export async function saveInPersonSessions(sessions) {
 }
 
 export async function upsertInPersonSession(input) {
+  const courseName = coerceProductName(input?.courseName || input?.name || '')
+  if (!courseName || !isEventProductName(courseName)) {
+    throw new Error('محصول رویداد و تاریخ برگزاری الزامی است')
+  }
   const next = normalizeInPersonSession({
     ...input,
+    courseName,
     id: input?.id || makeInPersonSessionId()
   })
-  if (!next) throw new Error('نام دوره حضوری و تاریخ برگزاری الزامی است')
+  if (!next) throw new Error('محصول رویداد و تاریخ برگزاری الزامی است')
   const list = getInPersonSessions()
   const idx = list.findIndex(s => s.id === next.id)
   const dup = list.some(s =>
@@ -1235,7 +1267,7 @@ export function countSalesLinkedToInPersonSession(sessionId) {
 }
 
 /**
- * Unassigned in-person sale lines (name includes حضوری, no session id).
+ * Unassigned event sale lines (catalog isEvent, no session id).
  * Historical matrix imports are excluded from assignment.
  * @returns {Array<{customerId, customerName, phone, productIndex, productName, price, status}>}
  */
@@ -1245,7 +1277,7 @@ export function listUnassignedInPersonSales() {
     const products = Array.isArray(c.products) ? c.products : []
     const phones = Array.isArray(c.phones) ? c.phones.join(' ') : String(c.phone || '')
     products.forEach((p, productIndex) => {
-      if (!isInPersonProductName(p?.name)) return
+      if (!isEventProductName(p?.name)) return
       if (p?.historicalImport) return
       if (String(p?.inPersonSessionId || '').trim()) return
       rows.push({
@@ -1274,7 +1306,6 @@ export function listAssignedInPersonSales(sessionId = '') {
     const products = Array.isArray(c.products) ? c.products : []
     const phones = Array.isArray(c.phones) ? c.phones.join(' ') : String(c.phone || '')
     products.forEach((p, productIndex) => {
-      if (!isInPersonProductName(p?.name)) return
       if (p?.historicalImport) return
       const sid = String(p?.inPersonSessionId || '').trim()
       if (!sid) return
@@ -1306,7 +1337,7 @@ export async function assignInPersonSessionToSale(customerId, productIndex, sess
   const products = Array.isArray(customer.products) ? customer.products : []
   const product = products[productIndex]
   if (!product) throw new Error('فروش یافت نشد')
-  if (!isInPersonProductName(product.name)) throw new Error('این فروش حضوری نیست')
+  if (!isEventProductName(product.name)) throw new Error('این محصول رویداد نیست')
   if (product.historicalImport) throw new Error('فروش ایمپورت تاریخی قابل تخصیص نیست')
   product.inPersonSessionId = session.id
   await saveCustomerToDB(customer)

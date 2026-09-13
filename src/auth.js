@@ -437,7 +437,7 @@ const SETTINGS_SECTIONS = [
   { id: 'users', label: 'کاربران و دسترسی‌ها', group: null, keywords: 'کاربر دسترسی permission user admin' },
   { id: 'groups', label: 'گروه‌ها و اعضا', group: null, keywords: 'گروه تیم مدیر عضو group team manager' },
   { id: 'banks', label: 'بانک‌های مقصد', group: 'داده‌های پایه', keywords: 'بانک واریز bank destination' },
-  { id: 'products', label: 'کاتالوگ محصولات', group: 'داده‌های پایه', keywords: 'محصول باندل product catalog bundle' },
+  { id: 'products', label: 'کاتالوگ محصولات', group: 'داده‌های پایه', keywords: 'محصول باندل رویداد product catalog bundle event' },
   { id: 'in-person-sessions', label: 'سانس‌های حضوری', group: 'داده‌های پایه', keywords: 'حضوری سانس دوره برگزاری in person session workshop' },
   { id: 'sales-targets', label: 'تارگت‌های فروش', group: 'داده‌های پایه', keywords: 'تارگت هدف فروش target goal quota' },
   { id: 'platforms', label: 'پلتفرم‌ها', group: 'داده‌های پایه', keywords: 'پلتفرم platform' },
@@ -1654,10 +1654,11 @@ export function onEditProductProfitModeChange() { onEditProductKindChange() }
 function catalogEntrySummary(entry) {
   const kind = entry.productKind || PRODUCT_KIND.educational
   const gift = entry.allowGift ? ' · قابل هدیه' : ''
+  const event = entry.isEvent ? ' · رویداد' : ''
   if (kind === PRODUCT_KIND.physical) {
-    return `${productKindLabel(kind)} · بهای تمام‌شده: ${formatNumber(entry.costAmount || 0)} ریال${gift}`
+    return `${productKindLabel(kind)} · بهای تمام‌شده: ${formatNumber(entry.costAmount || 0)} ریال${gift}${event}`
   }
-  return `${productKindLabel(kind)}${gift}`
+  return `${productKindLabel(kind)}${gift}${event}`
 }
 
 export function renderProductsSettingsPane() {
@@ -1688,7 +1689,7 @@ function fillInPersonCourseNameSelect() {
   const names = getInPersonCourseNames()
   const prev = sel.value
   if (!names.length) {
-    sel.innerHTML = '<option value="">محصول حضوری در کاتالوگ نیست</option>'
+    sel.innerHTML = '<option value="">محصول رویداد در کاتالوگ نیست</option>'
     sel.disabled = true
     return
   }
@@ -1705,7 +1706,7 @@ function fillUnassignedCourseFilter() {
   const fromSales = [...new Set(listUnassignedInPersonSales().map(r => r.productName).filter(Boolean))]
   const all = [...new Set([...names, ...fromSales])].sort((a, b) => a.localeCompare(b, 'fa'))
   const prev = sel.value
-  sel.innerHTML = `<option value="">همه دوره‌های حضوری</option>` +
+  sel.innerHTML = `<option value="">همه محصولات رویداد</option>` +
     all.map(n => `<option value="${escapeAttr(n)}"${n === prev ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('')
 }
 
@@ -1808,7 +1809,7 @@ function renderUnassignedInPersonSales() {
   }
 
   if (!_unassignedInPersonSalesCache.length) {
-    list.innerHTML = '<div class="settings-empty-detail">همه فروش‌های حضوری سانس دارند ✅</div>'
+    list.innerHTML = '<div class="settings-empty-detail">همه فروش‌های رویداد سانس دارند ✅</div>'
     return
   }
   if (!sessions.length) {
@@ -2073,6 +2074,7 @@ export function renderProductCatalogSettings() {
         ? formatNumber(entry.costAmount)
         : ''
       const allowGift = entry.allowGift === true
+      const isEvent = entry.isEvent === true
       return `
         <div class="settings-config-row is-editing" style="flex-wrap:wrap;align-items:flex-end;gap:8px;">
           <input type="text" class="form-input" id="editProductInput" value="${escapeAttr(name)}" style="flex:1;min-width:120px;">
@@ -2087,6 +2089,10 @@ export function renderProductCatalogSettings() {
             <input type="checkbox" id="editProductAllowGift"${allowGift ? ' checked' : ''}>
             <span>قابل هدیه</span>
           </label>
+          <label class="settings-gift-check" for="editProductIsEvent" title="اگر فعال باشد، در ثبت فروش تاریخ برگزاری اجباری می‌شود">
+            <input type="checkbox" id="editProductIsEvent"${isEvent ? ' checked' : ''}>
+            <span>رویداد</span>
+          </label>
           <button type="button" class="btn btn-sm btn-primary" onclick="app.saveProductCatalogEdit(${idx})">ذخیره</button>
           <button type="button" class="btn btn-sm" onclick="app.cancelProductCatalogEdit()">لغو</button>
         </div>`
@@ -2096,6 +2102,7 @@ export function renderProductCatalogSettings() {
         <span class="settings-config-label">
           ${escapeHtml(name)}
           ${entry.allowGift ? '<span class="gift-badge" title="قابل ثبت به عنوان هدیه">هدیه</span>' : ''}
+          ${entry.isEvent ? '<span class="gift-badge" title="نیاز به تاریخ برگزاری">رویداد</span>' : ''}
           <span class="settings-config-meta" style="direction:rtl;font-family:inherit;display:block;margin-top:2px;">
             ${escapeHtml(catalogEntrySummary(entry))}
           </span>
@@ -2126,6 +2133,7 @@ export async function saveProductCatalogEdit(index) {
   const kindFields = readProductKindFieldsFromForm('editProductKind', 'editProductCostAmount')
   if (!kindFields.ok) { showToast(kindFields.error); return }
   const allowGift = !!document.getElementById('editProductAllowGift')?.checked
+  const isEvent = !!document.getElementById('editProductIsEvent')?.checked
 
   const products = getProductCatalog().map(e => ({ ...e }))
   if (index < 0 || index >= products.length) return
@@ -2151,7 +2159,7 @@ export async function saveProductCatalogEdit(index) {
       }
     }
   }
-  products[index] = normalizeCatalogEntry({ name, ...kindFields.entry, allowGift })
+  products[index] = normalizeCatalogEntry({ name, ...kindFields.entry, allowGift, isEvent })
   try {
     await saveProductCatalog(products)
     if (oldName !== name) await renameProductInBundles(oldName, name)
@@ -2172,6 +2180,7 @@ export async function addProductCatalogItem() {
   const kindFields = readProductKindFieldsFromForm('newProductKind', 'newProductCostAmount')
   if (!kindFields.ok) { showToast(kindFields.error); return }
   const allowGift = !!document.getElementById('newProductAllowGift')?.checked
+  const isEvent = !!document.getElementById('newProductIsEvent')?.checked
 
   const products = getProductCatalog()
   if (products.some(p => p.name.toLowerCase() === name.toLowerCase())) {
@@ -2182,7 +2191,7 @@ export async function addProductCatalogItem() {
     showToast('این نام قبلاً برای یک باندل استفاده شده')
     return
   }
-  const entry = normalizeCatalogEntry({ name, ...kindFields.entry, allowGift })
+  const entry = normalizeCatalogEntry({ name, ...kindFields.entry, allowGift, isEvent })
   try {
     await saveProductCatalog([...products, entry])
     if (input) input.value = ''
@@ -2192,6 +2201,8 @@ export async function addProductCatalogItem() {
     if (costEl) costEl.value = ''
     const giftEl = document.getElementById('newProductAllowGift')
     if (giftEl) giftEl.checked = false
+    const eventEl = document.getElementById('newProductIsEvent')
+    if (eventEl) eventEl.checked = false
     onNewProductKindChange()
     renderProductsSettingsPane()
     showToast('محصول اضافه شد')

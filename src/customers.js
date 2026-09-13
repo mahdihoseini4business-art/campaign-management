@@ -1,4 +1,4 @@
-import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, invalidateProductSalesCountCache, isInPersonProductName, getActiveInPersonSessions, formatInPersonSessionLabel, getInPersonSessionById } from './data.js'
+import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, invalidateProductSalesCountCache, isEventProductName, getActiveInPersonSessions, formatInPersonSessionLabel, getInPersonSessionById } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
@@ -3784,7 +3784,7 @@ export async function renderProducts(customerId, users = null) {
           </select>${bundleHint}`
       : `<span class="sale-readonly-value" style="font-weight:600;">${escapeHtml(displayName || '—')}</span>${bundleHint}`
 
-    const isInPerson = isInPersonProductName(displayName)
+    const isInPerson = isEventProductName(displayName)
     const activeSessions = getActiveInPersonSessions()
     const matchingSessions = activeSessions.filter(s =>
       s.courseName.toLowerCase() === String(displayName || '').toLowerCase()
@@ -4112,7 +4112,7 @@ function applySaleProductDraft(product, draft, { lockPrice = false } = {}) {
     product.shippingAddress = ''
     product.shippingPostalCode = ''
   }
-  if (isInPersonProductName(product.name)) {
+  if (isEventProductName(product.name)) {
     if (draft.inPersonSessionId != null) {
       product.inPersonSessionId = draft.inPersonSessionId || ''
     }
@@ -4148,7 +4148,7 @@ export function onSaleProductNameChange(selectEl) {
   }
   const sessionField = block.querySelector('.sale-field--inperson-session')
   const sessionSelect = block.querySelector('[data-sale-field="inPersonSessionId"]')
-  const inPerson = isInPersonProductName(name)
+  const inPerson = isEventProductName(name)
   if (sessionField) sessionField.hidden = !inPerson
   if (sessionSelect && inPerson) {
     const activeSessions = getActiveInPersonSessions()
@@ -4268,7 +4268,7 @@ export async function commitGiftSale(customerId, productIndex) {
     updateSaleGiftMode(block)
     return
   }
-  if (isInPersonProductName(name) && !draft.inPersonSessionId) {
+  if (isEventProductName(name) && !draft.inPersonSessionId) {
     markSaleFieldInvalid(draft.sessionEl, true)
     hasError = true
   }
@@ -4471,7 +4471,7 @@ export async function commitSaleProductDetails(customerId, productIndex) {
       showToast('محصول را انتخاب کنید')
       return
     }
-    if (isInPersonProductName(draft.name) && !draft.inPersonSessionId) {
+    if (isEventProductName(draft.name) && !draft.inPersonSessionId) {
       markSaleFieldInvalid(draft.sessionEl, true)
       showToast('تاریخ برگزاری دوره را انتخاب کنید')
       return
@@ -4509,8 +4509,8 @@ export async function commitInPersonSession(customerId, productIndex) {
     showToast('معامله لغو شده و قابل ویرایش نیست')
     return
   }
-  if (!isInPersonProductName(product.name)) {
-    showToast('این فروش حضوری نیست')
+  if (!isEventProductName(product.name)) {
+    showToast('این محصول رویداد نیست')
     return
   }
 
@@ -4614,7 +4614,7 @@ export async function commitSalePayment(customerId, productIndex, paymentIndex) 
     markSaleFieldInvalid(productDraft.nameEl, true)
     hasError = true
   }
-  if (isInPersonProductName(productDraft.name || product.name)) {
+  if (isEventProductName(productDraft.name || product.name)) {
     if (!productDraft.inPersonSessionId) {
       markSaleFieldInvalid(productDraft.sessionEl, true)
       hasError = true

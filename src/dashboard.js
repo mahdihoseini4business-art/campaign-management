@@ -1,4 +1,4 @@
-import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages, getActiveInPersonSessions, getInPersonSessionById, formatInPersonSessionLabel } from './data.js'
+import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages, getActiveInPersonSessions, getInPersonSessionById, formatInPersonSessionLabel, isEventProductName } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
 import {
@@ -729,7 +729,7 @@ function normalizeDashProductKey(name) {
 
 function classifySaleChannel(productName) {
   const n = String(productName || '')
-  if (n.includes('حضوری')) return 'hozori'
+  if (isEventProductName(n)) return 'hozori'
   if (n.includes('آنلاین')) return 'online'
   return 'other'
 }
