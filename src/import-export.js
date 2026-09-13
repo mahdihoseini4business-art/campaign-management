@@ -619,8 +619,17 @@ function buildCustomerVCard(customer) {
   return lines.map(foldVCardLine).join('\r\n')
 }
 
+function isOwnAdvisorCustomerForVcf(customer, user = getCurrentUser()) {
+  const myPhone = normalizePhone(user?.phone)
+  const ownerPhone = normalizePhone(customer?.advisorPhone)
+  return !!(myPhone && ownerPhone && myPhone === ownerPhone)
+}
+
 function getCustomersForVcfExport() {
+  // Same gate as CSV/Excel customers export: customers_export + current list filters,
+  // then hard-limit to customers owned by the signed-in advisor (no org-wide bypass).
   return getFilteredCustomers().filter(c => {
+    if (!isOwnAdvisorCustomerForVcf(c)) return false
     const name = String(c?.name || '').trim()
     return name && getCustomerPhones(c).length > 0
   })
@@ -629,11 +638,12 @@ function getCustomersForVcfExport() {
 /** Download a phone-contacts .vcf (vCard 3.0) from the current customers filter. */
 export function exportCustomersVcf() {
   if (!assertImportExport()) return
+  // Same permission as customers CSV/Excel export
   if (!requirePermission('customers_export')) return
 
   const eligible = getCustomersForVcfExport()
   if (!eligible.length) {
-    showToast('مشتری واجد شرایط (نام + شماره) برای خروجی مخاطبین پیدا نشد')
+    showToast('بین مشتریان خودتان (با نام و شماره) موردی برای خروجی مخاطبین پیدا نشد')
     return
   }
 
