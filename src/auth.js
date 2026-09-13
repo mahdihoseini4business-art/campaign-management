@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, saveInPersonSessions, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, assignInPersonSessionToSale, formatInPersonSessionLabel } from './data.js'
 import {
   loadGroupsData,
   getGroupsCache,
@@ -438,6 +438,7 @@ const SETTINGS_SECTIONS = [
   { id: 'groups', label: 'گروه‌ها و اعضا', group: null, keywords: 'گروه تیم مدیر عضو group team manager' },
   { id: 'banks', label: 'بانک‌های مقصد', group: 'داده‌های پایه', keywords: 'بانک واریز bank destination' },
   { id: 'products', label: 'کاتالوگ محصولات', group: 'داده‌های پایه', keywords: 'محصول باندل product catalog bundle' },
+  { id: 'in-person-sessions', label: 'سانس‌های حضوری', group: 'داده‌های پایه', keywords: 'حضوری سانس دوره برگزاری in person session workshop' },
   { id: 'sales-targets', label: 'تارگت‌های فروش', group: 'داده‌های پایه', keywords: 'تارگت هدف فروش target goal quota' },
   { id: 'platforms', label: 'پلتفرم‌ها', group: 'داده‌های پایه', keywords: 'پلتفرم platform' },
   { id: 'statuses', label: 'وضعیت‌های مشتری', group: 'داده‌های پایه', keywords: 'وضعیت status' },
@@ -570,6 +571,7 @@ function applySettingsSection(sectionId) {
   if (sectionId === 'groups') renderGroupsSettings()
   else if (sectionId === 'banks') renderDestinationBanksSettings()
   else if (sectionId === 'products') renderProductsSettingsPane()
+  else if (sectionId === 'in-person-sessions') renderInPersonSessionsSettings()
   else if (sectionId === 'sales-targets') renderSalesTargetsSettings()
   else if (sectionId === 'platforms') renderPlatformsSettings()
   else if (sectionId === 'statuses') renderStatusesSettings()
@@ -1662,6 +1664,189 @@ export function renderProductsSettingsPane() {
   renderProductCatalogSettings()
   renderProductBundleSettings()
   renderBundleMigrationForm()
+}
+
+let _editingInPersonSessionId = null
+
+export function renderInPersonSessionsSettings() {
+  fillInPersonCourseNameSelect()
+  renderInPersonSessionsList()
+  renderUnassignedInPersonSales()
+  if (window.jalaliDatepicker) {
+    const dateEl = document.getElementById('newInPersonSessionDate')
+    if (dateEl) {
+      try { window.jalaliDatepicker.startWatch?.({ minDate: 'attr' }) } catch (_) { /* ignore */ }
+    }
+  }
+}
+
+function fillInPersonCourseNameSelect() {
+  const sel = document.getElementById('newInPersonCourseName')
+  if (!sel) return
+  const names = getInPersonCourseNames()
+  const prev = sel.value
+  if (!names.length) {
+    sel.innerHTML = '<option value="">محصول حضوری در کاتالوگ نیست</option>'
+    sel.disabled = true
+    return
+  }
+  sel.disabled = false
+  sel.innerHTML = names.map(n =>
+    `<option value="${escapeAttr(n)}"${n === prev ? ' selected' : ''}>${escapeHtml(n)}</option>`
+  ).join('')
+}
+
+function renderInPersonSessionsList() {
+  const list = document.getElementById('settingsInPersonSessionsList')
+  if (!list) return
+  const sessions = getInPersonSessions().slice().sort((a, b) => {
+    const nb = jalaliToNum(b.sessionDate)
+    const na = jalaliToNum(a.sessionDate)
+    return nb - na
+  })
+  if (!sessions.length) {
+    list.innerHTML = '<div class="settings-empty-detail">هنوز سانسی ثبت نشده</div>'
+    return
+  }
+  list.innerHTML = sessions.map(s => {
+    const linked = countSalesLinkedToInPersonSession(s.id)
+    if (_editingInPersonSessionId === s.id) {
+      const names = getInPersonCourseNames()
+      const nameOpts = names.map(n =>
+        `<option value="${escapeAttr(n)}"${n === s.courseName ? ' selected' : ''}>${escapeHtml(n)}</option>`
+      ).join('')
+      return `
+        <div class="settings-config-row is-editing" style="flex-wrap:wrap;align-items:flex-end;gap:8px;">
+          <select class="form-select" id="editInPersonCourseName" style="flex:1;min-width:140px;">${nameOpts}</select>
+          <input type="text" class="form-input" id="editInPersonSessionDate" value="${escapeAttr(s.sessionDate)}" data-jdp style="width:140px;font-family:'Vazirmatn',sans-serif;">
+          <label class="settings-gift-check" for="editInPersonSessionActive">
+            <input type="checkbox" id="editInPersonSessionActive"${s.active ? ' checked' : ''}>
+            <span>فعال</span>
+          </label>
+          <button type="button" class="btn btn-sm btn-primary" onclick="app.saveInPersonSessionEdit('${escapeAttr(s.id)}')">ذخیره</button>
+          <button type="button" class="btn btn-sm" onclick="app.cancelInPersonSessionEdit()">لغو</button>
+        </div>`
+    }
+    const inactive = s.active ? '' : ' <span class="settings-config-meta">(غیرفعال)</span>'
+    return `
+      <div class="settings-config-row">
+        <span class="settings-config-label">
+          ${escapeHtml(formatInPersonSessionLabel(s))}${inactive}
+          <span class="settings-config-meta" style="display:block;margin-top:2px;">${formatNumber(linked)} فروش متصل</span>
+        </span>
+        <button type="button" class="btn-icon" title="ویرایش" onclick="app.startInPersonSessionEdit('${escapeAttr(s.id)}')">✏️</button>
+        <button type="button" class="btn-icon" title="${linked > 0 ? 'غیرفعال‌سازی' : 'حذف'}" onclick="app.removeInPersonSession('${escapeAttr(s.id)}')" style="color:var(--danger);">🗑</button>
+      </div>`
+  }).join('')
+}
+
+function renderUnassignedInPersonSales() {
+  const list = document.getElementById('settingsUnassignedInPersonSales')
+  if (!list) return
+  const rows = listUnassignedInPersonSales()
+  const sessions = getActiveInPersonSessions()
+  if (!rows.length) {
+    list.innerHTML = '<div class="settings-empty-detail">فروش حضوری بدون سانس نیست</div>'
+    return
+  }
+  if (!sessions.length) {
+    list.innerHTML = '<div class="settings-empty-detail">ابتدا یک سانس فعال تعریف کنید</div>'
+    return
+  }
+  list.innerHTML = rows.map((r, i) => {
+    const matching = sessions.filter(s => s.courseName.toLowerCase() === String(r.productName).toLowerCase())
+    const optsSource = matching.length ? matching : sessions
+    const opts = optsSource.map(s =>
+      `<option value="${escapeAttr(s.id)}">${escapeHtml(formatInPersonSessionLabel(s))}</option>`
+    ).join('')
+    return `
+      <div class="settings-config-row" style="flex-wrap:wrap;gap:8px;align-items:center;">
+        <span class="settings-config-label" style="flex:1;min-width:160px;">
+          ${escapeHtml(r.customerName)}
+          <span class="settings-config-meta" style="display:block;margin-top:2px;">
+            ${escapeHtml(r.productName)} · ${formatNumber(r.price)} ریال · ${escapeHtml(r.status)}
+          </span>
+        </span>
+        <select class="form-select" id="unassignedSessionSelect_${i}" style="min-width:180px;max-width:260px;">${opts}</select>
+        <button type="button" class="btn btn-sm btn-primary" onclick="app.assignUnassignedInPersonSale('${escapeAttr(r.customerId)}', ${r.productIndex}, ${i})">تخصیص</button>
+      </div>`
+  }).join('')
+}
+
+export async function addInPersonSession() {
+  if (!requireMainAdmin()) return
+  const courseName = document.getElementById('newInPersonCourseName')?.value || ''
+  const sessionDate = toEnDigits(document.getElementById('newInPersonSessionDate')?.value || '').trim()
+  try {
+    await upsertInPersonSession({ courseName, sessionDate, active: true })
+    const dateEl = document.getElementById('newInPersonSessionDate')
+    if (dateEl) dateEl.value = ''
+    showToast('سانس اضافه شد')
+    renderInPersonSessionsSettings()
+  } catch (e) {
+    showToast(e.message || 'خطا در ثبت سانس')
+  }
+}
+
+export function startInPersonSessionEdit(id) {
+  if (!requireMainAdmin()) return
+  _editingInPersonSessionId = id
+  renderInPersonSessionsList()
+}
+
+export function cancelInPersonSessionEdit() {
+  _editingInPersonSessionId = null
+  renderInPersonSessionsList()
+}
+
+export async function saveInPersonSessionEdit(id) {
+  if (!requireMainAdmin()) return
+  const courseName = document.getElementById('editInPersonCourseName')?.value || ''
+  const sessionDate = toEnDigits(document.getElementById('editInPersonSessionDate')?.value || '').trim()
+  const active = !!document.getElementById('editInPersonSessionActive')?.checked
+  try {
+    await upsertInPersonSession({ id, courseName, sessionDate, active })
+    _editingInPersonSessionId = null
+    showToast('سانس ذخیره شد')
+    renderInPersonSessionsSettings()
+  } catch (e) {
+    showToast(e.message || 'خطا در ذخیره سانس')
+  }
+}
+
+export async function removeInPersonSession(id) {
+  if (!requireMainAdmin()) return
+  const linked = countSalesLinkedToInPersonSession(id)
+  const list = getInPersonSessions()
+  const session = list.find(s => s.id === id)
+  if (!session) return
+  if (linked > 0) {
+    session.active = false
+    await saveInPersonSessions(list)
+    showToast('سانس فروش متصل دارد؛ غیرفعال شد')
+  } else {
+    await saveInPersonSessions(list.filter(s => s.id !== id))
+    showToast('سانس حذف شد')
+  }
+  _editingInPersonSessionId = null
+  renderInPersonSessionsSettings()
+}
+
+export async function assignUnassignedInPersonSale(customerId, productIndex, rowIndex) {
+  if (!requireMainAdmin()) return
+  const sel = document.getElementById(`unassignedSessionSelect_${rowIndex}`)
+  const sessionId = sel?.value || ''
+  if (!sessionId) {
+    showToast('سانس را انتخاب کنید')
+    return
+  }
+  try {
+    await assignInPersonSessionToSale(customerId, productIndex, sessionId)
+    showToast('تخصیص انجام شد')
+    renderInPersonSessionsSettings()
+  } catch (e) {
+    showToast(e.message || 'خطا در تخصیص')
+  }
 }
 
 export function renderProductCatalogSettings() {

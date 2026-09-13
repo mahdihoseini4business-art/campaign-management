@@ -98,6 +98,7 @@ let data = {
   destinationBanks: [],
   productCatalog: [],
   productBundles: [],
+  inPersonSessions: [],
   platforms: [],
   statuses: [],
   customerCodes: [],
@@ -564,6 +565,7 @@ function applySettingsRows(rows) {
   data.destinationBanks = normalizeDestinationBanks(settings.destination_banks)
   data.productCatalog = normalizeProductCatalog(settings.product_catalog)
   data.productBundles = normalizeProductBundles(settings.product_bundles)
+  data.inPersonSessions = normalizeInPersonSessions(settings.in_person_sessions)
   // Missing keys stay empty/off — do not seed DEFAULT_* for new tenants.
   data.platforms = Array.isArray(settings.platforms) ? settings.platforms : []
   data.statuses = Array.isArray(settings.statuses)
@@ -1114,6 +1116,161 @@ export async function saveProductCatalog(products) {
   data.productCatalog = cleaned
   await saveSetting('product_catalog', data.productCatalog)
   return getProductCatalog()
+}
+
+// ============================================
+// In-person course sessions (برگزاری دوره‌های حضوری)
+// ============================================
+
+function makeInPersonSessionId() {
+  return `ips_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+export function isInPersonProductName(name) {
+  return String(name || '').includes('حضوری')
+}
+
+export function formatInPersonSessionLabel(session) {
+  if (!session) return ''
+  const course = String(session.courseName || '').trim() || '—'
+  const date = String(session.sessionDate || '').trim() || '—'
+  return `${course} — ${date}`
+}
+
+export function normalizeInPersonSession(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const courseName = coerceProductName(raw.courseName || raw.name || '')
+  const sessionDate = String(raw.sessionDate || raw.date || '').trim()
+  if (!courseName || !isInPersonProductName(courseName)) return null
+  if (!sessionDate || sessionDate.split('/').length !== 3) return null
+  const id = String(raw.id || '').trim() || makeInPersonSessionId()
+  return {
+    id,
+    courseName,
+    sessionDate,
+    active: raw.active !== false
+  }
+}
+
+export function normalizeInPersonSessions(raw) {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set()
+  const out = []
+  for (const item of raw) {
+    const s = normalizeInPersonSession(item)
+    if (!s) continue
+    if (seen.has(s.id)) continue
+    seen.add(s.id)
+    out.push(s)
+  }
+  return out
+}
+
+export function getInPersonSessions() {
+  const list = normalizeInPersonSessions(data.inPersonSessions)
+  data.inPersonSessions = list
+  return list.map(s => ({ ...s }))
+}
+
+export function getActiveInPersonSessions() {
+  return getInPersonSessions()
+    .filter(s => s.active)
+    .sort((a, b) => {
+      const nb = Number(String(b.sessionDate).replace(/\D/g, '')) || 0
+      const na = Number(String(a.sessionDate).replace(/\D/g, '')) || 0
+      return nb - na
+    })
+}
+
+export function getInPersonSessionById(id) {
+  const key = String(id || '').trim()
+  if (!key) return null
+  return getInPersonSessions().find(s => s.id === key) || null
+}
+
+/** Sellable / catalog names that include «حضوری». */
+export function getInPersonCourseNames() {
+  const names = getSellableNames().filter(isInPersonProductName)
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b, 'fa'))
+}
+
+export async function saveInPersonSessions(sessions) {
+  const cleaned = normalizeInPersonSessions(sessions)
+  data.inPersonSessions = cleaned
+  await saveSetting('in_person_sessions', cleaned)
+  return getInPersonSessions()
+}
+
+export async function upsertInPersonSession(input) {
+  const next = normalizeInPersonSession({
+    ...input,
+    id: input?.id || makeInPersonSessionId()
+  })
+  if (!next) throw new Error('نام دوره حضوری و تاریخ برگزاری الزامی است')
+  const list = getInPersonSessions()
+  const idx = list.findIndex(s => s.id === next.id)
+  const dup = list.some(s =>
+    s.id !== next.id &&
+    s.courseName.toLowerCase() === next.courseName.toLowerCase() &&
+    s.sessionDate === next.sessionDate
+  )
+  if (dup) throw new Error('این سانس قبلاً ثبت شده')
+  if (idx >= 0) list[idx] = next
+  else list.push(next)
+  await saveInPersonSessions(list)
+  return next
+}
+
+/** Count sale lines linked to a session id. */
+export function countSalesLinkedToInPersonSession(sessionId) {
+  const key = String(sessionId || '').trim()
+  if (!key) return 0
+  let n = 0
+  for (const c of data.customers || []) {
+    for (const p of c.products || []) {
+      if (String(p?.inPersonSessionId || '') === key) n++
+    }
+  }
+  return n
+}
+
+/**
+ * Unassigned in-person sale lines (name includes حضوری, no session id).
+ * @returns {Array<{customerId, customerName, productIndex, productName, price, status}>}
+ */
+export function listUnassignedInPersonSales() {
+  const rows = []
+  for (const c of data.customers || []) {
+    const products = Array.isArray(c.products) ? c.products : []
+    products.forEach((p, productIndex) => {
+      if (!isInPersonProductName(p?.name)) return
+      if (String(p?.inPersonSessionId || '').trim()) return
+      rows.push({
+        customerId: c.id,
+        customerName: c.name || c.id,
+        productIndex,
+        productName: coerceProductName(p.name) || p.name || '—',
+        price: parseFloat(p.price) || 0,
+        status: p.status || '—'
+      })
+    })
+  }
+  return rows
+}
+
+/** Assign an existing sale line to an in-person session (admin settings). */
+export async function assignInPersonSessionToSale(customerId, productIndex, sessionId) {
+  const session = getInPersonSessionById(sessionId)
+  if (!session || !session.active) throw new Error('سانس معتبر نیست')
+  const customer = (data.customers || []).find(c => c.id === customerId)
+  if (!customer) throw new Error('مشتری یافت نشد')
+  const products = Array.isArray(customer.products) ? customer.products : []
+  const product = products[productIndex]
+  if (!product) throw new Error('فروش یافت نشد')
+  if (!isInPersonProductName(product.name)) throw new Error('این فروش حضوری نیست')
+  product.inPersonSessionId = session.id
+  await saveCustomerToDB(customer)
+  return product
 }
 
 // ============================================

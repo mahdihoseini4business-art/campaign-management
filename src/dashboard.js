@@ -1,4 +1,4 @@
-import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages } from './data.js'
+import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages, getActiveInPersonSessions, getInPersonSessionById, formatInPersonSessionLabel } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
 import {
@@ -7,7 +7,7 @@ import {
   normalizePhone, userDisplayName, canViewOrgWideData, jalaliDiffDays, jalaliDatePart,
   getVisibleAdvisorPhones, getStatusLabels, getPlatformLabels, formatPhonesDisplay,
   ensureProductPayments, syncProductStatus, getProductPayments, getPaymentEntryStatus,
-  getApprovedPaid, getProductBalance, isProductCountableInSales, PAYMENT_STATUS,
+  getApprovedPaid, getProductBalance, getCountablePaid, getOperationalBalance, isProductCountableInSales, PAYMENT_STATUS,
   getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin,
   jalaliEndOfDayMs, getCompletedSaleEconomics, resolveProductCostConfig, isDealCancelled,
   getCurrentJalaliMonthInfo, isInJalaliMonth, getPrimaryPhone,
@@ -45,6 +45,12 @@ let presentBasketMetricsCache = {
 }
 const PRODUCT_CHART_TOP_N = 5
 const PRODUCT_CHART_OTHER_LABEL = 'سایر'
+
+/** @type {{ field: string, asc: boolean }} */
+let dashInPersonSort = { field: 'name', asc: true }
+/** Cached rows for current session (for export/sort) */
+let dashInPersonRowsCache = []
+let dashInPersonSelectedId = ''
 
 /** Top N products by value; remaining products roll up into «سایر». */
 function buildTopProductsChartSeries(source, topN = PRODUCT_CHART_TOP_N) {
@@ -1861,6 +1867,12 @@ export async function renderDashboard() {
     console.error('renderDashCharts error:', e)
   }
 
+  try {
+    paintInPersonSessionsCard()
+  } catch (e) {
+    console.error('in-person sessions card error:', e)
+  }
+
   markTabRendered('dashboard', cacheKey)
 }
 
@@ -2703,6 +2715,164 @@ function renderDashTargetsProgress(dateFromNum, dateToNum) {
 
 export function onDashTargetsScopeChange() {
   renderDashTargetsProgress(_lastDashTargetDates.from, _lastDashTargetDates.to)
+}
+
+function collectInPersonSessionRows(sessionId) {
+  const session = getInPersonSessionById(sessionId)
+  if (!session) return []
+  const data = getData()
+  const rows = []
+  for (const customer of data.customers || []) {
+    const products = Array.isArray(customer.products) ? customer.products : []
+    products.forEach((product, productIndex) => {
+      if (String(product?.inPersonSessionId || '') !== sessionId) return
+      ensureProductPayments(product)
+      syncProductStatus(product)
+      const paid = getCountablePaid(product)
+      const balance = getOperationalBalance(product)
+      let otherDebt = 0
+      products.forEach((other, oi) => {
+        if (oi === productIndex) return
+        ensureProductPayments(other)
+        otherDebt += getOperationalBalance(other)
+      })
+      const phone = getPrimaryPhone(customer) || ''
+      rows.push({
+        customerId: customer.id,
+        name: customer.name || customer.platformId || customer.id,
+        phone,
+        courseName: session.courseName || coerceProductName(product.name) || product.name || '—',
+        sessionDate: session.sessionDate || '',
+        price: parseFloat(product.price) || 0,
+        paid,
+        balance,
+        otherDebt,
+        status: product.status || '—'
+      })
+    })
+  }
+  return rows
+}
+
+function dashInPersonSortValue(row, field) {
+  if (field === 'name') return { value: row.name || '', type: 'string' }
+  if (field === 'phone') return { value: row.phone || '', type: 'string' }
+  if (field === 'sessionDate') return { value: row.sessionDate || '', type: 'date' }
+  if (field === 'price') return { value: row.price || 0, type: 'number' }
+  if (field === 'paid') return { value: row.paid || 0, type: 'number' }
+  if (field === 'balance') return { value: row.balance || 0, type: 'number' }
+  if (field === 'otherDebt') return { value: row.otherDebt || 0, type: 'number' }
+  return { value: row.name || '', type: 'string' }
+}
+
+function paintInPersonSessionsCard() {
+  const card = document.getElementById('dashInPersonSessionsCard')
+  if (!card) return
+  if (!hasPermission('in_person_sessions')) {
+    card.style.display = 'none'
+    return
+  }
+  card.style.display = ''
+
+  const select = document.getElementById('dashInPersonSessionSelect')
+  const sessions = getActiveInPersonSessions()
+  if (select) {
+    const prev = dashInPersonSelectedId || select.value
+    if (!sessions.length) {
+      select.innerHTML = '<option value="">سانس فعالی نیست</option>'
+      dashInPersonSelectedId = ''
+    } else {
+      const still = sessions.some(s => s.id === prev)
+      const selected = still ? prev : sessions[0].id
+      dashInPersonSelectedId = selected
+      select.innerHTML = sessions.map(s =>
+        `<option value="${escapeAttr(s.id)}"${s.id === selected ? ' selected' : ''}>${escapeHtml(formatInPersonSessionLabel(s))}</option>`
+      ).join('')
+    }
+  }
+
+  const body = document.getElementById('dashInPersonBody')
+  const summary = document.getElementById('dashInPersonSummary')
+  const exportBtn = document.getElementById('dashInPersonExportBtn')
+  if (!dashInPersonSelectedId) {
+    dashInPersonRowsCache = []
+    if (body) body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);">سانسی انتخاب نشده</td></tr>'
+    if (summary) summary.textContent = ''
+    if (exportBtn) exportBtn.disabled = true
+    return
+  }
+
+  let rows = collectInPersonSessionRows(dashInPersonSelectedId)
+  rows = sortRecords(rows, dashInPersonSort, dashInPersonSortValue)
+  dashInPersonRowsCache = rows
+  syncSortHeaders('#dashInPersonSessionsCard', dashInPersonSort)
+
+  const totalPaid = rows.reduce((s, r) => s + (r.paid || 0), 0)
+  const totalBalance = rows.reduce((s, r) => s + (r.balance || 0), 0)
+  if (summary) {
+    summary.textContent = rows.length
+      ? `${formatNumber(rows.length)} نفر · پرداختی ${formatNumber(totalPaid)} ریال · بدهی دوره ${formatNumber(totalBalance)} ریال`
+      : 'شرکت‌کننده‌ای برای این سانس ثبت نشده'
+  }
+  if (exportBtn) exportBtn.disabled = rows.length === 0
+
+  if (!body) return
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);">ردیفی نیست</td></tr>'
+    return
+  }
+  body.innerHTML = rows.map(r => {
+    const other = r.otherDebt > 0 ? formatNumber(r.otherDebt) : '—'
+    return `<tr class="clickable-row" onclick="app.onCustomerRowClick(event, '${escapeAttr(r.customerId)}')">
+      <td>${escapeHtml(r.name)}</td>
+      <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${escapeHtml(r.phone || '—')}</td>
+      <td>${escapeHtml(r.courseName)}</td>
+      <td style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${escapeHtml(r.sessionDate || '—')}</td>
+      <td style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${formatNumber(r.price)}</td>
+      <td style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${formatNumber(r.paid)}</td>
+      <td style="font-family:'Vazirmatn',sans-serif;direction:ltr;${r.balance > 0 ? 'color:var(--danger);' : ''}">${formatNumber(r.balance)}</td>
+      <td style="font-family:'Vazirmatn',sans-serif;direction:ltr;${r.otherDebt > 0 ? 'color:var(--warning);' : ''}">${other}</td>
+      <td>${escapeHtml(r.status)}</td>
+    </tr>`
+  }).join('')
+}
+
+export function onDashInPersonSessionChange() {
+  const select = document.getElementById('dashInPersonSessionSelect')
+  dashInPersonSelectedId = select?.value || ''
+  paintInPersonSessionsCard()
+}
+
+export function sortDashInPersonHeader(field) {
+  toggleSortField(dashInPersonSort, field)
+  paintInPersonSessionsCard()
+}
+
+export async function exportDashInPersonSession() {
+  if (!hasPermission('in_person_sessions')) {
+    showToast('دسترسی ندارید')
+    return
+  }
+  const session = getInPersonSessionById(dashInPersonSelectedId)
+  if (!session) {
+    showToast('سانس را انتخاب کنید')
+    return
+  }
+  const rows = dashInPersonRowsCache.length
+    ? dashInPersonRowsCache
+    : collectInPersonSessionRows(dashInPersonSelectedId)
+  if (!rows.length) {
+    showToast('ردیفی برای خروجی نیست')
+    return
+  }
+  try {
+    const { exportInPersonSessionXlsx } = await import('./import-export.js')
+    await exportInPersonSessionXlsx(session, rows)
+    showToast('فایل اکسل دانلود شد')
+  } catch (e) {
+    console.error('exportDashInPersonSession error:', e)
+    showToast(e.message || 'خطا در خروجی اکسل')
+  }
 }
 
 function buildMemberTargetBlocks(targets, groupId) {

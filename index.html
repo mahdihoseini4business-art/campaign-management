@@ -230,6 +230,34 @@
           </div>
         </section>
 
+        <!-- سانس‌های حضوری -->
+        <section class="settings-pane" data-settings-pane="in-person-sessions" hidden>
+          <div class="settings-pane-header">
+            <h3>سانس‌های حضوری</h3>
+            <p class="settings-pane-desc">تاریخ‌های برگزاری دوره‌های حضوری را تعریف کنید. فروش‌های با نام حاوی «حضوری» به این سانس‌ها وصل می‌شوند و در داشبورد لیست می‌شوند.</p>
+          </div>
+          <div class="settings-subsection">
+            <h4 class="settings-subsection-title">افزودن سانس</h4>
+            <div class="settings-add-row" style="flex-wrap:wrap;align-items:flex-end;gap:8px;">
+              <div class="form-group" style="margin-bottom:0;min-width:180px;flex:1;">
+                <label for="newInPersonCourseName">نام دوره</label>
+                <select class="form-select" id="newInPersonCourseName"></select>
+              </div>
+              <div class="form-group" style="margin-bottom:0;width:160px;">
+                <label for="newInPersonSessionDate">تاریخ برگزاری</label>
+                <input type="text" class="form-input" id="newInPersonSessionDate" placeholder="مثلاً 1405/06/15" data-jdp style="font-family:'Vazirmatn',sans-serif;">
+              </div>
+              <button type="button" class="btn btn-primary" onclick="app.addInPersonSession()">افزودن</button>
+            </div>
+            <div id="settingsInPersonSessionsList" class="settings-config-list" style="margin-top:12px;"></div>
+          </div>
+          <div class="settings-subsection" style="margin-top:20px;">
+            <h4 class="settings-subsection-title">تخصیص فروش‌های بدون سانس</h4>
+            <p class="settings-pane-desc">فروش‌های حضوری قدیمی که هنوز به سانس وصل نشده‌اند را اینجا تخصیص دهید.</p>
+            <div id="settingsUnassignedInPersonSales" class="settings-config-list"></div>
+          </div>
+        </section>
+
         <!-- تارگت‌های فروش -->
         <section class="settings-pane" data-settings-pane="sales-targets" hidden>
           <div class="settings-pane-header">
@@ -842,6 +870,36 @@
           </select>
         </div>
         <div id="dashTargetsProgress" class="dash-targets-progress"></div>
+      </div>
+      <div class="chart-card" id="dashInPersonSessionsCard" data-perm="in_person_sessions" title="لیست شرکت‌کنندگان هر سانس حضوری بر اساس تاریخ برگزاری">
+        <div class="chart-title-row">
+          <div class="chart-title">سانس‌های حضوری</div>
+          <div class="dash-inperson-controls">
+            <select class="form-select" id="dashInPersonSessionSelect" style="min-width:160px;max-width:220px;" onchange="app.onDashInPersonSessionChange()">
+              <option value="">انتخاب سانس...</option>
+            </select>
+            <button type="button" class="btn btn-sm" id="dashInPersonExportBtn" onclick="app.exportDashInPersonSession()">خروجی اکسل</button>
+          </div>
+        </div>
+        <div class="dash-inperson-summary" id="dashInPersonSummary"></div>
+        <div class="dash-inperson-table-wrap table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th class="sort-th" data-sort-field="name" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortDashInPersonHeader('name')">نام</button></th>
+                <th class="sort-th" data-sort-field="phone" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortDashInPersonHeader('phone')">شماره</button></th>
+                <th>نام دوره</th>
+                <th class="sort-th" data-sort-field="sessionDate" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortDashInPersonHeader('sessionDate')">تاریخ برگزاری</button></th>
+                <th class="sort-th" data-sort-field="price" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortDashInPersonHeader('price')">مبلغ</button></th>
+                <th class="sort-th" data-sort-field="paid" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortDashInPersonHeader('paid')">پرداختی</button></th>
+                <th class="sort-th" data-sort-field="balance" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortDashInPersonHeader('balance')">بدهی دوره</button></th>
+                <th class="sort-th" data-sort-field="otherDebt" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortDashInPersonHeader('otherDebt')">بدهی سایر</button></th>
+                <th>وضعیت</th>
+              </tr>
+            </thead>
+            <tbody id="dashInPersonBody"></tbody>
+          </table>
+        </div>
       </div>
       <div class="chart-card chart-card-wide" title="مقایسه عملکرد فروش کارشناسان بر اساس مبلغ خالص یا ناخالص">
         <div class="chart-title-row">

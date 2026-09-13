@@ -1228,6 +1228,7 @@ export function renderCopyableCell(fullText, { truncate = false, empty = '—' }
 
 export const ALL_PERMISSIONS = {
   dashboard: 'مشاهده داشبورد',
+  in_person_sessions: 'سانس‌های حضوری',
   customers_view: 'مشاهده مشتریان',
   customers_ld: 'مشاهده لیدها (LD)',
   customers_cs: 'مشاهده مشتریان با شماره (CS)',
@@ -1262,7 +1263,7 @@ export const ALL_PERMISSIONS = {
 export const REFUND_PERMISSION_KEYS = ['refunds_view', 'refunds_request', 'refunds_manage']
 
 export const PERMISSION_GROUPS = [
-  { label: 'داشبورد', keys: ['dashboard'] },
+  { label: 'داشبورد', keys: ['dashboard', 'in_person_sessions'] },
   { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_edit_others', 'customers_delete', 'customers_transfer', 'customers_merge', 'customers_import', 'customers_export'] },
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_add_others', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_add_others', 'sales_import', 'sales_export'] },
@@ -1877,6 +1878,7 @@ export function getDefaultPermissions() {
   p.refunds_request = false
   p.refunds_manage = false
   p.matrix_historical_import = false
+  p.in_person_sessions = false
   return p
 }
 

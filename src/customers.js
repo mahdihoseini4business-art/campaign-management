@@ -1,4 +1,4 @@
-import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, invalidateProductSalesCountCache } from './data.js'
+import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, invalidateProductSalesCountCache, isInPersonProductName, getActiveInPersonSessions, formatInPersonSessionLabel, getInPersonSessionById } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
@@ -3470,11 +3470,11 @@ export function toggleClosedProductBlock(el) {
   if (btn) btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true')
 }
 
-function saleFieldHtml(label, controlHtml, { required = false, optional = false, className = '', full = false } = {}) {
+function saleFieldHtml(label, controlHtml, { required = false, optional = false, className = '', full = false, hidden = false } = {}) {
   const req = required ? ' <span class="sale-field-req" aria-hidden="true">*</span>' : ''
   const opt = optional ? ' <span class="sale-field-opt">اختیاری</span>' : ''
   const cls = ['sale-field', full ? 'sale-field--full' : '', className].filter(Boolean).join(' ')
-  return `<div class="${cls}">
+  return `<div class="${cls}"${hidden ? ' hidden' : ''}>
     <label class="sale-field-label">${label}${req}${opt}</label>
     <div class="sale-field-control">${controlHtml}</div>
   </div>`
@@ -3723,6 +3723,28 @@ export async function renderProducts(customerId, users = null) {
           </select>${bundleHint}`
       : `<span class="sale-readonly-value" style="font-weight:600;">${escapeHtml(displayName || '—')}</span>${bundleHint}`
 
+    const isInPerson = isInPersonProductName(displayName)
+    const activeSessions = getActiveInPersonSessions()
+    const matchingSessions = activeSessions.filter(s =>
+      s.courseName.toLowerCase() === String(displayName || '').toLowerCase()
+    )
+    const sessionOpts = (matchingSessions.length ? matchingSessions : activeSessions)
+    const currentSessionId = String(p.inPersonSessionId || '')
+    let sessionControl = ''
+    if (canEdit && !closed) {
+      const optsHtml = sessionOpts.map(s =>
+        `<option value="${escapeAttr(s.id)}"${s.id === currentSessionId ? ' selected' : ''}>${escapeHtml(formatInPersonSessionLabel(s))}</option>`
+      ).join('')
+      sessionControl = `<select class="form-select" data-sale-field="inPersonSessionId">
+            <option value="">انتخاب تاریخ برگزاری...</option>
+            ${optsHtml}
+          </select>`
+    } else if (currentSessionId) {
+      const sess = getInPersonSessionById(currentSessionId)
+      const label = sess ? formatInPersonSessionLabel(sess) : currentSessionId
+      sessionControl = `<span class="sale-readonly-value">${escapeHtml(label)}</span>`
+    }
+
     const isPhysical = !!displayName && isPhysicalSaleLine(p)
     let shippingFields = ''
     if (canEdit && !closed) {
@@ -3790,6 +3812,14 @@ export async function renderProducts(customerId, users = null) {
             ${saleFieldHtml('محصول', nameControl, { required: true, full: true, className: 'sale-field--name' })}
             ${saleFieldHtml('قیمت کل (ریال)', priceControl, { required: true })}
             ${saleFieldHtml('تاریخ تسویه', settlementControl, { optional: true, className: 'sale-field--settlement' })}
+            ${sessionControl
+              ? saleFieldHtml('تاریخ برگزاری', sessionControl, {
+                required: true,
+                full: true,
+                className: 'sale-field--inperson-session',
+                hidden: !(isInPerson || currentSessionId)
+              })
+              : ''}
           </div>
           ${shippingFields}
           ${summaryHtml}
@@ -3948,14 +3978,17 @@ function readSaleProductDraft(blockEl) {
   const settlementEl = blockEl.querySelector('[data-sale-field="settlementDate"]')
   const addressEl = blockEl.querySelector('[data-sale-field="shippingAddress"]')
   const postalEl = blockEl.querySelector('[data-sale-field="shippingPostalCode"]')
+  const sessionEl = blockEl.querySelector('[data-sale-field="inPersonSessionId"]')
   return {
     name: nameEl ? nameEl.value : null,
     price: priceEl ? unformatSaleNumber(priceEl) : null,
     settlementDate: settlementEl ? String(settlementEl.value || '').trim() : null,
     shippingAddress: addressEl ? String(addressEl.value || '').trim().replace(/\s+/g, ' ') : null,
     shippingPostalCode: postalEl ? toEnDigits(String(postalEl.value || '')).trim().replace(/\s+/g, '') : null,
+    inPersonSessionId: sessionEl ? String(sessionEl.value || '').trim() : null,
     priceEl,
-    nameEl
+    nameEl,
+    sessionEl
   }
 }
 
@@ -4009,6 +4042,13 @@ function applySaleProductDraft(product, draft, { lockPrice = false } = {}) {
     product.shippingAddress = ''
     product.shippingPostalCode = ''
   }
+  if (isInPersonProductName(product.name)) {
+    if (draft.inPersonSessionId != null) {
+      product.inPersonSessionId = draft.inPersonSessionId || ''
+    }
+  } else {
+    delete product.inPersonSessionId
+  }
 }
 
 function syncSaleShippingToCustomer(customer, product) {
@@ -4035,6 +4075,24 @@ export function onSaleProductNameChange(selectEl) {
       hint.hidden = true
       hint.textContent = ''
     }
+  }
+  const sessionField = block.querySelector('.sale-field--inperson-session')
+  const sessionSelect = block.querySelector('[data-sale-field="inPersonSessionId"]')
+  const inPerson = isInPersonProductName(name)
+  if (sessionField) sessionField.hidden = !inPerson
+  if (sessionSelect && inPerson) {
+    const activeSessions = getActiveInPersonSessions()
+    const matching = activeSessions.filter(s =>
+      s.courseName.toLowerCase() === String(coerceProductName(name) || name).toLowerCase()
+    )
+    const opts = matching.length ? matching : activeSessions
+    const prev = sessionSelect.value
+    sessionSelect.innerHTML = `<option value="">انتخاب تاریخ برگزاری...</option>` +
+      opts.map(s =>
+        `<option value="${escapeAttr(s.id)}"${s.id === prev ? ' selected' : ''}>${escapeHtml(formatInPersonSessionLabel(s))}</option>`
+      ).join('')
+  } else if (sessionSelect && !inPerson) {
+    sessionSelect.value = ''
   }
   updateSaleGiftMode(block)
 }
@@ -4139,6 +4197,10 @@ export async function commitGiftSale(customerId, productIndex) {
     showToast(`ثبت هدیه برای «${name}» مجاز نیست`)
     updateSaleGiftMode(block)
     return
+  }
+  if (isInPersonProductName(name) && !draft.inPersonSessionId) {
+    markSaleFieldInvalid(draft.sessionEl, true)
+    hasError = true
   }
   if (hasError) {
     showToast('فیلدهای الزامی را کامل کنید')
@@ -4339,6 +4401,11 @@ export async function commitSaleProductDetails(customerId, productIndex) {
       showToast('محصول را انتخاب کنید')
       return
     }
+    if (isInPersonProductName(draft.name) && !draft.inPersonSessionId) {
+      markSaleFieldInvalid(draft.sessionEl, true)
+      showToast('تاریخ برگزاری دوره را انتخاب کنید')
+      return
+    }
     applySaleProductDraft(product, draft, { lockPrice: false })
     syncSaleShippingToCustomer(customer, product)
     syncProductStatus(product)
@@ -4418,6 +4485,12 @@ export async function commitSalePayment(customerId, productIndex, paymentIndex) 
   if (productDraft.nameEl && !String(productDraft.name || '').trim()) {
     markSaleFieldInvalid(productDraft.nameEl, true)
     hasError = true
+  }
+  if (isInPersonProductName(productDraft.name || product.name)) {
+    if (!productDraft.inPersonSessionId) {
+      markSaleFieldInvalid(productDraft.sessionEl, true)
+      hasError = true
+    }
   }
 
   const amountNum = parseFloat(paymentDraft.amount) || 0

@@ -537,6 +537,35 @@ export async function exportTabCSV(tab) {
   showToast(`${rows.length} ردیف در CSV ذخیره شد${filterHint}`)
 }
 
+/** Excel export for one in-person course session roster. */
+export async function exportInPersonSessionXlsx(session, rows) {
+  const XLSX = await ensureXLSX()
+  const headers = [
+    'نام', 'شماره', 'نام دوره', 'تاریخ برگزاری',
+    'مبلغ فاکتور', 'پرداختی', 'بدهی دوره', 'بدهی سایر', 'وضعیت', 'شناسه مشتری'
+  ]
+  const aoaRows = (rows || []).map(r => [
+    r.name || '',
+    r.phone || '',
+    r.courseName || '',
+    r.sessionDate || '',
+    r.price || 0,
+    r.paid || 0,
+    r.balance || 0,
+    r.otherDebt || 0,
+    r.status || '',
+    r.customerId || ''
+  ])
+  const ws = sheetFromAoa(XLSX, headers, aoaRows)
+  forceSheetTextColumns(XLSX, ws, aoaRows.length, [1, 3, 9])
+  const wb = XLSX.utils.book_new()
+  const sheetName = String(session?.courseName || 'سانس').slice(0, 28) || 'سانس'
+  XLSX.utils.book_append_sheet(wb, ws, sheetName)
+  const course = String(session?.courseName || 'حضوری').replace(/[\\/:*?"<>|]/g, '_')
+  const date = String(session?.sessionDate || '').replace(/\//g, '-')
+  XLSX.writeFile(wb, `سانس_حضوری_${course}_${date || 'export'}.xlsx`)
+}
+
 export async function exportTabXLSX(tab) {
   if (!assertImportExport()) return
   const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'products_matrix' }[tab]
