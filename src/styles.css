@@ -5502,6 +5502,87 @@
     font-weight: 600;
   }
 
+  .ips-add-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .ips-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .ips-toolbar .form-input {
+    flex: 1;
+    min-width: 140px;
+  }
+
+  .ips-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .ips-scroll-list {
+    max-height: 220px;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 2px;
+  }
+
+  .ips-scroll-list--tall {
+    max-height: 320px;
+  }
+
+  .ips-row {
+    align-items: flex-start;
+  }
+
+  .ips-row-title {
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .ips-row-phone {
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .ips-assign-row {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .ips-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 1px 7px;
+    border-radius: 999px;
+    line-height: 1.4;
+  }
+
+  .ips-badge--active {
+    background: color-mix(in srgb, var(--success) 16%, transparent);
+    color: var(--success);
+  }
+
+  .ips-badge--inactive {
+    background: color-mix(in srgb, var(--text-muted) 16%, transparent);
+    color: var(--text-muted);
+  }
+
   .settings-bundle-form {
     display: flex;
     flex-direction: column;

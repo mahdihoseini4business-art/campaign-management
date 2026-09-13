@@ -234,27 +234,40 @@
         <section class="settings-pane" data-settings-pane="in-person-sessions" hidden>
           <div class="settings-pane-header">
             <h3>سانس‌های حضوری</h3>
-            <p class="settings-pane-desc">تاریخ‌های برگزاری دوره‌های حضوری را تعریف کنید. فروش‌های با نام حاوی «حضوری» به این سانس‌ها وصل می‌شوند و در داشبورد لیست می‌شوند.</p>
+            <p class="settings-pane-desc">تاریخ برگزاری دوره‌های حضوری را تعریف کنید، سپس فروش‌های بدون سانس را به همان دوره تخصیص دهید.</p>
           </div>
+
           <div class="settings-subsection">
-            <h4 class="settings-subsection-title">افزودن سانس</h4>
-            <div class="settings-add-row" style="flex-wrap:wrap;align-items:flex-end;gap:8px;">
+            <h4 class="settings-subsection-title">سانس‌های تعریف‌شده</h4>
+            <div class="ips-add-form">
               <div class="form-group" style="margin-bottom:0;min-width:180px;flex:1;">
                 <label for="newInPersonCourseName">نام دوره</label>
-                <select class="form-select" id="newInPersonCourseName"></select>
+                <select class="form-select" id="newInPersonCourseName" onchange="app.onInPersonAssignCourseFilterFromAdd()"></select>
               </div>
               <div class="form-group" style="margin-bottom:0;width:160px;">
                 <label for="newInPersonSessionDate">تاریخ برگزاری</label>
                 <input type="text" class="form-input" id="newInPersonSessionDate" placeholder="مثلاً 1405/06/15" data-jdp style="font-family:'Vazirmatn',sans-serif;">
               </div>
-              <button type="button" class="btn btn-primary" onclick="app.addInPersonSession()">افزودن</button>
+              <button type="button" class="btn btn-primary" onclick="app.addInPersonSession()">افزودن سانس</button>
             </div>
-            <div id="settingsInPersonSessionsList" class="settings-config-list" style="margin-top:12px;"></div>
+            <div class="ips-toolbar" style="margin-top:12px;">
+              <input type="search" class="form-input" id="settingsInPersonSessionsSearch" placeholder="جستجوی سانس…" oninput="app.filterInPersonSessionsList()" autocomplete="off">
+              <span class="ips-count" id="settingsInPersonSessionsCount"></span>
+            </div>
+            <div id="settingsInPersonSessionsList" class="settings-config-list ips-scroll-list"></div>
           </div>
+
           <div class="settings-subsection" style="margin-top:20px;">
             <h4 class="settings-subsection-title">تخصیص فروش‌های بدون سانس</h4>
-            <p class="settings-pane-desc">فروش‌های حضوری قدیمی که هنوز به سانس وصل نشده‌اند را اینجا تخصیص دهید.</p>
-            <div id="settingsUnassignedInPersonSales" class="settings-config-list"></div>
+            <p class="settings-pane-desc">فروش‌های حضوری که هنوز تاریخ برگزاری ندارند. با انتخاب دوره فقط همان دوره نمایش داده می‌شود.</p>
+            <div class="ips-toolbar">
+              <select class="form-select" id="settingsUnassignedCourseFilter" onchange="app.filterUnassignedInPersonSales()" style="min-width:160px;max-width:220px;">
+                <option value="">همه دوره‌های حضوری</option>
+              </select>
+              <input type="search" class="form-input" id="settingsUnassignedSalesSearch" placeholder="جستجوی نام، شماره، محصول…" oninput="app.filterUnassignedInPersonSales()" autocomplete="off" style="flex:1;min-width:160px;">
+              <span class="ips-count" id="settingsUnassignedSalesCount"></span>
+            </div>
+            <div id="settingsUnassignedInPersonSales" class="settings-config-list ips-scroll-list ips-scroll-list--tall"></div>
           </div>
         </section>
 

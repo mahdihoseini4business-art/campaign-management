@@ -1236,18 +1236,21 @@ export function countSalesLinkedToInPersonSession(sessionId) {
 
 /**
  * Unassigned in-person sale lines (name includes حضوری, no session id).
- * @returns {Array<{customerId, customerName, productIndex, productName, price, status}>}
+ * @returns {Array<{customerId, customerName, phone, productIndex, productName, price, status}>}
  */
 export function listUnassignedInPersonSales() {
   const rows = []
   for (const c of data.customers || []) {
     const products = Array.isArray(c.products) ? c.products : []
+    const phones = Array.isArray(c.phones) ? c.phones.join(' ') : String(c.phone || '')
     products.forEach((p, productIndex) => {
       if (!isInPersonProductName(p?.name)) return
       if (String(p?.inPersonSessionId || '').trim()) return
       rows.push({
         customerId: c.id,
         customerName: c.name || c.id,
+        phone: phones,
+        platformId: c.platformId || '',
         productIndex,
         productName: coerceProductName(p.name) || p.name || '—',
         price: parseFloat(p.price) || 0,

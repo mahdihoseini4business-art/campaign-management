@@ -1667,16 +1667,16 @@ export function renderProductsSettingsPane() {
 }
 
 let _editingInPersonSessionId = null
+/** @type {Array<{customerId:string,customerName:string,phone?:string,platformId?:string,productIndex:number,productName:string,price:number,status:string}>} */
+let _unassignedInPersonSalesCache = []
 
 export function renderInPersonSessionsSettings() {
   fillInPersonCourseNameSelect()
+  fillUnassignedCourseFilter()
   renderInPersonSessionsList()
   renderUnassignedInPersonSales()
   if (window.jalaliDatepicker) {
-    const dateEl = document.getElementById('newInPersonSessionDate')
-    if (dateEl) {
-      try { window.jalaliDatepicker.startWatch?.({ minDate: 'attr' }) } catch (_) { /* ignore */ }
-    }
+    try { window.jalaliDatepicker.startWatch?.({ time: false, zIndex: 12000 }) } catch (_) { /* ignore */ }
   }
 }
 
@@ -1696,16 +1696,41 @@ function fillInPersonCourseNameSelect() {
   ).join('')
 }
 
+function fillUnassignedCourseFilter() {
+  const sel = document.getElementById('settingsUnassignedCourseFilter')
+  if (!sel) return
+  const names = getInPersonCourseNames()
+  const fromSales = [...new Set(listUnassignedInPersonSales().map(r => r.productName).filter(Boolean))]
+  const all = [...new Set([...names, ...fromSales])].sort((a, b) => a.localeCompare(b, 'fa'))
+  const prev = sel.value
+  sel.innerHTML = `<option value="">همه دوره‌های حضوری</option>` +
+    all.map(n => `<option value="${escapeAttr(n)}"${n === prev ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('')
+}
+
 function renderInPersonSessionsList() {
   const list = document.getElementById('settingsInPersonSessionsList')
+  const countEl = document.getElementById('settingsInPersonSessionsCount')
   if (!list) return
-  const sessions = getInPersonSessions().slice().sort((a, b) => {
+  const q = toEnDigits(document.getElementById('settingsInPersonSessionsSearch')?.value || '').trim().toLowerCase()
+  let sessions = getInPersonSessions().slice().sort((a, b) => {
     const nb = jalaliToNum(b.sessionDate)
     const na = jalaliToNum(a.sessionDate)
     return nb - na
   })
+  if (q) {
+    sessions = sessions.filter(s => {
+      const hay = `${s.courseName} ${s.sessionDate} ${formatInPersonSessionLabel(s)}`.toLowerCase()
+      return hay.includes(q)
+    })
+  }
+  if (countEl) {
+    const total = getInPersonSessions().length
+    countEl.textContent = q && sessions.length !== total
+      ? `${formatNumber(sessions.length)} از ${formatNumber(total)}`
+      : `${formatNumber(total)} سانس`
+  }
   if (!sessions.length) {
-    list.innerHTML = '<div class="settings-empty-detail">هنوز سانسی ثبت نشده</div>'
+    list.innerHTML = `<div class="settings-empty-detail">${q ? 'سانسی با این جستجو پیدا نشد' : 'هنوز سانسی ثبت نشده — بالا یک دوره و تاریخ اضافه کنید'}</div>`
     return
   }
   list.innerHTML = sessions.map(s => {
@@ -1716,7 +1741,7 @@ function renderInPersonSessionsList() {
         `<option value="${escapeAttr(n)}"${n === s.courseName ? ' selected' : ''}>${escapeHtml(n)}</option>`
       ).join('')
       return `
-        <div class="settings-config-row is-editing" style="flex-wrap:wrap;align-items:flex-end;gap:8px;">
+        <div class="settings-config-row ips-row is-editing" style="flex-wrap:wrap;align-items:flex-end;gap:8px;">
           <select class="form-select" id="editInPersonCourseName" style="flex:1;min-width:140px;">${nameOpts}</select>
           <input type="text" class="form-input" id="editInPersonSessionDate" value="${escapeAttr(s.sessionDate)}" data-jdp style="width:140px;font-family:'Vazirmatn',sans-serif;">
           <label class="settings-gift-check" for="editInPersonSessionActive">
@@ -1727,12 +1752,17 @@ function renderInPersonSessionsList() {
           <button type="button" class="btn btn-sm" onclick="app.cancelInPersonSessionEdit()">لغو</button>
         </div>`
     }
-    const inactive = s.active ? '' : ' <span class="settings-config-meta">(غیرفعال)</span>'
+    const badge = s.active
+      ? '<span class="ips-badge ips-badge--active">فعال</span>'
+      : '<span class="ips-badge ips-badge--inactive">غیرفعال</span>'
     return `
-      <div class="settings-config-row">
+      <div class="settings-config-row ips-row">
         <span class="settings-config-label">
-          ${escapeHtml(formatInPersonSessionLabel(s))}${inactive}
-          <span class="settings-config-meta" style="display:block;margin-top:2px;">${formatNumber(linked)} فروش متصل</span>
+          <span class="ips-row-title">${escapeHtml(s.courseName)} ${badge}</span>
+          <span class="settings-config-meta" style="display:block;margin-top:2px;">
+            برگزاری: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${escapeHtml(s.sessionDate)}</b>
+            · ${formatNumber(linked)} فروش متصل
+          </span>
         </span>
         <button type="button" class="btn-icon" title="ویرایش" onclick="app.startInPersonSessionEdit('${escapeAttr(s.id)}')">✏️</button>
         <button type="button" class="btn-icon" title="${linked > 0 ? 'غیرفعال‌سازی' : 'حذف'}" onclick="app.removeInPersonSession('${escapeAttr(s.id)}')" style="color:var(--danger);">🗑</button>
@@ -1740,37 +1770,97 @@ function renderInPersonSessionsList() {
   }).join('')
 }
 
+export function filterInPersonSessionsList() {
+  renderInPersonSessionsList()
+}
+
 function renderUnassignedInPersonSales() {
   const list = document.getElementById('settingsUnassignedInPersonSales')
+  const countEl = document.getElementById('settingsUnassignedSalesCount')
   if (!list) return
-  const rows = listUnassignedInPersonSales()
+
+  _unassignedInPersonSalesCache = listUnassignedInPersonSales()
   const sessions = getActiveInPersonSessions()
-  if (!rows.length) {
-    list.innerHTML = '<div class="settings-empty-detail">فروش حضوری بدون سانس نیست</div>'
+  const courseFilter = document.getElementById('settingsUnassignedCourseFilter')?.value || ''
+  const q = toEnDigits(document.getElementById('settingsUnassignedSalesSearch')?.value || '').trim().toLowerCase()
+
+  let rows = _unassignedInPersonSalesCache
+  if (courseFilter) {
+    const key = courseFilter.toLowerCase()
+    rows = rows.filter(r => String(r.productName || '').toLowerCase() === key)
+  }
+  if (q) {
+    rows = rows.filter(r => {
+      const hay = [
+        r.customerName, r.phone, r.platformId, r.productName, r.status, r.customerId
+      ].map(v => toEnDigits(String(v || '')).toLowerCase()).join(' ')
+      return hay.includes(q)
+    })
+  }
+
+  if (countEl) {
+    const total = _unassignedInPersonSalesCache.length
+    countEl.textContent = (courseFilter || q) && rows.length !== total
+      ? `${formatNumber(rows.length)} از ${formatNumber(total)}`
+      : `${formatNumber(total)} فروش`
+  }
+
+  if (!_unassignedInPersonSalesCache.length) {
+    list.innerHTML = '<div class="settings-empty-detail">همه فروش‌های حضوری سانس دارند ✅</div>'
     return
   }
   if (!sessions.length) {
-    list.innerHTML = '<div class="settings-empty-detail">ابتدا یک سانس فعال تعریف کنید</div>'
+    list.innerHTML = '<div class="settings-empty-detail">ابتدا یک سانس فعال برای دوره تعریف کنید، بعد تخصیص دهید</div>'
     return
   }
-  list.innerHTML = rows.map((r, i) => {
+  if (!rows.length) {
+    list.innerHTML = `<div class="settings-empty-detail">${courseFilter || q ? 'با این فیلتر/جستجو موردی نیست' : 'موردی نیست'}</div>`
+    return
+  }
+
+  list.innerHTML = rows.map((r) => {
     const matching = sessions.filter(s => s.courseName.toLowerCase() === String(r.productName).toLowerCase())
     const optsSource = matching.length ? matching : sessions
     const opts = optsSource.map(s =>
       `<option value="${escapeAttr(s.id)}">${escapeHtml(formatInPersonSessionLabel(s))}</option>`
     ).join('')
+    const rowKey = `${escapeAttr(r.customerId)}_${r.productIndex}`
+    const phoneHint = r.phone
+      ? `<span class="ips-row-phone" style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${escapeHtml(String(r.phone).trim().split(/\s+/)[0] || '')}</span>`
+      : ''
     return `
-      <div class="settings-config-row" style="flex-wrap:wrap;gap:8px;align-items:center;">
+      <div class="settings-config-row ips-row ips-assign-row" data-unassigned-key="${rowKey}">
         <span class="settings-config-label" style="flex:1;min-width:160px;">
-          ${escapeHtml(r.customerName)}
+          <span class="ips-row-title">${escapeHtml(r.customerName)} ${phoneHint}</span>
           <span class="settings-config-meta" style="display:block;margin-top:2px;">
             ${escapeHtml(r.productName)} · ${formatNumber(r.price)} ریال · ${escapeHtml(r.status)}
           </span>
         </span>
-        <select class="form-select" id="unassignedSessionSelect_${i}" style="min-width:180px;max-width:260px;">${opts}</select>
-        <button type="button" class="btn btn-sm btn-primary" onclick="app.assignUnassignedInPersonSale('${escapeAttr(r.customerId)}', ${r.productIndex}, ${i})">تخصیص</button>
+        <select class="form-select ips-assign-select" data-unassigned-select="${rowKey}" style="min-width:180px;max-width:260px;">${opts}</select>
+        <button type="button" class="btn btn-sm btn-primary" onclick="app.assignUnassignedInPersonSale('${escapeAttr(r.customerId)}', ${r.productIndex}, '${rowKey}')">تخصیص</button>
       </div>`
   }).join('')
+}
+
+export function filterUnassignedInPersonSales() {
+  renderUnassignedInPersonSales()
+}
+
+/** When picking a course to add a session, also filter the assignment list to that course. */
+export function onInPersonAssignCourseFilterFromAdd() {
+  const course = document.getElementById('newInPersonCourseName')?.value || ''
+  const filter = document.getElementById('settingsUnassignedCourseFilter')
+  if (filter && course) {
+    // Ensure option exists
+    if (![...filter.options].some(o => o.value === course)) {
+      const opt = document.createElement('option')
+      opt.value = course
+      opt.textContent = course
+      filter.appendChild(opt)
+    }
+    filter.value = course
+  }
+  renderUnassignedInPersonSales()
 }
 
 export async function addInPersonSession() {
@@ -1782,6 +1872,8 @@ export async function addInPersonSession() {
     const dateEl = document.getElementById('newInPersonSessionDate')
     if (dateEl) dateEl.value = ''
     showToast('سانس اضافه شد')
+    const filter = document.getElementById('settingsUnassignedCourseFilter')
+    if (filter && courseName) filter.value = courseName
     renderInPersonSessionsSettings()
   } catch (e) {
     showToast(e.message || 'خطا در ثبت سانس')
@@ -1832,9 +1924,9 @@ export async function removeInPersonSession(id) {
   renderInPersonSessionsSettings()
 }
 
-export async function assignUnassignedInPersonSale(customerId, productIndex, rowIndex) {
+export async function assignUnassignedInPersonSale(customerId, productIndex, rowKey) {
   if (!requireMainAdmin()) return
-  const sel = document.getElementById(`unassignedSessionSelect_${rowIndex}`)
+  const sel = document.querySelector(`select[data-unassigned-select="${rowKey.replace(/"/g, '')}"]`)
   const sessionId = sel?.value || ''
   if (!sessionId) {
     showToast('سانس را انتخاب کنید')
@@ -1843,7 +1935,16 @@ export async function assignUnassignedInPersonSale(customerId, productIndex, row
   try {
     await assignInPersonSessionToSale(customerId, productIndex, sessionId)
     showToast('تخصیص انجام شد')
+    // Keep current filters after refresh
+    const course = document.getElementById('settingsUnassignedCourseFilter')?.value || ''
+    const search = document.getElementById('settingsUnassignedSalesSearch')?.value || ''
     renderInPersonSessionsSettings()
+    const filterEl = document.getElementById('settingsUnassignedCourseFilter')
+    const searchEl = document.getElementById('settingsUnassignedSalesSearch')
+    if (filterEl && course) filterEl.value = course
+    if (searchEl) searchEl.value = search
+    renderUnassignedInPersonSales()
+    renderInPersonSessionsList()
   } catch (e) {
     showToast(e.message || 'خطا در تخصیص')
   }
