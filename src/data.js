@@ -5,6 +5,11 @@
 import { supabase } from './supabase.js'
 import { invalidateDerivedCache } from './derived-cache.js'
 import { getStoredTenantId } from './tenant.js'
+import {
+  isOfflineApp,
+  readCoreSnapshot,
+  writeCoreSnapshot
+} from './data-cache.js'
 
 const LOCAL_WRITE_SUPPRESS_MS = 2000
 let localWriteUntil = 0
@@ -88,27 +93,31 @@ function normalizeCustomerAddressesLocal(source) {
   return out
 }
 
-let data = {
-  customers: [],
-  followups: [],
-  ownershipTransfers: [],
-  ownershipTransferAcks: [],
-  refunds: [],
-  convertedCount: 0,
-  destinationBanks: [],
-  productCatalog: [],
-  productBundles: [],
-  inPersonSessions: [],
-  platforms: [],
-  statuses: [],
-  customerCodes: [],
-  salesTargets: [],
-  salesTargetDeadlineUrgency: null,
-  saleToastEnabled: false,
-  dmChatEnabled: false,
-  requireFollowupOnCreate: false,
-  smsPanel: null
+function emptyCoreData() {
+  return {
+    customers: [],
+    followups: [],
+    ownershipTransfers: [],
+    ownershipTransferAcks: [],
+    refunds: [],
+    convertedCount: 0,
+    destinationBanks: [],
+    productCatalog: [],
+    productBundles: [],
+    inPersonSessions: [],
+    platforms: [],
+    statuses: [],
+    customerCodes: [],
+    salesTargets: [],
+    salesTargetDeadlineUrgency: null,
+    saleToastEnabled: false,
+    dmChatEnabled: false,
+    requireFollowupOnCreate: false,
+    smsPanel: null
+  }
 }
+
+let data = emptyCoreData()
 
 /** Placeholders for SMS settings form — not auto-persisted for new tenants. */
 export const DEFAULT_SMS_PANEL = {
@@ -455,14 +464,118 @@ export function removeFollowupFromCache(id) {
 /** PostgREST/Supabase silently caps each response at 1000 rows by default. */
 const SUPABASE_PAGE_SIZE = 1000
 
+function emptySyncMeta() {
+  return {
+    customersAt: null,
+    followupsAt: null,
+    refundsAt: null,
+    transfersAt: null,
+    acksAt: null,
+    supportsUpdatedAt: null // null unknown | true | false
+  }
+}
+
 /** Watermarks for incremental sync (ISO strings). */
-let syncMeta = {
-  customersAt: null,
-  followupsAt: null,
-  refundsAt: null,
-  transfersAt: null,
-  acksAt: null,
-  supportsUpdatedAt: null // null unknown | true | false
+let syncMeta = emptySyncMeta()
+
+/** @type {{ tenantId: string, userPhone: string, permSig: string } | null} */
+let cacheIdentity = null
+const PERSIST_DEBOUNCE_MS = 1500
+let persistTimer = null
+
+export function setCoreCacheIdentity(identity) {
+  cacheIdentity = identity && identity.tenantId && identity.userPhone
+    ? {
+        tenantId: String(identity.tenantId),
+        userPhone: String(identity.userPhone),
+        permSig: identity.permSig || ''
+      }
+    : null
+}
+
+export function getSyncMeta() {
+  return { ...syncMeta }
+}
+
+function sanitizePayloadForCache(src) {
+  const copy = typeof structuredClone === 'function'
+    ? structuredClone(src)
+    : JSON.parse(JSON.stringify(src))
+  if (copy.smsPanel && typeof copy.smsPanel === 'object') {
+    copy.smsPanel = { ...copy.smsPanel, password: '' }
+  }
+  return copy
+}
+
+async function persistCoreCacheNow() {
+  if (isOfflineApp() || !cacheIdentity?.tenantId || !cacheIdentity?.userPhone) return
+  try {
+    await writeCoreSnapshot({
+      tenantId: cacheIdentity.tenantId,
+      userPhone: cacheIdentity.userPhone,
+      permSig: cacheIdentity.permSig,
+      syncMeta: { ...syncMeta },
+      payload: sanitizePayloadForCache(data)
+    })
+  } catch (e) {
+    console.warn('persist core cache', e)
+  }
+}
+
+export function schedulePersistCoreCache() {
+  if (isOfflineApp() || !cacheIdentity) return
+  if (persistTimer) clearTimeout(persistTimer)
+  persistTimer = setTimeout(() => {
+    persistTimer = null
+    persistCoreCacheNow()
+  }, PERSIST_DEBOUNCE_MS)
+}
+
+export function resetCoreData() {
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
+  cacheIdentity = null
+  const next = emptyCoreData()
+  for (const key of Object.keys(next)) data[key] = next[key]
+  syncMeta = emptySyncMeta()
+  invalidateProductSalesCountCache()
+  invalidateDerivedCache('all')
+}
+
+export function hydrateCoreData(snapshot) {
+  const payload = snapshot?.payload
+  if (!payload || typeof payload !== 'object') return false
+  const defaults = emptyCoreData()
+  for (const key of Object.keys(defaults)) {
+    data[key] = payload[key] !== undefined ? payload[key] : defaults[key]
+  }
+  syncMeta = {
+    ...emptySyncMeta(),
+    ...(snapshot.syncMeta && typeof snapshot.syncMeta === 'object' ? snapshot.syncMeta : {})
+  }
+  invalidateProductSalesCountCache()
+  invalidateDerivedCache('all')
+  try { injectDynamicStyles() } catch (e) {
+    console.warn('injectDynamicStyles after hydrate', e)
+  }
+  return true
+}
+
+/**
+ * Bind cache identity and hydrate RAM from IndexedDB when the snapshot matches.
+ * @returns {Promise<boolean>}
+ */
+export async function tryHydrateFromCoreCache({ tenantId, userPhone, permSig }) {
+  setCoreCacheIdentity({ tenantId, userPhone, permSig })
+  if (isOfflineApp() || !tenantId || !userPhone) return false
+  const snapshot = await readCoreSnapshot({ tenantId, userPhone, permSig })
+  if (!snapshot) return false
+  if (!snapshot.syncMeta?.customersAt || snapshot.syncMeta.supportsUpdatedAt === false) return false
+  if (!hydrateCoreData(snapshot)) return false
+  dataLoadState = { status: 'ready', error: null }
+  return true
 }
 
 function maxIsoTimestamp(...values) {
@@ -739,6 +852,7 @@ async function loadDataInner() {
     acks: acksData.data
   })
 
+  schedulePersistCoreCache()
   return data
 }
 
@@ -887,6 +1001,7 @@ export async function syncDataIncremental() {
   bumpWatermark('transfersAt', maxUpdatedAtFromRows(transfersRes.data, 'updated_at', 'created_at'))
   bumpWatermark('acksAt', maxUpdatedAtFromRows(acksRes.data, 'updated_at', 'seen_at'))
   syncMeta.supportsUpdatedAt = true
+  schedulePersistCoreCache()
 
   return {
     mode: 'incremental',
@@ -926,6 +1041,7 @@ export async function reconcileDeletedRows() {
   } else if (refundsRes.error && /refunds|does not exist|relation/i.test(refundsRes.error.message || '')) {
     // ignore missing table
   }
+  schedulePersistCoreCache()
 }
 
 /**

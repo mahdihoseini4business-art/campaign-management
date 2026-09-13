@@ -1,6 +1,8 @@
 import './styles.css'
-import { toEnDigits, initDigitConversion, hasPermission, hasAnyRefundPermission, showToast, escapeAttr, toggleToolbarActions, closeAllToolbarActions, initToolbarActionsMenus, copyToClipboard } from './utils.js'
-import { loadData, backfillAdvisorPhones, cleanupConversionOrphans } from './data.js'
+import { toEnDigits, initDigitConversion, hasPermission, hasAnyRefundPermission, showToast, escapeAttr, toggleToolbarActions, closeAllToolbarActions, initToolbarActionsMenus, copyToClipboard, normalizePhone } from './utils.js'
+import { loadData, backfillAdvisorPhones, cleanupConversionOrphans, tryHydrateFromCoreCache, syncCoreData } from './data.js'
+import { getStoredTenantId } from './tenant.js'
+import { buildPermSig } from './data-cache.js'
 import { doLogin, doLogout, checkSession, applyPermissions, openSettingsModal as openSettingsModalBase, closeSettingsModal, addUser, deleteUser, startEditUserInfo, cancelEditUserInfo, saveEditUserInfo, saveUserPermissions, togglePermCheckbox, togglePermGroup, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, selectSettingsUser, filterSettingsUsers, backToUsersList, markPermissionsDirty, switchSettingsSection as switchSettingsSectionBase, filterSettingsNav, addDestinationBank, removeDestinationBank, startDestinationBankEdit, cancelDestinationBankEdit, saveDestinationBankEdit, addProductCatalogItem, removeProductCatalogItem, startProductCatalogEdit, cancelProductCatalogEdit, saveProductCatalogEdit, onNewProductKindChange, onEditProductKindChange, onNewProductProfitModeChange, onEditProductProfitModeChange, startProductBundleEdit, cancelProductBundleEdit, saveProductBundleForm, removeProductBundle, runCatalogToBundleMigration, filterViewUserOptions, changeUserGroupAssignment, createSettingsGroup, renameSettingsGroup, deleteSettingsGroup, selectSettingsGroup, backToGroupsList, addSettingsGroupMember, removeSettingsGroupMember, makeGroupManager, addPlatform, loadDefaultPlatforms, removePlatform, updatePlatformField, editPlatform, cancelPlatformEdit, savePlatformEdit, addStatus, loadDefaultStatuses, removeStatus, updateStatusField, editStatus, cancelStatusEdit, saveStatusEdit, onStatusDragStart, onStatusDragOver, onStatusDrop, addCustomerCode, removeCustomerCode, editCustomerCode, cancelCustomerCodeEdit, saveCustomerCodeEdit, onCustomerCodeDragStart, onCustomerCodeDragOver, onCustomerCodeDrop, onSalesTargetMetricChange, onSalesTargetAllocationChange, onSalesTargetDeadlineChange, onDeadlineUrgencyFieldChange, addSalesTargetFormStage, removeSalesTargetFormStage, onSalesTargetFormStageChange, addDeadlineUrgencyStage, removeDeadlineUrgencyStage, saveDeadlineUrgencySettings, startSalesTargetEdit, cancelSalesTargetEdit, saveSalesTargetForm, removeSalesTarget, renderSalesTargetsSettings, addSalesTargetBarToDraft, removeSalesTargetBarFromDraft, startSalesTargetBarEdit, cancelSalesTargetBarEdit, saveSmsPanelSettings, resetSmsMessageTemplate, addInPersonSession, startInPersonSessionEdit, cancelInPersonSessionEdit, saveInPersonSessionEdit, removeInPersonSession, assignUnassignedInPersonSale, unassignInPersonSale, filterInPersonSessionsList, filterUnassignedInPersonSales, filterAssignedInPersonSales, onInPersonAssignCourseFilterFromAdd } from './auth.js'
 import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, switchDetailTab, showMoreDetailFollowups, setNextFollowup, clearNextFollowup, addQuickNote, onDetailQuickProductPick, removeDetailQuickProduct, updateCustomerAdvisor, claimUnassignedCustomer, updateCustomerLevel, addProductRow, removeProduct, onCustomerPhoneInput, onCustomerPlatformIdInput, selectCustomerPhoneSuggest, onCustomerPhoneSuggestBlur, onCustomerPhoneKeydown, addCustomerPhoneSlot, removeCustomerPhoneSlot, onCustomerAddressInput, onCustomerAddressPriorityChange, addCustomerAddressSlot, removeCustomerAddressSlot, addProductPayment, removeProductPayment, onDestinationBankSelect, commitSalePayment, commitSaleProductDetails, commitInPersonSession, updateSaleTotalPrice, commitGiftSale, onSaleProductNameChange, onSalePriceInput, markSalePaymentTouched, toggleClosedProductBlock, openStartSaleModal, closeStartSaleModal, confirmStartSale, filterStartSaleCustomers, closeMergeCustomerModal, confirmMergeCustomers, clearCustomerSearch, clearCustomerFilters, onCustomerSearchInput, applyCustomerStatFilter, toggleRequireFollowupOnCreate, syncRequireFollowupOnCreateUi, cancelPendingCustomerCreate, sortCustomers } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, clearFollowupSearch, onFollowupSearchInput, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, openFollowupDonePicker, closeFollowupDonePicker, filterFollowupDonePick, confirmFollowupDonePick, setFollowupDoneNextShortcut, isFollowupDoneNoteDirty, updateFollowupBadge, updateFollowupAdvisorDropdown, sortFollowups } from './followups.js'
@@ -838,26 +840,31 @@ async function init() {
     return
   }
 
-  // Load data from Supabase
-  await loadData()
+  const hydrated = await tryHydrateFromCoreCache({
+    tenantId: getStoredTenantId(),
+    userPhone: normalizePhone(user.phone),
+    permSig: buildPermSig(user)
+  })
 
-  // Backfill advisorPhone from display names for legacy rows
-  try {
-    const users = await getUsersSafe()
-    const { updated } = await backfillAdvisorPhones(users)
-    if (updated > 0) console.log(`Backfilled advisorPhone on ${updated} customers`)
-  } catch (e) {
-    console.error('advisorPhone backfill error:', e)
+  if (!hydrated) {
+    await loadData()
+
+    try {
+      const users = await getUsersSafe()
+      const { updated } = await backfillAdvisorPhones(users)
+      if (updated > 0) console.log(`Backfilled advisorPhone on ${updated} customers`)
+    } catch (e) {
+      console.error('advisorPhone backfill error:', e)
+    }
+
+    try {
+      const { merged } = await cleanupConversionOrphans()
+      if (merged > 0) console.log(`Cleaned ${merged} leftover LD/CS conversion duplicates`)
+    } catch (e) {
+      console.error('conversion orphan cleanup error:', e)
+    }
   }
 
-  try {
-    const { merged } = await cleanupConversionOrphans()
-    if (merged > 0) console.log(`Cleaned ${merged} leftover LD/CS conversion duplicates`)
-  } catch (e) {
-    console.error('conversion orphan cleanup error:', e)
-  }
-
-  // Hide loading overlay
   if (loadingOverlay) loadingOverlay.style.display = 'none'
 
   try { applyPermissions() } catch (e) { console.error('applyPermissions error:', e) }
@@ -877,6 +884,22 @@ async function init() {
   initDmChat().catch(e => console.error('dm chat init error:', e))
   initLiveSync().catch(e => console.error('live sync init error:', e))
   try { initBrowserNotifications() } catch (e) { console.error('browser notifications init error:', e) }
+
+  if (hydrated) {
+    syncCoreData({ mode: 'auto', reconcile: true })
+      .then(async () => {
+        try {
+          const { refreshActiveViews } = await import('./live-sync.js')
+          if (typeof refreshActiveViews === 'function') await refreshActiveViews()
+        } catch (e) {
+          console.error('refresh after cached boot', e)
+        }
+      })
+      .catch(e => {
+        console.error('incremental sync after hydrate error:', e)
+        showToast('به‌روزرسانی داده از سرور ناموفق بود. دادهٔ ذخیره‌شده نمایش داده می‌شود.')
+      })
+  }
 
   // Modal accessibility: focus trap + aria (A11Y-H3)
   initModalFocusTrap()

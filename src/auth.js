@@ -329,8 +329,14 @@ export async function doLogin() {
 }
 
 export function doLogout() {
+  const phone = normalizePhone(getCurrentUser()?.phone || '')
   clearCurrentUser()
-  clearAuthSession().finally(() => {
+  Promise.all([
+    clearAuthSession(),
+    import('./data-cache.js')
+      .then(m => m.clearCoreSnapshotsForUser(phone))
+      .catch(e => console.warn('clear core cache on logout', e))
+  ]).finally(() => {
     window.location.href = loginPageHref()
   })
 }

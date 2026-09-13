@@ -5,3 +5,5 @@ export function initLiveSync() {
 export function noteLocalWrite() {}
 
 export function stopLiveSync() {}
+
+export async function refreshActiveViews() {}

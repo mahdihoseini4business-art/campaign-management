@@ -83,7 +83,7 @@ function isDetailModalOpen() {
   return !!document.getElementById('detailModal')?.classList.contains('active')
 }
 
-async function refreshActiveViews() {
+export async function refreshActiveViews() {
   try {
     updateFollowupBadge()
   } catch (e) {

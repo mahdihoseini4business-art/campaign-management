@@ -57,13 +57,27 @@ export async function setCurrentTenant(tenantId) {
   if (error) throw error
   storeTenantId(tenantId)
   if (prev !== tenantId) {
-    await clearTenantLocalCaches()
+    await clearTenantLocalCaches(prev)
   }
   return data || tenantId
 }
 
 /** Invalidate process-local caches tied to the previous tenant context. */
-async function clearTenantLocalCaches() {
+async function clearTenantLocalCaches(prevTenantId = null) {
+  try {
+    const { resetCoreData } = await import('./data.js')
+    resetCoreData()
+  } catch (e) {
+    console.warn('reset core data', e)
+  }
+  if (prevTenantId) {
+    try {
+      const { clearCoreSnapshotsForTenant } = await import('./data-cache.js')
+      await clearCoreSnapshotsForTenant(prevTenantId)
+    } catch (e) {
+      console.warn('clear core cache for tenant', e)
+    }
+  }
   try {
     const { invalidateDerivedCache } = await import('./derived-cache.js')
     invalidateDerivedCache('all')
