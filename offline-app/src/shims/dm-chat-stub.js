@@ -28,6 +28,10 @@ export function onDmVoicePttDown() {}
 
 export function onDmVoicePttUp() {}
 
+export function onDmVoicePttKeyDown() {}
+
+export function onDmVoicePttKeyUp() {}
+
 export function openDmCreateGroup() {}
 
 export function onDmGroupTitleInput() {}

@@ -8358,6 +8358,11 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
+.dm-chat-ptt.is-peer-talking {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .dm-chat-ptt[hidden] {
   display: none !important;
 }

@@ -30,6 +30,11 @@ let connecting = false
 let teardownToken = 0
 /** Token of the sync attempt that currently owns module globals (0 = none). */
 let sessionToken = 0
+/** User wants mic open (pointer/key held). Cleared on release so in-flight startPtt aborts. */
+let pttWanted = false
+/** Invalidates in-flight startPtt when stop/release wins the race. */
+let pttEpoch = 0
+let pttStarting = false
 
 function myPhone() {
   return normalizePhone(getCurrentUser()?.phone)
@@ -63,6 +68,9 @@ function updateVoiceUi() {
   if (btn) {
     btn.classList.toggle('is-talking', isTalking)
     btn.setAttribute('aria-pressed', isTalking ? 'true' : 'false')
+    const blocked = peerTalking && !isTalking
+    btn.toggleAttribute('aria-disabled', blocked)
+    btn.classList.toggle('is-peer-talking', blocked)
   }
   const status = document.getElementById('dmChatVoiceStatus')
   if (!status) return
@@ -247,6 +255,16 @@ async function handleSignal({ event, payload }) {
   }
   if (event === 'ptt-start') {
     peerTalking = true
+    // Half-duplex: yield if we were transmitting
+    if (isTalking || pttWanted) {
+      pttWanted = false
+      pttEpoch += 1
+      if (isTalking) {
+        isTalking = false
+        setLocalMicEnabled(false)
+        sendSignal('ptt-stop').catch(() => {})
+      }
+    }
     updateVoiceUi()
     return
   }
@@ -433,11 +451,24 @@ export function syncDmVoiceComposerVisibility(visible) {
 }
 
 export async function startPtt() {
-  if (!activeConversationId || isTalking) return
-  if (!myPhone()) return
+  if (!activeConversationId || !myPhone()) return
+  if (peerTalking) {
+    showToast('صبر کنید تا طرف مقابل صحبتش تمام شود')
+    return
+  }
+  if (isTalking || pttStarting) return
+
+  pttWanted = true
+  const epoch = ++pttEpoch
+  pttStarting = true
 
   try {
     await ensureLocalStream()
+    if (!pttWanted || epoch !== pttEpoch) {
+      setLocalMicEnabled(false)
+      return
+    }
+
     await createPeerConnection()
     attachLocalTracks()
 
@@ -446,17 +477,39 @@ export async function startPtt() {
       remoteAudio.play().catch(() => {})
     }
 
+    if (!pttWanted || epoch !== pttEpoch) {
+      setLocalMicEnabled(false)
+      return
+    }
+
     if (pc && !pc.currentRemoteDescription) {
       await sendSignal('voice-hello')
+      if (!pttWanted || epoch !== pttEpoch) {
+        setLocalMicEnabled(false)
+        return
+      }
       if (!polite && pc.signalingState === 'stable') {
         await makeOffer()
       }
+    }
+
+    if (!pttWanted || epoch !== pttEpoch || peerTalking) {
+      setLocalMicEnabled(false)
+      return
     }
 
     setLocalMicEnabled(true)
     isTalking = true
     updateVoiceUi()
     await sendSignal('ptt-start')
+
+    // Released while ptt-start was in flight — shut mic back off
+    if (!pttWanted || epoch !== pttEpoch) {
+      isTalking = false
+      setLocalMicEnabled(false)
+      updateVoiceUi()
+      await sendSignal('ptt-stop')
+    }
   } catch (e) {
     console.error('startPtt:', e)
     const denied = e?.name === 'NotAllowedError' || e?.name === 'PermissionDeniedError'
@@ -464,15 +517,28 @@ export async function startPtt() {
     isTalking = false
     setLocalMicEnabled(false)
     updateVoiceUi()
+  } finally {
+    if (epoch === pttEpoch) pttStarting = false
   }
 }
 
 export async function stopPtt() {
-  if (!isTalking) return
+  pttWanted = false
+  pttEpoch += 1
+  pttStarting = false
+
+  if (!isTalking) {
+    setLocalMicEnabled(false)
+    return
+  }
   isTalking = false
   setLocalMicEnabled(false)
   updateVoiceUi()
   await sendSignal('ptt-stop')
+}
+
+function isPttHoldKey(event) {
+  return event.key === ' ' || event.key === 'Spacebar'
 }
 
 export function onDmVoicePttDown(event) {
@@ -494,6 +560,20 @@ export function onDmVoicePttUp(event) {
       }
     } catch (_) { /* ignore */ }
   }
+  stopPtt().catch(() => {})
+}
+
+/** Space hold-to-talk on the PTT button (ignore key repeat). */
+export function onDmVoicePttKeyDown(event) {
+  if (!event || !isPttHoldKey(event)) return
+  if (event.repeat) return
+  event.preventDefault()
+  startPtt().catch(() => {})
+}
+
+export function onDmVoicePttKeyUp(event) {
+  if (!event || !isPttHoldKey(event)) return
+  event.preventDefault()
   stopPtt().catch(() => {})
 }
 
@@ -525,6 +605,9 @@ export async function teardownDmVoice(opts = {}) {
   sessionToken = 0
   isTalking = false
   peerTalking = false
+  pttWanted = false
+  pttEpoch += 1
+  pttStarting = false
   activeConversationId = 0
   peerPhone = ''
   polite = false

@@ -22,10 +22,12 @@ import {
   syncDmVoiceComposerVisibility,
   onDmVoicePttDown,
   onDmVoicePttUp,
+  onDmVoicePttKeyDown,
+  onDmVoicePttKeyUp,
   stopPtt
 } from './dm-voice.js'
 
-export { onDmVoicePttDown, onDmVoicePttUp }
+export { onDmVoicePttDown, onDmVoicePttUp, onDmVoicePttKeyDown, onDmVoicePttKeyUp }
 
 const CHANNEL_NAME = 'dm-chat-live'
 const NOTIF_SOUND_URL = '/chat-notif.mp3'
