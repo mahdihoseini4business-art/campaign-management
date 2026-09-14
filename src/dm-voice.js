@@ -49,6 +49,9 @@ let pttStarting = false
 let needsAudioGesture = false
 /** @type {ReturnType<typeof setTimeout> | null} */
 let backgroundTeardownTimer = null
+/** If makeOffer is busy, run again after it finishes (direction/track changes). */
+let negotiationQueued = false
+let negotiationIceRestart = false
 
 function myPhone() {
   return normalizePhone(getCurrentUser()?.phone)
@@ -63,6 +66,8 @@ function ensureRemoteAudio() {
   const el = document.createElement('audio')
   el.autoplay = true
   el.playsInline = true
+  el.muted = false
+  el.volume = 1
   el.setAttribute('aria-hidden', 'true')
   el.style.display = 'none'
   document.body.appendChild(el)
@@ -91,32 +96,28 @@ function ensureRecvAudioTransceiver() {
 
 /**
  * Attach mic tracks for send; prefer replaceTrack on existing audio transceiver.
+ * Changing recvonly → sendrecv requires SDP renegotiation (caller must makeOffer).
  */
 async function attachLocalTracks() {
   if (!pc || !localStream) return
   const audioTrack = localStream.getAudioTracks()[0]
   if (!audioTrack) return
 
-  const audioSender = pc.getSenders().find(s => s.track?.kind === 'audio')
-  if (audioSender) {
-    try {
-      await audioSender.replaceTrack(audioTrack)
-    } catch (e) {
-      console.warn('dm-voice replaceTrack:', e?.message || e)
-    }
-    return
-  }
-
-  const recvOnly = pc.getTransceivers().find(t =>
-    t.direction === 'recvonly' || t.direction === 'inactive'
+  const audioTx = pc.getTransceivers().find(t =>
+    t.receiver?.track?.kind === 'audio' ||
+    t.sender?.track?.kind === 'audio' ||
+    t.direction === 'recvonly' ||
+    t.direction === 'sendrecv' ||
+    t.direction === 'inactive'
   )
-  if (recvOnly) {
+  if (audioTx) {
     try {
-      await recvOnly.sender.replaceTrack(audioTrack)
-      recvOnly.direction = 'sendrecv'
+      // Direction first so the next offer advertises send; then bind the mic track.
+      audioTx.direction = 'sendrecv'
+      await audioTx.sender.replaceTrack(audioTrack)
     } catch (e) {
-      console.warn('dm-voice recvonly→sendrecv:', e?.message || e)
-      pc.addTrack(audioTrack, localStream)
+      console.warn('dm-voice attach transceiver:', e?.message || e)
+      try { pc.addTrack(audioTrack, localStream) } catch (_) { /* ignore */ }
     }
     return
   }
@@ -133,15 +134,16 @@ async function releaseLocalMic() {
     localStream = null
   }
   if (!pc) return
-  for (const sender of pc.getSenders()) {
-    if (sender.track?.kind === 'audio' || sender.track == null) {
-      try { await sender.replaceTrack(null) } catch (_) { /* ignore */ }
-    }
-  }
   for (const t of pc.getTransceivers()) {
-    if (t.receiver?.track?.kind === 'audio' || t.direction === 'sendrecv' || t.direction === 'sendonly') {
-      try { t.direction = 'recvonly' } catch (_) { /* ignore */ }
-    }
+    const isAudio =
+      t.receiver?.track?.kind === 'audio' ||
+      t.sender?.track?.kind === 'audio' ||
+      t.direction === 'sendrecv' ||
+      t.direction === 'sendonly' ||
+      t.direction === 'recvonly'
+    if (!isAudio) continue
+    try { await t.sender.replaceTrack(null) } catch (_) { /* ignore */ }
+    try { t.direction = 'recvonly' } catch (_) { /* ignore */ }
   }
 }
 
@@ -189,9 +191,9 @@ function updateVoiceUi() {
     status.hidden = false
     status.innerHTML =
       'برای شنیدن صدا ضربه بزنید — <button type="button" class="dm-chat-voice-retry" onclick="app.unlockDmVoiceAudio()">فعال‌سازی صدا</button>'
-  } else if (voiceLinkState === 'connecting' && recovering) {
+  } else if (voiceLinkState === 'connecting') {
     status.hidden = false
-    status.textContent = 'در حال اتصال مجدد…'
+    status.textContent = recovering ? 'در حال اتصال مجدد…' : 'در حال برقراری ارتباط صوتی…'
   } else {
     status.hidden = true
     status.textContent = ''
@@ -233,11 +235,12 @@ async function ensureLocalStream() {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error('getUserMedia unsupported')
   }
+  // Mic hardware is only opened here (PTT hold) — never on DM open / sync.
   localStream = await navigator.mediaDevices.getUserMedia({
     audio: true,
     video: false
   })
-  // Caller enables on PTT; stay muted until then
+  // Stay muted until startPtt finishes setup and confirms hold is still active.
   setLocalMicEnabled(false)
   return localStream
 }
@@ -283,8 +286,13 @@ async function createPeerConnection() {
 
   pc.ontrack = (ev) => {
     const audio = ensureRemoteAudio()
+    if (ev.track) {
+      try { ev.track.enabled = true } catch (_) { /* ignore */ }
+    }
     const stream = ev.streams?.[0] || new MediaStream([ev.track])
     audio.srcObject = stream
+    audio.muted = false
+    audio.volume = 1
     audio.play()
       .then(() => {
         needsAudioGesture = false
@@ -328,12 +336,24 @@ async function createPeerConnection() {
 }
 
 async function makeOffer(opts = {}) {
-  if (!pc || makingOffer) return
+  if (!pc) return
+  if (opts.iceRestart) negotiationIceRestart = true
+  if (makingOffer) {
+    negotiationQueued = true
+    return
+  }
   makingOffer = true
   try {
-    const offer = await pc.createOffer(opts.iceRestart ? { iceRestart: true } : undefined)
-    await pc.setLocalDescription(offer)
-    await sendSignal('voice-offer', { sdp: pc.localDescription })
+    do {
+      negotiationQueued = false
+      if (!pc) return
+      const iceRestart = negotiationIceRestart
+      negotiationIceRestart = false
+      const offer = await pc.createOffer(iceRestart ? { iceRestart: true } : undefined)
+      if (!pc) return
+      await pc.setLocalDescription(offer)
+      await sendSignal('voice-offer', { sdp: pc.localDescription })
+    } while (negotiationQueued && pc)
   } finally {
     makingOffer = false
   }
@@ -495,9 +515,26 @@ async function handleSignal({ event, payload }) {
         isTalking = false
         sendSignal('ptt-stop').catch(() => {})
       }
-      releaseLocalMic().catch(() => {})
+      releaseLocalMic()
+        .then(() => {
+          if (pc?.signalingState === 'stable') return makeOffer()
+          negotiationQueued = true
+        })
+        .catch(() => {})
     }
     setPeerTalking(true)
+    // Peer started talking — try unlocking playback under whatever gesture we have.
+    if (remoteAudio?.srcObject) {
+      remoteAudio.play()
+        .then(() => {
+          needsAudioGesture = false
+          updateVoiceUi()
+        })
+        .catch(() => {
+          needsAudioGesture = true
+          updateVoiceUi()
+        })
+    }
     return
   }
   if (event === 'ptt-stop' || event === 'voice-hangup') {
@@ -735,6 +772,12 @@ export async function startPtt() {
 
     await createPeerConnection()
     await attachLocalTracks()
+    // recvonly → sendrecv must be advertised in a new offer or the peer never gets audio.
+    if (pc?.signalingState === 'stable') {
+      await makeOffer()
+    } else {
+      negotiationQueued = true
+    }
 
     // Resume remote playback under this user gesture (autoplay policies)
     if (remoteAudio?.srcObject) {
@@ -748,6 +791,7 @@ export async function startPtt() {
 
     if (!pttWanted || epoch !== pttEpoch) {
       await releaseLocalMic()
+      if (pc?.signalingState === 'stable') await makeOffer()
       return
     }
 
@@ -755,6 +799,7 @@ export async function startPtt() {
       await sendSignal('voice-hello')
       if (!pttWanted || epoch !== pttEpoch) {
         await releaseLocalMic()
+        if (pc?.signalingState === 'stable') await makeOffer()
         return
       }
       if (!polite && pc.signalingState === 'stable') {
@@ -764,6 +809,7 @@ export async function startPtt() {
 
     if (!pttWanted || epoch !== pttEpoch || peerTalking) {
       await releaseLocalMic()
+      if (pc?.signalingState === 'stable') await makeOffer()
       return
     }
 
@@ -778,11 +824,19 @@ export async function startPtt() {
       updateVoiceUi()
       await sendSignal('ptt-stop')
       await releaseLocalMic()
+      if (pc?.signalingState === 'stable') await makeOffer()
     }
   } catch (e) {
     console.error('startPtt:', e)
     const denied = e?.name === 'NotAllowedError' || e?.name === 'PermissionDeniedError'
-    showToast(denied ? 'دسترسی میکروفون رد شد' : 'شروع واکی‌تاکی ناموفق بود')
+    const noDevice = e?.name === 'NotFoundError' || e?.name === 'DevicesNotFoundError'
+    showToast(
+      denied
+        ? 'دسترسی میکروفون رد شد'
+        : noDevice
+          ? 'میکروفون روی این دستگاه/مرورگر پیدا نشد'
+          : 'شروع واکی‌تاکی ناموفق بود'
+    )
     isTalking = false
     await releaseLocalMic()
     updateVoiceUi()
@@ -803,6 +857,12 @@ export async function stopPtt() {
     await sendSignal('ptt-stop')
   }
   await releaseLocalMic()
+  // Drop send direction so peer stops expecting our audio.
+  if (pc?.signalingState === 'stable') {
+    try { await makeOffer() } catch (_) { /* ignore */ }
+  } else {
+    negotiationQueued = true
+  }
 }
 
 /** Unlock remote audio after autoplay block (user gesture). */
@@ -918,6 +978,8 @@ export async function teardownDmVoice(opts = {}) {
   peerPhone = ''
   polite = false
   makingOffer = false
+  negotiationQueued = false
+  negotiationIceRestart = false
   connecting = false
 
   await disposeSnapshot(snap)
