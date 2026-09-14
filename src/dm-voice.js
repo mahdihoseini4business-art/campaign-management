@@ -26,7 +26,10 @@ let ignoreOffer = false
 let isTalking = false
 let peerTalking = false
 let connecting = false
+/** Bumped on every hard teardown and every sync resync; in-flight work checks this. */
 let teardownToken = 0
+/** Token of the sync attempt that currently owns module globals (0 = none). */
+let sessionToken = 0
 
 function myPhone() {
   return normalizePhone(getCurrentUser()?.phone)
@@ -78,16 +81,22 @@ function updateVoiceUi() {
   }
 }
 
-async function sendSignal(event, extra = {}) {
-  if (!channel || !activeConversationId) return
+/**
+ * @param {import('@supabase/supabase-js').RealtimeChannel | null} ch
+ * @param {number} conversationId
+ * @param {string} event
+ * @param {Record<string, unknown>} [extra]
+ */
+async function sendSignalOn(ch, conversationId, event, extra = {}) {
+  if (!ch || !conversationId) return
   const from = myPhone()
   if (!from) return
   try {
-    await channel.send({
+    await ch.send({
       type: 'broadcast',
       event,
       payload: {
-        conversationId: activeConversationId,
+        conversationId,
         fromPhone: from,
         at: Date.now(),
         ...extra
@@ -96,6 +105,10 @@ async function sendSignal(event, extra = {}) {
   } catch (e) {
     console.error('dm-voice signal:', event, e)
   }
+}
+
+async function sendSignal(event, extra = {}) {
+  await sendSignalOn(channel, activeConversationId, event, extra)
 }
 
 async function ensureLocalStream() {
@@ -203,6 +216,8 @@ async function handleSignal({ event, payload }) {
   const from = normalizePhone(payload.fromPhone)
   const me = myPhone()
   if (!from || from === me) return
+  // Only accept signals from the bound DM peer (not any other phone).
+  if (!peerPhone || from !== peerPhone) return
 
   if (event === 'voice-hello') {
     // Lexicographically smaller phone initiates the offer (impolite = offerer)
@@ -241,12 +256,18 @@ async function handleSignal({ event, payload }) {
   }
 }
 
-async function subscribeChannel(conversationId) {
-  if (channel) {
-    try { await supabase.removeChannel(channel) } catch (_) { /* ignore */ }
-    channel = null
-  }
+async function safeRemoveChannel(ch) {
+  if (!ch) return
+  try { await supabase.removeChannel(ch) } catch (_) { /* ignore */ }
+}
 
+/**
+ * Subscribe without assigning the module `channel` until the caller decides.
+ * Rejects (and removes the channel) on CHANNEL_ERROR / TIMED_OUT.
+ * @param {number} conversationId
+ * @returns {Promise<import('@supabase/supabase-js').RealtimeChannel>}
+ */
+async function subscribeChannel(conversationId) {
   const ch = supabase.channel(channelName(conversationId), {
     config: { broadcast: { self: false } }
   })
@@ -258,32 +279,83 @@ async function subscribeChannel(conversationId) {
     })
   }
 
-  await new Promise((resolve) => {
-    ch.subscribe((status) => {
-      if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') resolve(status)
+  const status = await new Promise((resolve) => {
+    ch.subscribe((next) => {
+      if (next === 'SUBSCRIBED' || next === 'CHANNEL_ERROR' || next === 'TIMED_OUT') resolve(next)
     })
   })
 
-  channel = ch
+  if (status !== 'SUBSCRIBED') {
+    await safeRemoveChannel(ch)
+    throw new Error(`dm-voice subscribe failed: ${status}`)
+  }
+
   return ch
 }
 
-async function bootstrapConnection() {
+async function bootstrapConnection(token) {
+  if (token !== teardownToken) return
   await createPeerConnection()
+  if (token !== teardownToken) return
   try {
     await ensureLocalStream()
+    if (token !== teardownToken) return
     attachLocalTracks()
   } catch (e) {
     // Mic permission can wait until first PTT
     console.warn('dm-voice mic deferred:', e?.message || e)
   }
 
+  if (token !== teardownToken) return
   await sendSignal('voice-hello')
 
+  if (token !== teardownToken) return
   // Impolite peer (smaller phone) creates the initial offer if media ready
   if (!polite && localStream && pc?.signalingState === 'stable') {
     await makeOffer()
   }
+}
+
+/**
+ * Close only the captured resources. Safe if module globals already point at a newer session.
+ * @param {{
+ *   pc: RTCPeerConnection | null,
+ *   channel: import('@supabase/supabase-js').RealtimeChannel | null,
+ *   localStream: MediaStream | null,
+ *   remoteAudio: HTMLAudioElement | null,
+ *   conversationId: number,
+ *   wasTalking: boolean
+ * }} snap
+ */
+async function disposeSnapshot(snap) {
+  if (snap.wasTalking) {
+    try { await sendSignalOn(snap.channel, snap.conversationId, 'ptt-stop') } catch (_) { /* ignore */ }
+  }
+  try { await sendSignalOn(snap.channel, snap.conversationId, 'voice-hangup') } catch (_) { /* ignore */ }
+
+  if (snap.pc) {
+    try {
+      snap.pc.onicecandidate = null
+      snap.pc.ontrack = null
+      snap.pc.onconnectionstatechange = null
+      snap.pc.close()
+    } catch (_) { /* ignore */ }
+  }
+
+  if (snap.localStream) {
+    for (const t of snap.localStream.getTracks()) {
+      try { t.stop() } catch (_) { /* ignore */ }
+    }
+  }
+
+  if (snap.remoteAudio) {
+    try {
+      snap.remoteAudio.srcObject = null
+      snap.remoteAudio.remove()
+    } catch (_) { /* ignore */ }
+  }
+
+  await safeRemoveChannel(snap.channel)
 }
 
 /**
@@ -313,6 +385,7 @@ export async function syncDmVoiceForTab(opts = {}) {
   await teardownDmVoice({ soft: true })
   if (token !== teardownToken) return
 
+  sessionToken = token
   activeConversationId = cid
   peerPhone = peer
   // Higher phone is polite (yields on glare); lower phone is the offerer
@@ -322,15 +395,30 @@ export async function syncDmVoiceForTab(opts = {}) {
   connecting = true
 
   try {
-    await subscribeChannel(cid)
-    if (token !== teardownToken) return
-    await bootstrapConnection()
+    const ch = await subscribeChannel(cid)
+    if (token !== teardownToken) {
+      // Channel was never published to module — drop it; only soft-teardown if we still own.
+      await safeRemoveChannel(ch)
+      await abandonIfStillOwner(token)
+      return
+    }
+    channel = ch
+
+    await bootstrapConnection(token)
+    if (token !== teardownToken) {
+      await abandonIfStillOwner(token)
+      return
+    }
     updateVoiceUi()
   } catch (e) {
     console.error('syncDmVoiceForTab:', e)
-    showToast('اتصال واکی‌تاکی برقرار نشد')
+    if (token === teardownToken) {
+      showToast('اتصال واکی‌تاکی برقرار نشد')
+      await abandonIfStillOwner(token)
+      syncDmVoiceComposerVisibility(false)
+    }
   } finally {
-    connecting = false
+    if (token === teardownToken) connecting = false
   }
 }
 
@@ -410,52 +498,66 @@ export function onDmVoicePttUp(event) {
 }
 
 /**
- * @param {{ soft?: boolean }} [opts] soft=true skips incrementing teardown token (used by resync)
+ * @param {{ soft?: boolean }} [opts]
+ * soft=true: used by resync; does not bump teardownToken (caller already did) and does not hide the PTT button.
  */
 export async function teardownDmVoice(opts = {}) {
-  if (!opts.soft) teardownToken += 1
+  const soft = !!opts.soft
+  if (!soft) teardownToken += 1
+  const myToken = teardownToken
 
-  if (isTalking) {
-    isTalking = false
-    try { await sendSignal('ptt-stop') } catch (_) { /* ignore */ }
+  const snap = {
+    pc,
+    channel,
+    localStream,
+    remoteAudio,
+    conversationId: activeConversationId,
+    wasTalking: isTalking
   }
+
+  // Detach immediately so a concurrent sync can own new globals without this
+  // teardown closing them later.
+  if (pc === snap.pc) pc = null
+  if (channel === snap.channel) channel = null
+  if (localStream === snap.localStream) localStream = null
+  if (remoteAudio === snap.remoteAudio) remoteAudio = null
+
+  sessionToken = 0
+  isTalking = false
   peerTalking = false
-
-  try { await sendSignal('voice-hangup') } catch (_) { /* ignore */ }
-
-  if (pc) {
-    try { pc.onicecandidate = null; pc.ontrack = null; pc.close() } catch (_) { /* ignore */ }
-    pc = null
-  }
-
-  if (localStream) {
-    for (const t of localStream.getTracks()) {
-      try { t.stop() } catch (_) { /* ignore */ }
-    }
-    localStream = null
-  }
-
-  if (remoteAudio) {
-    try {
-      remoteAudio.srcObject = null
-      remoteAudio.remove()
-    } catch (_) { /* ignore */ }
-    remoteAudio = null
-  }
-
-  if (channel) {
-    try { await supabase.removeChannel(channel) } catch (_) { /* ignore */ }
-    channel = null
-  }
-
   activeConversationId = 0
   peerPhone = ''
   polite = false
   makingOffer = false
   ignoreOffer = false
   connecting = false
+
+  await disposeSnapshot(snap)
+
+  // A newer session took over while we were disposing — leave its UI alone.
+  if (myToken !== teardownToken) return
+
   updateVoiceUi()
-  syncDmVoiceComposerVisibility(false)
+  if (!soft) syncDmVoiceComposerVisibility(false)
+}
+
+/**
+ * If this aborted sync still owns module globals, dispose them.
+ * Also cleans orphans recreated after a hard teardown cleared ownership.
+ * @param {number} token
+ */
+async function abandonIfStillOwner(token) {
+  if (sessionToken === token) {
+    await teardownDmVoice({ soft: true })
+    return
+  }
+  if (
+    sessionToken === 0 &&
+    token !== teardownToken &&
+    (pc || channel || localStream || remoteAudio)
+  ) {
+    await teardownDmVoice({ soft: true })
+  }
 }
 
 export function getDmVoiceActiveConversationId() {
