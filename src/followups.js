@@ -1329,13 +1329,16 @@ export async function openFollowupModal(editFollowupId) {
     })
   }
 
+  const dateGroup = document.getElementById('followupDateGroup')
   if (editFollowupId) {
     const f = data.followups.find(x => String(x.id) === String(editFollowupId) || `idx_${data.followups.indexOf(x)}` === editFollowupId)
     if (!f) return
     title.textContent = 'ویرایش یادداشت'
     document.getElementById('editFollowupIndex').value = editFollowupId
     select.value = f.customerId
+    // تاریخ/ساعت ثبت بعد از ایجاد ثابت است و در ویرایش نمایش/تغییر داده نمی‌شود
     document.getElementById('followupDate').value = formatFollowupHistoryAt(f) || f.date
+    if (dateGroup) dateGroup.hidden = true
     document.getElementById('followupNextDate').value = f.nextDate
     document.getElementById('followupType').value = f.type
     document.getElementById('followupResult').value = f.result
@@ -1348,6 +1351,7 @@ export async function openFollowupModal(editFollowupId) {
     document.getElementById('editFollowupIndex').value = ''
     select.value = ''
     document.getElementById('followupDate').value = getNowJalaliDateTime().dateTime
+    if (dateGroup) dateGroup.hidden = false
     document.getElementById('followupNextDate').value = ''
     document.getElementById('followupType').value = 'دایرکت'
     document.getElementById('followupResult').value = 'پاسخ داد'
@@ -1379,7 +1383,7 @@ export async function saveFollowup() {
   const isReferral = !!(assignToRaw && assignToRaw !== mePhone)
 
   if (!customerId) { showToast('مشتری را انتخاب کنید'); return }
-  if (!date) { showToast('تاریخ تماس را وارد کنید'); return }
+  if (!editFollowupId && !date) { showToast('تاریخ تماس را وارد کنید'); return }
   if (isReferral && !nextDate) {
     showToast('برای ارجاع پیگیری، تاریخ پیگیری بعدی را وارد کنید')
     return
@@ -1411,7 +1415,8 @@ export async function saveFollowup() {
   if (editFollowupId) {
     const existing = data.followups.find(x => String(x.id) === String(editFollowupId) || `idx_${data.followups.indexOf(x)}` === editFollowupId)
     if (!existing) { showToast('پیگیری یافت نشد'); return }
-    date = ensureFollowupDateTime(date, existing.doneAt || existing.date)
+    // تاریخ/ساعت ثبت یادداشت بعد از ایجاد قابل تغییر نیست
+    date = existing.date
     const updated = {
       ...existing,
       customerId,
