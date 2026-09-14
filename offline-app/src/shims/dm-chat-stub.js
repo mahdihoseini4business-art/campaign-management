@@ -36,6 +36,10 @@ export async function retryDmVoiceConnection() {}
 
 export async function unlockDmVoiceAudio() {}
 
+export function getDmVoiceDebug() {
+  return { stub: true }
+}
+
 export function openDmCreateGroup() {}
 
 export function onDmGroupTitleInput() {}

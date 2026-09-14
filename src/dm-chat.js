@@ -28,7 +28,8 @@ import {
   retryDmVoiceConnection,
   unlockDmVoiceAudio,
   scheduleDmVoiceBackgroundTeardown,
-  cancelDmVoiceBackgroundTeardown
+  cancelDmVoiceBackgroundTeardown,
+  getDmVoiceDebug
 } from './dm-voice.js'
 
 export {
@@ -37,7 +38,8 @@ export {
   onDmVoicePttKeyDown,
   onDmVoicePttKeyUp,
   retryDmVoiceConnection,
-  unlockDmVoiceAudio
+  unlockDmVoiceAudio,
+  getDmVoiceDebug
 }
 
 const CHANNEL_NAME = 'dm-chat-live'

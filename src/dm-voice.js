@@ -11,6 +11,8 @@ import { getUsersSafe } from './auth.js'
 const PEER_TALKING_TTL_MS = 15000
 const MAX_AUTO_RECOVER = 2
 const BACKGROUND_TEARDOWN_MS = 60000
+/** If ICE never reaches connected, surface failure instead of endless "connecting". */
+const CONNECTING_TIMEOUT_MS = 12000
 
 /** @type {import('@supabase/supabase-js').RealtimeChannel | null} */
 let channel = null
@@ -36,6 +38,8 @@ let connecting = false
 let voiceLinkState = 'idle'
 let recovering = false
 let recoverAttempts = 0
+/** @type {ReturnType<typeof setTimeout> | null} */
+let connectingTimer = null
 /** Bumped on every hard teardown and every sync resync; in-flight work checks this. */
 let teardownToken = 0
 /** Token of the sync attempt that currently owns module globals (0 = none). */
@@ -163,6 +167,76 @@ function setPeerTalking(on) {
   updateVoiceUi()
 }
 
+function clearConnectingTimer() {
+  if (connectingTimer) {
+    clearTimeout(connectingTimer)
+    connectingTimer = null
+  }
+}
+
+function armConnectingTimer() {
+  clearConnectingTimer()
+  connectingTimer = setTimeout(() => {
+    connectingTimer = null
+    if (!pc || voiceLinkState !== 'connecting') return
+    const ice = pc.iceConnectionState
+    const conn = pc.connectionState
+    console.warn('dm-voice connecting timeout', { ice, conn, signaling: pc.signalingState })
+    setVoiceLinkState('failed')
+    updateVoiceUi()
+    if (recoverAttempts < MAX_AUTO_RECOVER && activeConversationId) {
+      recoverVoiceConnection().catch(e => console.error('dm-voice auto-recover:', e))
+    }
+  }, CONNECTING_TIMEOUT_MS)
+}
+
+function setVoiceLinkState(next) {
+  voiceLinkState = next
+  if (next === 'connecting') armConnectingTimer()
+  else clearConnectingTimer()
+}
+
+/** Snapshot for DevTools: `app.getDmVoiceDebug()` */
+export function getDmVoiceDebug() {
+  const remoteTrack = remoteAudio?.srcObject instanceof MediaStream
+    ? remoteAudio.srcObject.getAudioTracks()[0]
+    : null
+  return {
+    voiceLinkState,
+    recovering,
+    isTalking,
+    peerTalking,
+    needsAudioGesture,
+    polite,
+    activeConversationId,
+    peerPhone,
+    hasChannel: !!channel,
+    hasPc: !!pc,
+    hasLocalStream: !!localStream,
+    hasRemoteAudio: !!remoteAudio,
+    remoteSrcObject: !!remoteAudio?.srcObject,
+    remoteTrack: remoteTrack
+      ? {
+          id: remoteTrack.id,
+          readyState: remoteTrack.readyState,
+          muted: remoteTrack.muted,
+          enabled: remoteTrack.enabled
+        }
+      : null,
+    pc: pc
+      ? {
+          connectionState: pc.connectionState,
+          iceConnectionState: pc.iceConnectionState,
+          iceGatheringState: pc.iceGatheringState,
+          signalingState: pc.signalingState,
+          localDescriptionType: pc.localDescription?.type || null,
+          remoteDescriptionType: pc.remoteDescription?.type || null,
+          transceiverDirections: pc.getTransceivers().map(t => t.direction)
+        }
+      : null
+  }
+}
+
 function updateVoiceUi() {
   const btn = document.getElementById('dmChatPttBtn')
   if (btn) {
@@ -187,7 +261,7 @@ function updateVoiceUi() {
     status.hidden = false
     status.innerHTML =
       'ارتباط صوتی قطع شد — <button type="button" class="dm-chat-voice-retry" onclick="app.retryDmVoiceConnection()">تلاش مجدد</button>'
-  } else if (needsAudioGesture) {
+  } else if (needsAudioGesture && voiceLinkState === 'connected') {
     status.hidden = false
     status.innerHTML =
       'برای شنیدن صدا ضربه بزنید — <button type="button" class="dm-chat-voice-retry" onclick="app.unlockDmVoiceAudio()">فعال‌سازی صدا</button>'
@@ -312,13 +386,13 @@ async function createPeerConnection() {
     if (!pc) return
     const state = pc.connectionState
     if (state === 'connected') {
-      voiceLinkState = 'connected'
+      setVoiceLinkState('connected')
       recoverAttempts = 0
       updateVoiceUi()
       return
     }
     if (state === 'failed') {
-      voiceLinkState = 'failed'
+      setVoiceLinkState('failed')
       setPeerTalking(false)
       updateVoiceUi()
       if (recoverAttempts < MAX_AUTO_RECOVER && activeConversationId) {
@@ -421,7 +495,7 @@ async function handleIce(payload) {
 export async function recoverVoiceConnection() {
   if (recovering || !activeConversationId || !peerPhone || !channel) return
   recovering = true
-  voiceLinkState = 'connecting'
+  setVoiceLinkState('connecting')
   updateVoiceUi()
 
   try {
@@ -456,7 +530,7 @@ export async function recoverVoiceConnection() {
     }
   } catch (e) {
     console.error('recoverVoiceConnection:', e)
-    voiceLinkState = 'failed'
+    setVoiceLinkState('failed')
     showToast('اتصال مجدد واکی‌تاکی ناموفق بود')
   } finally {
     recovering = false
@@ -709,7 +783,7 @@ export async function syncDmVoiceForTab(opts = {}) {
   setPeerTalking(false)
   pendingIceCandidates = []
   recoverAttempts = 0
-  voiceLinkState = 'connecting'
+  setVoiceLinkState('connecting')
   connecting = true
 
   try {
@@ -867,12 +941,24 @@ export async function stopPtt() {
 
 /** Unlock remote audio after autoplay block (user gesture). */
 export async function unlockDmVoiceAudio() {
+  if (voiceLinkState !== 'connected') {
+    showToast(
+      voiceLinkState === 'connecting'
+        ? 'هنوز ارتباط صوتی برقرار نشده — چند لحظه صبر کنید یا تلاش مجدد بزنید'
+        : 'ارتباط صوتی برقرار نیست — تلاش مجدد را بزنید'
+    )
+    updateVoiceUi()
+    return
+  }
   if (!remoteAudio?.srcObject) {
     needsAudioGesture = false
+    showToast('هنوز صدایی از طرف مقابل نرسیده — وقتی صحبت می‌کند دوباره فعال‌سازی را بزنید')
     updateVoiceUi()
     return
   }
   try {
+    remoteAudio.muted = false
+    remoteAudio.volume = 1
     await remoteAudio.play()
     needsAudioGesture = false
     updateVoiceUi()
@@ -971,9 +1057,10 @@ export async function teardownDmVoice(opts = {}) {
   pendingIceCandidates = []
   recovering = false
   recoverAttempts = 0
-  voiceLinkState = 'idle'
+  setVoiceLinkState('idle')
   needsAudioGesture = false
   cancelDmVoiceBackgroundTeardown()
+  clearConnectingTimer()
   activeConversationId = 0
   peerPhone = ''
   polite = false
