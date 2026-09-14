@@ -1924,6 +1924,18 @@ export function canAddNoteOnCustomer(customer, user = getCurrentUser()) {
   return hasPermission('followups_add_others')
 }
 
+/**
+ * Edit a followup note: same customer scope as adding notes, but only the author
+ * (or admin). There is no separate "edit others' notes" permission.
+ */
+export function canEditFollowup(followup, customer, user = getCurrentUser()) {
+  if (!followup || !canAddNoteOnCustomer(customer, user)) return false
+  if (user?.role === 'admin') return true
+  const myPhone = normalizePhone(user?.phone)
+  const author = normalizePhone(followup.createdByPhone)
+  return !!myPhone && !!author && myPhone === author
+}
+
 /** Set next follow-up date on a customer (owner path, or followups_add_others on others). */
 export function canScheduleFollowupOnCustomer(customer, user = getCurrentUser()) {
   if (!customer || !canViewCustomer(customer, user)) return false

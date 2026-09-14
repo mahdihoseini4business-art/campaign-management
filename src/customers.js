@@ -7,7 +7,7 @@ import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
   canViewCustomer, canManageCustomer, canEditCustomerInfo, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
   getTodayJalaliStr, jalaliAddDays, ownsCustomer, isAdmin, canViewOrgWideData,
-  canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canScheduleFollowupOnCustomer, canDeleteFollowupOnCustomer, canDeleteSalePayment, matchesTabSearch, getCustomerSearchExtras,
+  canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canEditFollowup, canScheduleFollowupOnCustomer, canDeleteFollowupOnCustomer, canDeleteSalePayment, matchesTabSearch, getCustomerSearchExtras,
   canClaimUnassignedCustomer, canRevealUnassignedByPhoneSearch, isHistoricalImportSale,
   resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
   getPlatformUrl, getLastActivity, findCustomerByPhone,
@@ -2616,7 +2616,6 @@ export async function openCustomerDetail(id, options = {}) {
     if (customerFollowups.length === 0) {
       timelineHtml = `<div class="detail-tab-empty">پیگیری ثبت نشده</div>`
     } else {
-      const canEditNote = canAddNoteOnCustomer(c)
       const canDeleteNote = canDeleteFollowupOnCustomer(c)
       timelineHtml = `<div class="timeline">`
       const showAllFollowups = detailFollowupsShowAll.has(c.id)
@@ -2637,6 +2636,7 @@ export async function openCustomerDetail(id, options = {}) {
         const overdueTag = isOverdoneNote ? '<span class="overdue-tag">معوقه</span>' : ''
         const itemClass = isOverdoneNote ? ' timeline-item-overdue' : ''
         const followupKey = f.id != null ? String(f.id) : ''
+        const canEditNote = canEditFollowup(f, c)
         let actionsHtml = ''
         if (followupKey && (canEditNote || canDeleteNote)) {
           const editBtn = canEditNote

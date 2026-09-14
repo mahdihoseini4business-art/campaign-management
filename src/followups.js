@@ -1,6 +1,6 @@
 import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB, markFollowupDoneInDB } from './data.js'
 import { getUsersSafe } from './auth.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, canDeleteFollowupOnCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone, formatSoldAt24h, soldAtTimePart, jalaliDatePart, formatTeamFilterLabel, isPaymentFilled, isGiftSale, isProductPriceLocked, ensureProductPayments } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, canEditFollowup, canDeleteFollowupOnCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone, formatSoldAt24h, soldAtTimePart, jalaliDatePart, formatTeamFilterLabel, isPaymentFilled, isGiftSale, isProductPriceLocked, ensureProductPayments } from './utils.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { paginateList, renderPaginationBar } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig } from './table-sort.js'
@@ -862,7 +862,7 @@ export async function renderFollowups() {
     const followupActionPerms = (item) => {
       const customer = customersById.get(item.customerId)
       return {
-        canEdit: !!customer && canAddNoteOnCustomer(customer),
+        canEdit: !!customer && canEditFollowup(item, customer),
         canDelete: !!customer && canDeleteFollowupOnCustomer(customer)
       }
     }
@@ -1294,8 +1294,8 @@ export async function openFollowupModal(editFollowupId) {
   if (editFollowupId) {
     const existing = data.followups.find(x => String(x.id) === String(editFollowupId) || `idx_${data.followups.indexOf(x)}` === editFollowupId)
     const customer = existing && data.customers.find(c => c.id === existing.customerId)
-    if (!customer || !canAddNoteOnCustomer(customer)) {
-      showToast('شما دسترسی ثبت یادداشت برای این مشتری را ندارید')
+    if (!existing || !customer || !canEditFollowup(existing, customer)) {
+      showToast('شما فقط یادداشت‌های خودتان را می‌توانید ویرایش کنید')
       return
     }
   } else if (!data.customers.some(c => canAddNoteOnCustomer(c))) {
@@ -1415,6 +1415,10 @@ export async function saveFollowup() {
   if (editFollowupId) {
     const existing = data.followups.find(x => String(x.id) === String(editFollowupId) || `idx_${data.followups.indexOf(x)}` === editFollowupId)
     if (!existing) { showToast('پیگیری یافت نشد'); return }
+    if (!canEditFollowup(existing, customer)) {
+      showToast('شما فقط یادداشت‌های خودتان را می‌توانید ویرایش کنید')
+      return
+    }
     // تاریخ/ساعت ثبت یادداشت بعد از ایجاد قابل تغییر نیست
     date = existing.date
     const updated = {
@@ -1486,8 +1490,8 @@ export function editFollowup(followupId) {
   const f = data.followups.find(x => String(x.id) === String(followupId) || `idx_${data.followups.indexOf(x)}` === followupId)
   if (!f) { showToast('پیگیری یافت نشد'); return }
   const customer = data.customers.find(c => c.id === f.customerId)
-  if (!customer || !canAddNoteOnCustomer(customer)) {
-    showToast('شما دسترسی ثبت یادداشت برای این مشتری را ندارید')
+  if (!customer || !canEditFollowup(f, customer)) {
+    showToast('شما فقط یادداشت‌های خودتان را می‌توانید ویرایش کنید')
     return
   }
   openFollowupModal(followupId)
