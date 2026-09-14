@@ -24,10 +24,11 @@ import {
   onDmVoicePttUp,
   onDmVoicePttKeyDown,
   onDmVoicePttKeyUp,
-  stopPtt
+  stopPtt,
+  retryDmVoiceConnection
 } from './dm-voice.js'
 
-export { onDmVoicePttDown, onDmVoicePttUp, onDmVoicePttKeyDown, onDmVoicePttKeyUp }
+export { onDmVoicePttDown, onDmVoicePttUp, onDmVoicePttKeyDown, onDmVoicePttKeyUp, retryDmVoiceConnection }
 
 const CHANNEL_NAME = 'dm-chat-live'
 const NOTIF_SOUND_URL = '/chat-notif.mp3'
@@ -1234,9 +1235,12 @@ function bindChrome() {
   }
   if (!window.__dmVoiceBeforeUnloadBound) {
     window.__dmVoiceBeforeUnloadBound = true
-    window.addEventListener('beforeunload', () => {
+    const hangupVoice = () => {
       teardownDmVoice().catch(() => {})
-    })
+    }
+    window.addEventListener('beforeunload', hangupVoice)
+    // pagehide is more reliable on mobile than beforeunload for sending hangup.
+    window.addEventListener('pagehide', hangupVoice)
   }
 }
 

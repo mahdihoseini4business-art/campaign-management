@@ -8,6 +8,8 @@ import { getCurrentUser, normalizePhone, showToast, userDisplayName } from './ut
 import { getUsersSafe } from './auth.js'
 
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }]
+const PEER_TALKING_TTL_MS = 15000
+const MAX_AUTO_RECOVER = 2
 
 /** @type {import('@supabase/supabase-js').RealtimeChannel | null} */
 let channel = null
@@ -17,15 +19,22 @@ let pc = null
 let localStream = null
 /** @type {HTMLAudioElement | null} */
 let remoteAudio = null
+/** @type {RTCIceCandidateInit[]} */
+let pendingIceCandidates = []
 
 let activeConversationId = 0
 let peerPhone = ''
 let polite = false
 let makingOffer = false
-let ignoreOffer = false
 let isTalking = false
 let peerTalking = false
+/** @type {ReturnType<typeof setTimeout> | null} */
+let peerTalkingTimer = null
 let connecting = false
+/** @type {'idle' | 'connecting' | 'connected' | 'failed'} */
+let voiceLinkState = 'idle'
+let recovering = false
+let recoverAttempts = 0
 /** Bumped on every hard teardown and every sync resync; in-flight work checks this. */
 let teardownToken = 0
 /** Token of the sync attempt that currently owns module globals (0 = none). */
@@ -63,6 +72,22 @@ function setLocalMicEnabled(enabled) {
   }
 }
 
+function setPeerTalking(on) {
+  peerTalking = !!on
+  if (peerTalkingTimer) {
+    clearTimeout(peerTalkingTimer)
+    peerTalkingTimer = null
+  }
+  if (peerTalking) {
+    peerTalkingTimer = setTimeout(() => {
+      peerTalking = false
+      peerTalkingTimer = null
+      updateVoiceUi()
+    }, PEER_TALKING_TTL_MS)
+  }
+  updateVoiceUi()
+}
+
 function updateVoiceUi() {
   const btn = document.getElementById('dmChatPttBtn')
   if (btn) {
@@ -83,6 +108,13 @@ function updateVoiceUi() {
   } else if (isTalking) {
     status.hidden = false
     status.textContent = 'شما در حال صحبت…'
+  } else if (voiceLinkState === 'failed') {
+    status.hidden = false
+    status.innerHTML =
+      'ارتباط صوتی قطع شد — <button type="button" class="dm-chat-voice-retry" onclick="app.retryDmVoiceConnection()">تلاش مجدد</button>'
+  } else if (voiceLinkState === 'connecting' && recovering) {
+    status.hidden = false
+    status.textContent = 'در حال اتصال مجدد…'
   } else {
     status.hidden = true
     status.textContent = ''
@@ -141,6 +173,36 @@ function attachLocalTracks() {
   }
 }
 
+async function flushIceQueue() {
+  if (!pc?.remoteDescription) return
+  const queued = pendingIceCandidates.splice(0, pendingIceCandidates.length)
+  for (const candidate of queued) {
+    try {
+      await pc.addIceCandidate(candidate)
+    } catch (e) {
+      console.error('dm-voice ice flush:', e)
+    }
+  }
+}
+
+/**
+ * Close PC only (keep channel / mic stream) for ICE restart / rebuild.
+ */
+async function closePeerConnectionOnly() {
+  const old = pc
+  pc = null
+  pendingIceCandidates = []
+  makingOffer = false
+  if (!old) return
+  try {
+    old.onicecandidate = null
+    old.ontrack = null
+    old.onconnectionstatechange = null
+    old.onnegotiationneeded = null
+    old.close()
+  } catch (_) { /* ignore */ }
+}
+
 async function createPeerConnection() {
   if (pc) return pc
   pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
@@ -157,21 +219,42 @@ async function createPeerConnection() {
     audio.play().catch(() => {})
   }
 
+  pc.onnegotiationneeded = () => {
+    makeOffer().catch(e => console.error('dm-voice negotiationneeded:', e))
+  }
+
   pc.onconnectionstatechange = () => {
     if (!pc) return
-    if (pc.connectionState === 'failed') {
-      console.warn('dm-voice connection failed')
+    const state = pc.connectionState
+    if (state === 'connected') {
+      voiceLinkState = 'connected'
+      recoverAttempts = 0
+      updateVoiceUi()
+      return
+    }
+    if (state === 'failed') {
+      voiceLinkState = 'failed'
+      setPeerTalking(false)
+      updateVoiceUi()
+      if (recoverAttempts < MAX_AUTO_RECOVER && activeConversationId) {
+        recoverVoiceConnection().catch(e => console.error('dm-voice auto-recover:', e))
+      }
+      return
+    }
+    if (state === 'disconnected') {
+      // Brief blips are normal; stuck peer-talking is cleared by TTL.
+      updateVoiceUi()
     }
   }
 
   return pc
 }
 
-async function makeOffer() {
+async function makeOffer(opts = {}) {
   if (!pc || makingOffer) return
   makingOffer = true
   try {
-    const offer = await pc.createOffer()
+    const offer = await pc.createOffer(opts.iceRestart ? { iceRestart: true } : undefined)
     await pc.setLocalDescription(offer)
     await sendSignal('voice-offer', { sdp: pc.localDescription })
   } finally {
@@ -181,14 +264,26 @@ async function makeOffer() {
 
 async function handleOffer(payload) {
   if (!pc || !payload?.sdp) return
+
   const offerCollision = makingOffer || pc.signalingState !== 'stable'
-  ignoreOffer = !polite && offerCollision
-  if (ignoreOffer) return
+  // Impolite peer ignores glare offers (perfect negotiation).
+  if (!polite && offerCollision) return
 
   try {
     await ensureLocalStream()
     attachLocalTracks()
+
+    // Polite peer rolls back local offer on glare.
+    if (offerCollision) {
+      try {
+        await pc.setLocalDescription({ type: 'rollback' })
+      } catch (e) {
+        console.warn('dm-voice rollback:', e?.message || e)
+      }
+    }
+
     await pc.setRemoteDescription(payload.sdp)
+    await flushIceQueue()
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
     await sendSignal('voice-answer', { sdp: pc.localDescription })
@@ -202,6 +297,7 @@ async function handleAnswer(payload) {
   try {
     if (pc.signalingState === 'have-local-offer') {
       await pc.setRemoteDescription(payload.sdp)
+      await flushIceQueue()
     }
   } catch (e) {
     console.error('dm-voice handleAnswer:', e)
@@ -210,11 +306,70 @@ async function handleAnswer(payload) {
 
 async function handleIce(payload) {
   if (!pc || !payload?.candidate) return
+  if (!pc.remoteDescription) {
+    pendingIceCandidates.push(payload.candidate)
+    return
+  }
   try {
     await pc.addIceCandidate(payload.candidate)
   } catch (e) {
-    if (!ignoreOffer) console.error('dm-voice ice:', e)
+    console.error('dm-voice ice:', e)
   }
+}
+
+/**
+ * ICE restart or full PC rebuild after connectionState === 'failed'.
+ */
+export async function recoverVoiceConnection() {
+  if (recovering || !activeConversationId || !peerPhone || !channel) return
+  recovering = true
+  voiceLinkState = 'connecting'
+  updateVoiceUi()
+
+  try {
+    recoverAttempts += 1
+
+    // Prefer ICE restart on the existing PC when possible.
+    if (pc && (pc.connectionState === 'failed' || pc.connectionState === 'disconnected')) {
+      try {
+        if (typeof pc.restartIce === 'function') pc.restartIce()
+        if (!polite) {
+          await makeOffer({ iceRestart: true })
+        } else {
+          await sendSignal('voice-hello')
+        }
+        return
+      } catch (e) {
+        console.warn('dm-voice ice restart failed, rebuilding PC:', e?.message || e)
+      }
+    }
+
+    await closePeerConnectionOnly()
+    await createPeerConnection()
+    try {
+      await ensureLocalStream()
+      attachLocalTracks()
+    } catch (e) {
+      console.warn('dm-voice recover mic:', e?.message || e)
+    }
+    await sendSignal('voice-hello')
+    if (!polite && localStream && pc?.signalingState === 'stable') {
+      await makeOffer()
+    }
+  } catch (e) {
+    console.error('recoverVoiceConnection:', e)
+    voiceLinkState = 'failed'
+    showToast('اتصال مجدد واکی‌تاکی ناموفق بود')
+  } finally {
+    recovering = false
+    updateVoiceUi()
+  }
+}
+
+/** Manual retry from status UI. */
+export async function retryDmVoiceConnection() {
+  recoverAttempts = 0
+  await recoverVoiceConnection()
 }
 
 async function handleSignal({ event, payload }) {
@@ -254,8 +409,7 @@ async function handleSignal({ event, payload }) {
     return
   }
   if (event === 'ptt-start') {
-    peerTalking = true
-    // Half-duplex: yield if we were transmitting
+    // Half-duplex: yield before showing peer-talking UI
     if (isTalking || pttWanted) {
       pttWanted = false
       pttEpoch += 1
@@ -265,12 +419,11 @@ async function handleSignal({ event, payload }) {
         sendSignal('ptt-stop').catch(() => {})
       }
     }
-    updateVoiceUi()
+    setPeerTalking(true)
     return
   }
   if (event === 'ptt-stop' || event === 'voice-hangup') {
-    peerTalking = false
-    updateVoiceUi()
+    setPeerTalking(false)
   }
 }
 
@@ -356,6 +509,7 @@ async function disposeSnapshot(snap) {
       snap.pc.onicecandidate = null
       snap.pc.ontrack = null
       snap.pc.onconnectionstatechange = null
+      snap.pc.onnegotiationneeded = null
       snap.pc.close()
     } catch (_) { /* ignore */ }
   }
@@ -409,7 +563,10 @@ export async function syncDmVoiceForTab(opts = {}) {
   // Higher phone is polite (yields on glare); lower phone is the offerer
   polite = me > peer
   isTalking = false
-  peerTalking = false
+  setPeerTalking(false)
+  pendingIceCandidates = []
+  recoverAttempts = 0
+  voiceLinkState = 'connecting'
   connecting = true
 
   try {
@@ -604,15 +761,18 @@ export async function teardownDmVoice(opts = {}) {
 
   sessionToken = 0
   isTalking = false
-  peerTalking = false
+  setPeerTalking(false)
   pttWanted = false
   pttEpoch += 1
   pttStarting = false
+  pendingIceCandidates = []
+  recovering = false
+  recoverAttempts = 0
+  voiceLinkState = 'idle'
   activeConversationId = 0
   peerPhone = ''
   polite = false
   makingOffer = false
-  ignoreOffer = false
   connecting = false
 
   await disposeSnapshot(snap)

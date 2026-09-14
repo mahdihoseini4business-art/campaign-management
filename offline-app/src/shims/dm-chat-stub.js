@@ -32,6 +32,8 @@ export function onDmVoicePttKeyDown() {}
 
 export function onDmVoicePttKeyUp() {}
 
+export async function retryDmVoiceConnection() {}
+
 export function openDmCreateGroup() {}
 
 export function onDmGroupTitleInput() {}

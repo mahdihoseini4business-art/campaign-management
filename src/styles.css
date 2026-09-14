@@ -8328,6 +8328,23 @@
   display: none !important;
 }
 
+.dm-chat-voice-retry {
+  margin-inline-start: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.dm-chat-voice-retry:hover {
+  opacity: 0.85;
+}
+
 .dm-chat-ptt {
   width: 40px;
   height: 40px;
