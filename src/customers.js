@@ -3795,10 +3795,11 @@ export async function renderProducts(customerId, users = null) {
       const cur = getInPersonSessionById(currentSessionId)
       if (cur) sessionOpts = [cur, ...sessionOpts]
     }
-    // تاریخ برگزاری حتی برای فاکتور بسته‌شده قابل انتخاب/تغییر است (معامله لغو‌شده نه)
-    const canEditSession = canEdit && !cancelled && (isInPerson || !!currentSessionId)
+    // تاریخ برگزاری حتی برای فاکتور بسته‌شده قابل انتخاب/تغییر است (معامله لغو‌شده نه).
+    // کنترل همیشه در DOM باشد تا با انتخاب محصول رویداد (از ردیف خالی) ظاهر شود.
+    const sessionFieldEditable = canEdit && !cancelled
     let sessionControl = ''
-    if (canEditSession) {
+    if (sessionFieldEditable) {
       const optsHtml = sessionOpts.map(s =>
         `<option value="${escapeAttr(s.id)}"${s.id === currentSessionId ? ' selected' : ''}>${escapeHtml(formatInPersonSessionLabel(s))}</option>`
       ).join('')
@@ -3830,7 +3831,7 @@ export async function renderProducts(customerId, users = null) {
     const productDetailsBtn = (canEdit && !closed && !hasEditablePay && !hasCompletedRefund)
       ? `<button type="button" class="btn btn-sm sale-product-save-btn" onclick="app.commitSaleProductDetails('${escapeAttr(customerId)}', ${i})">ذخیره جزئیات محصول</button>`
       : ''
-    const sessionSaveBtn = (canEditSession && closed && isInPerson)
+    const sessionSaveBtn = (sessionFieldEditable && closed && isInPerson)
       ? `<button type="button" class="btn btn-sm sale-session-save-btn" onclick="app.commitInPersonSession('${escapeAttr(customerId)}', ${i})">ذخیره تاریخ برگزاری</button>`
       : ''
     const adminPriceBtn = canAdminEditPrice

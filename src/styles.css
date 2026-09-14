@@ -2272,7 +2272,8 @@
     margin-top: 12px;
   }
 
-  /* .sale-fields { display:grid } would otherwise override the HTML hidden attribute */
+  /* .sale-field { display:flex } / .sale-shipping-fields { display:grid } otherwise override HTML hidden */
+  .sale-field[hidden],
   .sale-shipping-fields[hidden] {
     display: none !important;
   }
