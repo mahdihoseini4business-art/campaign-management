@@ -4,7 +4,7 @@
  * Env:
  *   SUPABASE_URL
  *   SUPABASE_ANON_KEY
- *   CRON_SECRET          (optional — hits subscription-cron)
+ *   CRON_SECRET          (optional — hits subscription-cron + ops-digest-cron)
  *   SMOKE_APP_URL        (optional — checks /platform /signup /payment-result)
  *
  * Run: node scripts/saas-smoke-check.mjs
@@ -79,6 +79,19 @@ async function main() {
     })
     assert(cron.status === 200 && cron.json?.success, `cron failed: ${cron.text}`)
     console.log('saas-smoke: cron ok', cron.json)
+
+    const digestUnauthorized = await checkFn('ops-digest-cron?kind=morning', {
+      headers: {},
+      body: {}
+    })
+    assert(digestUnauthorized.status === 401, `ops-digest-cron should 401 without secret: ${digestUnauthorized.status}`)
+
+    const digest = await checkFn('ops-digest-cron?kind=morning', {
+      headers: { 'x-cron-secret': cronSecret },
+      body: {}
+    })
+    assert(digest.status === 200 && digest.json?.success, `ops-digest-cron failed: ${digest.text}`)
+    console.log('saas-smoke: ops-digest-cron ok', digest.json)
   } else {
     console.log('saas-smoke: cron skipped (no CRON_SECRET)')
   }
