@@ -2130,6 +2130,22 @@
     <div class="dm-chat-tabs" id="dmChatTabs" hidden></div>
     <div class="dm-chat-body" id="dmChatBody"></div>
     <div class="dm-chat-composer" id="dmChatComposer" hidden>
+      <div class="dm-chat-voice-status" id="dmChatVoiceStatus" hidden></div>
+      <button type="button" class="dm-chat-ptt" id="dmChatPttBtn" hidden
+        aria-label="نگه‌دارید تا صحبت کنید"
+        title="نگه‌دارید تا صحبت کنید"
+        onpointerdown="app.onDmVoicePttDown(event)"
+        onpointerup="app.onDmVoicePttUp(event)"
+        onpointercancel="app.onDmVoicePttUp(event)"
+        onpointerleave="app.onDmVoicePttUp(event)"
+        oncontextmenu="event.preventDefault()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+      </button>
       <textarea id="dmChatInput" rows="1" placeholder="پیام خود را بنویسید…" onkeydown="app.onDmChatInputKeydown(event)"></textarea>
       <button type="button" class="dm-chat-send" onclick="app.sendDmChatMessage()" aria-label="ارسال">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>

@@ -8295,11 +8295,59 @@
 .dm-chat-composer {
   display: flex;
   align-items: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 10px;
   border-top: 1px solid var(--border);
   background: var(--surface);
   flex-shrink: 0;
+  position: relative;
+}
+
+.dm-chat-voice-status {
+  flex: 1 0 100%;
+  font-size: 11px;
+  color: var(--accent);
+  padding: 0 2px 2px;
+  order: -1;
+}
+
+.dm-chat-voice-status[hidden] {
+  display: none !important;
+}
+
+.dm-chat-ptt {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.dm-chat-ptt:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dm-chat-ptt.is-talking,
+.dm-chat-ptt:active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.dm-chat-ptt[hidden] {
+  display: none !important;
 }
 
 .dm-chat-composer textarea {

@@ -16,6 +16,16 @@ import {
   requireMainAdmin
 } from './utils.js'
 import { assertFeature, assertWritable } from './entitlements.js'
+import {
+  syncDmVoiceForTab,
+  teardownDmVoice,
+  syncDmVoiceComposerVisibility,
+  onDmVoicePttDown,
+  onDmVoicePttUp,
+  stopPtt
+} from './dm-voice.js'
+
+export { onDmVoicePttDown, onDmVoicePttUp }
 
 const CHANNEL_NAME = 'dm-chat-live'
 const NOTIF_SOUND_URL = '/chat-notif.mp3'
@@ -592,6 +602,8 @@ function renderListBody() {
   if (composer) composer.hidden = true
   if (backBtn) backBtn.hidden = true
   if (title) title.textContent = 'گفتگوها'
+  syncDmVoiceComposerVisibility(false)
+  teardownDmVoice().catch(() => {})
   renderTabs()
   if (!body) return
 
@@ -674,6 +686,8 @@ function renderCreateGroupBody() {
   const composer = document.getElementById('dmChatComposer')
   const backBtn = document.getElementById('dmChatBackBtn')
   const title = document.getElementById('dmChatTitle')
+  syncDmVoiceComposerVisibility(false)
+  teardownDmVoice().catch(() => {})
   if (composer) composer.hidden = true
   if (backBtn) backBtn.hidden = false
   if (title) title.textContent = 'گروه جدید'
@@ -760,6 +774,17 @@ function renderChatBody() {
   `
   const scroller = document.getElementById('dmChatMessages')
   if (scroller) scroller.scrollTop = scroller.scrollHeight
+
+  if (tab.kind === 'dm' && tab.peerPhone) {
+    syncDmVoiceForTab({
+      conversationId: Number(tab.conversationId),
+      peerPhone: tab.peerPhone,
+      enabled: true
+    }).catch(e => console.error('dm voice sync:', e))
+  } else {
+    syncDmVoiceComposerVisibility(false)
+    teardownDmVoice().catch(() => {})
+  }
 }
 
 function renderPanel() {
@@ -923,6 +948,7 @@ export function selectDmChatTab(index) {
   const i = Number(index)
   if (i < 0 || i >= openTabs.length) return
   flushHeartbeat().catch(() => {})
+  teardownDmVoice().catch(() => {})
   activeTabIndex = i
   viewMode = 'chat'
   const tab = openTabs[i]
@@ -935,7 +961,10 @@ export function selectDmChatTab(index) {
 export function closeDmChatTab(index) {
   const i = Number(index)
   if (i < 0 || i >= openTabs.length) return
-  if (i === activeTabIndex) flushHeartbeat().catch(() => {})
+  if (i === activeTabIndex) {
+    flushHeartbeat().catch(() => {})
+    teardownDmVoice().catch(() => {})
+  }
   openTabs.splice(i, 1)
   if (!openTabs.length) {
     activeTabIndex = -1
@@ -958,6 +987,7 @@ export function closeDmChatTab(index) {
 
 export function backToDmChatList() {
   flushHeartbeat().catch(() => {})
+  teardownDmVoice().catch(() => {})
   viewMode = 'list'
   renderPanel()
 }
@@ -1170,6 +1200,7 @@ export async function openDmChatPanel() {
 export function closeDmChatPanel() {
   flushHeartbeat().catch(() => {})
   stopHeartbeat()
+  teardownDmVoice().catch(() => {})
   panelOpen = false
   hidePanelAnimated()
   setBodyChatOpen(false)
@@ -1187,7 +1218,10 @@ function bindChrome() {
   }
   if (!visibilityHandler) {
     visibilityHandler = () => {
-      if (document.visibilityState !== 'visible') flushHeartbeat().catch(() => {})
+      if (document.visibilityState !== 'visible') {
+        flushHeartbeat().catch(() => {})
+        stopPtt().catch(() => {})
+      }
     }
     document.addEventListener('visibilitychange', visibilityHandler)
   }
@@ -1195,6 +1229,12 @@ function bindChrome() {
     viewportHandler = () => syncViewportOffset()
     window.visualViewport.addEventListener('resize', viewportHandler)
     window.visualViewport.addEventListener('scroll', viewportHandler)
+  }
+  if (!window.__dmVoiceBeforeUnloadBound) {
+    window.__dmVoiceBeforeUnloadBound = true
+    window.addEventListener('beforeunload', () => {
+      teardownDmVoice().catch(() => {})
+    })
   }
 }
 
@@ -1266,6 +1306,7 @@ export async function toggleDmChatSetting(enabled) {
 
 export function teardownDmChat() {
   flushHeartbeat().catch(() => {})
+  teardownDmVoice().catch(() => {})
   closeDmChatPanel()
   stopHeartbeat()
   if (channel) {

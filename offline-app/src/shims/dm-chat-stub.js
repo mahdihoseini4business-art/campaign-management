@@ -24,6 +24,10 @@ export async function sendDmChatMessage() {}
 
 export function onDmChatInputKeydown() {}
 
+export function onDmVoicePttDown() {}
+
+export function onDmVoicePttUp() {}
+
 export function openDmCreateGroup() {}
 
 export function onDmGroupTitleInput() {}
