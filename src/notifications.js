@@ -21,6 +21,10 @@ import {
   renderMarkdown,
   plainTextFromMarkdown
 } from './utils.js'
+import {
+  isDigestKind,
+  isSystemDigestSender
+} from '../supabase/functions/_shared/digest-metrics.js'
 
 let cachedNotifications = []
 let cachedReads = new Set()
@@ -31,7 +35,21 @@ function myPhone() {
 
 function isNotificationSender(n, phone = myPhone()) {
   if (!n || !phone) return false
+  if (isSystemDigestSender(n.created_by_phone)) return false
   return normalizePhone(n.created_by_phone) === phone
+}
+
+function canDeleteNotification(n) {
+  if (!n) return false
+  if (isSystemDigestSender(n.created_by_phone) || isDigestKind(n.kind)) {
+    return isMainAdmin()
+  }
+  return isNotificationSender(n) || isMainAdmin()
+}
+
+function digestKindBadge(n) {
+  if (!isDigestKind(n?.kind) && !isSystemDigestSender(n?.created_by_phone)) return ''
+  return '<span class="notification-digest-badge">خلاصه روزانه</span>'
 }
 
 /** Relative time: only دقیقه / ساعت / روز */
@@ -159,8 +177,9 @@ function renderNotificationList() {
   list.innerHTML = items.map(n => {
     const unread = !cachedReads.has(Number(n.id))
     const title = notificationTitle(n)
+    const badge = digestKindBadge(n)
     return `<button type="button" class="notification-item${unread ? ' is-unread' : ''}" role="listitem" onclick="app.openNotificationDetail(${Number(n.id)})">
-      <div class="notification-item-title">${escapeHtml(title)}</div>
+      <div class="notification-item-title">${escapeHtml(title)}${badge}</div>
       <div class="notification-item-meta">${escapeHtml(formatNotificationAge(n.created_at))}</div>
     </button>`
   }).join('')
@@ -297,19 +316,25 @@ export async function openNotificationDetail(id) {
   }
   if (metaEl) {
     const when = formatNotificationDateTime(n.created_at)
-    const who = (n.created_by_name || '').trim() || 'نامشخص'
+    const who = isSystemDigestSender(n.created_by_phone)
+      ? 'سیستم'
+      : ((n.created_by_name || '').trim() || 'نامشخص')
+    const kindLine = isDigestKind(n.kind)
+      ? `<div><span class="notif-detail-label">نوع:</span> خلاصه روزانه</div>`
+      : ''
     const expireLine = n.expires_at
       ? `<div><span class="notif-detail-label">حذف خودکار:</span> ${escapeHtml(formatNotificationDateTime(n.expires_at))}</div>`
       : ''
     metaEl.innerHTML = `
       <div><span class="notif-detail-label">تاریخ و ساعت:</span> ${escapeHtml(when)}</div>
       <div><span class="notif-detail-label">فرستنده:</span> ${escapeHtml(who)}</div>
+      ${kindLine}
       ${expireLine}
     `
   }
 
   if (deleteBtn) {
-    const canDelete = isNotificationSender(n)
+    const canDelete = canDeleteNotification(n)
     deleteBtn.style.display = canDelete ? '' : 'none'
     deleteBtn.onclick = canDelete ? () => deleteNotification(n.id) : null
   }
@@ -328,8 +353,10 @@ export function deleteNotification(id) {
     showToast('اعلان پیدا نشد')
     return
   }
-  if (!isNotificationSender(n) && !isMainAdmin()) {
-    showToast('فقط فرستنده می‌تواند اعلان را حذف کند')
+  if (!canDeleteNotification(n)) {
+    showToast(isSystemDigestSender(n.created_by_phone) || isDigestKind(n.kind)
+      ? 'فقط مدیر اصلی می‌تواند خلاصه روزانه را حذف کند'
+      : 'فقط فرستنده می‌تواند اعلان را حذف کند')
     return
   }
 
@@ -602,13 +629,19 @@ export async function sendNotification() {
     recipient_phones: phones,
     created_by_phone: normalizePhone(user?.phone) || null,
     created_by_name: userDisplayName(user) || user?.username || null,
-    expires_at: expire.expiresAt
+    expires_at: expire.expiresAt,
+    kind: 'manual',
+    meta: {}
   }
 
   const btn = document.getElementById('notifSendBtn')
   if (btn) btn.disabled = true
   try {
-    const { data: inserted, error } = await supabase.from('notifications').insert(row).select('id').single()
+    let { data: inserted, error } = await supabase.from('notifications').insert(row).select('id').single()
+    if (error && /kind|meta/i.test(error.message || '')) {
+      const { kind: _k, meta: _m, ...legacy } = row
+      ;({ data: inserted, error } = await supabase.from('notifications').insert(legacy).select('id').single())
+    }
     if (error) throw error
     import('./live-sync.js').then(m => m.noteLocalWrite()).catch(() => {})
     try {

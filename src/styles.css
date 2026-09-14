@@ -243,6 +243,18 @@
     text-overflow: ellipsis;
   }
 
+  .notification-digest-badge {
+    display: inline-block;
+    margin-inline-start: 6px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    vertical-align: middle;
+    color: var(--text-muted);
+    background: #e2e8f0;
+  }
+
   .notification-item-meta {
     margin-top: 6px;
     font-size: 11px;

@@ -13,6 +13,9 @@
 - [ ] `035_subdomain_audit.sql`
 - [ ] `036_rls_tenant_query_perf.sql` (ایندکس + RLS برای جلوگیری از timeout لود مشتریان/پیگیری‌ها)
 - [ ] `037_users_tenant_rls_fix.sql` (**حیاتی** — جلوگیری از نشت لیست کاربران بین سازمان‌ها)
+- [ ] `038_tenant_scoped_group_dm_uniques.sql`
+- [ ] `039_write_audit_log_membership.sql`
+- [ ] `040_notification_digest_meta.sql` (kind/meta برای خلاصه صبح/عصر)
 
 بعد از apply: `NOTIFY pgrst, 'reload schema'` (معمولاً داخل migration هست).
 
@@ -32,6 +35,7 @@ Rollback: migrationها عمدتاً additive هستند؛ rollback کامل د�
 | `create-payment` | شروع زرین‌پال |
 | `zarinpal-callback` | verify + فعال‌سازی |
 | `subscription-cron` | trial→readonly، active→grace→readonly |
+| `ops-digest-cron` | خلاصه صبح مشاور / عصر مدیر گروه → صندوق اعلان |
 
 Smoke بعد از دیپلوی:
 
@@ -59,15 +63,28 @@ npm run smoke:saas
 
 ## ۵) Cron
 
-نمونه روزانه:
+نمونه روزانه — اشتراک:
 
 ```bash
 curl -X POST -H "x-cron-secret: $CRON_SECRET" \
   "https://<project-ref>.supabase.co/functions/v1/subscription-cron"
 ```
 
-- [ ] زمان‌بندی در Supabase Cron / سرویس خارجی ثبت شد
-- [ ] یک بار دستی اجرا و پاسخ JSON بررسی شد
+خلاصه عملیاتی (به وقت تهران؛ دو بار در روز):
+
+```bash
+# صبح ~۰۸:۰۰ IRST — خلاصه مشاور
+curl -X POST -H "x-cron-secret: $CRON_SECRET" \
+  "https://<project-ref>.supabase.co/functions/v1/ops-digest-cron?kind=morning"
+
+# عصر ~۱۸:۰۰ IRST — خلاصه مدیر گروه
+curl -X POST -H "x-cron-secret: $CRON_SECRET" \
+  "https://<project-ref>.supabase.co/functions/v1/ops-digest-cron?kind=evening"
+```
+
+- [ ] زمان‌بندی `subscription-cron` در Supabase Cron / سرویس خارجی ثبت شد
+- [ ] زمان‌بندی `ops-digest-cron` صبح و عصر (Tehran) ثبت شد
+- [ ] یک بار دستی هر دو kind اجرا و پاسخ JSON (`sent` / `skipped_*`) بررسی شد
 
 ## ۶) بکاپ و بازیابی عملیاتی
 

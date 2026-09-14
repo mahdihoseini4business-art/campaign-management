@@ -22,5 +22,8 @@ verify_jwt = false
 [functions.subscription-cron]
 verify_jwt = false
 
+[functions.ops-digest-cron]
+verify_jwt = false
+
 [functions.tenant-ops]
 verify_jwt = false

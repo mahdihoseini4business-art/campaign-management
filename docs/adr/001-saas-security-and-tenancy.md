@@ -78,9 +78,12 @@ CARNO امروز تک‌مستأجر است: OTP سفارشی، session با HMA
 ## فاز ۴ — زرین‌پال
 
 Secrets لازم: `ZARINPAL_MERCHANT_ID`, `ZARINPAL_SANDBOX`, `PUBLIC_APP_URL`, `CRON_SECRET`  
-Functions: `create-payment`, `zarinpal-callback`, `subscription-cron`  
+Functions: `create-payment`, `zarinpal-callback`, `subscription-cron`, `ops-digest-cron`  
 Cron نمونه (روزانه):  
-`curl -H "x-cron-secret: $CRON_SECRET" https://<ref>.supabase.co/functions/v1/subscription-cron`
+`curl -H "x-cron-secret: $CRON_SECRET" https://<ref>.supabase.co/functions/v1/subscription-cron`  
+خلاصه عملیاتی (تهران ~۰۸:۰۰ / ~۱۸:۰۰):  
+`curl -H "x-cron-secret: $CRON_SECRET" "https://<ref>.supabase.co/functions/v1/ops-digest-cron?kind=morning"`  
+`curl -H "x-cron-secret: $CRON_SECRET" "https://<ref>.supabase.co/functions/v1/ops-digest-cron?kind=evening"`
 
 ## فاز ۲ (کلاینت) — بدون وابستگی به دیپلوی Liara
 
