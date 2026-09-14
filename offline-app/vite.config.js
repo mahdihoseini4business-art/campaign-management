@@ -116,6 +116,9 @@ function onlineAppHtmlPlugin() {
           )
           .replace(/<script src="\/vendor\/jalalidatepicker.min.js"><\/script>\s*/g, '')
           .replace(/<title>[^<]+<\/title>/, '<title>CARNO — نسخه آفلاین</title>')
+          // Walkie-talkie is online-only; strip PTT UI from offline shell.
+          .replace(/<div class="dm-chat-voice-status"[\s\S]*?<\/div>\s*/g, '')
+          .replace(/<button type="button" class="dm-chat-ptt"[\s\S]*?<\/button>\s*/g, '')
       )
     },
     transformIndexHtml: {

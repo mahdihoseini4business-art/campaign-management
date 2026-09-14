@@ -25,10 +25,20 @@ import {
   onDmVoicePttKeyDown,
   onDmVoicePttKeyUp,
   stopPtt,
-  retryDmVoiceConnection
+  retryDmVoiceConnection,
+  unlockDmVoiceAudio,
+  scheduleDmVoiceBackgroundTeardown,
+  cancelDmVoiceBackgroundTeardown
 } from './dm-voice.js'
 
-export { onDmVoicePttDown, onDmVoicePttUp, onDmVoicePttKeyDown, onDmVoicePttKeyUp, retryDmVoiceConnection }
+export {
+  onDmVoicePttDown,
+  onDmVoicePttUp,
+  onDmVoicePttKeyDown,
+  onDmVoicePttKeyUp,
+  retryDmVoiceConnection,
+  unlockDmVoiceAudio
+}
 
 const CHANNEL_NAME = 'dm-chat-live'
 const NOTIF_SOUND_URL = '/chat-notif.mp3'
@@ -1224,6 +1234,17 @@ function bindChrome() {
       if (document.visibilityState !== 'visible') {
         flushHeartbeat().catch(() => {})
         stopPtt().catch(() => {})
+        scheduleDmVoiceBackgroundTeardown()
+        return
+      }
+      cancelDmVoiceBackgroundTeardown()
+      const tab = openTabs[activeTabIndex]
+      if (panelOpen && viewMode === 'chat' && tab?.kind === 'dm' && tab.peerPhone) {
+        syncDmVoiceForTab({
+          conversationId: Number(tab.conversationId),
+          peerPhone: tab.peerPhone,
+          enabled: true
+        }).catch(e => console.error('dm voice resync:', e))
       }
     }
     document.addEventListener('visibilitychange', visibilityHandler)

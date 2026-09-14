@@ -4,12 +4,13 @@
 // ============================================
 
 import { supabase } from './supabase.js'
+import { getIceServers } from './config.js'
 import { getCurrentUser, normalizePhone, showToast, userDisplayName } from './utils.js'
 import { getUsersSafe } from './auth.js'
 
-const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }]
 const PEER_TALKING_TTL_MS = 15000
 const MAX_AUTO_RECOVER = 2
+const BACKGROUND_TEARDOWN_MS = 60000
 
 /** @type {import('@supabase/supabase-js').RealtimeChannel | null} */
 let channel = null
@@ -44,6 +45,10 @@ let pttWanted = false
 /** Invalidates in-flight startPtt when stop/release wins the race. */
 let pttEpoch = 0
 let pttStarting = false
+/** Remote audio.play() failed — need a user gesture. */
+let needsAudioGesture = false
+/** @type {ReturnType<typeof setTimeout> | null} */
+let backgroundTeardownTimer = null
 
 function myPhone() {
   return normalizePhone(getCurrentUser()?.phone)
@@ -69,6 +74,74 @@ function setLocalMicEnabled(enabled) {
   if (!localStream) return
   for (const track of localStream.getAudioTracks()) {
     track.enabled = !!enabled
+  }
+}
+
+/** Ensure a recvonly audio transceiver so we can hear without grabbing the mic. */
+function ensureRecvAudioTransceiver() {
+  if (!pc) return
+  if (pc.getTransceivers().length === 0) {
+    try {
+      pc.addTransceiver('audio', { direction: 'recvonly' })
+    } catch (e) {
+      console.warn('dm-voice recvonly transceiver:', e?.message || e)
+    }
+  }
+}
+
+/**
+ * Attach mic tracks for send; prefer replaceTrack on existing audio transceiver.
+ */
+async function attachLocalTracks() {
+  if (!pc || !localStream) return
+  const audioTrack = localStream.getAudioTracks()[0]
+  if (!audioTrack) return
+
+  const audioSender = pc.getSenders().find(s => s.track?.kind === 'audio')
+  if (audioSender) {
+    try {
+      await audioSender.replaceTrack(audioTrack)
+    } catch (e) {
+      console.warn('dm-voice replaceTrack:', e?.message || e)
+    }
+    return
+  }
+
+  const recvOnly = pc.getTransceivers().find(t =>
+    t.direction === 'recvonly' || t.direction === 'inactive'
+  )
+  if (recvOnly) {
+    try {
+      await recvOnly.sender.replaceTrack(audioTrack)
+      recvOnly.direction = 'sendrecv'
+    } catch (e) {
+      console.warn('dm-voice recvonly→sendrecv:', e?.message || e)
+      pc.addTrack(audioTrack, localStream)
+    }
+    return
+  }
+
+  pc.addTrack(audioTrack, localStream)
+}
+
+/** Stop mic hardware and clear senders (keep PC for receiving). */
+async function releaseLocalMic() {
+  if (localStream) {
+    for (const t of localStream.getTracks()) {
+      try { t.stop() } catch (_) { /* ignore */ }
+    }
+    localStream = null
+  }
+  if (!pc) return
+  for (const sender of pc.getSenders()) {
+    if (sender.track?.kind === 'audio' || sender.track == null) {
+      try { await sender.replaceTrack(null) } catch (_) { /* ignore */ }
+    }
+  }
+  for (const t of pc.getTransceivers()) {
+    if (t.receiver?.track?.kind === 'audio' || t.direction === 'sendrecv' || t.direction === 'sendonly') {
+      try { t.direction = 'recvonly' } catch (_) { /* ignore */ }
+    }
   }
 }
 
@@ -112,6 +185,10 @@ function updateVoiceUi() {
     status.hidden = false
     status.innerHTML =
       'ارتباط صوتی قطع شد — <button type="button" class="dm-chat-voice-retry" onclick="app.retryDmVoiceConnection()">تلاش مجدد</button>'
+  } else if (needsAudioGesture) {
+    status.hidden = false
+    status.innerHTML =
+      'برای شنیدن صدا ضربه بزنید — <button type="button" class="dm-chat-voice-retry" onclick="app.unlockDmVoiceAudio()">فعال‌سازی صدا</button>'
   } else if (voiceLinkState === 'connecting' && recovering) {
     status.hidden = false
     status.textContent = 'در حال اتصال مجدد…'
@@ -160,17 +237,9 @@ async function ensureLocalStream() {
     audio: true,
     video: false
   })
-  // Start muted until push-to-talk
+  // Caller enables on PTT; stay muted until then
   setLocalMicEnabled(false)
   return localStream
-}
-
-function attachLocalTracks() {
-  if (!pc || !localStream) return
-  const existing = new Set(pc.getSenders().map(s => s.track).filter(Boolean))
-  for (const track of localStream.getTracks()) {
-    if (!existing.has(track)) pc.addTrack(track, localStream)
-  }
 }
 
 async function flushIceQueue() {
@@ -205,7 +274,7 @@ async function closePeerConnectionOnly() {
 
 async function createPeerConnection() {
   if (pc) return pc
-  pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+  pc = new RTCPeerConnection({ iceServers: getIceServers() })
 
   pc.onicecandidate = (ev) => {
     if (!ev.candidate) return
@@ -216,7 +285,15 @@ async function createPeerConnection() {
     const audio = ensureRemoteAudio()
     const stream = ev.streams?.[0] || new MediaStream([ev.track])
     audio.srcObject = stream
-    audio.play().catch(() => {})
+    audio.play()
+      .then(() => {
+        needsAudioGesture = false
+        updateVoiceUi()
+      })
+      .catch(() => {
+        needsAudioGesture = true
+        updateVoiceUi()
+      })
   }
 
   pc.onnegotiationneeded = () => {
@@ -270,8 +347,9 @@ async function handleOffer(payload) {
   if (!polite && offerCollision) return
 
   try {
-    await ensureLocalStream()
-    attachLocalTracks()
+    // Do not grab mic here — receive-only until PTT
+    if (localStream) await attachLocalTracks()
+    else ensureRecvAudioTransceiver()
 
     // Polite peer rolls back local offer on glare.
     if (offerCollision) {
@@ -346,14 +424,14 @@ export async function recoverVoiceConnection() {
 
     await closePeerConnectionOnly()
     await createPeerConnection()
-    try {
-      await ensureLocalStream()
-      attachLocalTracks()
-    } catch (e) {
-      console.warn('dm-voice recover mic:', e?.message || e)
+    ensureRecvAudioTransceiver()
+    if (localStream) {
+      try { await attachLocalTracks() } catch (e) {
+        console.warn('dm-voice recover attach:', e?.message || e)
+      }
     }
     await sendSignal('voice-hello')
-    if (!polite && localStream && pc?.signalingState === 'stable') {
+    if (!polite && pc?.signalingState === 'stable') {
       await makeOffer()
     }
   } catch (e) {
@@ -386,8 +464,8 @@ async function handleSignal({ event, payload }) {
     // Lexicographically smaller phone initiates the offer (impolite = offerer)
     if (!polite && pc && pc.signalingState === 'stable') {
       try {
-        await ensureLocalStream()
-        attachLocalTracks()
+        if (localStream) await attachLocalTracks()
+        else ensureRecvAudioTransceiver()
         await makeOffer()
       } catch (e) {
         console.error('dm-voice hello offer:', e)
@@ -415,9 +493,9 @@ async function handleSignal({ event, payload }) {
       pttEpoch += 1
       if (isTalking) {
         isTalking = false
-        setLocalMicEnabled(false)
         sendSignal('ptt-stop').catch(() => {})
       }
+      releaseLocalMic().catch(() => {})
     }
     setPeerTalking(true)
     return
@@ -433,14 +511,49 @@ async function safeRemoveChannel(ch) {
 }
 
 /**
+ * Defense-in-depth: confirm DB membership before joining the private voice channel.
+ * @param {number} conversationId
+ */
+async function assertDmVoiceMembership(conversationId) {
+  const me = myPhone()
+  if (!me || !conversationId) return false
+
+  const { data: member, error: memberErr } = await supabase
+    .from('dm_members')
+    .select('conversation_id')
+    .eq('conversation_id', conversationId)
+    .eq('user_phone', me)
+    .maybeSingle()
+  if (memberErr) console.warn('dm-voice membership check:', memberErr.message)
+  if (member) return true
+
+  const { data: conv, error: convErr } = await supabase
+    .from('dm_conversations')
+    .select('id, phone_a, phone_b')
+    .eq('id', conversationId)
+    .maybeSingle()
+  if (convErr) console.warn('dm-voice conv check:', convErr.message)
+  if (!conv) return false
+  return normalizePhone(conv.phone_a) === me || normalizePhone(conv.phone_b) === me
+}
+
+/**
  * Subscribe without assigning the module `channel` until the caller decides.
  * Rejects (and removes the channel) on CHANNEL_ERROR / TIMED_OUT.
  * @param {number} conversationId
  * @returns {Promise<import('@supabase/supabase-js').RealtimeChannel>}
  */
 async function subscribeChannel(conversationId) {
+  const allowed = await assertDmVoiceMembership(conversationId)
+  if (!allowed) {
+    throw new Error('dm-voice membership denied')
+  }
+
   const ch = supabase.channel(channelName(conversationId), {
-    config: { broadcast: { self: false } }
+    config: {
+      broadcast: { self: false },
+      private: true
+    }
   })
 
   const events = ['voice-hello', 'voice-offer', 'voice-answer', 'voice-ice', 'ptt-start', 'ptt-stop', 'voice-hangup']
@@ -468,21 +581,14 @@ async function bootstrapConnection(token) {
   if (token !== teardownToken) return
   await createPeerConnection()
   if (token !== teardownToken) return
-  try {
-    await ensureLocalStream()
-    if (token !== teardownToken) return
-    attachLocalTracks()
-  } catch (e) {
-    // Mic permission can wait until first PTT
-    console.warn('dm-voice mic deferred:', e?.message || e)
-  }
+  ensureRecvAudioTransceiver()
 
   if (token !== teardownToken) return
   await sendSignal('voice-hello')
 
   if (token !== teardownToken) return
-  // Impolite peer (smaller phone) creates the initial offer if media ready
-  if (!polite && localStream && pc?.signalingState === 'stable') {
+  // Impolite peer creates the initial offer without requiring mic yet
+  if (!polite && pc?.signalingState === 'stable') {
     await makeOffer()
   }
 }
@@ -588,7 +694,8 @@ export async function syncDmVoiceForTab(opts = {}) {
   } catch (e) {
     console.error('syncDmVoiceForTab:', e)
     if (token === teardownToken) {
-      showToast('اتصال واکی‌تاکی برقرار نشد')
+      const denied = String(e?.message || '').includes('membership denied')
+      showToast(denied ? 'دسترسی واکی‌تاکی برای این گفتگو نیست' : 'اتصال واکی‌تاکی برقرار نشد')
       await abandonIfStillOwner(token)
       syncDmVoiceComposerVisibility(false)
     }
@@ -622,27 +729,32 @@ export async function startPtt() {
   try {
     await ensureLocalStream()
     if (!pttWanted || epoch !== pttEpoch) {
-      setLocalMicEnabled(false)
+      await releaseLocalMic()
       return
     }
 
     await createPeerConnection()
-    attachLocalTracks()
+    await attachLocalTracks()
 
     // Resume remote playback under this user gesture (autoplay policies)
     if (remoteAudio?.srcObject) {
-      remoteAudio.play().catch(() => {})
+      try {
+        await remoteAudio.play()
+        needsAudioGesture = false
+      } catch (_) {
+        needsAudioGesture = true
+      }
     }
 
     if (!pttWanted || epoch !== pttEpoch) {
-      setLocalMicEnabled(false)
+      await releaseLocalMic()
       return
     }
 
     if (pc && !pc.currentRemoteDescription) {
       await sendSignal('voice-hello')
       if (!pttWanted || epoch !== pttEpoch) {
-        setLocalMicEnabled(false)
+        await releaseLocalMic()
         return
       }
       if (!polite && pc.signalingState === 'stable') {
@@ -651,7 +763,7 @@ export async function startPtt() {
     }
 
     if (!pttWanted || epoch !== pttEpoch || peerTalking) {
-      setLocalMicEnabled(false)
+      await releaseLocalMic()
       return
     }
 
@@ -663,16 +775,16 @@ export async function startPtt() {
     // Released while ptt-start was in flight — shut mic back off
     if (!pttWanted || epoch !== pttEpoch) {
       isTalking = false
-      setLocalMicEnabled(false)
       updateVoiceUi()
       await sendSignal('ptt-stop')
+      await releaseLocalMic()
     }
   } catch (e) {
     console.error('startPtt:', e)
     const denied = e?.name === 'NotAllowedError' || e?.name === 'PermissionDeniedError'
     showToast(denied ? 'دسترسی میکروفون رد شد' : 'شروع واکی‌تاکی ناموفق بود')
     isTalking = false
-    setLocalMicEnabled(false)
+    await releaseLocalMic()
     updateVoiceUi()
   } finally {
     if (epoch === pttEpoch) pttStarting = false
@@ -684,14 +796,45 @@ export async function stopPtt() {
   pttEpoch += 1
   pttStarting = false
 
-  if (!isTalking) {
-    setLocalMicEnabled(false)
+  const wasTalking = isTalking
+  isTalking = false
+  updateVoiceUi()
+  if (wasTalking) {
+    await sendSignal('ptt-stop')
+  }
+  await releaseLocalMic()
+}
+
+/** Unlock remote audio after autoplay block (user gesture). */
+export async function unlockDmVoiceAudio() {
+  if (!remoteAudio?.srcObject) {
+    needsAudioGesture = false
+    updateVoiceUi()
     return
   }
-  isTalking = false
-  setLocalMicEnabled(false)
-  updateVoiceUi()
-  await sendSignal('ptt-stop')
+  try {
+    await remoteAudio.play()
+    needsAudioGesture = false
+    updateVoiceUi()
+  } catch (e) {
+    console.warn('unlockDmVoiceAudio:', e?.message || e)
+    showToast('پخش صدا ممکن نشد — دوباره تلاش کنید')
+  }
+}
+
+export function scheduleDmVoiceBackgroundTeardown() {
+  if (backgroundTeardownTimer) clearTimeout(backgroundTeardownTimer)
+  backgroundTeardownTimer = setTimeout(() => {
+    backgroundTeardownTimer = null
+    teardownDmVoice().catch(() => {})
+  }, BACKGROUND_TEARDOWN_MS)
+}
+
+export function cancelDmVoiceBackgroundTeardown() {
+  if (backgroundTeardownTimer) {
+    clearTimeout(backgroundTeardownTimer)
+    backgroundTeardownTimer = null
+  }
 }
 
 function isPttHoldKey(event) {
@@ -769,6 +912,8 @@ export async function teardownDmVoice(opts = {}) {
   recovering = false
   recoverAttempts = 0
   voiceLinkState = 'idle'
+  needsAudioGesture = false
+  cancelDmVoiceBackgroundTeardown()
   activeConversationId = 0
   peerPhone = ''
   polite = false
