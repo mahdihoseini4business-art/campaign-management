@@ -13,6 +13,8 @@ const MAX_AUTO_RECOVER = 2
 const BACKGROUND_TEARDOWN_MS = 60000
 /** If ICE never reaches connected, surface failure instead of endless "connecting". */
 const CONNECTING_TIMEOUT_MS = 12000
+/** Re-send hello/offer while stuck connecting (late joiner / lost broadcast). */
+const HANDSHAKE_RETRY_MS = 2500
 
 /** @type {import('@supabase/supabase-js').RealtimeChannel | null} */
 let channel = null
@@ -40,6 +42,8 @@ let recovering = false
 let recoverAttempts = 0
 /** @type {ReturnType<typeof setTimeout> | null} */
 let connectingTimer = null
+/** @type {ReturnType<typeof setInterval> | null} */
+let handshakeTimer = null
 /** Bumped on every hard teardown and every sync resync; in-flight work checks this. */
 let teardownToken = 0
 /** Token of the sync attempt that currently owns module globals (0 = none). */
@@ -174,6 +178,70 @@ function clearConnectingTimer() {
   }
 }
 
+function clearHandshakeTimer() {
+  if (handshakeTimer) {
+    clearInterval(handshakeTimer)
+    handshakeTimer = null
+  }
+}
+
+/**
+ * Late joiner often misses the first offer/ICE (broadcast is fire-and-forget).
+ * Impolite peer must retransmit or rebuild when peer says hello.
+ */
+async function respondToPeerHello() {
+  if (!pc || polite) return
+
+  try {
+    if (localStream) await attachLocalTracks()
+    else ensureRecvAudioTransceiver()
+
+    if (pc.signalingState === 'stable') {
+      await makeOffer()
+      return
+    }
+
+    // Stuck waiting for an answer the peer never sent (or we never got).
+    if (pc.signalingState === 'have-local-offer' && !pc.currentRemoteDescription) {
+      // After ICE gather, localDescription usually has candidates inlined — resend first.
+      if (pc.localDescription && pc.iceGatheringState === 'complete') {
+        await sendSignal('voice-offer', { sdp: pc.localDescription })
+        return
+      }
+      // Still gathering or no SDP — rebuild a clean offer.
+      await closePeerConnectionOnly()
+      await createPeerConnection()
+      ensureRecvAudioTransceiver()
+      if (localStream) {
+        try { await attachLocalTracks() } catch (_) { /* ignore */ }
+      }
+      await makeOffer()
+    }
+  } catch (e) {
+    console.error('dm-voice hello offer:', e)
+  }
+}
+
+function armHandshakeRetry() {
+  clearHandshakeTimer()
+  handshakeTimer = setInterval(() => {
+    if (voiceLinkState !== 'connecting' || !channel || !activeConversationId) {
+      clearHandshakeTimer()
+      return
+    }
+    sendSignal('voice-hello').catch(() => {})
+    // Impolite: keep pushing offer while answer never arrives.
+    if (
+      !polite &&
+      pc?.signalingState === 'have-local-offer' &&
+      !pc.currentRemoteDescription &&
+      pc.localDescription
+    ) {
+      sendSignal('voice-offer', { sdp: pc.localDescription }).catch(() => {})
+    }
+  }, HANDSHAKE_RETRY_MS)
+}
+
 function armConnectingTimer() {
   clearConnectingTimer()
   connectingTimer = setTimeout(() => {
@@ -192,8 +260,13 @@ function armConnectingTimer() {
 
 function setVoiceLinkState(next) {
   voiceLinkState = next
-  if (next === 'connecting') armConnectingTimer()
-  else clearConnectingTimer()
+  if (next === 'connecting') {
+    armConnectingTimer()
+    armHandshakeRetry()
+  } else {
+    clearConnectingTimer()
+    clearHandshakeTimer()
+  }
 }
 
 /** Snapshot for DevTools: `app.getDmVoiceDebug()` */
@@ -555,16 +628,7 @@ async function handleSignal({ event, payload }) {
   if (!peerPhone || from !== peerPhone) return
 
   if (event === 'voice-hello') {
-    // Lexicographically smaller phone initiates the offer (impolite = offerer)
-    if (!polite && pc && pc.signalingState === 'stable') {
-      try {
-        if (localStream) await attachLocalTracks()
-        else ensureRecvAudioTransceiver()
-        await makeOffer()
-      } catch (e) {
-        console.error('dm-voice hello offer:', e)
-      }
-    }
+    await respondToPeerHello()
     return
   }
 
@@ -1061,6 +1125,7 @@ export async function teardownDmVoice(opts = {}) {
   needsAudioGesture = false
   cancelDmVoiceBackgroundTeardown()
   clearConnectingTimer()
+  clearHandshakeTimer()
   activeConversationId = 0
   peerPhone = ''
   polite = false
