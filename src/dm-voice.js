@@ -60,6 +60,8 @@ let backgroundTeardownTimer = null
 /** If makeOffer is busy, run again after it finishes (direction/track changes). */
 let negotiationQueued = false
 let negotiationIceRestart = false
+/** Serialize handleOffer so duplicate/retried offers cannot race setLocalDescription. */
+let handlingOffer = false
 /** Personal ring channel — stays up while DM chat feature is enabled. */
 /** @type {import('@supabase/supabase-js').RealtimeChannel | null} */
 let inboxChannel = null
@@ -335,11 +337,16 @@ function updateVoiceUi() {
   const status = document.getElementById('dmChatVoiceStatus')
   if (!status) return
   if (peerTalking) {
-    const users = getUsersSafe()
-    const peer = users.find(u => normalizePhone(u.phone) === peerPhone)
-    const label = peer ? userDisplayName(peer) : peerPhone
+    const label = peerLabelCache.get(peerPhone) || peerPhone
     status.hidden = false
     status.textContent = `${label} در حال صحبت…`
+    // Refresh display name without blocking UI (getUsersSafe is async).
+    resolvePeerLabel(peerPhone).then((name) => {
+      if (!peerTalking || !status.isConnected) return
+      if (status.textContent?.includes('در حال صحبت')) {
+        status.textContent = `${name} در حال صحبت…`
+      }
+    }).catch(() => {})
   } else if (isTalking) {
     status.hidden = false
     status.textContent = 'شما در حال صحبت…'
@@ -437,11 +444,29 @@ async function sendRing(toPhone, conversationId) {
   }
 }
 
+/** @type {Map<string, string>} */
+const peerLabelCache = new Map()
+
+async function resolvePeerLabel(phone) {
+  const p = normalizePhone(phone)
+  if (!p) return ''
+  if (peerLabelCache.has(p)) return peerLabelCache.get(p)
+  try {
+    const users = await getUsersSafe()
+    const list = Array.isArray(users) ? users : []
+    const peer = list.find(u => normalizePhone(u.phone) === p)
+    const label = peer ? userDisplayName(peer) : p
+    peerLabelCache.set(p, label)
+    return label
+  } catch (_) {
+    return p
+  }
+}
+
 function toastIncomingSpeaker(fromPhone) {
-  const users = getUsersSafe()
-  const peer = users.find(u => normalizePhone(u.phone) === fromPhone)
-  const label = peer ? userDisplayName(peer) : fromPhone
-  showToast(`${label} در حال صحبت…`)
+  resolvePeerLabel(fromPhone)
+    .then((label) => showToast(`${label} در حال صحبت…`))
+    .catch(() => showToast(`${normalizePhone(fromPhone) || 'همکار'} در حال صحبت…`))
 }
 
 /** One-shot gesture unlock when receiving in background (composer hidden). */
@@ -589,11 +614,24 @@ async function makeOffer(opts = {}) {
 
 async function handleOffer(payload) {
   if (!pc || !payload?.sdp) return
+  if (handlingOffer) return
 
   const offerCollision = makingOffer || pc.signalingState !== 'stable'
   // Impolite peer ignores glare offers (perfect negotiation).
   if (!polite && offerCollision) return
 
+  // Handshake retries may resend the same offer after we already answered.
+  const incomingSdp = typeof payload.sdp === 'object' ? payload.sdp.sdp : null
+  if (
+    pc.signalingState === 'stable' &&
+    pc.currentRemoteDescription?.type === 'offer' &&
+    incomingSdp &&
+    incomingSdp === pc.currentRemoteDescription.sdp
+  ) {
+    return
+  }
+
+  handlingOffer = true
   try {
     // Do not grab mic here — receive-only until PTT
     if (localStream) await attachLocalTracks()
@@ -610,11 +648,18 @@ async function handleOffer(payload) {
 
     await pc.setRemoteDescription(payload.sdp)
     await flushIceQueue()
+
+    // Only answer when we actually have a remote offer pending.
+    if (!pc || pc.signalingState !== 'have-remote-offer') return
+
     const answer = await pc.createAnswer()
+    if (!pc || pc.signalingState !== 'have-remote-offer') return
     await pc.setLocalDescription(answer)
     await sendSignal('voice-answer', { sdp: pc.localDescription })
   } catch (e) {
     console.error('dm-voice handleOffer:', e)
+  } finally {
+    handlingOffer = false
   }
 }
 
