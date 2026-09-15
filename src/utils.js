@@ -1257,7 +1257,17 @@ export const ALL_PERMISSIONS = {
   shipments_manage: 'مدیریت ارسالی‌ها',
   refunds_view: 'مشاهده عودت وجه',
   refunds_request: 'درخواست عودت وجه',
-  refunds_manage: 'مدیریت عودت وجه'
+  refunds_manage: 'مدیریت عودت وجه',
+  sms_manage: 'مدیریت تنظیمات و قالب‌های پیامک',
+  sms_history: 'مشاهده تاریخچه پیامک',
+  sms_shipment_queued: 'پیامک صف ارسالی (دستی / ارسال مجدد)',
+  sms_shipment_shipped: 'پیامک تأیید ارسال و رهگیری',
+  sms_sales_single: 'پیامک فروش تکی (الگو / دستی)',
+  sms_sales_group: 'پیامک گروهی بدهکاران',
+  sms_customer_single: 'پیامک تکی به مشتری',
+  sms_customer_campaign: 'کمپین پیامکی مشتریان',
+  sms_followup_schedule: 'زمان‌بندی پیامک روی موعد فالوآپ',
+  sms_followup_bulk: 'پیامک دسته‌ای به فالوآپ‌دارها'
 }
 
 export const REFUND_PERMISSION_KEYS = ['refunds_view', 'refunds_request', 'refunds_manage']
@@ -1270,7 +1280,22 @@ export const PERMISSION_GROUPS = [
   { label: 'محصولات', keys: ['products_matrix', 'matrix_historical_import'] },
   { label: 'حسابداری', keys: ['accounting', 'accounting_org_wide_dashboard', 'accounting_org_wide_customers', 'accounting_org_wide_sales'] },
   { label: 'ارسالی‌ها', keys: ['shipments_manage'] },
-  { label: 'عودت وجه', keys: [...REFUND_PERMISSION_KEYS] }
+  { label: 'عودت وجه', keys: [...REFUND_PERMISSION_KEYS] },
+  {
+    label: 'پیامک',
+    keys: [
+      'sms_manage',
+      'sms_history',
+      'sms_shipment_queued',
+      'sms_shipment_shipped',
+      'sms_sales_single',
+      'sms_sales_group',
+      'sms_customer_single',
+      'sms_customer_campaign',
+      'sms_followup_schedule',
+      'sms_followup_bulk'
+    ]
+  }
 ]
 
 export const REFUND_STATUS = {
@@ -1879,6 +1904,16 @@ export function getDefaultPermissions() {
   p.refunds_manage = false
   p.matrix_historical_import = false
   p.in_person_sessions = false
+  p.sms_manage = false
+  p.sms_history = false
+  p.sms_shipment_queued = false
+  p.sms_shipment_shipped = false
+  p.sms_sales_single = false
+  p.sms_sales_group = false
+  p.sms_customer_single = false
+  p.sms_customer_campaign = false
+  p.sms_followup_schedule = false
+  p.sms_followup_bulk = false
   return p
 }
 

@@ -571,6 +571,12 @@ export function getVisibleFollowupItems(lists = null) {
   return applyFollowupSort(items)
 }
 
+export async function openFollowupBulkSmsForCurrentFilter() {
+  const items = getVisibleFollowupItems()
+  const { openFollowupBulkSms } = await import('./sms-ui.js')
+  await openFollowupBulkSms(items)
+}
+
 export function getFilteredFollowups() {
   const search = toEnDigits(document.getElementById('searchFollowups')?.value || '').toLowerCase()
   const currentUser = getCurrentUser()

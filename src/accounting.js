@@ -7,7 +7,8 @@ import {
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, formatSoldAt24h, matchesTabSearch,
   getCustomerPhones, getPrimaryPhone, getSaleRegistrantPhone,
   isGiftSale, getGiftAccountingStatus, getShipmentStatus, SHIPMENT_STATUS,
-  getCurrentJalaliMonthInfo, isInJalaliMonth, userDisplayName
+  getCurrentJalaliMonthInfo, isInJalaliMonth, userDisplayName,
+  isPhysicalSaleLine, isEligibleForShipment
 } from './utils.js'
 import { paginateList, renderPaginationBar, getPage } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig } from './table-sort.js'
@@ -17,6 +18,7 @@ import { broadcastPaymentRejectToast } from './sale-toasts.js'
 import { debouncedSearchInput } from './search-debounce.js'
 import { SEARCH_HOST } from './search-overlay.js'
 import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
+import { sendShipmentQueuedSms } from './sms-ui.js'
 
 let accountingFilter = 'pending' // pending | approved | rejected | gifts
 let accountingSortState = { field: null, asc: true }
@@ -386,6 +388,25 @@ async function updateGiftSale(customerId, productIndex, patch) {
   return true
 }
 
+async function maybeSendShipmentQueuedSms(customerId, productIndex) {
+  try {
+    const data = getData()
+    const customer = data.customers.find((c) => c.id === customerId)
+    const product = customer?.products?.[productIndex]
+    if (!customer || !product) return
+    if (!isPhysicalSaleLine(product) || !isEligibleForShipment(product)) return
+    if (product.smsQueuedAt) return
+    const result = await sendShipmentQueuedSms(customer, product, productIndex)
+    if (result?.sent > 0) {
+      const { dateTime } = getNowJalaliDateTime()
+      product.smsQueuedAt = dateTime
+      await saveCustomerToDB(customer)
+    }
+  } catch (e) {
+    console.error('shipment queued SMS', e)
+  }
+}
+
 export async function approvePayment(customerId, productIndex, paymentIndex) {
   if (!requirePermission('accounting')) return
   const user = getCurrentUser()
@@ -398,6 +419,7 @@ export async function approvePayment(customerId, productIndex, paymentIndex) {
       paymentReviewedBy: normalizePhone(user?.phone || '')
     })
     if (!ok) return
+    await maybeSendShipmentQueuedSms(customerId, productIndex)
     showToast('واریزی تأیید شد')
     renderAccounting()
     renderSales()
@@ -420,6 +442,7 @@ export async function approveGiftSale(customerId, productIndex) {
       giftReviewedBy: normalizePhone(user?.phone || '')
     })
     if (!ok) return
+    await maybeSendShipmentQueuedSms(customerId, productIndex)
     showToast('هدیه تأیید شد — مالکیت محصول ثبت شد')
     renderAccounting()
     renderSales()

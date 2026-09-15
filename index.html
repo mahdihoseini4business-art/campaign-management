@@ -485,9 +485,11 @@
         <section class="settings-pane" data-settings-pane="sms" hidden>
           <div class="settings-pane-header">
             <h3>پنل پیامک</h3>
-            <p class="settings-pane-desc">مشخصات اتصال به پنل پیامکی (ملی‌پیامک / SmartSMS) برای ارسال کد تأیید ورود. این مقادیر از تنظیمات خوانده می‌شوند و دیگر نیازی به هاردکد در سرور نیست.</p>
+            <p class="settings-pane-desc">اتصال، قابلیت‌ها، قالب‌ها و تاریخچه پیامک کسب‌وکار. دسترسی کاربران از «مدیریت کاربران → گروه پیامک» تنظیم می‌شود. OTP ورود جداگانه است.</p>
           </div>
+
           <div class="settings-subsection">
+            <h4 class="settings-subhead">اتصال پنل (OTP)</h4>
             <div class="form-row" style="flex-wrap:wrap;gap:12px;">
               <div class="form-group" style="flex:1;min-width:180px;">
                 <label for="smsUsername">نام کاربری</label>
@@ -512,12 +514,66 @@
             <div class="form-group">
               <label for="smsMessageTemplate">متن پیامک OTP</label>
               <textarea class="form-input" id="smsMessageTemplate" rows="3" placeholder="کد تأیید شما: {code}"></textarea>
-              <p class="settings-pane-desc" style="margin-top:6px;">از <code>{code}</code> برای جای‌گذاری کد تأیید استفاده کنید.</p>
+              <p class="settings-pane-desc" style="margin-top:6px;">از <code>{code}</code> برای جای‌گذاری کد تأیید استفاده کنید. ارسال واقعی OTP از secrets سرور است.</p>
             </div>
             <div class="form-row settings-add-row" style="justify-content:flex-start;gap:8px;">
-              <button type="button" class="btn btn-primary" onclick="app.saveSmsPanelSettings()">ذخیره تنظیمات پیامک</button>
-              <button type="button" class="btn" onclick="app.resetSmsMessageTemplate()">بازنشانی متن پیش‌فرض</button>
+              <button type="button" class="btn btn-primary" onclick="app.saveSmsPanelSettings()">ذخیره اتصال</button>
+              <button type="button" class="btn" onclick="app.resetSmsMessageTemplate()">بازنشانی متن OTP</button>
             </div>
+          </div>
+
+          <div class="settings-subsection" id="smsFeaturesSection">
+            <h4 class="settings-subhead">قابلیت‌ها (سوییچ سازمانی)</h4>
+            <p class="settings-pane-desc">هر قابلیت را برای کل سازمان قطع یا وصل کنید. سپس در مدیریت کاربران مجوز همان قابلیت را به افراد بدهید.</p>
+            <div id="smsFeaturesToggles" class="sms-features-list"></div>
+            <div class="form-row" style="flex-wrap:wrap;gap:12px;margin-top:12px;">
+              <div class="form-group" style="min-width:140px;">
+                <label for="smsFollowupDefaultHour">ساعت پیش‌فرض پیامک فالوآپ</label>
+                <input type="number" class="form-input" id="smsFollowupDefaultHour" min="0" max="23" step="1" value="10">
+              </div>
+            </div>
+            <div class="form-row settings-add-row" style="justify-content:flex-start;gap:8px;">
+              <button type="button" class="btn btn-primary" onclick="app.saveSmsFeaturesSettings()">ذخیره قابلیت‌ها</button>
+            </div>
+          </div>
+
+          <div class="settings-subsection" id="smsTemplatesSection">
+            <h4 class="settings-subhead">قالب‌های پیامک</h4>
+            <div id="smsTemplatesList"></div>
+            <div class="form-row settings-add-row" style="justify-content:flex-start;gap:8px;margin-top:8px;">
+              <button type="button" class="btn btn-primary" onclick="app.saveSmsTemplatesSettings()">ذخیره قالب‌ها</button>
+            </div>
+          </div>
+
+          <div class="settings-subsection" id="smsHistorySection">
+            <h4 class="settings-subhead">تاریخچه پیامک</h4>
+            <div class="form-row" style="gap:8px;margin-bottom:8px;">
+              <button type="button" class="btn btn-sm" onclick="app.refreshSmsHistory()">بروزرسانی</button>
+            </div>
+            <div class="table-wrap" style="max-height:280px;overflow:auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>زمان</th>
+                    <th>نوع</th>
+                    <th>گیرنده</th>
+                    <th>وضعیت</th>
+                    <th>متن</th>
+                  </tr>
+                </thead>
+                <tbody id="smsHistoryBody">
+                  <tr><td colspan="5">برای مشاهده بروزرسانی را بزنید</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="settings-subsection" id="smsCampaignsSection">
+            <h4 class="settings-subhead">کمپین‌های اخیر</h4>
+            <div class="form-row" style="gap:8px;margin-bottom:8px;">
+              <button type="button" class="btn btn-sm" onclick="app.refreshSmsCampaigns()">بروزرسانی</button>
+            </div>
+            <div id="smsCampaignsList" class="settings-pane-desc">—</div>
           </div>
         </section>
 
@@ -1204,6 +1260,7 @@
             <button type="button" class="toolbar-actions-item" data-perm="customers_export" onclick="app.exportTabXLSX('customers');app.closeAllToolbarActions()">خروجی Excel</button>
             <button type="button" class="toolbar-actions-item" data-perm="customers_export" onclick="app.exportCustomersVcf();app.closeAllToolbarActions()">خروجی مخاطبین گوشی (VCF آزمایشی — ۲ نفر)</button>
             <button type="button" class="toolbar-actions-item" data-perm="customers_import" onclick="app.openImportModal();app.closeAllToolbarActions()">ایمپورت اکسل</button>
+            <button type="button" class="toolbar-actions-item" data-perm="sms_customer_campaign" onclick="app.openSmsCampaignModal();app.closeAllToolbarActions()">کمپین پیامک</button>
           </div>
         </div>
       </div>
@@ -1252,6 +1309,7 @@
         <button type="button" class="btn followup-filter-btn" data-filter="waiting" onclick="app.setFollowupFilter('waiting')">پیگیری‌های آینده</button>
         <button type="button" class="btn followup-filter-btn" data-filter="overdue" onclick="app.setFollowupFilter('overdue')">معوقه‌ها <span class="followup-filter-badge" id="followupOverdueBadge" style="display:none;">0</span></button>
         <button type="button" class="btn followup-filter-btn" data-filter="done" onclick="app.setFollowupFilter('done')">تاریخچه انجام</button>
+        <button type="button" class="btn" data-perm="sms_followup_bulk" onclick="app.openFollowupBulkSmsForCurrentFilter()">پیامک دسته‌ای</button>
       </div>
       <select class="form-select" id="bulkActionFollowups" style="width:180px;display:none;">
         <option value="">عملیات دسته‌جمعی...</option>
@@ -1356,6 +1414,7 @@
             <button type="button" class="toolbar-actions-item" data-perm="sales_export" onclick="app.exportTabCSV('sales');app.closeAllToolbarActions()">خروجی CSV</button>
             <button type="button" class="toolbar-actions-item" data-perm="sales_export" onclick="app.exportTabXLSX('sales');app.closeAllToolbarActions()">خروجی Excel</button>
             <button type="button" class="toolbar-actions-item" data-perm="sales_import" onclick="app.openSalesImportModal();app.closeAllToolbarActions()">ایمپورت از اکسل</button>
+            <button type="button" class="toolbar-actions-item" data-perm="sms_sales_group" onclick="app.openDebtorsGroupSms();app.closeAllToolbarActions()">پیامک گروهی بدهکاران</button>
           </div>
         </div>
       </div>
@@ -1892,11 +1951,105 @@
         <label for="shipmentTrackingCode">کد رهگیری</label>
         <input type="text" class="form-input" id="shipmentTrackingCode" placeholder="اختیاری — کد رهگیری پست / پیک">
       </div>
+      <label class="settings-perm-chip" id="shipmentSmsSendWrap" style="display:none;margin-top:10px;">
+        <input type="checkbox" id="shipmentSmsSend" checked>
+        ارسال پیامک کد رهگیری به مشتری
+      </label>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="app.closeConfirmShipmentModal()">انصراف</button>
       <button class="btn" onclick="app.confirmShipmentAndPrint()">تأیید و پرینت لیبل</button>
       <button class="btn btn-primary" onclick="app.confirmShipment()">تأیید ارسال</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال ارسال پیامک (فروش / مشتری / فالوآپ) -->
+<div class="modal-overlay" id="smsComposeModal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header">
+      <h2 id="smsComposeTitle">ارسال پیامک</h2>
+      <button class="modal-close" onclick="app.closeSmsComposeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="settings-pane-desc" id="smsComposeMeta"></p>
+      <div class="form-group">
+        <label for="smsComposeTemplate">الگو</label>
+        <select class="form-input" id="smsComposeTemplate" onchange="app.onSmsComposeTemplateChange()"></select>
+      </div>
+      <div class="form-group">
+        <label for="smsComposeBody">متن پیام (الگو یا دستی)</label>
+        <textarea class="form-input" id="smsComposeBody" rows="5" dir="rtl"></textarea>
+        <p class="settings-pane-desc" style="margin-top:6px;">Placeholderها: {customer_name} {product_name} {balance} {total_balance} {tracking_code} {followup_date} {advisor} {org_name}</p>
+      </div>
+      <div class="form-group">
+        <label>پیش‌نمایش</label>
+        <div id="smsComposePreview" class="settings-pane-desc" style="white-space:pre-wrap;border:1px solid var(--border);padding:10px;border-radius:8px;"></div>
+      </div>
+      <p class="settings-pane-desc" id="smsComposeCount"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeSmsComposeModal()">انصراف</button>
+      <button class="btn" onclick="app.previewSmsCompose()">پیش‌نمایش</button>
+      <button class="btn btn-primary" onclick="app.submitSmsCompose()">ارسال</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال کمپین پیامک مشتریان -->
+<div class="modal-overlay" id="smsCampaignModal">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-header">
+      <h2>کمپین پیامک مشتریان</h2>
+      <button class="modal-close" onclick="app.closeSmsCampaignModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="smsCampaignTitle">عنوان</label>
+        <input type="text" class="form-input" id="smsCampaignTitle" placeholder="مثلاً اطلاع‌رسانی دوره">
+      </div>
+      <div class="form-row" style="flex-wrap:wrap;gap:12px;">
+        <div class="form-group" style="flex:1;min-width:140px;">
+          <label for="smsCampaignStatus">وضعیت مشتری</label>
+          <select class="form-input" id="smsCampaignStatus"><option value="">همه</option></select>
+        </div>
+        <div class="form-group" style="flex:1;min-width:140px;">
+          <label for="smsCampaignMode">شیوه ارسال</label>
+          <select class="form-input" id="smsCampaignMode">
+            <option value="immediate">فوری</option>
+            <option value="scheduled">زمان‌بندی‌شده</option>
+            <option value="drip">قطره‌ای</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row" style="flex-wrap:wrap;gap:12px;">
+        <div class="form-group" style="flex:1;min-width:140px;">
+          <label for="smsCampaignSendAt">زمان ارسال (برای زمان‌بندی)</label>
+          <input type="datetime-local" class="form-input" id="smsCampaignSendAt" dir="ltr">
+        </div>
+        <div class="form-group" style="flex:1;min-width:100px;">
+          <label for="smsCampaignDripInterval">فاصله قطره (دقیقه)</label>
+          <input type="number" class="form-input" id="smsCampaignDripInterval" value="5" min="1">
+        </div>
+        <div class="form-group" style="flex:1;min-width:100px;">
+          <label for="smsCampaignDripBatch">اندازه دسته</label>
+          <input type="number" class="form-input" id="smsCampaignDripBatch" value="20" min="1" max="50">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="smsCampaignTemplate">الگو</label>
+        <select class="form-input" id="smsCampaignTemplate" onchange="app.onSmsCampaignTemplateChange()"></select>
+      </div>
+      <div class="form-group">
+        <label for="smsCampaignBody">متن</label>
+        <textarea class="form-input" id="smsCampaignBody" rows="4"></textarea>
+      </div>
+      <p class="settings-pane-desc" id="smsCampaignCount">۰ گیرنده</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeSmsCampaignModal()">انصراف</button>
+      <button class="btn" onclick="app.refreshSmsCampaignAudience()">شمارش مخاطبان</button>
+      <button class="btn btn-primary" onclick="app.submitSmsCampaign()">شروع کمپین</button>
     </div>
   </div>
 </div>

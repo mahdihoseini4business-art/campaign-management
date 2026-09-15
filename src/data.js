@@ -10,6 +10,11 @@ import {
   readCoreSnapshot,
   writeCoreSnapshot
 } from './data-cache.js'
+import {
+  normalizeSmsFeatures,
+  normalizeFollowupDefaultHour,
+  DEFAULT_SMS_TEMPLATES,
+} from './sms-features.js'
 
 const LOCAL_WRITE_SUPPRESS_MS = 2000
 let localWriteUntil = 0
@@ -114,6 +119,8 @@ function emptyCoreData() {
     dmChatEnabled: false,
     requireFollowupOnCreate: false,
     smsPanel: null,
+    smsFeatures: null,
+    smsFollowupDefaultHour: 10,
     shippingSender: null
   }
 }
@@ -738,6 +745,8 @@ function applySettingsRows(rows) {
     console.error('normalizeSmsPanel error:', e)
     data.smsPanel = normalizeSmsPanel(null)
   }
+  data.smsFeatures = normalizeSmsFeatures(settings.sms_features)
+  data.smsFollowupDefaultHour = normalizeFollowupDefaultHour(settings.sms_followup_default_hour)
   try {
     data.shippingSender = normalizeShippingSender(settings.shipping_sender)
   } catch (e) {
@@ -3629,6 +3638,157 @@ export async function saveSmsPanel(config) {
   cleaned.password = ''
   data.smsPanel = cleaned
   await saveSetting('sms_panel', cleaned)
+}
+
+export function getSmsFeatures() {
+  return normalizeSmsFeatures(data.smsFeatures)
+}
+
+export async function saveSmsFeatures(features) {
+  const cleaned = normalizeSmsFeatures(features)
+  data.smsFeatures = cleaned
+  await saveSetting('sms_features', cleaned)
+}
+
+export function getFollowupSmsDefaultHour() {
+  return normalizeFollowupDefaultHour(data.smsFollowupDefaultHour)
+}
+
+export async function saveFollowupSmsDefaultHour(hour) {
+  const cleaned = normalizeFollowupDefaultHour(hour)
+  data.smsFollowupDefaultHour = cleaned
+  await saveSetting('sms_followup_default_hour', cleaned)
+}
+
+export async function listSmsTemplates() {
+  const tenantId = getStoredTenantId()
+  let q = supabase.from('sms_templates').select('*').order('key')
+  if (tenantId) q = q.eq('tenant_id', tenantId)
+  const { data: rows, error } = await q
+  if (error) throw new Error('خطا در خواندن قالب‌ها: ' + error.message)
+  if (rows?.length) return rows
+  // Seed locally if migration defaults missing
+  if (!tenantId) return DEFAULT_SMS_TEMPLATES.map((t) => ({ ...t, enabled: true }))
+  const inserts = DEFAULT_SMS_TEMPLATES.map((t) => ({
+    tenant_id: tenantId,
+    key: t.key,
+    name: t.name,
+    body: t.body,
+    enabled: true,
+  }))
+  const { data: seeded, error: seedErr } = await supabase
+    .from('sms_templates')
+    .upsert(inserts, { onConflict: 'tenant_id,key' })
+    .select('*')
+  if (seedErr) {
+    console.warn('sms template seed', seedErr)
+    return DEFAULT_SMS_TEMPLATES.map((t) => ({ ...t, enabled: true }))
+  }
+  return seeded || []
+}
+
+export async function saveSmsTemplateRow(template) {
+  const tenantId = getStoredTenantId()
+  if (!tenantId) throw new Error('سازمان انتخاب نشده')
+  const row = {
+    tenant_id: tenantId,
+    key: String(template.key || '').trim(),
+    name: String(template.name || '').trim(),
+    body: String(template.body || ''),
+    enabled: template.enabled !== false,
+    updated_at: new Date().toISOString(),
+  }
+  const { data: saved, error } = await supabase
+    .from('sms_templates')
+    .upsert(row, { onConflict: 'tenant_id,key' })
+    .select('*')
+    .maybeSingle()
+  if (error) throw new Error('خطا در ذخیره قالب: ' + error.message)
+  return saved
+}
+
+export async function listSmsLogs({ limit = 50, kind = '' } = {}) {
+  const tenantId = getStoredTenantId()
+  let q = supabase
+    .from('sms_logs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (tenantId) q = q.eq('tenant_id', tenantId)
+  if (kind) q = q.eq('kind', kind)
+  const { data: rows, error } = await q
+  if (error) throw new Error('خطا در خواندن تاریخچه: ' + error.message)
+  return rows || []
+}
+
+export async function createSmsCampaign(campaign) {
+  const tenantId = getStoredTenantId()
+  if (!tenantId) throw new Error('سازمان انتخاب نشده')
+  const row = {
+    tenant_id: tenantId,
+    title: String(campaign.title || 'کمپین پیامک').trim(),
+    template_key: campaign.template_key || null,
+    body: campaign.body || null,
+    filter: campaign.filter || {},
+    mode: campaign.mode || 'immediate',
+    status: campaign.status || 'sending',
+    total: Number(campaign.total || 0),
+    sent: 0,
+    failed: 0,
+    send_at: campaign.send_at || null,
+    drip_interval_min: Number(campaign.drip_interval_min || 5),
+    drip_batch_size: Number(campaign.drip_batch_size || 20),
+    next_batch_at: campaign.next_batch_at || null,
+    created_by: campaign.created_by || null,
+  }
+  const { data: saved, error } = await supabase.from('sms_campaigns').insert(row).select('*').single()
+  if (error) throw new Error('خطا در ایجاد کمپین: ' + error.message)
+  return saved
+}
+
+export async function listSmsCampaigns({ limit = 30 } = {}) {
+  const tenantId = getStoredTenantId()
+  let q = supabase
+    .from('sms_campaigns')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (tenantId) q = q.eq('tenant_id', tenantId)
+  const { data: rows, error } = await q
+  if (error) throw new Error('خطا در خواندن کمپین‌ها: ' + error.message)
+  return rows || []
+}
+
+export async function createSmsSchedule(schedule) {
+  const tenantId = getStoredTenantId()
+  if (!tenantId) throw new Error('سازمان انتخاب نشده')
+  const row = {
+    tenant_id: tenantId,
+    customer_id: schedule.customer_id || null,
+    campaign_id: schedule.campaign_id || null,
+    kind: schedule.kind || 'followup_schedule',
+    template_key: schedule.template_key || 'followup_due',
+    body_override: schedule.body_override || null,
+    send_at: schedule.send_at,
+    status: 'pending',
+    meta: schedule.meta || {},
+    created_by: schedule.created_by || null,
+  }
+  const { data: saved, error } = await supabase.from('sms_schedules').insert(row).select('*').single()
+  if (error) throw new Error('خطا در زمان‌بندی پیامک: ' + error.message)
+  return saved
+}
+
+export async function cancelPendingSmsSchedulesForCustomer(customerId) {
+  const tenantId = getStoredTenantId()
+  if (!tenantId || !customerId) return
+  await supabase
+    .from('sms_schedules')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('tenant_id', tenantId)
+    .eq('customer_id', customerId)
+    .eq('status', 'pending')
+    .eq('kind', 'followup_schedule')
 }
 
 export function getShippingSender() {
