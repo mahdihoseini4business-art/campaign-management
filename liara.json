@@ -2,8 +2,5 @@
   "app": "carno",
   "build": {
     "location": "iran"
-  },
-  "react": {
-    "mirror": false
   }
 }

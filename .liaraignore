@@ -4,18 +4,19 @@ offline-app/
 # Let Liara configure npm mirror during build (custom .npmrc blocks it)
 .npmrc
 
-# Skip lockfile on deploy — Liara npm ci hits runflare mirror (402); npm install works
-package-lock.json
-
-# Build artifacts & local-only (from .gitignore — .liaraignore replaces .gitignore on deploy)
-dist
-.mimocode
-.vercel
+# Heavy / local-only — .liaraignore replaces .gitignore on deploy
+node_modules/
+.git/
+docs/
+scripts/
+supabase/
+dist/
+.mimocode/
+.vercel/
+.cursor/
 *.xlsx
 *-logs.txt
-sms-docs.md
-DESIGN.md
-OTP-SETUP-GUIDE.md
+*.md
 
 # Secrets
 .env
@@ -23,12 +24,3 @@ OTP-SETUP-GUIDE.md
 !.env.example
 .env.local
 .env.*.local
-
-# Supabase CLI ephemeral / local-only
-supabase/.temp/
-supabase/.branches/
-supabase/.env
-supabase/.env.*
-supabase/**/.env
-supabase/**/node_modules/
-supabase/**/.deno/
