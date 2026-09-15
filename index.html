@@ -1305,15 +1305,15 @@
         <option value="delete">حذف انتخاب شده‌ها</option>
       </select>
       <span id="bulkCountSales" style="display:none;font-size:13px;color:var(--text-muted);"></span>
-      <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، کارشناس)..." id="searchSales" oninput="app.onSalesSearchInput()">
+      <input type="text" class="search-box" placeholder="جستجو (مشتری، واریزکننده، ثبت‌کننده فروش)..." id="searchSales" oninput="app.onSalesSearchInput()">
       <div class="toolbar-filter-grid">
         <input type="text" class="form-input" id="filterSalesDateFrom" placeholder="از تاریخ واریز" data-jdp style="width:140px;" onchange="app.renderSales()">
         <input type="text" class="form-input" id="filterSalesDateTo" placeholder="تا تاریخ واریز" data-jdp style="width:140px;" onchange="app.renderSales()">
         <select class="form-select" id="filterSalesPlatform" style="width:140px;" onchange="app.renderSales()">
           <option value="">همه پلتفرم‌ها</option>
         </select>
-        <select class="form-select" id="filterSalesAdvisor" style="width:200px;min-width:160px;" onchange="app.renderSales()">
-          <option value="">همه کارشناسان</option>
+        <select class="form-select" id="filterSalesAdvisor" style="width:200px;min-width:160px;" onchange="app.renderSales()" aria-label="فیلتر ثبت‌کننده فروش" title="ثبت‌کننده فروش">
+          <option value="">همه ثبت‌کنندگان فروش</option>
         </select>
         <select class="form-select" id="filterSalesLevel" style="width:130px;" onchange="app.renderSales()">
           <option value="">همه سطوح</option>

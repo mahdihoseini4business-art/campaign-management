@@ -626,6 +626,7 @@ async function updateSalesAdvisorFilter() {
   sel.innerHTML = buildGroupedAdvisorSelectHtml({
     users,
     selectedValue: currentVal,
+    emptyLabel: 'همه ثبت‌کنندگان فروش',
     teamLabel: canViewOrgWideData('sales', currentUser) ? null : formatTeamFilterLabel(currentUser),
     allowedPhones
   })
