@@ -2798,7 +2798,7 @@ function paintInPersonSessionsCard() {
   const exportBtn = document.getElementById('dashInPersonExportBtn')
   if (!dashInPersonSelectedId) {
     dashInPersonRowsCache = []
-    if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);">سانسی انتخاب نشده</td></tr>'
+    if (body) body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">سانسی انتخاب نشده</td></tr>'
     if (summary) summary.textContent = ''
     if (exportBtn) exportBtn.disabled = true
     return
@@ -2820,7 +2820,7 @@ function paintInPersonSessionsCard() {
 
   if (!body) return
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);">ردیفی نیست</td></tr>'
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">ردیفی نیست</td></tr>'
     return
   }
   body.innerHTML = rows.map(r => {
@@ -2829,8 +2829,6 @@ function paintInPersonSessionsCard() {
       <td>${escapeHtml(r.name)}</td>
       <td style="direction:ltr;text-align:left;font-family:'Vazirmatn',sans-serif;">${escapeHtml(r.nameEn || '—')}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${escapeHtml(r.phone || '—')}</td>
-      <td>${escapeHtml(r.courseName)}</td>
-      <td style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${escapeHtml(r.sessionDate || '—')}</td>
       <td style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${formatNumber(r.price)}</td>
       <td style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${formatNumber(r.paid)}</td>
       <td style="font-family:'Vazirmatn',sans-serif;direction:ltr;${r.balance > 0 ? 'color:var(--danger);' : ''}">${formatNumber(r.balance)}</td>
