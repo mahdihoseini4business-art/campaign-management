@@ -3,7 +3,7 @@
 // ============================================
 
 import { ADMIN_PHONE } from './config.js'
-import { getPlatforms, getStatuses, getCatalogEntryByName, getBundleByName, PRODUCT_KIND, coerceProductName, isEventProductName } from './data.js'
+import { getPlatforms, getStatuses, getCatalogEntryByName, getBundleByName, PRODUCT_KIND, coerceProductName, saleNeedsInPersonSession } from './data.js'
 import { showBrowserNotification } from './browser-notifications.js'
 
 /** Dynamic platform labels (value → Persian label) built from settings */
@@ -668,7 +668,7 @@ export function hasInPersonPurchase(customer) {
   return (customer?.products || []).some(p => {
     ensureProductPayments(p)
     if (!isProductCountableInSales(p)) return false
-    return isEventProductName(p.name)
+    return saleNeedsInPersonSession(p.name)
   })
 }
 

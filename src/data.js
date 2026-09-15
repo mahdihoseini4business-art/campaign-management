@@ -1229,11 +1229,115 @@ export function isProductGiftAllowed(productName) {
 
 /**
  * True when catalog marks the product as an event (needs session / تاریخ برگزاری).
- * Bundles are never events.
+ * Bundles themselves are never catalog events — use getEventCourseNamesForSellable.
  */
 export function isEventProductName(productName) {
   const entry = getCatalogEntryByName(productName)
   return !!(entry && entry.isEvent === true)
+}
+
+/**
+ * Event course names that need تاریخ برگزاری for this sellable name.
+ * - Catalog event product → [itself]
+ * - Bundle → event products inside the bundle (catalog only)
+ */
+export function getEventCourseNamesForSellable(sellableName) {
+  const name = coerceProductName(sellableName) || String(sellableName || '').trim()
+  if (!name) return []
+  if (isEventProductName(name)) return [name]
+  const bundle = getBundleByName(name)
+  if (!bundle) return []
+  const out = []
+  const seen = new Set()
+  for (const raw of bundle.productNames || []) {
+    const p = coerceProductName(raw) || String(raw || '').trim()
+    if (!p || !isEventProductName(p)) continue
+    const key = p.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(p)
+  }
+  return out
+}
+
+/** True when this sellable (product or bundle-with-events) needs session date(s). */
+export function saleNeedsInPersonSession(sellableName) {
+  return getEventCourseNamesForSellable(sellableName).length > 0
+}
+
+/**
+ * Normalized map courseName → sessionId on a sale line.
+ * Supports legacy `inPersonSessionId` (single) and `inPersonSessionByCourse`.
+ */
+export function getSaleInPersonSessionMap(product) {
+  const map = {}
+  const raw = product?.inPersonSessionByCourse
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const [course, sid] of Object.entries(raw)) {
+      const c = coerceProductName(course) || String(course || '').trim()
+      const id = String(sid || '').trim()
+      if (c && id) map[c] = id
+    }
+  }
+  const legacy = String(product?.inPersonSessionId || '').trim()
+  if (legacy) {
+    const courses = getEventCourseNamesForSellable(product?.name)
+    if (courses.length === 1 && !map[courses[0]]) {
+      map[courses[0]] = legacy
+    } else if (!courses.length && !Object.keys(map).length) {
+      // Unknown / renamed — keep a synthetic key so capacity counts still work
+      map['__legacy__'] = legacy
+    } else if (courses.length > 1) {
+      // Prefer matching session's courseName when map incomplete
+      const sess = getInPersonSessionById(legacy)
+      if (sess?.courseName) {
+        const match = courses.find(c => c.toLowerCase() === sess.courseName.toLowerCase())
+        if (match && !map[match]) map[match] = legacy
+      }
+    }
+  }
+  return map
+}
+
+export function getSaleInPersonSessionIds(product) {
+  return [...new Set(Object.values(getSaleInPersonSessionMap(product)).filter(Boolean))]
+}
+
+export function saleHasInPersonSessionId(product, sessionId) {
+  const key = String(sessionId || '').trim()
+  if (!key) return false
+  return getSaleInPersonSessionIds(product).includes(key)
+}
+
+/** Missing required event courses for this sale line (empty = complete). */
+export function getMissingEventCoursesForSale(product) {
+  const courses = getEventCourseNamesForSellable(product?.name)
+  if (!courses.length) return []
+  const map = getSaleInPersonSessionMap(product)
+  return courses.filter(c => !String(map[c] || '').trim())
+}
+
+/**
+ * Write session assignments onto a sale line. Syncs legacy `inPersonSessionId`
+ * (first assigned id) for older readers.
+ */
+export function applySaleInPersonSessionMap(product, sessionByCourse) {
+  if (!product || typeof product !== 'object') return
+  const courses = getEventCourseNamesForSellable(product.name)
+  const next = {}
+  if (sessionByCourse && typeof sessionByCourse === 'object') {
+    for (const course of courses) {
+      const sid = String(sessionByCourse[course] || '').trim()
+      if (sid) next[course] = sid
+    }
+  }
+  if (Object.keys(next).length) {
+    product.inPersonSessionByCourse = next
+    product.inPersonSessionId = Object.values(next)[0] || ''
+  } else {
+    delete product.inPersonSessionByCourse
+    delete product.inPersonSessionId
+  }
 }
 
 /** @deprecated use isEventProductName — kept for older call sites */
@@ -1287,11 +1391,9 @@ export function getInPersonSessionCapacity(session) {
 }
 
 function saleIsOnInPersonSession(customerId, productIndex, sessionId) {
-  const key = String(sessionId || '').trim()
-  if (!key) return false
   const customer = (data.customers || []).find(c => c.id === customerId)
   const product = Array.isArray(customer?.products) ? customer.products[productIndex] : null
-  return String(product?.inPersonSessionId || '') === key
+  return saleHasInPersonSessionId(product, sessionId)
 }
 
 /** Seats left; null = unlimited. */
@@ -1472,16 +1574,16 @@ export function countSalesLinkedToInPersonSession(sessionId) {
   let n = 0
   for (const c of data.customers || []) {
     for (const p of c.products || []) {
-      if (String(p?.inPersonSessionId || '') === key) n++
+      if (saleHasInPersonSessionId(p, key)) n++
     }
   }
   return n
 }
 
 /**
- * Unassigned event sale lines (catalog isEvent, no session id).
+ * Unassigned event sale lines (product or bundle-with-events missing at least one session).
  * Historical matrix imports are excluded from assignment.
- * @returns {Array<{customerId, customerName, phone, productIndex, productName, price, status}>}
+ * @returns {Array<{customerId, customerName, phone, productIndex, productName, price, status, missingCourses}>}
  */
 export function listUnassignedInPersonSales() {
   const rows = []
@@ -1489,9 +1591,9 @@ export function listUnassignedInPersonSales() {
     const products = Array.isArray(c.products) ? c.products : []
     const phones = Array.isArray(c.phones) ? c.phones.join(' ') : String(c.phone || '')
     products.forEach((p, productIndex) => {
-      if (!isEventProductName(p?.name)) return
       if (p?.historicalImport) return
-      if (String(p?.inPersonSessionId || '').trim()) return
+      const missing = getMissingEventCoursesForSale(p)
+      if (!missing.length) return
       rows.push({
         customerId: c.id,
         customerName: c.name || c.id,
@@ -1500,7 +1602,8 @@ export function listUnassignedInPersonSales() {
         productIndex,
         productName: coerceProductName(p.name) || p.name || '—',
         price: parseFloat(p.price) || 0,
-        status: p.status || '—'
+        status: p.status || '—',
+        missingCourses: missing
       })
     })
   }
@@ -1519,9 +1622,10 @@ export function listAssignedInPersonSales(sessionId = '') {
     const phones = Array.isArray(c.phones) ? c.phones.join(' ') : String(c.phone || '')
     products.forEach((p, productIndex) => {
       if (p?.historicalImport) return
-      const sid = String(p?.inPersonSessionId || '').trim()
-      if (!sid) return
-      if (want && sid !== want) return
+      const ids = getSaleInPersonSessionIds(p)
+      if (!ids.length) return
+      if (want && !ids.includes(want)) return
+      const sid = want || ids[0]
       const session = getInPersonSessionById(sid)
       rows.push({
         customerId: c.id,
@@ -1549,10 +1653,17 @@ export async function assignInPersonSessionToSale(customerId, productIndex, sess
   const products = Array.isArray(customer.products) ? customer.products : []
   const product = products[productIndex]
   if (!product) throw new Error('فروش یافت نشد')
-  if (!isEventProductName(product.name)) throw new Error('این محصول رویداد نیست')
   if (product.historicalImport) throw new Error('فروش ایمپورت تاریخی قابل تخصیص نیست')
+  const courses = getEventCourseNamesForSellable(product.name)
+  if (!courses.length) throw new Error('این محصول رویداد نیست')
+  const courseMatch = courses.find(c => c.toLowerCase() === String(session.courseName || '').toLowerCase())
+  if (!courseMatch) {
+    throw new Error(`این سانس برای دوره «${session.courseName}» است و با محصولات رویداد این فروش هم‌خوان نیست`)
+  }
   assertSaleCanUseInPersonSession(session.id, customerId, productIndex)
-  product.inPersonSessionId = session.id
+  const map = getSaleInPersonSessionMap(product)
+  map[courseMatch] = session.id
+  applySaleInPersonSessionMap(product, map)
   await saveCustomerToDB(customer)
   return product
 }
@@ -1564,14 +1675,14 @@ export async function unassignInPersonSessionFromSale(customerId, productIndex) 
   const products = Array.isArray(customer.products) ? customer.products : []
   const product = products[productIndex]
   if (!product) throw new Error('فروش یافت نشد')
-  if (!String(product.inPersonSessionId || '').trim()) return product
-  delete product.inPersonSessionId
+  if (!getSaleInPersonSessionIds(product).length) return product
+  applySaleInPersonSessionMap(product, {})
   await saveCustomerToDB(customer)
   return product
 }
 
 /**
- * Clear inPersonSessionId on all sales linked to this session, then remove the session.
+ * Clear session assignment on all sales linked to this session, then remove the session.
  * @returns {{ cleared: number }}
  */
 export async function deleteInPersonSessionAndClearAssignments(sessionId) {
@@ -1585,8 +1696,12 @@ export async function deleteInPersonSessionAndClearAssignments(sessionId) {
   for (const c of data.customers || []) {
     let changed = false
     for (const p of c.products || []) {
-      if (String(p?.inPersonSessionId || '') !== key) continue
-      delete p.inPersonSessionId
+      if (!saleHasInPersonSessionId(p, key)) continue
+      const map = getSaleInPersonSessionMap(p)
+      for (const [course, sid] of Object.entries(map)) {
+        if (sid === key) delete map[course]
+      }
+      applySaleInPersonSessionMap(p, map)
       cleared++
       changed = true
     }

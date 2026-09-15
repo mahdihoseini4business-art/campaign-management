@@ -1,4 +1,4 @@
-import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages, getActiveInPersonSessions, getInPersonSessionById, formatInPersonSessionLabel, isEventProductName } from './data.js'
+import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages, getActiveInPersonSessions, getInPersonSessionById, formatInPersonSessionLabel, saleNeedsInPersonSession, saleHasInPersonSessionId } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
 import {
@@ -729,7 +729,7 @@ function normalizeDashProductKey(name) {
 
 function classifySaleChannel(productName) {
   const n = String(productName || '')
-  if (isEventProductName(n)) return 'hozori'
+  if (saleNeedsInPersonSession(n)) return 'hozori'
   if (n.includes('آنلاین')) return 'online'
   return 'other'
 }
@@ -2725,7 +2725,7 @@ function collectInPersonSessionRows(sessionId) {
   for (const customer of data.customers || []) {
     const products = Array.isArray(customer.products) ? customer.products : []
     products.forEach((product, productIndex) => {
-      if (String(product?.inPersonSessionId || '') !== sessionId) return
+      if (!saleHasInPersonSessionId(product, sessionId)) return
       ensureProductPayments(product)
       syncProductStatus(product)
       const paid = getCountablePaid(product)

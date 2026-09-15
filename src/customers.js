@@ -1,4 +1,4 @@
-import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, invalidateProductSalesCountCache, isEventProductName, getActiveInPersonSessions, formatInPersonSessionLabel, getInPersonSessionById, mapInPersonSessionSelectOptions, assertSaleCanUseInPersonSession } from './data.js'
+import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, invalidateProductSalesCountCache, isEventProductName, getActiveInPersonSessions, formatInPersonSessionLabel, getInPersonSessionById, mapInPersonSessionSelectOptions, assertSaleCanUseInPersonSession, getEventCourseNamesForSellable, saleNeedsInPersonSession, getSaleInPersonSessionMap, applySaleInPersonSessionMap } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
@@ -3541,6 +3541,81 @@ function saleFieldHtml(label, controlHtml, { required = false, optional = false,
   </div>`
 }
 
+/** Build one or more تاریخ برگزاری fields for event product / bundle event courses. */
+function buildSaleSessionFieldsHtml(product, displayName, { editable }) {
+  const courses = getEventCourseNamesForSellable(displayName)
+  const sessionMap = getSaleInPersonSessionMap(product)
+  const multi = courses.length > 1
+  if (!courses.length && !Object.keys(sessionMap).length) return ''
+
+  const activeSessions = getActiveInPersonSessions()
+  const renderCourse = (courseName) => {
+    const currentSessionId = String(sessionMap[courseName] || '')
+    let sessionOpts = activeSessions.filter(s =>
+      s.courseName.toLowerCase() === String(courseName || '').toLowerCase()
+    )
+    // Single catalog event: if no named match, keep legacy fallback to all active sessions
+    if (!sessionOpts.length && courses.length === 1 && isEventProductName(displayName)) {
+      sessionOpts = activeSessions.slice()
+    }
+    if (currentSessionId && !sessionOpts.some(s => s.id === currentSessionId)) {
+      const cur = getInPersonSessionById(currentSessionId)
+      if (cur) sessionOpts = [cur, ...sessionOpts]
+    }
+    const label = multi ? `تاریخ برگزاری — ${escapeHtml(courseName)}` : 'تاریخ برگزاری'
+    if (editable) {
+      const optsHtml = mapInPersonSessionSelectOptions(sessionOpts, currentSessionId).map(o =>
+        `<option value="${escapeAttr(o.id)}"${o.selected ? ' selected' : ''}${o.disabled ? ' disabled' : ''}>${escapeHtml(o.label)}</option>`
+      ).join('')
+      const control = `<select class="form-select" data-sale-field="inPersonSessionId" data-session-course="${escapeAttr(courseName)}">
+            <option value="">انتخاب تاریخ برگزاری...</option>
+            ${optsHtml}
+          </select>`
+      return saleFieldHtml(label, control, {
+        required: true,
+        full: true,
+        className: 'sale-field--inperson-session'
+      })
+    }
+    if (!currentSessionId) return ''
+    const sess = getInPersonSessionById(currentSessionId)
+    const value = sess ? formatInPersonSessionLabel(sess) : currentSessionId
+    return saleFieldHtml(label, `<span class="sale-readonly-value">${escapeHtml(value)}</span>`, {
+      required: true,
+      full: true,
+      className: 'sale-field--inperson-session'
+    })
+  }
+
+  const courseList = courses.length ? courses : Object.keys(sessionMap)
+  return courseList.map(renderCourse).join('')
+}
+
+function rebuildSaleSessionFields(block, sellableName, product = null) {
+  if (!block) return
+  const fieldsHost = block.querySelector('.sale-fields')
+  if (!fieldsHost) return
+  const prevMap = {}
+  block.querySelectorAll('[data-sale-field="inPersonSessionId"][data-session-course]').forEach(sel => {
+    const course = sel.getAttribute('data-session-course') || ''
+    if (course && sel.value) prevMap[course] = sel.value
+  })
+  fieldsHost.querySelectorAll('.sale-field--inperson-session').forEach(el => el.remove())
+  const courses = getEventCourseNamesForSellable(sellableName)
+  if (!courses.length) return
+  const fakeProduct = product || { name: sellableName }
+  const draftProduct = {
+    ...fakeProduct,
+    name: sellableName,
+    inPersonSessionByCourse: {
+      ...getSaleInPersonSessionMap(fakeProduct),
+      ...prevMap
+    }
+  }
+  const html = buildSaleSessionFieldsHtml(draftProduct, sellableName, { editable: true })
+  if (html) fieldsHost.insertAdjacentHTML('beforeend', html)
+}
+
 export async function renderProducts(customerId, users = null) {
   const container = document.getElementById('detailProductsList')
   if (!container) return
@@ -3784,34 +3859,13 @@ export async function renderProducts(customerId, users = null) {
           </select>${bundleHint}`
       : `<span class="sale-readonly-value" style="font-weight:600;">${escapeHtml(displayName || '—')}</span>${bundleHint}`
 
-    const isInPerson = isEventProductName(displayName)
-    const activeSessions = getActiveInPersonSessions()
-    const matchingSessions = activeSessions.filter(s =>
-      s.courseName.toLowerCase() === String(displayName || '').toLowerCase()
-    )
-    let sessionOpts = matchingSessions.length ? matchingSessions : activeSessions.slice()
-    const currentSessionId = String(p.inPersonSessionId || '')
-    if (currentSessionId && !sessionOpts.some(s => s.id === currentSessionId)) {
-      const cur = getInPersonSessionById(currentSessionId)
-      if (cur) sessionOpts = [cur, ...sessionOpts]
-    }
+    const eventCourses = getEventCourseNamesForSellable(displayName)
+    const needsSession = eventCourses.length > 0 || Object.keys(getSaleInPersonSessionMap(p)).length > 0
     // تاریخ برگزاری حتی برای فاکتور بسته‌شده قابل انتخاب/تغییر است (معامله لغو‌شده نه).
-    // کنترل همیشه در DOM باشد تا با انتخاب محصول رویداد (از ردیف خالی) ظاهر شود.
     const sessionFieldEditable = canEdit && !cancelled
-    let sessionControl = ''
-    if (sessionFieldEditable) {
-      const optsHtml = mapInPersonSessionSelectOptions(sessionOpts, currentSessionId).map(o =>
-        `<option value="${escapeAttr(o.id)}"${o.selected ? ' selected' : ''}${o.disabled ? ' disabled' : ''}>${escapeHtml(o.label)}</option>`
-      ).join('')
-      sessionControl = `<select class="form-select" data-sale-field="inPersonSessionId">
-            <option value="">انتخاب تاریخ برگزاری...</option>
-            ${optsHtml}
-          </select>`
-    } else if (currentSessionId) {
-      const sess = getInPersonSessionById(currentSessionId)
-      const label = sess ? formatInPersonSessionLabel(sess) : currentSessionId
-      sessionControl = `<span class="sale-readonly-value">${escapeHtml(label)}</span>`
-    }
+    const sessionFieldsHtml = needsSession
+      ? buildSaleSessionFieldsHtml(p, displayName, { editable: sessionFieldEditable })
+      : ''
 
     const isPhysical = !!displayName && isPhysicalSaleLine(p)
     let shippingFields = ''
@@ -3831,7 +3885,7 @@ export async function renderProducts(customerId, users = null) {
     const productDetailsBtn = (canEdit && !closed && !hasEditablePay && !hasCompletedRefund)
       ? `<button type="button" class="btn btn-sm sale-product-save-btn" onclick="app.commitSaleProductDetails('${escapeAttr(customerId)}', ${i})">ذخیره جزئیات محصول</button>`
       : ''
-    const sessionSaveBtn = (sessionFieldEditable && closed && isInPerson)
+    const sessionSaveBtn = (sessionFieldEditable && closed && needsSession)
       ? `<button type="button" class="btn btn-sm sale-session-save-btn" onclick="app.commitInPersonSession('${escapeAttr(customerId)}', ${i})">ذخیره تاریخ برگزاری</button>`
       : ''
     const adminPriceBtn = canAdminEditPrice
@@ -3883,14 +3937,7 @@ export async function renderProducts(customerId, users = null) {
             ${saleFieldHtml('محصول', nameControl, { required: true, full: true, className: 'sale-field--name' })}
             ${saleFieldHtml('قیمت کل (ریال)', priceControl, { required: true })}
             ${saleFieldHtml('تاریخ تسویه', settlementControl, { optional: true, className: 'sale-field--settlement' })}
-            ${sessionControl
-              ? saleFieldHtml('تاریخ برگزاری', sessionControl, {
-                required: true,
-                full: true,
-                className: 'sale-field--inperson-session',
-                hidden: !(isInPerson || currentSessionId)
-              })
-              : ''}
+            ${sessionFieldsHtml}
           </div>
           ${shippingFields}
           ${summaryHtml}
@@ -4043,23 +4090,58 @@ function clearSaleBlockInvalid(blockEl) {
   blockEl?.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'))
 }
 
+function validateSaleSessionDraft(draft, customerId, productIndex) {
+  const name = coerceProductName(draft.name || '') || String(draft.name || '').trim()
+  const courses = getEventCourseNamesForSellable(name)
+  if (!courses.length) return { ok: true }
+  const map = draft.inPersonSessionByCourse || {}
+  const missing = courses.filter(c => !String(map[c] || '').trim())
+  if (missing.length) {
+    for (const el of draft.sessionEls || []) {
+      const course = el.getAttribute('data-session-course') || ''
+      if (missing.some(m => m === course) || !el.value) markSaleFieldInvalid(el, true)
+    }
+    if (draft.sessionEl && !draft.sessionEls?.length) markSaleFieldInvalid(draft.sessionEl, true)
+    return { ok: false, error: missing.length > 1 ? 'تاریخ برگزاری همه دوره‌های رویداد را انتخاب کنید' : 'تاریخ برگزاری دوره را انتخاب کنید' }
+  }
+  try {
+    for (const course of courses) {
+      assertSaleCanUseInPersonSession(map[course], customerId, productIndex)
+    }
+  } catch (e) {
+    for (const el of draft.sessionEls || []) markSaleFieldInvalid(el, true)
+    return { ok: false, error: e.message || 'ظرفیت این سانس تکمیل است' }
+  }
+  return { ok: true }
+}
+
 function readSaleProductDraft(blockEl) {
   const nameEl = blockEl.querySelector('[data-sale-field="name"]')
   const priceEl = blockEl.querySelector('[data-sale-field="price"]')
   const settlementEl = blockEl.querySelector('[data-sale-field="settlementDate"]')
   const addressEl = blockEl.querySelector('[data-sale-field="shippingAddress"]')
   const postalEl = blockEl.querySelector('[data-sale-field="shippingPostalCode"]')
-  const sessionEl = blockEl.querySelector('[data-sale-field="inPersonSessionId"]')
+  const sessionEls = [...blockEl.querySelectorAll('[data-sale-field="inPersonSessionId"]')]
+  const inPersonSessionByCourse = {}
+  for (const el of sessionEls) {
+    const course = el.getAttribute('data-session-course') || ''
+    const sid = String(el.value || '').trim()
+    if (course && sid) inPersonSessionByCourse[course] = sid
+  }
+  const firstSessionEl = sessionEls[0] || null
+  const firstSessionId = firstSessionEl ? String(firstSessionEl.value || '').trim() : null
   return {
     name: nameEl ? nameEl.value : null,
     price: priceEl ? unformatSaleNumber(priceEl) : null,
     settlementDate: settlementEl ? String(settlementEl.value || '').trim() : null,
     shippingAddress: addressEl ? String(addressEl.value || '').trim().replace(/\s+/g, ' ') : null,
     shippingPostalCode: postalEl ? toEnDigits(String(postalEl.value || '')).trim().replace(/\s+/g, '') : null,
-    inPersonSessionId: sessionEl ? String(sessionEl.value || '').trim() : null,
+    inPersonSessionByCourse,
+    inPersonSessionId: firstSessionId,
     priceEl,
     nameEl,
-    sessionEl
+    sessionEl: firstSessionEl,
+    sessionEls
   }
 }
 
@@ -4113,12 +4195,17 @@ function applySaleProductDraft(product, draft, { lockPrice = false } = {}) {
     product.shippingAddress = ''
     product.shippingPostalCode = ''
   }
-  if (isEventProductName(product.name)) {
-    if (draft.inPersonSessionId != null) {
-      product.inPersonSessionId = draft.inPersonSessionId || ''
+  if (saleNeedsInPersonSession(product.name)) {
+    if (draft.inPersonSessionByCourse != null) {
+      applySaleInPersonSessionMap(product, draft.inPersonSessionByCourse)
+    } else if (draft.inPersonSessionId != null) {
+      const courses = getEventCourseNamesForSellable(product.name)
+      if (courses.length === 1) {
+        applySaleInPersonSessionMap(product, { [courses[0]]: draft.inPersonSessionId || '' })
+      }
     }
   } else {
-    delete product.inPersonSessionId
+    applySaleInPersonSessionMap(product, {})
   }
 }
 
@@ -4147,24 +4234,7 @@ export function onSaleProductNameChange(selectEl) {
       hint.textContent = ''
     }
   }
-  const sessionField = block.querySelector('.sale-field--inperson-session')
-  const sessionSelect = block.querySelector('[data-sale-field="inPersonSessionId"]')
-  const inPerson = isEventProductName(name)
-  if (sessionField) sessionField.hidden = !inPerson
-  if (sessionSelect && inPerson) {
-    const activeSessions = getActiveInPersonSessions()
-    const matching = activeSessions.filter(s =>
-      s.courseName.toLowerCase() === String(coerceProductName(name) || name).toLowerCase()
-    )
-    const opts = matching.length ? matching : activeSessions
-    const prev = sessionSelect.value
-    sessionSelect.innerHTML = `<option value="">انتخاب تاریخ برگزاری...</option>` +
-      mapInPersonSessionSelectOptions(opts, prev).map(o =>
-        `<option value="${escapeAttr(o.id)}"${o.selected ? ' selected' : ''}${o.disabled ? ' disabled' : ''}>${escapeHtml(o.label)}</option>`
-      ).join('')
-  } else if (sessionSelect && !inPerson) {
-    sessionSelect.value = ''
-  }
+  rebuildSaleSessionFields(block, coerceProductName(name) || name)
   updateSaleGiftMode(block)
 }
 
@@ -4269,24 +4339,16 @@ export async function commitGiftSale(customerId, productIndex) {
     updateSaleGiftMode(block)
     return
   }
-  if (isEventProductName(name) && !draft.inPersonSessionId) {
-    markSaleFieldInvalid(draft.sessionEl, true)
-    hasError = true
-  }
   if (hasError) {
     showToast('فیلدهای الزامی را کامل کنید')
     updateSaleGiftMode(block)
     return
   }
-  if (isEventProductName(name) && draft.inPersonSessionId) {
-    try {
-      assertSaleCanUseInPersonSession(draft.inPersonSessionId, customerId, productIndex)
-    } catch (e) {
-      markSaleFieldInvalid(draft.sessionEl, true)
-      showToast(e.message || 'ظرفیت این سانس تکمیل است')
-      updateSaleGiftMode(block)
-      return
-    }
+  const sessionCheck = validateSaleSessionDraft({ ...draft, name }, customerId, productIndex)
+  if (!sessionCheck.ok) {
+    showToast(sessionCheck.error || 'فیلدهای الزامی را کامل کنید')
+    updateSaleGiftMode(block)
+    return
   }
 
   const btn = block.querySelector('[data-gift-submit]')
@@ -4322,7 +4384,7 @@ export async function commitGiftSale(customerId, productIndex) {
       settlementDate: '',
       shippingAddress: draft.shippingAddress,
       shippingPostalCode: draft.shippingPostalCode,
-      inPersonSessionId: draft.inPersonSessionId
+      inPersonSessionByCourse: draft.inPersonSessionByCourse
     }, { lockPrice: false })
 
     syncSaleShippingToCustomer(customer, product)
@@ -4479,19 +4541,10 @@ export async function commitSaleProductDetails(customerId, productIndex) {
       showToast('محصول را انتخاب کنید')
       return
     }
-    if (isEventProductName(draft.name) && !draft.inPersonSessionId) {
-      markSaleFieldInvalid(draft.sessionEl, true)
-      showToast('تاریخ برگزاری دوره را انتخاب کنید')
+    const sessionCheck = validateSaleSessionDraft(draft, customerId, productIndex)
+    if (!sessionCheck.ok) {
+      showToast(sessionCheck.error || 'فیلدهای الزامی را کامل کنید')
       return
-    }
-    if (isEventProductName(draft.name) && draft.inPersonSessionId) {
-      try {
-        assertSaleCanUseInPersonSession(draft.inPersonSessionId, customerId, productIndex)
-      } catch (e) {
-        markSaleFieldInvalid(draft.sessionEl, true)
-        showToast(e.message || 'ظرفیت این سانس تکمیل است')
-        return
-      }
     }
     applySaleProductDraft(product, draft, { lockPrice: false })
     syncSaleShippingToCustomer(customer, product)
@@ -4526,24 +4579,17 @@ export async function commitInPersonSession(customerId, productIndex) {
     showToast('معامله لغو شده و قابل ویرایش نیست')
     return
   }
-  if (!isEventProductName(product.name)) {
+  if (!saleNeedsInPersonSession(product.name)) {
     showToast('این محصول رویداد نیست')
     return
   }
 
-  const sessionEl = block.querySelector('[data-sale-field="inPersonSessionId"]')
-  const sessionId = sessionEl ? String(sessionEl.value || '').trim() : ''
+  const draft = readSaleProductDraft(block)
+  draft.name = product.name
   clearSaleBlockInvalid(block)
-  if (!sessionId) {
-    markSaleFieldInvalid(sessionEl, true)
-    showToast('تاریخ برگزاری دوره را انتخاب کنید')
-    return
-  }
-  try {
-    assertSaleCanUseInPersonSession(sessionId, customerId, productIndex)
-  } catch (e) {
-    markSaleFieldInvalid(sessionEl, true)
-    showToast(e.message || 'ظرفیت این سانس تکمیل است')
+  const sessionCheck = validateSaleSessionDraft(draft, customerId, productIndex)
+  if (!sessionCheck.ok) {
+    showToast(sessionCheck.error || 'تاریخ برگزاری دوره را انتخاب کنید')
     return
   }
 
@@ -4555,7 +4601,7 @@ export async function commitInPersonSession(customerId, productIndex) {
   }
 
   try {
-    product.inPersonSessionId = sessionId
+    applySaleInPersonSessionMap(product, draft.inPersonSessionByCourse)
     await setProducts(customerId, products)
     showToast('تاریخ برگزاری ذخیره شد')
     renderProducts(customerId)
@@ -4633,12 +4679,6 @@ export async function commitSalePayment(customerId, productIndex, paymentIndex) 
     markSaleFieldInvalid(productDraft.nameEl, true)
     hasError = true
   }
-  if (isEventProductName(productDraft.name || product.name)) {
-    if (!productDraft.inPersonSessionId) {
-      markSaleFieldInvalid(productDraft.sessionEl, true)
-      hasError = true
-    }
-  }
 
   const amountNum = parseFloat(paymentDraft.amount) || 0
   if (amountNum <= 0) {
@@ -4660,13 +4700,15 @@ export async function commitSalePayment(customerId, productIndex, paymentIndex) 
     hasError = true
   }
 
-  if (!hasError && isEventProductName(productDraft.name || product.name) && productDraft.inPersonSessionId) {
-    try {
-      assertSaleCanUseInPersonSession(productDraft.inPersonSessionId, customerId, productIndex)
-    } catch (e) {
-      markSaleFieldInvalid(productDraft.sessionEl, true)
+  if (!hasError) {
+    const sessionCheck = validateSaleSessionDraft(
+      { ...productDraft, name: productDraft.name || product.name },
+      customerId,
+      productIndex
+    )
+    if (!sessionCheck.ok) {
       hasError = true
-      showToast(e.message || 'ظرفیت این سانس تکمیل است')
+      showToast(sessionCheck.error || 'فیلدهای الزامی را کامل کنید')
       return
     }
   }

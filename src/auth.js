@@ -1808,7 +1808,10 @@ function renderUnassignedInPersonSales() {
   let rows = _unassignedInPersonSalesCache
   if (courseFilter) {
     const key = courseFilter.toLowerCase()
-    rows = rows.filter(r => String(r.productName || '').toLowerCase() === key)
+    rows = rows.filter(r =>
+      String(r.productName || '').toLowerCase() === key ||
+      (r.missingCourses || []).some(c => String(c).toLowerCase() === key)
+    )
   }
   if (q) {
     rows = rows.filter(r => {
@@ -1840,7 +1843,12 @@ function renderUnassignedInPersonSales() {
   }
 
   list.innerHTML = rows.map((r) => {
-    const matching = sessions.filter(s => s.courseName.toLowerCase() === String(r.productName).toLowerCase())
+    const missing = r.missingCourses || []
+    const matching = sessions.filter(s =>
+      missing.length
+        ? missing.some(c => c.toLowerCase() === String(s.courseName || '').toLowerCase())
+        : s.courseName.toLowerCase() === String(r.productName).toLowerCase()
+    )
     const optsSource = matching.length ? matching : sessions
     const opts = mapInPersonSessionSelectOptions(optsSource).map(o =>
       `<option value="${escapeAttr(o.id)}"${o.disabled ? ' disabled' : ''}>${escapeHtml(o.label)}</option>`
@@ -1849,12 +1857,15 @@ function renderUnassignedInPersonSales() {
     const phoneHint = r.phone
       ? `<span class="ips-row-phone" style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${escapeHtml(String(r.phone).trim().split(/\s+/)[0] || '')}</span>`
       : ''
+    const missingHint = missing.length
+      ? ` · بدون سانس: ${escapeHtml(missing.join('، '))}`
+      : ''
     return `
       <div class="settings-config-row ips-row ips-assign-row" data-unassigned-key="${rowKey}">
         <span class="settings-config-label" style="flex:1;min-width:160px;">
           <span class="ips-row-title">${escapeHtml(r.customerName)} ${phoneHint}</span>
           <span class="settings-config-meta" style="display:block;margin-top:2px;">
-            ${escapeHtml(r.productName)} · ${formatNumber(r.price)} ریال · ${escapeHtml(r.status)}
+            ${escapeHtml(r.productName)} · ${formatNumber(r.price)} ریال · ${escapeHtml(r.status)}${missingHint}
           </span>
         </span>
         <select class="form-select ips-assign-select" data-unassigned-select="${rowKey}" style="min-width:180px;max-width:280px;">
