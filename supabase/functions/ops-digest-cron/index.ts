@@ -28,11 +28,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
 }
 
+const PAGE_SIZE = 1000
+
 function json(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
+}
+
+function isMissingDigestSchemaError(error: { message?: string } | null) {
+  const msg = error?.message || ''
+  return /column.*(kind|meta)|meta|digest/i.test(msg) && /does not exist|schema cache|Could not find/i.test(msg)
 }
 
 async function parseKind(req: Request): Promise<'morning' | 'evening' | null> {
@@ -52,6 +59,37 @@ async function parseKind(req: Request): Promise<'morning' | 'evening' | null> {
 
 function expiresAtIso(hours = 36) {
   return new Date(Date.now() + hours * 3600 * 1000).toISOString()
+}
+
+async function fetchAllRows(
+  admin: ReturnType<typeof createClient>,
+  table: string,
+  {
+    select = '*',
+    orderCol = 'id',
+    ascending = true,
+    apply,
+  }: {
+    select?: string
+    orderCol?: string
+    ascending?: boolean
+    apply?: (q: any) => any
+  } = {},
+) {
+  const all: any[] = []
+  let from = 0
+  for (;;) {
+    let q = admin.from(table).select(select)
+    if (typeof apply === 'function') q = apply(q) || q
+    if (orderCol) q = q.order(orderCol, { ascending })
+    q = q.range(from, from + PAGE_SIZE - 1)
+    const { data, error } = await q
+    if (error) return { data: all, error }
+    const chunk = data || []
+    all.push(...chunk)
+    if (chunk.length < PAGE_SIZE) return { data: all, error: null }
+    from += PAGE_SIZE
+  }
 }
 
 serve(async (req) => {
@@ -80,11 +118,27 @@ serve(async (req) => {
     const notifKind = kindParam === 'morning' ? DIGEST_KIND_MORNING : DIGEST_KIND_EVENING
     const expiresAt = expiresAtIso(36)
 
+    // Fail fast if migration 040 is not applied
+    {
+      const probe = await admin
+        .from('notifications')
+        .select('id, kind, meta')
+        .limit(1)
+      if (probe.error && isMissingDigestSchemaError(probe.error)) {
+        return json({
+          success: false,
+          error: 'migration_040_required',
+          detail: probe.error.message,
+        }, 500)
+      }
+    }
+
     let sent = 0
     let skippedEmpty = 0
     let skippedDup = 0
     let tenantsProcessed = 0
     let tenantsSkipped = 0
+    const insertErrors: string[] = []
 
     const { data: tenants, error: tenantsErr } = await admin
       .from('tenants')
@@ -130,10 +184,11 @@ serve(async (req) => {
       const usernames = (members || []).map((m) => m.username).filter(Boolean)
       if (!usernames.length) continue
 
-      const { data: users, error: usersErr } = await admin
-        .from('users')
-        .select('username, phone')
-        .in('username', usernames)
+      const { data: users, error: usersErr } = await fetchAllRows(admin, 'users', {
+        select: 'username, phone',
+        orderCol: 'username',
+        apply: (q) => q.in('username', usernames),
+      })
 
       if (usersErr) {
         console.error('ops-digest-cron users', tenantId, usersErr)
@@ -141,44 +196,61 @@ serve(async (req) => {
       }
 
       const memberPhones = [...new Set(
-        (users || []).map((u) => normalizePhone(u.phone)).filter(Boolean)
+        (users || []).map((u) => normalizePhone(u.phone)).filter(Boolean),
       )]
       if (!memberPhones.length) continue
 
-      const { data: customers, error: custErr } = await admin
-        .from('customers')
-        .select('id, advisor_phone, next_followup_date')
-        .eq('tenant_id', tenantId)
+      const { data: customers, error: custErr } = await fetchAllRows(admin, 'customers', {
+        select: 'id, advisor_phone, next_followup_date',
+        orderCol: 'id',
+        apply: (q) => q.eq('tenant_id', tenantId),
+      })
 
       if (custErr) {
         console.error('ops-digest-cron customers', tenantId, custErr)
         continue
       }
 
-      const { data: followups, error: fuErr } = await admin
-        .from('followups')
-        .select('id, customer_id, type, status, next_date, assigned_to_phone')
-        .eq('tenant_id', tenantId)
+      const { data: followups, error: fuErr } = await fetchAllRows(admin, 'followups', {
+        select: 'id, customer_id, type, status, next_date, assigned_to_phone',
+        orderCol: 'id',
+        apply: (q) => q.eq('tenant_id', tenantId),
+      })
 
       if (fuErr) {
         console.error('ops-digest-cron followups', tenantId, fuErr)
         continue
       }
 
-      const { data: existingDigests, error: digErr } = await admin
-        .from('notifications')
-        .select('id, recipient_phones, meta')
-        .eq('tenant_id', tenantId)
-        .eq('kind', notifKind)
-        .eq('meta->>digest_date', digestDate)
-
-      if (digErr) {
-        console.error('ops-digest-cron existing digests', tenantId, digErr)
-        continue
+      // Idempotency: prefer meta filter; fall back to in-memory filter
+      let existingDigests: any[] = []
+      {
+        const { data, error: digErr } = await fetchAllRows(admin, 'notifications', {
+          select: 'id, recipient_phones, meta, title, created_by_phone',
+          orderCol: 'id',
+          apply: (q) => q.eq('tenant_id', tenantId).eq('kind', notifKind),
+        })
+        if (digErr) {
+          console.error('ops-digest-cron existing digests', tenantId, digErr)
+          if (isMissingDigestSchemaError(digErr)) {
+            return json({
+              success: false,
+              error: 'migration_040_required',
+              detail: digErr.message,
+            }, 500)
+          }
+          continue
+        }
+        existingDigests = (data || []).filter((row) => {
+          const metaDate = row.meta && typeof row.meta === 'object' ? row.meta.digest_date : null
+          if (metaDate) return metaDate === digestDate
+          const title = String(row.title || '')
+          return title.includes(digestDate)
+        })
       }
 
       const alreadySent = new Set<string>()
-      for (const row of existingDigests || []) {
+      for (const row of existingDigests) {
         const raw = row.recipient_phones
         if (!Array.isArray(raw)) continue
         for (const p of raw) {
@@ -203,20 +275,27 @@ serve(async (req) => {
             skippedEmpty++
             continue
           }
-          const message = formatMorningMessage(counts)
           const { error: insErr } = await admin.from('notifications').insert({
             tenant_id: tenantId,
             title: formatMorningTitle(digestDate),
-            message,
+            message: formatMorningMessage(counts),
             recipient_phones: [phone],
             created_by_phone: SYSTEM_DIGEST_PHONE,
             created_by_name: SYSTEM_DIGEST_NAME,
             expires_at: expiresAt,
             kind: DIGEST_KIND_MORNING,
-            meta: { digest_date: digestDate },
+            meta: { digest_date: digestDate, source: 'cron' },
           })
           if (insErr) {
             console.error('ops-digest-cron insert morning', tenantId, phone, insErr)
+            insertErrors.push(insErr.message)
+            if (isMissingDigestSchemaError(insErr)) {
+              return json({
+                success: false,
+                error: 'migration_040_required',
+                detail: insErr.message,
+              }, 500)
+            }
             continue
           }
           sent++
@@ -236,17 +315,17 @@ serve(async (req) => {
         const groupIds = (groups || []).map((g) => g.id).filter(Boolean)
         if (!groupIds.length) continue
 
-        const { data: groupMembers, error: gmErr } = await admin
-          .from('group_members')
-          .select('group_id, user_phone, is_manager')
-          .in('group_id', groupIds)
+        const { data: groupMembers, error: gmErr } = await fetchAllRows(admin, 'group_members', {
+          select: 'group_id, user_phone, is_manager',
+          orderCol: 'group_id',
+          apply: (q) => q.in('group_id', groupIds),
+        })
 
         if (gmErr) {
           console.error('ops-digest-cron group_members', tenantId, gmErr)
           continue
         }
 
-        /** managerPhone → set of subordinate phones across all groups they manage */
         const managerTeams = new Map<string, Set<string>>()
         const byGroup = new Map<string, { managers: string[], members: string[] }>()
         for (const row of groupMembers || []) {
@@ -298,10 +377,18 @@ serve(async (req) => {
             created_by_name: SYSTEM_DIGEST_NAME,
             expires_at: expiresAt,
             kind: DIGEST_KIND_EVENING,
-            meta: { digest_date: digestDate },
+            meta: { digest_date: digestDate, source: 'cron' },
           })
           if (insErr) {
             console.error('ops-digest-cron insert evening', tenantId, managerPhone, insErr)
+            insertErrors.push(insErr.message)
+            if (isMissingDigestSchemaError(insErr)) {
+              return json({
+                success: false,
+                error: 'migration_040_required',
+                detail: insErr.message,
+              }, 500)
+            }
             continue
           }
           sent++
@@ -319,6 +406,7 @@ serve(async (req) => {
       skipped_dup: skippedDup,
       tenants_processed: tenantsProcessed,
       tenants_skipped: tenantsSkipped,
+      insert_errors: insertErrors.slice(0, 5),
       at: new Date().toISOString(),
     })
   } catch (error) {

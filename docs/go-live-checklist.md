@@ -85,9 +85,14 @@ curl -X POST -H "x-cron-secret: $CRON_SECRET" \
   "https://<project-ref>.supabase.co/functions/v1/ops-digest-cron?kind=evening"
 ```
 
+**توجه:** بدون این زمان‌بندی، Edge Function خودش اجرا نمی‌شود. از نسخهٔ فعلی، با **باز کردن اپ** هم خلاصه صبح (و بعد از ۱۶:۰۰ تهران خلاصه عصر برای مدیر گروه) در صورت وجود کار باز ساخته می‌شود تا وابستگی صرف به cron کمتر شود. برای کاربران آفلاین هنوز cron لازم است.
+
+پیش‌نیاز: migration `040_notification_digest_meta.sql` + دیپلوی `ops-digest-cron`. اگر پاسخ `migration_040_required` بود، ابتدا migration را apply کنید.
+
 - [ ] زمان‌بندی `subscription-cron` در Supabase Cron / سرویس خارجی ثبت شد
 - [ ] زمان‌بندی `ops-digest-cron` صبح و عصر (Tehran) ثبت شد
 - [ ] یک بار دستی هر دو kind اجرا و پاسخ JSON (`sent` / `skipped_*`) بررسی شد
+- [ ] migration `040` روی پروداکشن apply شده
 
 ## ۶) بکاپ و بازیابی عملیاتی
 
