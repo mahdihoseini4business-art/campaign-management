@@ -2154,9 +2154,10 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
       customersWithActivity.add(f.customerId)
     })
 
+    // Org-wide for anyone with dashboard access: ignore advisor filter.
     const customersWithSale = new Set()
     forEachDashSalePayment(
-      matchesSelectedSaleRegistrant,
+      null,
       hasDateFilter,
       inChartDateRange,
       () => {},
@@ -2172,7 +2173,6 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
       if (!c) return
       if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
       if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
-      if (!inUserScope(c)) return
       if (codeFilter && (c.customerCode || '') !== codeFilter) return
       if (customersWithSale.has(customerId)) withSale += 1
       else withoutSale += 1
@@ -4029,9 +4029,10 @@ export async function buildDashboardExportPayload() {
     if (!f.customerId) return
     customersWithActivity.add(f.customerId)
   })
+  // Org-wide for anyone with dashboard access: ignore advisor filter.
   const customersWithSale = new Set()
   forEachDashSalePayment(
-    matchesSelectedSaleRegistrant,
+    null,
     hasDateFilter,
     inDateRange,
     () => {},
@@ -4046,7 +4047,6 @@ export async function buildDashboardExportPayload() {
     if (!c) return
     if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
     if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
-    if (!inUserScope(c)) return
     if (codeFilter && (c.customerCode || '') !== codeFilter) return
     if (customersWithSale.has(customerId)) convWithSale += 1
     else convWithoutSale += 1
@@ -4102,7 +4102,8 @@ export async function buildDashboardExportPayload() {
       notes: {
         customersScopedBy: 'customer.advisorPhone',
         salesScopedBy: 'saleRegistrantPhone',
-        completedSalesDatedBy: 'completionPayment.soldAt'
+        completedSalesDatedBy: 'completionPayment.soldAt',
+        followupConversionScopedBy: 'allCustomers (ignores advisor filter)'
       }
     },
     cards: {
