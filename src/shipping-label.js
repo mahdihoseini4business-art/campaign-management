@@ -61,14 +61,16 @@ export function buildLabelHtml({ sender, recipient }) {
 
 function buildPrintDocument(labelsHtml) {
   const fontHref = new URL('/fonts/vazirmatn.css', window.location.origin).href
+  // @page margin:0 removes room for browser header/footer (Chrome/Edge).
+  // Safe inset is applied on .sl-label instead. Title left empty so nothing leaks into headers.
   return `<!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <title>لیبل پستی</title>
+  <title></title>
   <link rel="stylesheet" href="${fontHref}">
   <style>
-    @page { size: A5; margin: 8mm; }
+    @page { size: A5; margin: 0; }
     * { box-sizing: border-box; }
     html, body {
       margin: 0;
@@ -81,8 +83,8 @@ function buildPrintDocument(labelsHtml) {
     }
     .sl-label {
       width: 100%;
-      min-height: calc(210mm - 16mm);
-      padding: 2mm;
+      min-height: 210mm;
+      padding: 8mm;
       page-break-after: always;
       break-after: page;
     }
@@ -92,7 +94,7 @@ function buildPrintDocument(labelsHtml) {
     }
     .sl-frame {
       height: 100%;
-      min-height: calc(210mm - 20mm);
+      min-height: calc(210mm - 16mm);
       border: 1.25pt solid #222;
       outline: 3.5pt solid #222;
       outline-offset: 2.5mm;
@@ -287,6 +289,7 @@ export function printShippingLabels(items) {
   doc.open()
   doc.write(docHtml)
   doc.close()
+  try { doc.title = '' } catch (_) { /* ignore */ }
 
   const cleanup = () => {
     try { iframe.remove() } catch (_) { /* ignore */ }
