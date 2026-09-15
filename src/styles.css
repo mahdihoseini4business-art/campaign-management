@@ -2960,6 +2960,63 @@
     border-color: var(--accent);
   }
 
+  .shipments-batch-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-inline-start: auto;
+  }
+
+  .shipments-selected-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    min-width: 4.5rem;
+  }
+
+  .shipments-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .shipping-sender-logo-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .shipping-sender-logo-preview-wrap {
+    width: 88px;
+    height: 88px;
+    border: 1px dashed var(--border, #d0d5dd);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: var(--bg-soft, #f8f9fb);
+  }
+
+  .shipping-sender-logo-preview {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  .shipping-sender-logo-empty {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .shipping-sender-logo-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
   .copyable-cell {
     display: inline-flex;
     align-items: center;

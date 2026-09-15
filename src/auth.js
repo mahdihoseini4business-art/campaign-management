@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
 import {
   loadGroupsData,
   getGroupsCache,
@@ -451,6 +451,7 @@ const SETTINGS_SECTIONS = [
   { id: 'customer-codes', label: 'کدهای مشتری', group: 'داده‌های پایه', keywords: 'کد مشتری customer code' },
   { id: 'customer-prefs', label: 'ترجیحات مشتری', group: 'داده‌های پایه', keywords: 'پیگیری اجبار فروش followup مشتری ثبت' },
   { id: 'sms', label: 'پنل پیامک', group: 'ارتباطات', keywords: 'پیامک sms otp ملی پیامک melipayamak فرستنده api' },
+  { id: 'shipping-sender', label: 'فرستنده پستی', group: 'سیستم', keywords: 'پست لیبل فرستنده آدرس کد پستی لوگو shipping label sender' },
   { id: 'backup', label: 'بکاپ و بازیابی', group: 'سیستم', keywords: 'بکاپ backup restore بازیابی پشتیبان آفلاین carno' },
   { id: 'notif-compose', label: 'ارسال اعلان', group: 'اعلان‌ها', keywords: 'اعلان notification ارسال' },
   { id: 'notif-prefs', label: 'ترجیحات اعلان', group: 'اعلان‌ها', keywords: 'toast فروش زنده ترجیح نوتیفیکیشن مرورگر browser notification' },
@@ -583,6 +584,7 @@ function applySettingsSection(sectionId) {
   else if (sectionId === 'statuses') renderStatusesSettings()
   else if (sectionId === 'customer-codes') renderCustomerCodesSettings()
   else if (sectionId === 'sms') renderSmsPanelSettings()
+  else if (sectionId === 'shipping-sender') renderShippingSenderSettings()
 }
 
 function openSettingsConfirm(message, onConfirm, confirmLabel = 'تأیید') {
@@ -615,7 +617,7 @@ function openSettingsConfirm(message, onConfirm, confirmLabel = 'تأیید') {
   document.getElementById('deleteModal')?.classList.add('active')
 }
 
-export async function openSettingsModal() {
+export async function openSettingsModal(sectionId = 'users') {
   if (!requireMainAdmin()) return
   _permissionsDirty = false
   _editingUserInfo = null
@@ -645,7 +647,8 @@ export async function openSettingsModal() {
   if (roleFilter) roleFilter.value = 'all'
 
   renderSettingsNav()
-  applySettingsSection('users')
+  const initialSection = SETTINGS_SECTIONS.some(s => s.id === sectionId) ? sectionId : 'users'
+  applySettingsSection(initialSection)
 
   try {
     _settingsUsersCache = await getUsers()
@@ -4533,4 +4536,110 @@ export async function saveSmsPanelSettings() {
 export function resetSmsMessageTemplate() {
   const templateEl = document.getElementById('smsMessageTemplate')
   if (templateEl) templateEl.value = DEFAULT_SMS_PANEL.messageTemplate
+}
+
+let _shippingLogoDraft = null // dataUrl while editing; null = keep stored
+
+function syncShippingLogoPreview(logoDataUrl) {
+  const preview = document.getElementById('shippingSenderLogoPreview')
+  const empty = document.getElementById('shippingSenderLogoEmpty')
+  const removeBtn = document.getElementById('shippingSenderLogoRemoveBtn')
+  const hasLogo = !!(logoDataUrl && String(logoDataUrl).startsWith('data:image/'))
+  if (preview) {
+    preview.hidden = !hasLogo
+    if (hasLogo) preview.src = logoDataUrl
+    else preview.removeAttribute('src')
+  }
+  if (empty) empty.hidden = hasLogo
+  if (removeBtn) removeBtn.hidden = !hasLogo
+}
+
+export function renderShippingSenderSettings() {
+  const cfg = getShippingSender()
+  _shippingLogoDraft = cfg.logoDataUrl || null
+  const nameEl = document.getElementById('shippingSenderName')
+  const phoneEl = document.getElementById('shippingSenderPhone')
+  const addressEl = document.getElementById('shippingSenderAddress')
+  const postalEl = document.getElementById('shippingSenderPostal')
+  const fileEl = document.getElementById('shippingSenderLogoFile')
+  if (nameEl) nameEl.value = cfg.name || ''
+  if (phoneEl) phoneEl.value = cfg.phone || ''
+  if (addressEl) addressEl.value = cfg.address || ''
+  if (postalEl) postalEl.value = cfg.postalCode || ''
+  if (fileEl) fileEl.value = ''
+  syncShippingLogoPreview(_shippingLogoDraft)
+}
+
+async function resizeImageFileToDataUrl(file, maxWidth = 480, quality = 0.85) {
+  const bitmap = await createImageBitmap(file)
+  const scale = Math.min(1, maxWidth / Math.max(bitmap.width, 1))
+  const w = Math.max(1, Math.round(bitmap.width * scale))
+  const h = Math.max(1, Math.round(bitmap.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('canvas')
+  ctx.drawImage(bitmap, 0, 0, w, h)
+  bitmap.close?.()
+  let dataUrl = canvas.toDataURL('image/jpeg', quality)
+  if (dataUrl.length > 200_000) {
+    dataUrl = canvas.toDataURL('image/jpeg', 0.7)
+  }
+  if (dataUrl.length > 220_000) {
+    throw new Error('لوگو خیلی بزرگ است — تصویر کوچک‌تری انتخاب کنید')
+  }
+  return dataUrl
+}
+
+export async function onShippingSenderLogoChange(input) {
+  const file = input?.files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    showToast('فقط فایل تصویری مجاز است')
+    input.value = ''
+    return
+  }
+  try {
+    _shippingLogoDraft = await resizeImageFileToDataUrl(file)
+    syncShippingLogoPreview(_shippingLogoDraft)
+  } catch (e) {
+    console.error('onShippingSenderLogoChange error:', e)
+    showToast(e?.message || 'خطا در خواندن لوگو')
+    input.value = ''
+  }
+}
+
+export function removeShippingSenderLogo() {
+  _shippingLogoDraft = null
+  const fileEl = document.getElementById('shippingSenderLogoFile')
+  if (fileEl) fileEl.value = ''
+  syncShippingLogoPreview(null)
+}
+
+export async function saveShippingSenderSettings() {
+  if (!requireMainAdmin()) return
+
+  const name = String(document.getElementById('shippingSenderName')?.value || '').trim()
+  const phone = toEnDigits(document.getElementById('shippingSenderPhone')?.value || '').trim()
+  const address = String(document.getElementById('shippingSenderAddress')?.value || '').trim().replace(/\s+/g, ' ')
+  const postalCode = toEnDigits(document.getElementById('shippingSenderPostal')?.value || '').trim().replace(/\s+/g, '')
+
+  if (!name) { showToast('نام فرستنده را وارد کنید'); return }
+  if (!address) { showToast('آدرس فرستنده را وارد کنید'); return }
+
+  try {
+    await saveShippingSender({
+      name,
+      phone,
+      address,
+      postalCode,
+      logoDataUrl: _shippingLogoDraft
+    })
+    showToast('اطلاعات فرستنده پستی ذخیره شد')
+    renderShippingSenderSettings()
+  } catch (e) {
+    console.error('saveShippingSenderSettings error:', e)
+    showToast(e.message || 'خطا در ذخیره اطلاعات فرستنده')
+  }
 }

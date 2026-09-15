@@ -1,12 +1,12 @@
 import { getData, saveCustomerToDB, coerceProductName } from './data.js'
-import { getUsersSafe } from './auth.js'
+import { getUsersSafe, openSettingsModal } from './auth.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
   requirePermission, getCurrentUser, normalizePhone, getNowJalaliDateTime,
   ensureProductPayments, syncProductStatus, formatSoldAt24h, matchesTabSearch,
   getCustomerPhones, getPrimaryPhone, getApprovedPaid, getProductPayments,
   getPaymentEntryStatus, PAYMENT_STATUS, getSaleRegistrantPhone,
-  userDisplayName,
+  userDisplayName, isMainAdmin,
   isPhysicalSaleLine, isEligibleForShipment, isGiftSale, getGiftAccountingStatus,
   getShipmentStatus, SHIPMENT_STATUS, renderCopyableCell, getPrimaryCustomerAddress
 } from './utils.js'
@@ -17,10 +17,16 @@ import { debouncedSearchInput } from './search-debounce.js'
 import { SEARCH_HOST } from './search-overlay.js'
 import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
 import { assertFeature, assertWritable } from './entitlements.js'
+import { printShippingLabels, shipmentToLabelItem } from './shipping-label.js'
 
 let shipmentsFilter = 'pending' // pending | shipped
 let shipmentsSortState = { field: null, asc: true }
 let shipConfirmTarget = null // { customerId, productIndex }
+const selectedShipmentKeys = new Set()
+
+function shipmentKey(customerId, productIndex) {
+  return `${customerId}|${productIndex}`
+}
 
 function getLatestApprovedSoldAt(product) {
   if (isGiftSale(product) && getGiftAccountingStatus(product) === PAYMENT_STATUS.approved) {
@@ -87,17 +93,39 @@ export function setShipmentsFilter(filter) {
   document.querySelectorAll('.shipments-filter-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.filter === filter)
   })
+  selectedShipmentKeys.clear()
   renderShipments()
 }
 
-function renderShipmentsHeader(canManage) {
+function updateShipmentsSelectionUi(pageKeys = []) {
+  const count = selectedShipmentKeys.size
+  const countEl = document.getElementById('shipmentsSelectedCount')
+  const printBtn = document.getElementById('shipmentsBatchPrintBtn')
+  if (countEl) countEl.textContent = count ? `${count} انتخاب` : ''
+  if (printBtn) printBtn.disabled = count === 0
+
+  const selectAll = document.getElementById('selectAllShipments')
+  if (selectAll && pageKeys.length) {
+    const selectedOnPage = pageKeys.filter(k => selectedShipmentKeys.has(k)).length
+    selectAll.checked = selectedOnPage === pageKeys.length
+    selectAll.indeterminate = selectedOnPage > 0 && selectedOnPage < pageKeys.length
+  } else if (selectAll) {
+    selectAll.checked = false
+    selectAll.indeterminate = false
+  }
+}
+
+function renderShipmentsHeader() {
   const thead = document.getElementById('shipmentsHead')
   if (!thead) return
   const th = (field, label, extraClass = '', style = '') =>
     sortThHtml({ field, label, handler: `app.sortShipmentsHeader('${field}')`, extraClass, style })
+  const selectTh = `<th class="select-col" style="width:40px;"><input type="checkbox" id="selectAllShipments" aria-label="انتخاب همه ارسالی‌های این صفحه" onchange="app.toggleSelectAllShipments(this.checked)"></th>`
+  const actionsTh = '<th class="actions-col">عملیات</th>'
 
   if (shipmentsFilter === 'shipped') {
     thead.innerHTML = `<tr>
+      ${selectTh}
       ${th('customerName', 'مشتری')}
       ${th('customerPhone', 'شماره')}
       ${th('advisor', 'کارشناس')}
@@ -107,12 +135,14 @@ function renderShipmentsHeader(canManage) {
       ${th('shippingPostalCode', 'کد پستی گیرنده')}
       ${th('trackingCode', 'کد رهگیری')}
       ${th('shippedAt', 'تاریخ و ساعت ارسال')}
+      ${actionsTh}
     </tr>`
     syncSortHeaders(thead, shipmentsSortState)
     return
   }
 
   thead.innerHTML = `<tr>
+    ${selectTh}
     ${th('customerName', 'مشتری')}
     ${th('customerPhone', 'شماره')}
     ${th('advisor', 'کارشناس')}
@@ -122,7 +152,7 @@ function renderShipmentsHeader(canManage) {
     ${th('lastApprovedAt', 'تاریخ آخرین واریز تأییدشده')}
     ${th('shippingAddress', 'آدرس گیرنده')}
     ${th('shippingPostalCode', 'کد پستی گیرنده')}
-    ${canManage ? '<th class="actions-col">عملیات</th>' : ''}
+    ${actionsTh}
   </tr>`
   syncSortHeaders(thead, shipmentsSortState)
 }
@@ -136,8 +166,84 @@ function phonesCell(row) {
   return `${escapeHtml(phones[0])}${extra}`
 }
 
+function selectCellHtml(s) {
+  const key = shipmentKey(s.customerId, s.productIndex)
+  const checked = selectedShipmentKeys.has(key) ? ' checked' : ''
+  return `<td class="select-col" onclick="event.stopPropagation()">
+    <input type="checkbox" class="shipment-row-cb" data-key="${escapeAttr(key)}"${checked}
+      aria-label="انتخاب ارسالی" onchange="app.toggleShipmentSelect('${escapeAttr(key)}', this.checked)">
+  </td>`
+}
+
+function printBtnHtml(s) {
+  return `<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); app.printShipmentLabel('${escapeAttr(s.customerId)}', ${s.productIndex})">پرینت لیبل</button>`
+}
+
 export function onShipmentsSearchInput() {
   debouncedSearchInput(SEARCH_HOST.shipments, () => renderShipments())
+}
+
+export function toggleShipmentSelect(key, checked) {
+  if (checked) selectedShipmentKeys.add(key)
+  else selectedShipmentKeys.delete(key)
+  const pageKeys = [...document.querySelectorAll('#shipmentsBody .shipment-row-cb')]
+    .map(cb => cb.dataset.key)
+    .filter(Boolean)
+  updateShipmentsSelectionUi(pageKeys)
+}
+
+export function toggleSelectAllShipments(checked) {
+  document.querySelectorAll('#shipmentsBody .shipment-row-cb').forEach(cb => {
+    const key = cb.dataset.key
+    if (!key) return
+    cb.checked = checked
+    if (checked) selectedShipmentKeys.add(key)
+    else selectedShipmentKeys.delete(key)
+  })
+  const pageKeys = [...document.querySelectorAll('#shipmentsBody .shipment-row-cb')]
+    .map(cb => cb.dataset.key)
+    .filter(Boolean)
+  updateShipmentsSelectionUi(pageKeys)
+}
+
+async function handleSenderIncomplete() {
+  showToast('اطلاعات فرستنده پستی در تنظیمات تکمیل نشده است')
+  if (isMainAdmin()) {
+    try { await openSettingsModal('shipping-sender') } catch (_) { /* ignore */ }
+  }
+}
+
+function findShipmentRow(customerId, productIndex) {
+  return getAllShipments().find(s => s.customerId === customerId && s.productIndex === productIndex) || null
+}
+
+export async function printShipmentLabel(customerId, productIndex) {
+  if (!assertFeature('shipments')) return
+  const row = findShipmentRow(customerId, productIndex)
+  if (!row) {
+    showToast('ردیف ارسالی یافت نشد')
+    return
+  }
+  const result = printShippingLabels([shipmentToLabelItem(row)])
+  if (result.reason === 'sender_incomplete') await handleSenderIncomplete()
+  else if (result.reason === 'empty') showToast('موردی برای پرینت نیست')
+}
+
+export async function printSelectedShipmentLabels() {
+  if (!assertFeature('shipments')) return
+  if (!selectedShipmentKeys.size) {
+    showToast('حداقل یک ردیف انتخاب کنید')
+    return
+  }
+  const all = getAllShipments()
+  const byKey = new Map(all.map(s => [shipmentKey(s.customerId, s.productIndex), s]))
+  const items = [...selectedShipmentKeys]
+    .map(k => byKey.get(k))
+    .filter(Boolean)
+    .map(shipmentToLabelItem)
+  const result = printShippingLabels(items)
+  if (result.reason === 'sender_incomplete') await handleSenderIncomplete()
+  else if (result.reason === 'empty') showToast('حداقل یک ردیف انتخاب کنید')
 }
 
 export async function renderShipments() {
@@ -146,12 +252,18 @@ export async function renderShipments() {
   if (!tbody) return
 
   const canManage = hasPermission('shipments_manage')
-  renderShipmentsHeader(canManage)
+  renderShipmentsHeader()
 
   const search = toEnDigits(document.getElementById('searchShipments')?.value || '').toLowerCase()
   const myPhone = normalizePhone(getCurrentUser()?.phone || '')
   const cacheKey = `${shipmentsFilter}|${search}|${canManage ? 1 : 0}|${myPhone}|${sortSig(shipmentsSortState)}|${tabPageKey('shipments', getPage('shipments'))}`
-  if (shouldSkipTabRender('shipments', cacheKey)) return
+  if (shouldSkipTabRender('shipments', cacheKey)) {
+    const pageKeys = [...document.querySelectorAll('#shipmentsBody .shipment-row-cb')]
+      .map(cb => cb.dataset.key)
+      .filter(Boolean)
+    updateShipmentsSelectionUi(pageKeys)
+    return
+  }
 
   const allShipments = getAllShipments()
 
@@ -200,7 +312,8 @@ export async function renderShipments() {
   setStat('stat-ship-pending', allShipments.filter(s => s.shipmentStatus === SHIPMENT_STATUS.pending).length)
   setStat('stat-ship-shipped', allShipments.filter(s => s.shipmentStatus === SHIPMENT_STATUS.shipped).length)
 
-  const colCount = shipmentsFilter === 'shipped' ? 9 : (canManage ? 10 : 9)
+  // select + base cols + actions
+  const colCount = shipmentsFilter === 'shipped' ? 11 : 11
 
   if (shipments.length === 0) {
     tbody.innerHTML = `
@@ -212,11 +325,14 @@ export async function renderShipments() {
         </div>
       </td></tr>`
     renderPaginationBar('shipmentsPagination', 'shipments', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
+    updateShipmentsSelectionUi([])
+    markTabRendered('shipments', cacheKey)
     return
   }
 
   const filterSig = `${shipmentsFilter}|${search}|${canManage ? 1 : 0}|${myPhone}|${sortSig(shipmentsSortState)}`
   const page = paginateList('shipments', shipments, filterSig)
+  const pageKeys = page.items.map(s => shipmentKey(s.customerId, s.productIndex))
 
   tbody.innerHTML = page.items.map(s => {
     const productLabel = s.isGift
@@ -224,6 +340,7 @@ export async function renderShipments() {
       : escapeHtml(s.productName)
     const statusLabel = escapeHtml(s.productStatus) || '—'
     const common = `
+      ${selectCellHtml(s)}
       <td>${escapeHtml(s.customerName)}</td>
       <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;font-size:13px;">${phonesCell(s)}</td>
       <td>${escapeHtml(s.advisor) || '—'}</td>
@@ -237,11 +354,12 @@ export async function renderShipments() {
         <td>${renderCopyableCell(s.shippingPostalCode)}</td>
         <td>${renderCopyableCell(s.trackingCode, { truncate: true })}</td>
         <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;direction:ltr;text-align:right;">${escapeHtml(formatSoldAt24h(s.shippedAt) || s.shippedAt || '—')}</td>
+        <td class="actions-col" onclick="event.stopPropagation()">${printBtnHtml(s)}</td>
       </tr>`
     }
 
-    const actions = canManage
-      ? `<td><button type="button" class="btn btn-sm btn-approve" onclick="event.stopPropagation(); app.openConfirmShipmentModal('${escapeAttr(s.customerId)}', ${s.productIndex})">تأیید ارسال</button></td>`
+    const manageActions = canManage
+      ? `<button type="button" class="btn btn-sm btn-approve" onclick="event.stopPropagation(); app.openConfirmShipmentModal('${escapeAttr(s.customerId)}', ${s.productIndex})">تأیید ارسال</button>`
       : ''
 
     const amountHtml = s.isGift
@@ -257,11 +375,17 @@ export async function renderShipments() {
       <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;direction:ltr;text-align:right;">${escapeHtml(formatSoldAt24h(s.lastApprovedAt) || '—')}</td>
       <td>${renderCopyableCell(s.shippingAddress)}</td>
       <td>${renderCopyableCell(s.shippingPostalCode)}</td>
-      ${actions}
+      <td class="actions-col" onclick="event.stopPropagation()">
+        <div class="shipments-actions">
+          ${printBtnHtml(s)}
+          ${manageActions}
+        </div>
+      </td>
     </tr>`
   }).join('')
 
   renderPaginationBar('shipmentsPagination', 'shipments', page)
+  updateShipmentsSelectionUi(pageKeys)
   markTabRendered('shipments', cacheKey)
 }
 
@@ -305,9 +429,29 @@ export function closeConfirmShipmentModal() {
   document.getElementById('confirmShipmentModal')?.classList.remove('active')
 }
 
-export async function confirmShipment() {
+function buildShipmentSnapshot(customer, product, productIndex, trackingCode, shippedAt, shippedBy) {
+  const primaryAddress = getPrimaryCustomerAddress(customer)
+  const shippingAddress = String(product.shippingAddress || '').trim() || primaryAddress?.text || ''
+  const shippingPostalCode = String(product.shippingPostalCode || '').trim()
+    || (String(product.shippingAddress || '').trim() ? '' : (primaryAddress?.postalCode || ''))
+  return {
+    customerId: customer.id,
+    productIndex,
+    customerName: customer.name || customer.platformId || customer.id,
+    customerPhone: getPrimaryPhone(customer),
+    customerPhones: getCustomerPhones(customer),
+    shippingAddress,
+    shippingPostalCode,
+    trackingCode: trackingCode || '',
+    shippedAt: shippedAt || '',
+    shippedBy: shippedBy || ''
+  }
+}
+
+export async function confirmShipment(options = {}) {
   if (!requirePermission('shipments_manage')) return
   if (!shipConfirmTarget) return
+  const { print = false } = options
   const { customerId, productIndex } = shipConfirmTarget
   const data = getData()
   const customer = data.customers.find(c => c.id === customerId)
@@ -319,18 +463,29 @@ export async function confirmShipment() {
   const trackingCode = toEnDigits(String(document.getElementById('shipmentTrackingCode')?.value || '')).trim()
   const user = getCurrentUser()
   const { dateTime } = getNowJalaliDateTime()
+  const shippedBy = normalizePhone(user?.phone || '')
   product.shipmentStatus = SHIPMENT_STATUS.shipped
   product.trackingCode = trackingCode
   product.shippedAt = dateTime
-  product.shippedBy = normalizePhone(user?.phone || '')
+  product.shippedBy = shippedBy
+  const labelSnapshot = buildShipmentSnapshot(customer, product, productIndex, trackingCode, dateTime, shippedBy)
   try {
     await saveCustomerToDB(customer)
     closeConfirmShipmentModal()
     showToast('ارسال تأیید شد')
+    selectedShipmentKeys.delete(shipmentKey(customerId, productIndex))
     renderShipments()
     try { renderProducts(customerId) } catch (_) { /* detail may be closed */ }
+    if (print) {
+      const result = printShippingLabels([shipmentToLabelItem(labelSnapshot)])
+      if (result.reason === 'sender_incomplete') await handleSenderIncomplete()
+    }
   } catch (e) {
     console.error('confirmShipment error:', e)
     showToast('خطا در تأیید ارسال')
   }
+}
+
+export async function confirmShipmentAndPrint() {
+  await confirmShipment({ print: true })
 }

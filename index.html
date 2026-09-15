@@ -521,6 +521,51 @@
           </div>
         </section>
 
+        <!-- فرستنده پستی / لیبل -->
+        <section class="settings-pane" data-settings-pane="shipping-sender" hidden>
+          <div class="settings-pane-header">
+            <h3>فرستنده پستی</h3>
+            <p class="settings-pane-desc">اطلاعات ثابت فرستنده برای چاپ لیبل پستی روی ارسالی‌ها. لوگو اختیاری است.</p>
+          </div>
+          <div class="settings-subsection">
+            <div class="form-row" style="flex-wrap:wrap;gap:12px;">
+              <div class="form-group" style="flex:1;min-width:180px;">
+                <label for="shippingSenderName">نام فرستنده</label>
+                <input type="text" class="form-input" id="shippingSenderName" placeholder="نام فروشگاه یا شرکت" autocomplete="organization">
+              </div>
+              <div class="form-group" style="flex:1;min-width:180px;">
+                <label for="shippingSenderPhone">شماره تماس</label>
+                <input type="text" class="form-input" id="shippingSenderPhone" inputmode="tel" placeholder="مثلاً 021xxxxxxx" dir="ltr" style="text-align:left;">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="shippingSenderAddress">آدرس</label>
+              <textarea class="form-input" id="shippingSenderAddress" rows="2" placeholder="آدرس کامل پستی فرستنده" style="resize:vertical;"></textarea>
+            </div>
+            <div class="form-group" style="max-width:220px;">
+              <label for="shippingSenderPostal">کد پستی</label>
+              <input type="text" class="form-input" id="shippingSenderPostal" inputmode="numeric" placeholder="۱۰ رقم" dir="ltr" style="text-align:left;">
+            </div>
+            <div class="form-group">
+              <label for="shippingSenderLogoFile">لوگو</label>
+              <div class="shipping-sender-logo-row">
+                <div class="shipping-sender-logo-preview-wrap">
+                  <img id="shippingSenderLogoPreview" class="shipping-sender-logo-preview" alt="پیش‌نمایش لوگو" hidden>
+                  <span id="shippingSenderLogoEmpty" class="shipping-sender-logo-empty">بدون لوگو</span>
+                </div>
+                <div class="shipping-sender-logo-actions">
+                  <input type="file" id="shippingSenderLogoFile" accept="image/*" onchange="app.onShippingSenderLogoChange(this)">
+                  <button type="button" class="btn btn-sm" id="shippingSenderLogoRemoveBtn" hidden onclick="app.removeShippingSenderLogo()">حذف لوگو</button>
+                </div>
+              </div>
+              <p class="settings-pane-desc" style="margin-top:6px;">تصویر مربعی یا افقی کوچک توصیه می‌شود (حداکثر حدود ۴۸۰px).</p>
+            </div>
+            <div class="form-row settings-add-row" style="justify-content:flex-start;gap:8px;">
+              <button type="button" class="btn btn-primary" onclick="app.saveShippingSenderSettings()">ذخیره اطلاعات فرستنده</button>
+            </div>
+          </div>
+        </section>
+
         <!-- بکاپ و بازیابی -->
         <section class="settings-pane" data-settings-pane="backup" hidden>
           <div class="settings-pane-header">
@@ -1420,6 +1465,10 @@
         <button type="button" class="btn shipments-filter-btn accounting-filter-btn" data-filter="shipped" onclick="app.setShipmentsFilter('shipped')">ارسال‌شده‌ها</button>
       </div>
       <input type="text" class="search-box" placeholder="جستجو (مشتری، محصول، آدرس، کد رهگیری)..." id="searchShipments" oninput="app.onShipmentsSearchInput()">
+      <div class="shipments-batch-bar">
+        <span id="shipmentsSelectedCount" class="shipments-selected-count" aria-live="polite"></span>
+        <button type="button" class="btn btn-sm" id="shipmentsBatchPrintBtn" disabled onclick="app.printSelectedShipmentLabels()">پرینت لیبل‌های انتخاب‌شده</button>
+      </div>
     </div>
 
     <div class="list-search-host" id="shipmentsSearchHost">
@@ -1832,6 +1881,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="app.closeConfirmShipmentModal()">انصراف</button>
+      <button class="btn" onclick="app.confirmShipmentAndPrint()">تأیید و پرینت لیبل</button>
       <button class="btn btn-primary" onclick="app.confirmShipment()">تأیید ارسال</button>
     </div>
   </div>

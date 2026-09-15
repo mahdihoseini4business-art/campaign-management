@@ -113,7 +113,8 @@ function emptyCoreData() {
     saleToastEnabled: false,
     dmChatEnabled: false,
     requireFollowupOnCreate: false,
-    smsPanel: null
+    smsPanel: null,
+    shippingSender: null
   }
 }
 
@@ -145,6 +146,28 @@ export function normalizeSmsPanel(raw) {
     sender: String(raw.sender ?? '').trim(),
     apiUrl: String(raw.apiUrl ?? '').trim(),
     messageTemplate: String(raw.messageTemplate ?? '').trim()
+  }
+}
+
+const EMPTY_SHIPPING_SENDER = {
+  name: '',
+  phone: '',
+  address: '',
+  postalCode: '',
+  logoDataUrl: null
+}
+
+/** Normalize stored shipping-label sender profile. */
+export function normalizeShippingSender(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...EMPTY_SHIPPING_SENDER }
+  const logo = raw.logoDataUrl
+  const logoDataUrl = (typeof logo === 'string' && logo.startsWith('data:image/')) ? logo : null
+  return {
+    name: String(raw.name ?? '').trim(),
+    phone: String(raw.phone ?? '').trim(),
+    address: String(raw.address ?? '').trim().replace(/\s+/g, ' '),
+    postalCode: String(raw.postalCode ?? '').trim().replace(/\s+/g, ''),
+    logoDataUrl
   }
 }
 
@@ -711,6 +734,12 @@ function applySettingsRows(rows) {
   } catch (e) {
     console.error('normalizeSmsPanel error:', e)
     data.smsPanel = normalizeSmsPanel(null)
+  }
+  try {
+    data.shippingSender = normalizeShippingSender(settings.shipping_sender)
+  } catch (e) {
+    console.error('normalizeShippingSender error:', e)
+    data.shippingSender = normalizeShippingSender(null)
   }
   try {
     data.salesTargets = normalizeSalesTargets(settings.sales_targets)
@@ -3597,6 +3626,16 @@ export async function saveSmsPanel(config) {
   cleaned.password = ''
   data.smsPanel = cleaned
   await saveSetting('sms_panel', cleaned)
+}
+
+export function getShippingSender() {
+  return normalizeShippingSender(data.shippingSender)
+}
+
+export async function saveShippingSender(config) {
+  const cleaned = normalizeShippingSender(config)
+  data.shippingSender = cleaned
+  await saveSetting('shipping_sender', cleaned)
 }
 
 // ============================================
