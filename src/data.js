@@ -1279,6 +1279,94 @@ export function formatInPersonSessionLabel(session) {
   return `${course} — ${date}`
 }
 
+/** Positive integer capacity, or null when unlimited / unset (legacy). */
+export function getInPersonSessionCapacity(session) {
+  const n = Number(session?.capacity)
+  if (!Number.isFinite(n) || n < 1) return null
+  return Math.floor(n)
+}
+
+function saleIsOnInPersonSession(customerId, productIndex, sessionId) {
+  const key = String(sessionId || '').trim()
+  if (!key) return false
+  const customer = (data.customers || []).find(c => c.id === customerId)
+  const product = Array.isArray(customer?.products) ? customer.products[productIndex] : null
+  return String(product?.inPersonSessionId || '') === key
+}
+
+/** Seats left; null = unlimited. */
+export function getInPersonSessionRemaining(sessionOrId, { ignoreSale } = {}) {
+  const session = typeof sessionOrId === 'object' && sessionOrId
+    ? sessionOrId
+    : getInPersonSessionById(sessionOrId)
+  if (!session) return 0
+  const cap = getInPersonSessionCapacity(session)
+  if (cap == null) return null
+  let used = countSalesLinkedToInPersonSession(session.id)
+  if (ignoreSale && saleIsOnInPersonSession(ignoreSale.customerId, ignoreSale.productIndex, session.id)) {
+    used = Math.max(0, used - 1)
+  }
+  return Math.max(0, cap - used)
+}
+
+export function isInPersonSessionFull(sessionOrId, opts = {}) {
+  const remaining = getInPersonSessionRemaining(sessionOrId, opts)
+  if (remaining == null) return false
+  return remaining <= 0
+}
+
+/** Label for selects: base + (ظرفیت باقیمانده N) | (ظرفیت تکمیل). */
+export function formatInPersonSessionOptionLabel(session) {
+  const base = formatInPersonSessionLabel(session)
+  const cap = getInPersonSessionCapacity(session)
+  if (cap == null) return base
+  const remaining = getInPersonSessionRemaining(session)
+  if (remaining != null && remaining <= 0) return `${base} (ظرفیت تکمیل)`
+  return `${base} (ظرفیت باقیمانده ${remaining})`
+}
+
+/**
+ * Options for session <select>. Full sessions are disabled unless currently selected.
+ * @returns {Array<{id:string,label:string,selected:boolean,disabled:boolean}>}
+ */
+export function mapInPersonSessionSelectOptions(sessions, selectedId = '') {
+  const selected = String(selectedId || '')
+  return (sessions || []).map(s => {
+    const full = isInPersonSessionFull(s)
+    const isSelected = s.id === selected
+    return {
+      id: s.id,
+      label: formatInPersonSessionOptionLabel(s),
+      selected: isSelected,
+      disabled: full && !isSelected
+    }
+  })
+}
+
+/** Throws if session cannot accept another sale (unless this sale already holds the seat). */
+export function assertSaleCanUseInPersonSession(sessionId, customerId, productIndex) {
+  const key = String(sessionId || '').trim()
+  if (!key) return
+  const session = getInPersonSessionById(key)
+  if (!session) throw new Error('سانس انتخاب‌شده معتبر نیست')
+  if (!session.active && !saleIsOnInPersonSession(customerId, productIndex, key)) {
+    throw new Error('سانس معتبر نیست')
+  }
+  if (saleIsOnInPersonSession(customerId, productIndex, key)) return
+  if (isInPersonSessionFull(session)) {
+    throw new Error('ظرفیت این سانس تکمیل است')
+  }
+}
+
+function parseInPersonSessionCapacity(raw) {
+  if (raw == null || raw === '') return null
+  const cleaned = String(raw).replace(/[^\d]/g, '')
+  if (!cleaned) return null
+  const n = Number(cleaned)
+  if (!Number.isFinite(n) || n < 1) return null
+  return Math.floor(n)
+}
+
 export function normalizeInPersonSession(raw) {
   if (!raw || typeof raw !== 'object') return null
   const courseName = coerceProductName(raw.courseName || raw.name || '')
@@ -1287,12 +1375,15 @@ export function normalizeInPersonSession(raw) {
   if (!courseName) return null
   if (!sessionDate || sessionDate.split('/').length !== 3) return null
   const id = String(raw.id || '').trim() || makeInPersonSessionId()
-  return {
+  const entry = {
     id,
     courseName,
     sessionDate,
     active: raw.active !== false
   }
+  const capacity = parseInPersonSessionCapacity(raw.capacity)
+  if (capacity != null) entry.capacity = capacity
+  return entry
 }
 
 export function normalizeInPersonSessions(raw) {
@@ -1349,9 +1440,14 @@ export async function upsertInPersonSession(input) {
   if (!courseName || !isEventProductName(courseName)) {
     throw new Error('محصول رویداد و تاریخ برگزاری الزامی است')
   }
+  const capacity = parseInPersonSessionCapacity(input?.capacity)
+  if (capacity == null) {
+    throw new Error('ظرفیت سانس را وارد کنید')
+  }
   const next = normalizeInPersonSession({
     ...input,
     courseName,
+    capacity,
     id: input?.id || makeInPersonSessionId()
   })
   if (!next) throw new Error('محصول رویداد و تاریخ برگزاری الزامی است')
@@ -1455,6 +1551,7 @@ export async function assignInPersonSessionToSale(customerId, productIndex, sess
   if (!product) throw new Error('فروش یافت نشد')
   if (!isEventProductName(product.name)) throw new Error('این محصول رویداد نیست')
   if (product.historicalImport) throw new Error('فروش ایمپورت تاریخی قابل تخصیص نیست')
+  assertSaleCanUseInPersonSession(session.id, customerId, productIndex)
   product.inPersonSessionId = session.id
   await saveCustomerToDB(customer)
   return product

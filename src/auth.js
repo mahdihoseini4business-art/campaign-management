@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
 import {
   loadGroupsData,
   getGroupsCache,
@@ -1744,15 +1744,19 @@ function renderInPersonSessionsList() {
   }
   list.innerHTML = sessions.map(s => {
     const linked = countSalesLinkedToInPersonSession(s.id)
+    const cap = getInPersonSessionCapacity(s)
+    const remaining = getInPersonSessionRemaining(s)
     if (_editingInPersonSessionId === s.id) {
       const names = getInPersonCourseNames()
       const nameOpts = names.map(n =>
         `<option value="${escapeAttr(n)}"${n === s.courseName ? ' selected' : ''}>${escapeHtml(n)}</option>`
       ).join('')
+      const capVal = cap != null ? String(cap) : ''
       return `
         <div class="settings-config-row ips-row is-editing" style="flex-wrap:wrap;align-items:flex-end;gap:8px;">
           <select class="form-select" id="editInPersonCourseName" style="flex:1;min-width:140px;">${nameOpts}</select>
           <input type="text" class="form-input" id="editInPersonSessionDate" value="${escapeAttr(s.sessionDate)}" data-jdp style="width:140px;font-family:'Vazirmatn',sans-serif;">
+          <input type="text" class="form-input" id="editInPersonSessionCapacity" inputmode="numeric" placeholder="ظرفیت" value="${escapeAttr(capVal)}" style="width:88px;font-family:'Vazirmatn',sans-serif;" title="ظرفیت سانس">
           <label class="settings-gift-check" for="editInPersonSessionActive">
             <input type="checkbox" id="editInPersonSessionActive"${s.active ? ' checked' : ''}>
             <span>فعال</span>
@@ -1764,13 +1768,21 @@ function renderInPersonSessionsList() {
     const badge = s.active
       ? '<span class="ips-badge ips-badge--active">فعال</span>'
       : '<span class="ips-badge ips-badge--inactive">غیرفعال</span>'
+    let capacityMeta = ''
+    if (cap != null) {
+      capacityMeta = remaining != null && remaining <= 0
+        ? ` · <span class="ips-badge ips-badge--full">ظرفیت تکمیل</span> (${formatNumber(linked)}/${formatNumber(cap)})`
+        : ` · ظرفیت: ${formatNumber(linked)}/${formatNumber(cap)} · باقیمانده ${formatNumber(remaining)}`
+    } else {
+      capacityMeta = ` · ${formatNumber(linked)} فروش متصل`
+    }
     return `
       <div class="settings-config-row ips-row">
         <span class="settings-config-label">
           <span class="ips-row-title">${escapeHtml(s.courseName)} ${badge}</span>
           <span class="settings-config-meta" style="display:block;margin-top:2px;">
             برگزاری: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${escapeHtml(s.sessionDate)}</b>
-            · ${formatNumber(linked)} فروش متصل
+            ${capacityMeta}
           </span>
         </span>
         <button type="button" class="btn-icon" title="ویرایش" onclick="app.startInPersonSessionEdit('${escapeAttr(s.id)}')">✏️</button>
@@ -1830,8 +1842,8 @@ function renderUnassignedInPersonSales() {
   list.innerHTML = rows.map((r) => {
     const matching = sessions.filter(s => s.courseName.toLowerCase() === String(r.productName).toLowerCase())
     const optsSource = matching.length ? matching : sessions
-    const opts = optsSource.map(s =>
-      `<option value="${escapeAttr(s.id)}">${escapeHtml(formatInPersonSessionLabel(s))}</option>`
+    const opts = mapInPersonSessionSelectOptions(optsSource).map(o =>
+      `<option value="${escapeAttr(o.id)}"${o.disabled ? ' disabled' : ''}>${escapeHtml(o.label)}</option>`
     ).join('')
     const rowKey = `${escapeAttr(r.customerId)}_${r.productIndex}`
     const phoneHint = r.phone
@@ -1845,7 +1857,10 @@ function renderUnassignedInPersonSales() {
             ${escapeHtml(r.productName)} · ${formatNumber(r.price)} ریال · ${escapeHtml(r.status)}
           </span>
         </span>
-        <select class="form-select ips-assign-select" data-unassigned-select="${rowKey}" style="min-width:180px;max-width:260px;">${opts}</select>
+        <select class="form-select ips-assign-select" data-unassigned-select="${rowKey}" style="min-width:180px;max-width:280px;">
+          <option value="">انتخاب سانس...</option>
+          ${opts}
+        </select>
         <button type="button" class="btn btn-sm btn-primary" onclick="app.assignUnassignedInPersonSale('${escapeAttr(r.customerId)}', ${r.productIndex}, '${rowKey}')">تخصیص</button>
       </div>`
   }).join('')
@@ -1940,10 +1955,13 @@ export async function addInPersonSession() {
   if (!requireMainAdmin()) return
   const courseName = document.getElementById('newInPersonCourseName')?.value || ''
   const sessionDate = toEnDigits(document.getElementById('newInPersonSessionDate')?.value || '').trim()
+  const capacity = toEnDigits(document.getElementById('newInPersonSessionCapacity')?.value || '').trim()
   try {
-    await upsertInPersonSession({ courseName, sessionDate, active: true })
+    await upsertInPersonSession({ courseName, sessionDate, capacity, active: true })
     const dateEl = document.getElementById('newInPersonSessionDate')
     if (dateEl) dateEl.value = ''
+    const capEl = document.getElementById('newInPersonSessionCapacity')
+    if (capEl) capEl.value = ''
     showToast('سانس اضافه شد')
     const filter = document.getElementById('settingsUnassignedCourseFilter')
     if (filter && courseName) filter.value = courseName
@@ -1968,9 +1986,10 @@ export async function saveInPersonSessionEdit(id) {
   if (!requireMainAdmin()) return
   const courseName = document.getElementById('editInPersonCourseName')?.value || ''
   const sessionDate = toEnDigits(document.getElementById('editInPersonSessionDate')?.value || '').trim()
+  const capacity = toEnDigits(document.getElementById('editInPersonSessionCapacity')?.value || '').trim()
   const active = !!document.getElementById('editInPersonSessionActive')?.checked
   try {
-    await upsertInPersonSession({ id, courseName, sessionDate, active })
+    await upsertInPersonSession({ id, courseName, sessionDate, capacity, active })
     _editingInPersonSessionId = null
     showToast('سانس ذخیره شد')
     renderInPersonSessionsSettings()

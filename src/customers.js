@@ -1,4 +1,4 @@
-import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, invalidateProductSalesCountCache, isEventProductName, getActiveInPersonSessions, formatInPersonSessionLabel, getInPersonSessionById } from './data.js'
+import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, invalidateProductSalesCountCache, isEventProductName, getActiveInPersonSessions, formatInPersonSessionLabel, getInPersonSessionById, mapInPersonSessionSelectOptions, assertSaleCanUseInPersonSession } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
@@ -3800,8 +3800,8 @@ export async function renderProducts(customerId, users = null) {
     const sessionFieldEditable = canEdit && !cancelled
     let sessionControl = ''
     if (sessionFieldEditable) {
-      const optsHtml = sessionOpts.map(s =>
-        `<option value="${escapeAttr(s.id)}"${s.id === currentSessionId ? ' selected' : ''}>${escapeHtml(formatInPersonSessionLabel(s))}</option>`
+      const optsHtml = mapInPersonSessionSelectOptions(sessionOpts, currentSessionId).map(o =>
+        `<option value="${escapeAttr(o.id)}"${o.selected ? ' selected' : ''}${o.disabled ? ' disabled' : ''}>${escapeHtml(o.label)}</option>`
       ).join('')
       sessionControl = `<select class="form-select" data-sale-field="inPersonSessionId">
             <option value="">انتخاب تاریخ برگزاری...</option>
@@ -4159,8 +4159,8 @@ export function onSaleProductNameChange(selectEl) {
     const opts = matching.length ? matching : activeSessions
     const prev = sessionSelect.value
     sessionSelect.innerHTML = `<option value="">انتخاب تاریخ برگزاری...</option>` +
-      opts.map(s =>
-        `<option value="${escapeAttr(s.id)}"${s.id === prev ? ' selected' : ''}>${escapeHtml(formatInPersonSessionLabel(s))}</option>`
+      mapInPersonSessionSelectOptions(opts, prev).map(o =>
+        `<option value="${escapeAttr(o.id)}"${o.selected ? ' selected' : ''}${o.disabled ? ' disabled' : ''}>${escapeHtml(o.label)}</option>`
       ).join('')
   } else if (sessionSelect && !inPerson) {
     sessionSelect.value = ''
@@ -4278,6 +4278,16 @@ export async function commitGiftSale(customerId, productIndex) {
     updateSaleGiftMode(block)
     return
   }
+  if (isEventProductName(name) && draft.inPersonSessionId) {
+    try {
+      assertSaleCanUseInPersonSession(draft.inPersonSessionId, customerId, productIndex)
+    } catch (e) {
+      markSaleFieldInvalid(draft.sessionEl, true)
+      showToast(e.message || 'ظرفیت این سانس تکمیل است')
+      updateSaleGiftMode(block)
+      return
+    }
+  }
 
   const btn = block.querySelector('[data-gift-submit]')
   const prevLabel = btn?.textContent
@@ -4306,17 +4316,14 @@ export async function commitGiftSale(customerId, productIndex) {
     product.soldAt = dateTime
     product.depositorName = ''
 
-    if (draft.shippingAddress != null || draft.shippingPostalCode != null) {
-      applySaleProductDraft(product, {
-        name,
-        price: '0',
-        settlementDate: '',
-        shippingAddress: draft.shippingAddress,
-        shippingPostalCode: draft.shippingPostalCode
-      }, { lockPrice: false })
-    } else {
-      applyProfitSnapshotToProduct(product)
-    }
+    applySaleProductDraft(product, {
+      name,
+      price: '0',
+      settlementDate: '',
+      shippingAddress: draft.shippingAddress,
+      shippingPostalCode: draft.shippingPostalCode,
+      inPersonSessionId: draft.inPersonSessionId
+    }, { lockPrice: false })
 
     syncSaleShippingToCustomer(customer, product)
 
@@ -4477,6 +4484,15 @@ export async function commitSaleProductDetails(customerId, productIndex) {
       showToast('تاریخ برگزاری دوره را انتخاب کنید')
       return
     }
+    if (isEventProductName(draft.name) && draft.inPersonSessionId) {
+      try {
+        assertSaleCanUseInPersonSession(draft.inPersonSessionId, customerId, productIndex)
+      } catch (e) {
+        markSaleFieldInvalid(draft.sessionEl, true)
+        showToast(e.message || 'ظرفیت این سانس تکمیل است')
+        return
+      }
+    }
     applySaleProductDraft(product, draft, { lockPrice: false })
     syncSaleShippingToCustomer(customer, product)
     syncProductStatus(product)
@@ -4523,9 +4539,11 @@ export async function commitInPersonSession(customerId, productIndex) {
     showToast('تاریخ برگزاری دوره را انتخاب کنید')
     return
   }
-  if (!getInPersonSessionById(sessionId)) {
+  try {
+    assertSaleCanUseInPersonSession(sessionId, customerId, productIndex)
+  } catch (e) {
     markSaleFieldInvalid(sessionEl, true)
-    showToast('سانس انتخاب‌شده معتبر نیست')
+    showToast(e.message || 'ظرفیت این سانس تکمیل است')
     return
   }
 
@@ -4543,7 +4561,7 @@ export async function commitInPersonSession(customerId, productIndex) {
     renderProducts(customerId)
   } catch (e) {
     console.error('commitInPersonSession error:', e)
-    showToast('خطا در ذخیره تاریخ برگزاری')
+    showToast(e.message || 'خطا در ذخیره تاریخ برگزاری')
   } finally {
     if (btn) {
       btn.disabled = false
@@ -4640,6 +4658,17 @@ export async function commitSalePayment(customerId, productIndex, paymentIndex) 
     markSaleFieldInvalid(paymentDraft.bankSelect || paymentDraft.customBank, true)
     if (paymentDraft.customBank) markSaleFieldInvalid(paymentDraft.customBank, true)
     hasError = true
+  }
+
+  if (!hasError && isEventProductName(productDraft.name || product.name) && productDraft.inPersonSessionId) {
+    try {
+      assertSaleCanUseInPersonSession(productDraft.inPersonSessionId, customerId, productIndex)
+    } catch (e) {
+      markSaleFieldInvalid(productDraft.sessionEl, true)
+      hasError = true
+      showToast(e.message || 'ظرفیت این سانس تکمیل است')
+      return
+    }
   }
 
   if (hasError) {

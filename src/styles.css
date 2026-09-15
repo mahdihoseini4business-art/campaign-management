@@ -5596,6 +5596,11 @@
     color: var(--text-muted);
   }
 
+  .ips-badge--full {
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+    color: var(--danger);
+  }
+
   .settings-bundle-form {
     display: flex;
     flex-direction: column;
