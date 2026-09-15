@@ -27,3 +27,9 @@ verify_jwt = false
 
 [functions.tenant-ops]
 verify_jwt = false
+
+[functions.send-sms]
+verify_jwt = false
+
+[functions.sms-schedule-cron]
+verify_jwt = false

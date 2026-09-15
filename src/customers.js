@@ -2767,7 +2767,12 @@ export async function openCustomerDetail(id, options = {}) {
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;">
           <input type="text" class="form-input" id="detailFollowupDate" placeholder="مثلاً 1405/05/01" data-jdp style="font-family:'Vazirmatn',sans-serif;max-width:180px;">
           <button class="btn btn-sm btn-primary" onclick="app.setNextFollowup('${escapeAttr(c.id)}')">ذخیره</button>
+          <button class="btn btn-sm" data-perm="sms_customer_single" onclick="app.openCustomerSingleSms('${escapeAttr(c.id)}')">پیامک</button>
         </div>
+        <label class="settings-perm-chip" style="margin-top:8px;display:inline-flex;" data-perm="sms_followup_schedule">
+          <input type="checkbox" id="detailFollowupSmsSchedule">
+          ارسال پیامک اطلاع در موعد پیگیری
+        </label>
         ${schedulingForOther ? `
           <textarea id="detailFollowupScheduleNote" class="form-textarea" placeholder="توضیحات برای کارشناس مسئول (اجباری)..." style="min-height:64px;font-size:13px;margin-top:8px;"></textarea>
           <div class="form-hint" style="margin-top:6px;">این پیگیری در صف فالوآپ‌های کارشناس مسئول (${escapeHtml(c.advisor || '—')}) ظاهر می‌شود.</div>
@@ -3040,6 +3045,15 @@ export async function setNextFollowup(customerId) {
       invalidateDerivedCache('followups')
     }
     await saveCustomerToDB(data.customers[idx])
+    const wantFollowupSms = !!document.getElementById('detailFollowupSmsSchedule')?.checked
+    if (wantFollowupSms) {
+      try {
+        const { scheduleFollowupSms } = await import('./sms-ui.js')
+        await scheduleFollowupSms(data.customers[idx], date)
+      } catch (smsErr) {
+        console.error('followup sms schedule', smsErr)
+      }
+    }
     await renderCustomers()
     const resolved = maybeResolvePendingCreateCompletion(customerId, { toast: true })
     openCustomerDetail(customerId)
@@ -3072,6 +3086,10 @@ export async function clearNextFollowup(customerId) {
     data.customers[idx].nextFollowupDate = ''
     try {
       await saveCustomerToDB(data.customers[idx])
+      try {
+        const { cancelPendingSmsSchedulesForCustomer } = await import('./data.js')
+        await cancelPendingSmsSchedulesForCustomer(customerId)
+      } catch (_) { /* ignore */ }
       await renderCustomers()
       openCustomerDetail(customerId)
       showToast('تاریخ پیگیری حذف شد')
@@ -3908,6 +3926,7 @@ export async function renderProducts(customerId, users = null) {
         ${productRefundBadgeHtml}
         <span class="product-meta">پرداخت‌شده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${approved ? formatNumber(approved) : '۰'}</b></span>
         ${balance > 0 && !closed ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : `<span class="product-meta">مانده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">۰</b></span>`}
+        ${balance > 0 && !closed ? `<button type="button" class="btn btn-sm" data-perm="sms_sales_single" onclick="app.openSaleBalanceSms('${escapeAttr(customerId)}', ${i})">پیامک مانده</button>` : ''}
         ${closedBadge}
       </div>`
     const refundSummariesHtml = renderSaleRefundSummaries(customerId, p)
