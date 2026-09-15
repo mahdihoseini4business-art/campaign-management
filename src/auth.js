@@ -4562,11 +4562,15 @@ export function renderShippingSenderSettings() {
   const addressEl = document.getElementById('shippingSenderAddress')
   const postalEl = document.getElementById('shippingSenderPostal')
   const fileEl = document.getElementById('shippingSenderLogoFile')
+  const portraitEl = document.getElementById('shippingSenderOrientationPortrait')
+  const landscapeEl = document.getElementById('shippingSenderOrientationLandscape')
   if (nameEl) nameEl.value = cfg.name || ''
   if (phoneEl) phoneEl.value = cfg.phone || ''
   if (addressEl) addressEl.value = cfg.address || ''
   if (postalEl) postalEl.value = cfg.postalCode || ''
   if (fileEl) fileEl.value = ''
+  if (portraitEl) portraitEl.checked = cfg.orientation !== 'landscape'
+  if (landscapeEl) landscapeEl.checked = cfg.orientation === 'landscape'
   syncShippingLogoPreview(_shippingLogoDraft)
 }
 

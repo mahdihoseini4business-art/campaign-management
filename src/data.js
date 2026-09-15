@@ -154,7 +154,8 @@ const EMPTY_SHIPPING_SENDER = {
   phone: '',
   address: '',
   postalCode: '',
-  logoDataUrl: null
+  logoDataUrl: null,
+  orientation: 'portrait'
 }
 
 /** Normalize stored shipping-label sender profile. */
@@ -162,12 +163,14 @@ export function normalizeShippingSender(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...EMPTY_SHIPPING_SENDER }
   const logo = raw.logoDataUrl
   const logoDataUrl = (typeof logo === 'string' && logo.startsWith('data:image/')) ? logo : null
+  const orientation = raw.orientation === 'landscape' ? 'landscape' : 'portrait'
   return {
     name: String(raw.name ?? '').trim(),
     phone: String(raw.phone ?? '').trim(),
     address: String(raw.address ?? '').trim().replace(/\s+/g, ' '),
     postalCode: String(raw.postalCode ?? '').trim().replace(/\s+/g, ''),
-    logoDataUrl
+    logoDataUrl,
+    orientation
   }
 }
 
