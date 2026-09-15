@@ -37,8 +37,14 @@ export async function retryDmVoiceConnection() {}
 export async function unlockDmVoiceAudio() {}
 
 export function getDmVoiceDebug() {
-  return { stub: true }
+  return { stub: true, hasInbox: false }
 }
+
+export async function startDmVoiceInbox() {}
+
+export async function stopDmVoiceInbox() {}
+
+export async function leaveDmVoiceUi() {}
 
 export function openDmCreateGroup() {}
 

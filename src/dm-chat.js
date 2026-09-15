@@ -29,7 +29,10 @@ import {
   unlockDmVoiceAudio,
   scheduleDmVoiceBackgroundTeardown,
   cancelDmVoiceBackgroundTeardown,
-  getDmVoiceDebug
+  getDmVoiceDebug,
+  startDmVoiceInbox,
+  stopDmVoiceInbox,
+  leaveDmVoiceUi
 } from './dm-voice.js'
 
 export {
@@ -618,7 +621,7 @@ function renderListBody() {
   if (backBtn) backBtn.hidden = true
   if (title) title.textContent = 'گفتگوها'
   syncDmVoiceComposerVisibility(false)
-  teardownDmVoice().catch(() => {})
+  leaveDmVoiceUi().catch(() => {})
   renderTabs()
   if (!body) return
 
@@ -702,7 +705,7 @@ function renderCreateGroupBody() {
   const backBtn = document.getElementById('dmChatBackBtn')
   const title = document.getElementById('dmChatTitle')
   syncDmVoiceComposerVisibility(false)
-  teardownDmVoice().catch(() => {})
+  leaveDmVoiceUi().catch(() => {})
   if (composer) composer.hidden = true
   if (backBtn) backBtn.hidden = false
   if (title) title.textContent = 'گروه جدید'
@@ -798,7 +801,7 @@ function renderChatBody() {
     }).catch(e => console.error('dm voice sync:', e))
   } else {
     syncDmVoiceComposerVisibility(false)
-    teardownDmVoice().catch(() => {})
+    leaveDmVoiceUi().catch(() => {})
   }
 }
 
@@ -963,7 +966,7 @@ export function selectDmChatTab(index) {
   const i = Number(index)
   if (i < 0 || i >= openTabs.length) return
   flushHeartbeat().catch(() => {})
-  teardownDmVoice().catch(() => {})
+  leaveDmVoiceUi().catch(() => {})
   activeTabIndex = i
   viewMode = 'chat'
   const tab = openTabs[i]
@@ -978,7 +981,7 @@ export function closeDmChatTab(index) {
   if (i < 0 || i >= openTabs.length) return
   if (i === activeTabIndex) {
     flushHeartbeat().catch(() => {})
-    teardownDmVoice().catch(() => {})
+    leaveDmVoiceUi().catch(() => {})
   }
   openTabs.splice(i, 1)
   if (!openTabs.length) {
@@ -1002,7 +1005,7 @@ export function closeDmChatTab(index) {
 
 export function backToDmChatList() {
   flushHeartbeat().catch(() => {})
-  teardownDmVoice().catch(() => {})
+  leaveDmVoiceUi().catch(() => {})
   viewMode = 'list'
   renderPanel()
 }
@@ -1215,7 +1218,7 @@ export async function openDmChatPanel() {
 export function closeDmChatPanel() {
   flushHeartbeat().catch(() => {})
   stopHeartbeat()
-  teardownDmVoice().catch(() => {})
+  leaveDmVoiceUi().catch(() => {})
   panelOpen = false
   hidePanelAnimated()
   setBodyChatOpen(false)
@@ -1240,12 +1243,14 @@ function bindChrome() {
         return
       }
       cancelDmVoiceBackgroundTeardown()
+      startDmVoiceInbox().catch(e => console.error('dm voice inbox:', e))
       const tab = openTabs[activeTabIndex]
       if (panelOpen && viewMode === 'chat' && tab?.kind === 'dm' && tab.peerPhone) {
         syncDmVoiceForTab({
           conversationId: Number(tab.conversationId),
           peerPhone: tab.peerPhone,
-          enabled: true
+          enabled: true,
+          showComposer: true
         }).catch(e => console.error('dm voice resync:', e))
       }
     }
@@ -1295,6 +1300,7 @@ export async function initDmChat() {
   await loadReads()
   await refreshUnreadCounts()
   await subscribeRealtime()
+  await startDmVoiceInbox()
   updateBadge()
 }
 
@@ -1335,6 +1341,7 @@ export async function toggleDmChatSetting(enabled) {
 
 export function teardownDmChat() {
   flushHeartbeat().catch(() => {})
+  stopDmVoiceInbox().catch(() => {})
   teardownDmVoice().catch(() => {})
   closeDmChatPanel()
   stopHeartbeat()

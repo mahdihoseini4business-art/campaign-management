@@ -60,6 +60,12 @@ let backgroundTeardownTimer = null
 /** If makeOffer is busy, run again after it finishes (direction/track changes). */
 let negotiationQueued = false
 let negotiationIceRestart = false
+/** Personal ring channel — stays up while DM chat feature is enabled. */
+/** @type {import('@supabase/supabase-js').RealtimeChannel | null} */
+let inboxChannel = null
+let lastRingAt = 0
+/** Composer PTT visible (tab UI); false for background incoming sessions. */
+let composerVisible = false
 
 function myPhone() {
   return normalizePhone(getCurrentUser()?.phone)
@@ -67,6 +73,10 @@ function myPhone() {
 
 function channelName(conversationId) {
   return `dm-voice-${Number(conversationId)}`
+}
+
+function ringChannelName(phone) {
+  return `dm-voice-ring-${normalizePhone(phone)}`
 }
 
 function ensureRemoteAudio() {
@@ -283,6 +293,9 @@ export function getDmVoiceDebug() {
     polite,
     activeConversationId,
     peerPhone,
+    hasInbox: !!inboxChannel,
+    lastRingAt,
+    composerVisible,
     hasChannel: !!channel,
     hasPc: !!pc,
     hasLocalStream: !!localStream,
@@ -377,6 +390,71 @@ async function sendSignal(event, extra = {}) {
   await sendSignalOn(channel, activeConversationId, event, extra)
 }
 
+/**
+ * Wake the peer's personal inbox so they can join the conversation voice channel
+ * without already being in that DM tab.
+ * @param {string} toPhone
+ * @param {number} conversationId
+ */
+async function sendRing(toPhone, conversationId) {
+  const to = normalizePhone(toPhone)
+  const me = myPhone()
+  const cid = Number(conversationId) || 0
+  if (!to || !me || !cid || to === me) return
+  let ch = null
+  try {
+    ch = supabase.channel(ringChannelName(to), {
+      config: {
+        broadcast: { self: false },
+        private: true
+      }
+    })
+    const status = await new Promise((resolve) => {
+      ch.subscribe((next) => {
+        if (next === 'SUBSCRIBED' || next === 'CHANNEL_ERROR' || next === 'TIMED_OUT') resolve(next)
+      })
+    })
+    if (status !== 'SUBSCRIBED') {
+      console.warn('dm-voice ring subscribe failed:', status)
+      return
+    }
+    await ch.send({
+      type: 'broadcast',
+      event: 'voice-ring',
+      payload: {
+        conversationId: cid,
+        fromPhone: me,
+        toPhone: to,
+        at: Date.now()
+      }
+    })
+  } catch (e) {
+    console.error('dm-voice sendRing:', e)
+  } finally {
+    if (ch) await safeRemoveChannel(ch)
+  }
+}
+
+function toastIncomingSpeaker(fromPhone) {
+  const users = getUsersSafe()
+  const peer = users.find(u => normalizePhone(u.phone) === fromPhone)
+  const label = peer ? userDisplayName(peer) : fromPhone
+  showToast(`${label} در حال صحبت…`)
+}
+
+/** One-shot gesture unlock when receiving in background (composer hidden). */
+function armBackgroundAudioUnlock() {
+  showToast('برای شنیدن صدا یک‌بار روی صفحه بزنید')
+  if (typeof window === 'undefined' || window.__dmVoiceUnlockArmed) return
+  window.__dmVoiceUnlockArmed = true
+  const once = () => {
+    window.__dmVoiceUnlockArmed = false
+    document.removeEventListener('pointerdown', once, true)
+    unlockDmVoiceAudio().catch(() => {})
+  }
+  document.addEventListener('pointerdown', once, true)
+}
+
 async function ensureLocalStream() {
   if (localStream) return localStream
   if (!navigator.mediaDevices?.getUserMedia) {
@@ -447,6 +525,7 @@ async function createPeerConnection() {
       })
       .catch(() => {
         needsAudioGesture = true
+        if (!composerVisible) armBackgroundAudioUnlock()
         updateVoiceUi()
       })
   }
@@ -661,6 +740,8 @@ async function handleSignal({ event, payload }) {
         .catch(() => {})
     }
     setPeerTalking(true)
+    // Background receiver (not in this DM UI): announce speaker.
+    if (!composerVisible) toastIncomingSpeaker(from)
     // Peer started talking — try unlocking playback under whatever gesture we have.
     if (remoteAudio?.srcObject) {
       remoteAudio.play()
@@ -670,6 +751,7 @@ async function handleSignal({ event, payload }) {
         })
         .catch(() => {
           needsAudioGesture = true
+          if (!composerVisible) armBackgroundAudioUnlock()
           updateVoiceUi()
         })
     }
@@ -812,14 +894,16 @@ async function disposeSnapshot(snap) {
 }
 
 /**
- * Bind walkie-talkie to the active DM tab (or tear down if not a DM).
- * @param {{ conversationId?: number, peerPhone?: string, enabled?: boolean }} opts
+ * Bind walkie-talkie to a DM conversation (active tab or background incoming).
+ * @param {{ conversationId?: number, peerPhone?: string, enabled?: boolean, showComposer?: boolean, ringPeer?: boolean }} opts
  */
 export async function syncDmVoiceForTab(opts = {}) {
   const enabled = !!opts.enabled
   const cid = Number(opts.conversationId) || 0
   const peer = normalizePhone(opts.peerPhone)
   const me = myPhone()
+  const showComposer = opts.showComposer !== false
+  const ringPeer = opts.ringPeer !== false && showComposer
 
   if (!enabled || !cid || !peer || !me || peer === me) {
     await teardownDmVoice()
@@ -827,10 +911,12 @@ export async function syncDmVoiceForTab(opts = {}) {
     return
   }
 
-  syncDmVoiceComposerVisibility(true)
+  if (showComposer) syncDmVoiceComposerVisibility(true)
+  else syncDmVoiceComposerVisibility(false)
 
   if (activeConversationId === cid && peerPhone === peer && channel && pc) {
     updateVoiceUi()
+    if (ringPeer) sendRing(peer, cid).catch(() => {})
     return
   }
 
@@ -865,6 +951,7 @@ export async function syncDmVoiceForTab(opts = {}) {
       await abandonIfStillOwner(token)
       return
     }
+    if (ringPeer) await sendRing(peer, cid)
     updateVoiceUi()
   } catch (e) {
     console.error('syncDmVoiceForTab:', e)
@@ -879,13 +966,97 @@ export async function syncDmVoiceForTab(opts = {}) {
   }
 }
 
+/** Join conversation voice in background after a personal inbox ring. */
+export async function acceptIncomingDmVoice(opts = {}) {
+  const cid = Number(opts.conversationId) || 0
+  const peer = normalizePhone(opts.peerPhone)
+  if (!cid || !peer) return
+  await syncDmVoiceForTab({
+    conversationId: cid,
+    peerPhone: peer,
+    enabled: true,
+    showComposer: false,
+    ringPeer: false
+  })
+}
+
+async function handleIncomingRing(payload) {
+  if (!payload) return
+  const cid = Number(payload.conversationId) || 0
+  const from = normalizePhone(payload.fromPhone)
+  const me = myPhone()
+  if (!cid || !from || !me || from === me) return
+
+  lastRingAt = Date.now()
+
+  if (activeConversationId === cid && peerPhone === from && channel && pc) {
+    await sendSignal('voice-hello')
+    if (!polite && pc.signalingState === 'stable') {
+      await makeOffer()
+    } else if (!polite && pc.signalingState === 'have-local-offer' && pc.localDescription) {
+      await sendSignal('voice-offer', { sdp: pc.localDescription })
+    }
+    return
+  }
+
+  await acceptIncomingDmVoice({ conversationId: cid, peerPhone: from })
+}
+
+/** Keep a personal ring channel while DM chat is enabled (any screen). */
+export async function startDmVoiceInbox() {
+  const me = myPhone()
+  if (!me) return
+  if (inboxChannel) return
+
+  const ch = supabase.channel(ringChannelName(me), {
+    config: {
+      broadcast: { self: false },
+      private: true
+    }
+  })
+  ch.on('broadcast', { event: 'voice-ring' }, (msg) => {
+    handleIncomingRing(msg?.payload).catch(e => console.error('dm-voice ring handler:', e))
+  })
+
+  const status = await new Promise((resolve) => {
+    ch.subscribe((next) => {
+      if (next === 'SUBSCRIBED' || next === 'CHANNEL_ERROR' || next === 'TIMED_OUT') resolve(next)
+    })
+  })
+
+  if (status !== 'SUBSCRIBED') {
+    await safeRemoveChannel(ch)
+    console.warn('dm-voice inbox subscribe failed:', status)
+    return
+  }
+
+  inboxChannel = ch
+}
+
+export async function stopDmVoiceInbox() {
+  const ch = inboxChannel
+  inboxChannel = null
+  await safeRemoveChannel(ch)
+}
+
+/**
+ * Hide PTT UI / stop TX without tearing down media (receiver may still be listening).
+ */
+export async function leaveDmVoiceUi() {
+  await stopPtt()
+  syncDmVoiceComposerVisibility(false)
+}
+
 export function syncDmVoiceComposerVisibility(visible) {
+  composerVisible = !!visible
   const btn = document.getElementById('dmChatPttBtn')
   const status = document.getElementById('dmChatVoiceStatus')
   if (btn) btn.hidden = !visible
   if (status && !visible) {
     status.hidden = true
     status.textContent = ''
+  } else if (visible) {
+    updateVoiceUi()
   }
 }
 
@@ -902,6 +1073,12 @@ export async function startPtt() {
   pttStarting = true
 
   try {
+    // Wake peer inbox before grabbing mic so they can join the voice channel.
+    await sendRing(peerPhone, activeConversationId)
+    if (!pttWanted || epoch !== pttEpoch) {
+      return
+    }
+
     await ensureLocalStream()
     if (!pttWanted || epoch !== pttEpoch) {
       await releaseLocalMic()
