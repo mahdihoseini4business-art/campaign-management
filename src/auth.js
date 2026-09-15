@@ -4570,26 +4570,57 @@ export function renderShippingSenderSettings() {
   syncShippingLogoPreview(_shippingLogoDraft)
 }
 
-async function resizeImageFileToDataUrl(file, maxWidth = 480, quality = 0.85) {
+async function resizeImageFileToDataUrl(file, maxWidth = 480) {
   const bitmap = await createImageBitmap(file)
   const scale = Math.min(1, maxWidth / Math.max(bitmap.width, 1))
-  const w = Math.max(1, Math.round(bitmap.width * scale))
-  const h = Math.max(1, Math.round(bitmap.height * scale))
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('canvas')
-  ctx.drawImage(bitmap, 0, 0, w, h)
-  bitmap.close?.()
-  let dataUrl = canvas.toDataURL('image/jpeg', quality)
-  if (dataUrl.length > 200_000) {
-    dataUrl = canvas.toDataURL('image/jpeg', 0.7)
+  let w = Math.max(1, Math.round(bitmap.width * scale))
+  let h = Math.max(1, Math.round(bitmap.height * scale))
+  const keepAlpha = !/^image\/jpe?g$/i.test(file.type || '')
+
+  const render = (width, height, { format, quality, fillWhite }) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('canvas')
+    if (fillWhite) {
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, width, height)
+    }
+    ctx.drawImage(bitmap, 0, 0, width, height)
+    return format === 'jpeg'
+      ? canvas.toDataURL('image/jpeg', quality)
+      : canvas.toDataURL('image/png')
   }
-  if (dataUrl.length > 220_000) {
-    throw new Error('لوگو خیلی بزرگ است — تصویر کوچک‌تری انتخاب کنید')
+
+  try {
+    if (keepAlpha) {
+      let dataUrl = render(w, h, { format: 'png', fillWhite: false })
+      // Shrink until under storage budget (PNG keeps transparency).
+      let guard = 0
+      while (dataUrl.length > 220_000 && guard < 4) {
+        w = Math.max(1, Math.round(w * 0.75))
+        h = Math.max(1, Math.round(h * 0.75))
+        dataUrl = render(w, h, { format: 'png', fillWhite: false })
+        guard += 1
+      }
+      if (dataUrl.length > 220_000) {
+        throw new Error('لوگو خیلی بزرگ است — تصویر کوچک‌تری انتخاب کنید')
+      }
+      return dataUrl
+    }
+
+    let dataUrl = render(w, h, { format: 'jpeg', quality: 0.85, fillWhite: true })
+    if (dataUrl.length > 200_000) {
+      dataUrl = render(w, h, { format: 'jpeg', quality: 0.7, fillWhite: true })
+    }
+    if (dataUrl.length > 220_000) {
+      throw new Error('لوگو خیلی بزرگ است — تصویر کوچک‌تری انتخاب کنید')
+    }
+    return dataUrl
+  } finally {
+    bitmap.close?.()
   }
-  return dataUrl
 }
 
 export async function onShippingSenderLogoChange(input) {
