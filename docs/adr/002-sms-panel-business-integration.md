@@ -1,308 +1,278 @@
 # ADR 002 — اتصال پنل پیامک به ماژول‌های کسب‌وکار
 
 **وضعیت:** پیشنهادی (طراحی — هنوز پیاده‌سازی نشده)  
-**تاریخ:** 2026-09-15  
-**مرتبط:** ADR 001 (امنیت و چندمستأجری)، `send-otp`، تنظیمات «پنل پیامک»
+**تاریخ:** 2026-09-15 · به‌روزرسانی: 2026-09-15  
+**مرتبط:** ADR 001 (امنیت و چندمستأجری)، `send-otp`، تنظیمات «پنل پیامک»، `ALL_PERMISSIONS`
 
 ## زمینه
 
-امروز پیامک فقط برای **OTP ورود** از Edge Function `send-otp` و secrets سروری `SMS_*` استفاده می‌شود. UI تنظیمات پنل پیامک در اپ وجود دارد، اما برای ارسال کسب‌وکاری (ارسالی، مانده حساب، انبوه مشتریان، فالوآپ) مسیر ارسال، قالب، لاگ و سقف مصرف تعریف نشده است.
+امروز پیامک فقط برای **OTP ورود** از Edge Function `send-otp` و secrets سروری `SMS_*` استفاده می‌شود. UI تنظیمات پنل پیامک در اپ وجود دارد، اما برای ارسال کسب‌وکاری مسیر ارسال، قالب، لاگ، سقف مصرف، **سوییچ قابلیت** و **دسترسی کاربری** تعریف نشده است.
 
-نیاز کسب‌وکار:
+نیاز کسب‌وکار (نسخهٔ نهایی این ADR):
 
 | بخش | کاربرد |
 |-----|--------|
-| **ارسالی‌ها** | اطلاع‌رسانی وضعیت سفارش / ارسال و کد رهگیری |
-| **فروش‌ها** | پیامک مانده حساب برای یک محصول یا همه محصولات مشتری |
-| **مشتریان** | ارسال تکی و انبوه به دسته‌ای از مشتریان |
-| **فالوآپ‌ها** | پیام زمان‌بندی‌شده یا دستی برای پیگیری / اطلاع‌رسانی (مثلاً ساعت دوره حضوری) |
+| **ارسالی‌ها** | ۱) پیام خودکار هنگام ورود به صف ارسال پس از تأیید حسابداری ۲) پیام پس از تأیید ارسال + کد رهگیری |
+| **فروش‌ها** | طراح متن (الگو یا دستی)؛ ارسال تکی و گروهی شخصی‌سازی‌شده (مثلاً همه بدهکاران با `{balance}` خودشان) |
+| **مشتریان** | کمپین پارامتری با الگو/دستی و شیوه‌های ارسال فوری / زمان‌بندی / قطره‌ای |
+| **فالوآپ‌ها** | زمان‌بندی پیام هم‌زمان با موعد پیگیری بعدی؛ ارسال دسته‌ای به مشتریان فالوآپ‌دار |
+| **تنظیمات SMS** | روشن/خاموش کردن **تک‌تک** این قابلیت‌ها + دادن دسترسی به کاربران مشخص |
 
 ## تصمیم‌های معماری
 
 ### ۱) یک لایه ارسال واحد روی سرور
 
 - Edge Function جدید: **`send-sms`** (جدا از `send-otp`).
-- OTP همچنان فقط از `send-otp` و `SMS_*` پلتفرم؛ اعتبار ورود با پیامک بازاریابی قاطی نمی‌شود.
-- همهٔ ارسال‌های کسب‌وکار از `send-sms` می‌گذرند: احراز هویت JWT، بررسی عضویت tenant، مجوز UI، سقف روزانه پلن، رندر قالب، فراخوانی Melipayamak/SmartSMS، نوشتن لاگ.
+- OTP همچنان فقط از `send-otp` و `SMS_*` پلتفرم.
+- همهٔ ارسال‌های کسب‌وکار از `send-sms`: JWT → عضویت tenant → **feature flag سازمانی** → **مجوز کاربر** → سقف روزانه → رندر قالب → Melipayamak → `sms_logs`.
 
 ```
-UI (ارسالی / فروش / مشتری / فالوآپ)
+UI (ارسالی / فروش / مشتری / فالوآپ / تنظیمات)
         │
         ▼
   src/sms-business.js  →  supabase.functions.invoke('send-sms')
         │
         ▼
-  Edge: validate → quota → render template → provider → sms_logs
+  Edge: auth → featureOn? → permission? → quota → render → provider → logs
 ```
 
-### ۲) اعتبارنامه SMS
+### ۲) دو لایه کنترل دسترسی (الزامی)
 
-دو حالت پشتیبانی می‌شود (قابل انتخاب در تنظیمات سازمان):
+هر قابلیت پیامک با **هر دو** شرط زیر فعال است؛ قطع هر کدام UI و Edge را مسدود می‌کند.
+
+| لایه | کجا ست می‌شود | چه کسی | اثر |
+|------|----------------|--------|-----|
+| **سوییچ سازمانی (feature)** | تنظیمات → ارتباطات → پنل پیامک | ادمین سازمان (`sms_manage`) | قابلیت برای کل سازمان خاموش/روشن |
+| **مجوز کاربر (permission)** | مدیریت کاربران (چک‌باکس‌های موجود + گروه «پیامک») | ادمین سازمان | فقط کاربران دارای کلید مربوطه CTA/ارسال می‌بینند |
+
+قانون سرور (غیرقابل دور زدن از UI):
+
+```
+canSend(kind) =
+  sms_features[kind] === true
+  AND user.permissions[sms_perm_for(kind)] === true
+  AND (template.enabled اگر از قالب استفاده شود)
+  AND within_daily_quota
+```
+
+خودکارها (صف ارسال، کرون فالوآپ) هم بدون سوییچ روشن و بدون مجوز کاربر تریگرکننده (یا نقش سیستمی کرون با بررسی سوییچ) ارسال نمی‌شوند.
+
+### ۳) اعتبارنامه SMS
 
 | حالت | منبع | کاربرد |
 |------|------|--------|
-| **پلتفرم** (پیش‌فرض) | `SMS_*` env | OTP + tenantهایی که پنل اختصاصی ندارند |
-| **سازمانی** | secrets سروری per-tenant (نه `app_settings` کلاینت‌خوان) | وقتی سازمان پنل ملی‌پیامک خودش را وصل کند |
+| **پلتفرم** (پیش‌فرض) | `SMS_*` env | OTP + tenant بدون پنل اختصاصی |
+| **سازمانی** | secrets سروری per-tenant | پنل ملی‌پیامک خود سازمان |
 
-- پسورد پنل **هرگز** در `app_settings` یا باندل فرانت ذخیره نمی‌شود (هم‌راستا با ADR 001 و migration 031).
-- UI فعلی «پنل پیامک» فقط metadata غیرحساس (فرستنده، قالب‌ها، حالت اتصال) را نگه می‌دارد؛ رمز از مسیر امن Edge ذخیره می‌شود.
+پسورد هرگز در `app_settings` کلاینت‌خوان ذخیره نمی‌شود.
 
-### ۳) سقف مصرف
+### ۴) سقف مصرف
 
-- مقادیر موجود `sms_daily_limit_trial|gold|diamond` در `platform_settings` برای ارسال کسب‌وکار **اجرا** می‌شوند.
-- شمارش روزانه per-tenant روی جدول `sms_usage_daily` (یا aggregate از `sms_logs`).
-- OTP از این سقف جدا بماند یا با ضریب جداگانه شمرده شود (پیشنهاد: OTP از سقف کسب‌وکار جدا).
+- `sms_daily_limit_trial|gold|diamond` برای ارسال کسب‌وکار **اجرا** می‌شود.
+- OTP از سقف کسب‌وکار جدا است.
+
+---
+
+## سوییچ‌های سازمانی در تنظیمات SMS
+
+ذخیره در `app_settings` با کلید `sms_features` (jsonb، بدون secret):
+
+```json
+{
+  "shipment_queued": true,
+  "shipment_shipped": true,
+  "sales_single": true,
+  "sales_group_debtors": true,
+  "customer_single": true,
+  "customer_campaign": true,
+  "followup_on_schedule": true,
+  "followup_bulk": true,
+  "templates_edit": true,
+  "history_view": true
+}
+```
+
+UI در همان pane «پنل پیامک» (گسترش‌یافته)، بخش **«قابلیت‌ها»**: برای هر ردیف یک toggle روشن/خاموش + توضیح کوتاه.
+
+| کلید سوییچ | معنی وقتی خاموش است |
+|------------|---------------------|
+| `shipment_queued` | بعد از تأیید حسابداری پیام صف ارسال نمی‌رود؛ دکمه ارسال مجدد صف مخفی |
+| `shipment_shipped` | مودال تأیید ارسال گزینه پیامک رهگیری ندارد |
+| `sales_single` | composer تکی فروش/مانده مخفی |
+| `sales_group_debtors` | ارسال گروهی به بدهکاران مخفی |
+| `customer_single` | ارسال تکی از پروفایل مشتری مخفی |
+| `customer_campaign` | ویزارد کمپین مخفی |
+| `followup_on_schedule` | چک‌باکس «پیامک در موعد پیگیری» مخفی؛ schedule جدید ساخته نمی‌شود |
+| `followup_bulk` | ارسال دسته‌ای به صف فالوآپ مخفی |
+| `templates_edit` | ویرایش قالب‌ها فقط برای دارندگان مجوز + سوییچ |
+| `history_view` | تب تاریخچه پیامک مخفی |
+
+پیش‌فرض پس از migration: همه `true` تا ادمین آگاهانه قطع کند. OTP از این سوییچ‌ها مستقل است و همیشه از مسیر ورود کار می‌کند.
+
+---
+
+## مجوزهای کاربری (گروه «پیامک»)
+
+افزودن به [`ALL_PERMISSIONS` / `PERMISSION_GROUPS`](src/utils.js) — همان الگوی چک‌باکس مدیریت کاربران:
+
+| کلید | برچسب | متناظر سوییچ |
+|------|--------|--------------|
+| `sms_manage` | مدیریت تنظیمات و قالب‌های پیامک | `templates_edit` (+ ذخیره سوییچ‌ها و اتصال پنل) |
+| `sms_history` | مشاهده تاریخچه پیامک | `history_view` |
+| `sms_shipment_queued` | پیامک صف ارسالی | `shipment_queued` |
+| `sms_shipment_shipped` | پیامک تأیید ارسال و رهگیری | `shipment_shipped` |
+| `sms_sales_single` | پیامک فروش تکی (الگو/دستی) | `sales_single` |
+| `sms_sales_group` | پیامک گروهی بدهکاران | `sales_group_debtors` |
+| `sms_customer_single` | پیامک تکی به مشتری | `customer_single` |
+| `sms_customer_campaign` | کمپین پیامکی مشتریان | `customer_campaign` |
+| `sms_followup_schedule` | زمان‌بندی پیامک روی موعد فالوآپ | `followup_on_schedule` |
+| `sms_followup_bulk` | پیامک دسته‌ای به فالوآپ‌دارها | `followup_bulk` |
+
+ادمین اصلی سازمان (`isMainAdmin`) مثل بقیه مجوزها همه را دارد.
+
+ارسال خودکار صف ارسالی از `approvePayment`: کاربر حسابدار باید `sms_shipment_queued` داشته باشد **یا** سیستم با هویت «system/auto» فقط وقتی سوییچ سازمان روشن است و یک `triggered_by` اختیاری ثبت می‌کند — تصمیم قطعی: **خودکار فقط به سوییچ سازمانی وابسته است**؛ مجوز برای CTA دستی/ارسال مجدد لازم است. دلیل: حسابدار نباید مجبور به گرفتن مجوز SMS شود تا چرخه سفارش بشکند؛ قطع کردن از تنظیمات SMS کافی است.
 
 ---
 
 ## مدل داده
 
-### جدول `sms_templates`
-
-قالب‌های قابل ویرایش per-tenant (با چند seed سیستمی).
+### `sms_templates`
 
 | ستون | توضیح |
 |------|--------|
 | `id`, `tenant_id` | |
-| `key` | کلید پایدار: `shipment_shipped`, `sale_balance_one`, `sale_balance_all`, `customer_manual`, `followup_reminder`, `course_session` |
-| `name`, `body` | متن فارسی با placeholderها |
-| `channel` | فعلاً فقط `sms` |
-| `enabled` | |
+| `key` | `shipment_queued`, `shipment_shipped`, `sale_balance`, `customer_campaign`, `followup_due`, `followup_bulk`, … |
+| `name`, `body` | فارسی + placeholder |
+| `enabled` | خاموش کردن یک قالب بدون قطع کل قابلیت |
 | `updated_at` | |
 
-**Placeholderهای مشترک:** `{customer_name}`, `{phone}`, `{product_name}`, `{tracking_code}`, `{balance}`, `{total_balance}`, `{session_label}`, `{session_time}`, `{org_name}`, `{advisor}`
+**Placeholderها:** `{customer_name}`, `{phone}`, `{product_name}`, `{tracking_code}`, `{balance}`, `{total_balance}`, `{followup_date}`, `{advisor}`, `{org_name}`, `{session_label}`, `{session_time}`
 
-### جدول `sms_logs`
+### `sms_logs`
 
-| ستون | توضیح |
-|------|--------|
-| `id`, `tenant_id`, `created_at` | |
-| `kind` | `shipment` \| `sale_balance` \| `customer_bulk` \| `customer_single` \| `followup` \| `scheduled` |
-| `template_key` | |
-| `customer_id` (nullable) | |
-| `to_phone` | |
-| `body` | متن نهایی ارسال‌شده |
-| `status` | `queued` \| `sent` \| `failed` \| `skipped` |
-| `provider_ref` / `error` | پاسخ ملی‌پیامک |
-| `triggered_by` | `user_id` |
-| `meta` | jsonb (productIndex، followupId، campaignId، …) |
+`kind`: `shipment_queued` | `shipment_shipped` | `sale_single` | `sale_group` | `customer_single` | `customer_campaign` | `followup_schedule` | `followup_bulk`  
++ `status`, `body`, `to_phone`, `customer_id`, `triggered_by`, `meta`
 
-### جدول `sms_campaigns` (برای انبوه)
+### `sms_campaigns`
 
-| ستون | توضیح |
-|------|--------|
-| `id`, `tenant_id` | |
-| `title`, `body` یا `template_key` | |
-| `filter` | jsonb: status، advisor، customer_level، کد مشتری، محصول، … |
-| `status` | `draft` \| `sending` \| `done` \| `cancelled` |
-| `total`, `sent`, `failed` | شمارنده‌ها |
-| `created_by`, `created_at` | |
+`filter`, `body` / `template_key`, `mode` = `immediate` | `scheduled` | `drip`, شمارنده‌ها، `send_at` / `drip_interval_min` / `drip_batch_size`
 
-### جدول `sms_schedules` (فالوآپ / دوره)
+### `sms_schedules`
 
-| ستون | توضیح |
-|------|--------|
-| `id`, `tenant_id` | |
-| `customer_id`, `followup_id` (nullable) | |
-| `in_person_session_id` (nullable) | اتصال به جلسات حضوری موجود |
-| `send_at` | timestamptz |
-| `template_key`, `body_override` | |
-| `status` | `pending` \| `sent` \| `cancelled` \| `failed` |
-| `created_by` | |
+برای فالوآپ تکی و کمپین زمان‌دار؛ `send_at`, `status`, لینک به `customer_id` / `campaign_id`
 
-کرون جدید یا گسترش `ops-digest-cron`: هر دقیقه/۵ دقیقه ردیف‌های `pending` با `send_at <= now()` را به `send-sms` بدهد.
+### فلگ روی خط محصول (JSON)
 
----
-
-## قرارداد API — `send-sms`
-
-**ورودی (نمونه):**
-
-```json
-{
-  "mode": "single" | "bulk" | "preview",
-  "kind": "shipment" | "sale_balance" | "customer_single" | "customer_bulk" | "followup",
-  "template_key": "shipment_shipped",
-  "customer_id": "…",
-  "product_index": 0,
-  "body_override": null,
-  "campaign_id": null,
-  "phones": null,
-  "filter": null
-}
-```
-
-**خروجی:** `{ success, sent, failed, results: [{ phone, status, error? }], log_ids }`
-
-قوانین:
-
-1. شماره باید `09xxxxxxxxx` باشد؛ در غیر این صورت `skipped`.
-2. `preview` فقط متن رندرشده برمی‌گرداند (بدون ارسال و بدون کسر سهمیه).
-3. `bulk` حداکثر N گیرنده در هر درخواست (مثلاً ۵۰)؛ بقیه صف کمپین.
-4. فقط نقش‌هایی با permission جدید `sms.send` (و برای انبوه `sms.bulk`) مجازند.
-5. RLS: لاگ/کمپین فقط داخل همان `tenant_id`.
+`smsQueuedAt`, `smsShippedAt` برای idempotency پیام‌های ارسالی.
 
 ---
 
 ## اتصال به بخش‌ها
 
-### الف) ارسالی‌ها (`src/shipments.js`)
+### الف) ارسالی‌ها
 
-**تریگر پیشنهادی:** بعد از موفقیت `confirmShipment` (وضعیت → `shipped` + ثبت `trackingCode`).
+| مرحله | تریگر | قالب | شرط |
+|--------|--------|------|------|
+| صف ارسال | `approvePayment` / `approveGiftSale` وقتی خط فیزیکی تازه `isEligibleForShipment` شد | `shipment_queued` — متن پیش‌فرض: «سفارش شما در صف ارسال آکادمی کارنو قرار گرفت» | سوییچ `shipment_queued` |
+| ارسال شد | `confirmShipment` + کد رهگیری | `shipment_shipped` | سوییچ + مجوز `sms_shipment_shipped` برای چک‌باکس/ارسال مجدد |
 
-| رویداد | قالب | متغیرها |
-|--------|------|---------|
-| تأیید ارسال | `shipment_shipped` | نام مشتری، نام محصول، کد رهگیری، تاریخ ارسال |
-| (اختیاری فاز ۲) تغییر به در انتظار | `shipment_pending` | نام محصول |
+### ب) فروش‌ها
 
-UX:
+Composer: الگو **یا** متن دستی؛ پیش‌نمایش؛ تکی یا گروهی بدهکاران با رندر per-گیرنده.  
+سوییچ/مجوز جدا برای تکی و گروهی.
 
-- چک‌باکس در مودال تأیید ارسال: «ارسال پیامک به مشتری» (پیش‌فرض روشن اگر قالب فعال باشد).
-- دکمهٔ ثانویه روی ردیف ارسال‌شده: «ارسال مجدد پیامک رهگیری».
-- در صورت نبود شماره معتبر → toast هشدار، ارسال انجام نشود.
+### ج) مشتریان
 
-### ب) فروش‌ها (`src/sales.js` / جزئیات مشتری)
+- تکی: پروفایل → الگو/دستی  
+- کمپین: فیلتر مخاطب + متن پارامتری + شیوه **فوری / زمان‌بندی / قطره‌ای**  
+سوییچ/مجوز جدا.
 
-**تریگر:** دستی از UI فروش یا کارت محصول مشتری — نه خودکار روی هر واریز (جلوگیری از اسپم).
+### د) فالوآپ‌ها
 
-| اکشن | قالب | محتوا |
-|------|------|--------|
-| مانده یک محصول | `sale_balance_one` | نام محصول + `getOperationalBalance(product)` |
-| مانده همه محصولات باز | `sale_balance_all` | لیست کوتاه نام‌ها + جمع مانده |
-
-UX:
-
-- در لیست فروش‌ها / جزئیات مشتری: منوی «پیامک مانده حساب» با دو گزینهٔ بالا.
-- پیش‌نمایش متن قبل از ارسال.
-- فقط محصولات غیرلغو / غیر import تاریخی (همان قواعد `getOperationalBalance`).
-
-### ج) مشتریان (`src/customers.js`)
-
-**تکی:** از پروفایل/لیست مشتری → «ارسال پیامک» → انتخاب قالب یا متن آزاد + پیش‌نمایش.
-
-**انبوه:**
-
-1. فیلتر مخاطبان با معیارهای موجود: وضعیت (`getStatuses`)، کارشناس، سطح/کد مشتری، داشتن محصول X، بازه تاریخ ثبت.
-2. شمارش گیرندگان معتبر قبل از ارسال.
-3. ساخت `sms_campaigns` + ارسال دسته‌ای از Edge.
-4. صفحهٔ پیشرفت و گزارش در تنظیمات «ارتباطات» یا زیرتب مشتریان.
-
-محدودیت‌ها:
-
-- سقف روزانه پلن + سقف سخت per-campaign.
-- حذف شماره‌های تکراری در یک کمپین.
-- opt-out ساده (فلگ `sms_opt_out` روی `customers` — فاز ۲).
-
-### د) فالوآپ‌ها (`src/followups.js` + جلسات حضوری)
-
-دو حالت:
-
-| حالت | رفتار |
-|------|--------|
-| **دستی** | از کارت فالوآپ: ارسال فوری با قالب `followup_reminder` (متن یادداشت / تاریخ پیگیری) |
-| **زمان‌بندی** | هنگام ساخت/ویرایش فالوآپ یا تخصیص جلسه حضوری: «پیامک در تاریخ/ساعت …» → ردیف `sms_schedules` |
-
-برای دوره‌های حضوری (از قبل در سیستم با `inPersonSessions`):
-
-- قالب `course_session`: `{session_label}`, زمان، ظرفیت/آدرس اگر در session باشد.
-- تریگر اختیاری: هنگام `assignInPersonSessionToSale` پیشنهاد ارسال/زمان‌بندی به خریدار.
-
-کرون `sms-schedule-cron` ردیف‌های موعدرسیده را ارسال می‌کند و وضعیت را به‌روز می‌کند.
+- هنگام `setNextFollowup`: چک‌باکس «ارسال پیامک اطلاع در موعد» + الگو/متن → `sms_schedules` با تاریخ موعد + ساعت پیش‌فرض قابل تنظیم در تنظیمات SMS  
+- bulk روی فیلتر today/waiting/overdue  
+- تغییر/پاک کردن موعد → cancel scheduleهای pending  
+سوییچ/مجوز جدا.
 
 ---
 
-## UI / تنظیمات
+## UI تنظیمات «پنل پیامک» (ساختار نهایی)
 
-گسترش بخش تنظیمات «ارتباطات»:
+1. **اتصال** — وضعیت پنل، تست ارسال (موجود، اصلاح‌شده)  
+2. **قابلیت‌ها** — toggle تک‌تک ویژگی‌ها (جدول بالا)  
+3. **ساعت پیش‌فرض فالوآپ** — برای schedule روی تاریخ بدون ساعت  
+4. **قالب‌ها** — ویرایش متن هر کلید + فعال/غیرفعال قالب  
+5. **تاریخچه** — `sms_logs`  
+6. **کمپین‌ها** — لیست و پیشرفت  
 
-1. **پنل پیامک** (موجود) — وضعیت اتصال + تست ارسال به شماره ادمین.
-2. **قالب‌ها** — ویرایش متن هر `template_key` با لیست placeholderها.
-3. **تاریخچه پیامک** — جدول از `sms_logs` با فیلتر kind/status/تاریخ.
-4. **کمپین‌ها** — لیست و جزئیات ارسال انبوه.
-
-در هر ماژول فقط CTAهای همان دامنه؛ تنظیمات مرکزی برای قالب و تاریخچه.
-
----
-
-## مجوزها و پلن
-
-| کلید | معنی |
-|------|------|
-| `sms.send` | ارسال تکی (ارسالی، مانده، فالوآپ، مشتری) |
-| `sms.bulk` | کمپین انبوه |
-| `sms.manage` | ویرایش قالب و تنظیمات پنل |
-
-ماتریس پلن (پیشنهاد):
-
-- Trial: سقف پایین + بدون bulk (یا bulk بسیار محدود).
-- طلایی / الماسی: مطابق `sms_daily_limit_*`.
-- قابلیت feature flag اختیاری `customer_sms` مشابه `shipments`.
+دسترسی کاربران در UI موجود «مدیریت کاربران» با گروه جدید **پیامک** (نه فقط داخل pane SMS)؛ داخل pane SMS یک لینک راهنما: «دسترسی کاربران از مدیریت کاربران → گروه پیامک».
 
 ---
 
-## فازبندی پیاده‌سازی
+## قرارداد `send-sms` (خلاصه)
 
-### فاز ۰ — زیرساخت (مسدودکننده بقیه)
+ورودی شامل `kind` متناظر سوییچ‌ها؛ Edge قبل از ارسال:
 
-- Migration: `sms_templates`, `sms_logs`, `sms_usage_daily`
-- Edge `send-sms` + کلاینت `src/sms-business.js`
-- Seed قالب‌های پیش‌فرض
-- اجرای سقف روزانه پلن
-- صفحه تاریخچه ساده در تنظیمات
+1. feature flag سازمان را از `app_settings.sms_features` می‌خواند  
+2. برای kindهای دستی، permission کاربر را چک می‌کند  
+3. برای auto `shipment_queued` فقط feature flag  
+4. سقف روزانه، رندر، ارسال، لاگ  
 
-### فاز ۱ — تراکنشی
-
-- ارسالی‌ها: پیامک هنگام تأیید ارسال + کد رهگیری
-- فروش‌ها: مانده یک / همه محصول
-- مشتریان: ارسال تکی
-
-### فاز ۲ — انبوه و زمان‌بندی
-
-- `sms_campaigns` + UI فیلتر و ارسال انبوه
-- `sms_schedules` + کرون
-- اتصال فالوآپ و جلسه حضوری
-- opt-out مشتری
-
-### فاز ۳ — سخت‌سازی
-
-- پنل SMS اختصاصی per-tenant (secrets)
-- گزارش مصرف در سوپرادمین
-- Retry محدود برای `failed`
-- هم‌ترازی offline-app (فعلاً stub؛ ارسال فقط آنلاین)
+`preview` بدون کسر سهمیه و بدون نیاز به همه مجوزهای ارسال (ولی نیاز به یکی از مجوزهای همان دامنه یا `sms_manage`).
 
 ---
 
-## نقاط قلاب در کد فعلی
+## فازبندی
 
-| محل | فایل | اکشن |
-|-----|------|------|
-| تأیید ارسال | `src/shipments.js` → پس از set `shipmentStatus`/`trackingCode` | فراخوانی `sendBusinessSms` |
-| مانده | `src/sales.js` / `src/customers.js` (کارت محصول) | منوی پیامک + `getOperationalBalance` |
-| مشتری تکی/انبوه | `src/customers.js` | مودال ارسال / ویزارد کمپین |
-| فالوآپ | `src/followups.js` | دکمه ارسال + فیلد زمان‌بندی |
-| جلسه حضوری | `src/data.js` (`assignInPersonSessionToSale`, CRUD session) | پیشنهاد SMS دوره |
-| تنظیمات | `src/auth.js` + `index.html` pane `sms` | قالب‌ها و تاریخچه |
-| OTP | `supabase/functions/send-otp` | بدون تغییر رفتار؛ جدا بماند |
+### فاز ۰ — زیرساخت + کنترل دسترسی
+
+- Migration: جداول + seed قالب + `sms_features` پیش‌فرض  
+- کلیدهای `ALL_PERMISSIONS` / گروه پیامک در UI کاربران  
+- Edge `send-sms` با چک feature+permission+quota  
+- UI تنظیمات: قابلیت‌ها، قالب‌ها، تاریخچه ساده  
+
+### فاز ۱
+
+- ارسالی: صف (auto) + رهگیری  
+- فروش: composer تکی و گروهی بدهکاران  
+
+### فاز ۲
+
+- کمپین مشتریان (فوری/زمان‌دار/قطره‌ای)  
+- فالوآپ schedule + bulk  
+- کرون  
+
+### فاز ۳
+
+- پنل SMS اختصاصی tenant، گزارش سوپرادمین، retry، offline stub  
 
 ---
 
-## ریسک‌ها و محدودیت‌ها
+## نقاط قلاب کد
 
-1. **اسپم و هزینه:** ارسال خودکار روی هر ذخیره ممنوع؛ پیش‌فرض‌ها opt-in در UI تراکنشی، سقف روزانه اجباری.
-2. **JSON فروش روی `customers.products`:** شناسه پایدار خط فروش نداریم؛ در لاگ `product_index` + نام محصول + snaphot کافی است.
-3. **چند شماره مشتری:** اولویت با موبایل اصلی؛ در فاز ۲ امکان انتخاب از لیست شماره‌ها.
-4. **ناسازگاری UI تنظیمات با Edge:** قبل از فاز کسب‌وکار، تکلیف «رمز در UI» باید با secrets سروری روشن شود تا انتظار غلط نماند.
-5. **offline-app:** پیامک کسب‌وکار فقط در حالت آنلاین.
+| محل | فایل |
+|-----|------|
+| سوییچ‌ها + قالب UI | `index.html` pane sms، `src/auth.js` |
+| مجوزها | `src/utils.js` → `ALL_PERMISSIONS`, `PERMISSION_GROUPS` |
+| صف ارسال auto | `src/accounting.js` → پس از approve |
+| رهگیری | `src/shipments.js` → confirmShipment |
+| فروش | `src/sales.js` / کارت محصول `customers.js` |
+| کمپین / تکی مشتری | `src/customers.js` |
+| فالوآپ | `src/customers.js` `setNextFollowup`، `src/followups.js` |
+| کلاینت مشترک | `src/sms-business.js` (جدید) |
+| Edge | `supabase/functions/send-sms` |
 
-## پیامدها
+---
 
-- OTP و پیامک بازاریابی/عملیاتی جدا می‌مانند.
-- هر چهار بخش درخواستی روی یک لولهٔ امن و قابل audit سوار می‌شوند.
-- سقف پلن که امروز فقط در تنظیمات سوپرادمین است، واقعاً enforce می‌شود.
-- پیاده‌سازی باید فازبندی شود؛ فاز ۰ بدون UI ماژول‌ها ارزش ندارد ولی بدون آن فاز ۱ ناامن/ناپایدار است.
+## ریسک‌ها
 
-## خارج از محدوده این ADR
+1. دو لایه کنترل اشتباه گرفته نشود: **سوییچ = کل سازمان**، **مجوز = فرد**.  
+2. پیام auto صف ارسال بدون مجوز حسابدار؛ فقط با سوییچ قطع می‌شود.  
+3. Idempotency با `smsQueuedAt` / `smsShippedAt`.  
+4. اسپم کمپین: سقف روزانه + drip + مجوز جدا `sms_customer_campaign`.  
 
-- واتساپ / پیام‌رسان دیگر
-- پنل SMS غیر از Melipayamak/SmartSMS (فعلاً)
-- تغییر مدل داده فروش به جدول جداگانهٔ orders
+## خارج از محدوده
+
+- واتساپ / کانال غیر SMS  
+- پنل غیر Melipayamak/SmartSMS  
+- جدول orders جدا از `customers.products`
