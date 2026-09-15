@@ -415,7 +415,9 @@ async function sendRing(toPhone, conversationId) {
       })
     })
     if (status !== 'SUBSCRIBED') {
-      console.warn('dm-voice ring subscribe failed:', status)
+      console.warn('dm-voice ring subscribe failed:', status, {
+        hint: 'Apply supabase migration 043_dm_voice_ring_select_fix (sender must JOIN peer ring topic)'
+      })
       return
     }
     await ch.send({

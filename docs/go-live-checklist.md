@@ -59,7 +59,8 @@ npm run smoke:saas
 
 - [ ] Build با `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_HASH_SECRET` / `VITE_ADMIN_PHONE` / `VITE_ROOT_DOMAIN`
 - [ ] اختیاری واکی‌تاکی: `VITE_TURN_URLS` / `VITE_TURN_USERNAME` / `VITE_TURN_CREDENTIAL`
-- [ ] بعد از migration `041_dm_voice_realtime_auth` و `042_dm_voice_ring_auth`: Realtime → Settings → غیرفعال کردن Allow public access (سیاست‌های known topics در migration پوشش می‌دهند)
+- [ ] migrations `041_dm_voice_realtime_auth` + `042_dm_voice_ring_auth` + `043_dm_voice_ring_select_fix` (ring inbox؛ 043 برای JOIN فرستنده روی topic گیرنده لازم است)
+- [ ] بعد از آن‌ها: Realtime → Settings → غیرفعال کردن Allow public access (سیاست‌های known topics در migration پوشش می‌دهند)
 - [ ] `liara_nginx.conf` برای `/platform`، `/signup`، `/payment-result`
 - [ ] DNS apex + در صورت الماس: wildcard `*.carno.ir` + TLS
 

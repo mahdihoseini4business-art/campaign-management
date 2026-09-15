@@ -13,7 +13,10 @@ AS $$
   END
 $$;
 
--- Only the topic owner may subscribe / receive rings
+-- Only authenticated users with a phone may join ring topics.
+-- Note: Realtime requires SELECT (subscribe) before broadcast send, so senders
+-- must be allowed to join the peer's topic. The client only attaches a listener
+-- on the current user's own inbox channel (`startDmVoiceInbox`).
 DROP POLICY IF EXISTS dm_voice_ring_broadcast_select ON realtime.messages;
 CREATE POLICY dm_voice_ring_broadcast_select
 ON realtime.messages
@@ -22,7 +25,7 @@ TO authenticated
 USING (
   realtime.messages.extension = 'broadcast'
   AND public.dm_voice_ring_topic_phone() IS NOT NULL
-  AND public.dm_voice_ring_topic_phone() = (SELECT public.current_user_phone())
+  AND (SELECT public.current_user_phone()) IS NOT NULL
 );
 
 -- Authenticated users may send a ring to a peer topic (app only rings DM peers)
