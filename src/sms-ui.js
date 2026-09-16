@@ -1,4 +1,4 @@
-import { getData, listSmsTemplates, createSmsCampaign, createSmsSchedule, cancelPendingSmsSchedulesForCustomer, getFollowupSmsDefaultHour, getStatuses, getProductCatalogNames } from './data.js'
+import { getData, listSmsTemplates, createSmsCampaign, createSmsSchedule, cancelPendingSmsSchedulesForCustomer, getFollowupSmsDefaultHour, getStatuses, getProductCatalogNames, getPlatforms } from './data.js'
 import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normalizePhone, getOperationalBalance, getPrimaryPhone, jalaliDateTimeToIso, CUSTOMER_LEVELS, resolveCustomerLevel, formatTeamFilterLabel } from './utils.js'
 import { canUseSmsKind, invokeSendSms, buildRecipientFromCustomer, formatBalanceFa, fetchSmsQuota } from './sms-business.js'
 import { getStoredTenantId } from './tenant.js'
@@ -474,25 +474,9 @@ export async function openCustomerSingleSms(customerId) {
   })
 }
 
-/** Customers tab: bulk SMS to currently filtered customers (not follow-up queue). */
+/** Customers tab: unified SMS modal (filters + immediate/scheduled/drip). */
 export async function openCustomersFilteredSms() {
-  if (!canUseSmsKind('customer_campaign')) {
-    showToast('کمپین / پیامک مشتریان فعال نیست یا دسترسی ندارید')
-    return
-  }
-  const { getFilteredCustomers } = await import('./customers.js')
-  const filtered = getFilteredCustomers() || []
-  const recipients = recipientsFromCustomers(filtered)
-  if (!recipients.length) {
-    showToast('در فیلتر فعلی مشتری با شماره معتبر نیست')
-    return
-  }
-  await openSmsComposeModal({
-    kind: 'customer_campaign',
-    title: 'پیامک به مشتریان فیلترشده',
-    templateKey: 'customer_campaign',
-    recipients,
-  })
+  return openSmsCampaignModal()
 }
 
 export async function openFollowupBulkSms(items) {
@@ -586,28 +570,43 @@ function customerHasProduct(customer, productName) {
 export function onSmsCampaignModeChange() {
   const mode = document.getElementById('smsCampaignMode')?.value || 'immediate'
   const row = document.getElementById('smsCampaignScheduleRow')
-  if (!row) return
-  const showSchedule = mode === 'scheduled'
-  const showDrip = mode === 'drip'
-  const sendAt = document.getElementById('smsCampaignSendAt')?.closest('.form-group')
-  const dripInterval = document.getElementById('smsCampaignDripInterval')?.closest('.form-group')
-  const dripBatch = document.getElementById('smsCampaignDripBatch')?.closest('.form-group')
-  if (sendAt) sendAt.style.display = showSchedule ? '' : 'none'
-  if (dripInterval) dripInterval.style.display = showDrip ? '' : 'none'
-  if (dripBatch) dripBatch.style.display = showDrip ? '' : 'none'
-  row.style.display = (showSchedule || showDrip) ? '' : 'none'
+  if (row) {
+    const showSchedule = mode === 'scheduled'
+    const showDrip = mode === 'drip'
+    const sendAt = document.getElementById('smsCampaignSendAt')?.closest('.form-group')
+    const dripInterval = document.getElementById('smsCampaignDripInterval')?.closest('.form-group')
+    const dripBatch = document.getElementById('smsCampaignDripBatch')?.closest('.form-group')
+    if (sendAt) sendAt.style.display = showSchedule ? '' : 'none'
+    if (dripInterval) dripInterval.style.display = showDrip ? '' : 'none'
+    if (dripBatch) dripBatch.style.display = showDrip ? '' : 'none'
+    row.style.display = (showSchedule || showDrip) ? '' : 'none'
+  }
+  const submitBtn = document.getElementById('smsCampaignSubmitBtn')
+  if (submitBtn) {
+    submitBtn.textContent = mode === 'scheduled'
+      ? 'زمان‌بندی ارسال'
+      : mode === 'drip'
+        ? 'شروع ارسال قطره‌ای'
+        : 'ارسال فوری'
+  }
 }
 
 export async function openSmsCampaignModal() {
   if (!canUseSmsKind('customer_campaign')) {
-    showToast('کمپین پیامک فعال نیست یا دسترسی ندارید')
+    showToast('پیامک مشتریان فعال نیست یا دسترسی ندارید')
     return
   }
   const statuses = getStatuses()
   const statusSel = document.getElementById('smsCampaignStatus')
   if (statusSel) {
-    statusSel.innerHTML = `<option value="">همه (فیلتر تب مشتریان)</option>` + statuses.map((s) =>
+    statusSel.innerHTML = `<option value="">همه</option>` + statuses.map((s) =>
       `<option value="${escapeAttr(s.key)}">${escapeHtml(s.label || s.key)}</option>`
+    ).join('')
+  }
+  const platformSel = document.getElementById('smsCampaignPlatform')
+  if (platformSel) {
+    platformSel.innerHTML = `<option value="">همه پلتفرم‌ها</option>` + getPlatforms().map((p) =>
+      `<option value="${escapeAttr(p.key)}">${escapeHtml(p.label || p.key)}</option>`
     ).join('')
   }
   const productSel = document.getElementById('smsCampaignProduct')
@@ -623,6 +622,12 @@ export async function openSmsCampaignModal() {
       `<option value="${escapeAttr(l.key)}">${l.emoji || ''} ${escapeHtml(l.label || l.key)}</option>`
     ).join('')
   }
+  const segmentSel = document.getElementById('smsCampaignSegment')
+  if (segmentSel) segmentSel.value = ''
+  const followupSel = document.getElementById('smsCampaignFollowup')
+  if (followupSel) followupSel.value = ''
+  const useTab = document.getElementById('smsCampaignUseTabFilters')
+  if (useTab) useTab.checked = true
   await populateCampaignAdvisorSelect()
   const templates = await listSmsTemplates().catch(() => [])
   const campaignTemplates = templatesForKind(templates, 'customer_campaign', 'customer_campaign')
@@ -637,6 +642,8 @@ export async function openSmsCampaignModal() {
   if (bodyEl) bodyEl.value = tpl?.body || ''
   const titleEl = document.getElementById('smsCampaignTitle')
   if (titleEl) titleEl.value = ''
+  const modeSel = document.getElementById('smsCampaignMode')
+  if (modeSel) modeSel.value = 'immediate'
   fillTestPhoneInput('smsCampaignTestPhone')
   onSmsCampaignModeChange()
   await refreshSmsCampaignAudienceAsync()
@@ -692,11 +699,48 @@ export function onSmsCampaignBodyInput() {
   updateSmsCampaignPreview()
 }
 
-function finishAudience(base, { status, productName, advisorPhones, advisorFilter, levelFilter }) {
+function customerLooksLikeBuyer(c) {
+  if (!c._productsLoaded && c.productCount != null) return c.productCount > 0
+  return (c.products || []).length > 0
+}
+
+function customerHasAnyFollowup(c, followupsByCustomer) {
+  const list = followupsByCustomer?.get(c.id)
+  return !!(list && list.length)
+}
+
+function finishAudience(base, opts) {
+  const {
+    status,
+    productName,
+    advisorPhones,
+    advisorFilter,
+    levelFilter,
+    platform,
+    segment,
+    followup,
+    useTabFilters,
+  } = opts
   campaignAudience = []
   const data = getData()
+  let followupsByCustomer = null
+  if (segment === 'following') {
+    try {
+      // lazy: build map from followups
+      followupsByCustomer = new Map()
+      for (const f of data.followups || []) {
+        if (!f?.customerId) continue
+        if (!followupsByCustomer.has(f.customerId)) followupsByCustomer.set(f.customerId, [])
+        followupsByCustomer.get(f.customerId).push(f)
+      }
+    } catch (_) {
+      followupsByCustomer = new Map()
+    }
+  }
+
   for (const c of base) {
     if (status && String(c.status || '') !== status) continue
+    if (platform && String(c.platform || '') !== platform) continue
     if (!customerHasProduct(c, productName)) continue
     if (advisorPhones instanceof Set) {
       const owner = normalizePhone(c.advisorPhone)
@@ -711,6 +755,13 @@ function finishAudience(base, { status, productName, advisorPhones, advisorFilte
       )
       if (resolved !== levelFilter) continue
     }
+    if (segment === 'buyers' && !customerLooksLikeBuyer(c)) continue
+    if (segment === 'following' && !customerHasAnyFollowup(c, followupsByCustomer)) continue
+    if (segment === 'cs' && !String(c.id || '').startsWith('CS')) continue
+    if (segment === 'ld' && !String(c.id || '').startsWith('LD')) continue
+    if (followup === 'has' && !c.nextFollowupDate) continue
+    if (followup === 'none' && c.nextFollowupDate) continue
+
     const phone = getPrimaryPhone(c) || c.phone
     if (!phone) continue
     const extra = {}
@@ -719,19 +770,22 @@ function finishAudience(base, { status, productName, advisorPhones, advisorFilte
   }
   const el = document.getElementById('smsCampaignCount')
   const parts = [`${campaignAudience.length} گیرنده`]
+  if (useTabFilters) parts.push('فیلتر تب')
   if (productName) parts.push(`محصول: ${productName}`)
-  if (advisorFilter) parts.push('کارشناس فیلترشده')
+  if (platform) parts.push('پلتفرم')
+  if (advisorFilter) parts.push('کارشناس')
   if (levelFilter) {
     const lv = CUSTOMER_LEVELS[levelFilter]
     parts.push(`سطح: ${lv?.label || levelFilter}`)
   }
-  parts.push('فیلتر تب مشتریان')
+  if (segment) parts.push('گروه')
+  if (followup) parts.push('فالوآپ')
   if (el) el.textContent = parts.join(' · ')
   updateSmsCampaignPreview()
   renderAudienceSample('smsCampaignAudienceSample', campaignAudience)
 }
 
-/** Audience = customers-tab filters, optionally narrowed by campaign status/product/advisor/level. */
+/** Audience = optional customers-tab filters + modal filters. */
 export function refreshSmsCampaignAudience() {
   void refreshSmsCampaignAudienceAsync()
 }
@@ -741,11 +795,18 @@ export async function refreshSmsCampaignAudienceAsync() {
   const productName = document.getElementById('smsCampaignProduct')?.value || ''
   const advisorFilter = document.getElementById('smsCampaignAdvisor')?.value || ''
   const levelFilter = document.getElementById('smsCampaignLevel')?.value || ''
+  const platform = document.getElementById('smsCampaignPlatform')?.value || ''
+  const segment = document.getElementById('smsCampaignSegment')?.value || ''
+  const followup = document.getElementById('smsCampaignFollowup')?.value || ''
+  const useTabFilters = document.getElementById('smsCampaignUseTabFilters')?.checked !== false
+
   let base = getData().customers || []
-  try {
-    const { getFilteredCustomers } = await import('./customers.js')
-    base = getFilteredCustomers() || base
-  } catch (_) { /* keep all */ }
+  if (useTabFilters) {
+    try {
+      const { getFilteredCustomers } = await import('./customers.js')
+      base = getFilteredCustomers() || base
+    } catch (_) { /* keep all */ }
+  }
 
   let advisorPhones = null
   if (advisorFilter) {
@@ -758,7 +819,17 @@ export async function refreshSmsCampaignAudienceAsync() {
     }
   }
 
-  finishAudience(base, { status, productName, advisorPhones, advisorFilter, levelFilter })
+  finishAudience(base, {
+    status,
+    productName,
+    advisorPhones,
+    advisorFilter,
+    levelFilter,
+    platform,
+    segment,
+    followup,
+    useTabFilters,
+  })
   return campaignAudience
 }
 
@@ -816,8 +887,13 @@ export async function submitSmsCampaign() {
   const status = document.getElementById('smsCampaignStatus')?.value || ''
   const advisor = document.getElementById('smsCampaignAdvisor')?.value || ''
   const level = document.getElementById('smsCampaignLevel')?.value || ''
+  const platform = document.getElementById('smsCampaignPlatform')?.value || ''
+  const segment = document.getElementById('smsCampaignSegment')?.value || ''
+  const followup = document.getElementById('smsCampaignFollowup')?.value || ''
+  const useTabFilters = document.getElementById('smsCampaignUseTabFilters')?.checked !== false
   if (!(await assertWithinQuota(campaignAudience.length))) return
-  const ok = window.confirm(`شروع کمپین برای ${campaignAudience.length} گیرنده؟`)
+  const modeLabel = mode === 'scheduled' ? 'زمان‌بندی' : mode === 'drip' ? 'ارسال قطره‌ای' : 'ارسال فوری'
+  const ok = window.confirm(`${modeLabel} برای ${campaignAudience.length} گیرنده؟`)
   if (!ok) return
 
   const dripInterval = Number(document.getElementById('smsCampaignDripInterval')?.value || 5)
@@ -836,7 +912,17 @@ export async function submitSmsCampaign() {
     title,
     template_key: templateKey || null,
     body,
-    filter: { status, product: productName, advisor, level, recipients: campaignAudience },
+    filter: {
+      status,
+      product: productName,
+      advisor,
+      level,
+      platform,
+      segment,
+      followup,
+      useTabFilters,
+      recipients: campaignAudience,
+    },
     mode,
     status: 'sending',
     total: campaignAudience.length,
