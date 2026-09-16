@@ -426,10 +426,11 @@ export function getFilteredSales(dateFilterOverride = null) {
       }
       if (payStatusFilter && payStatusFilter !== 'gift') {
         paysInRange = paysInRange.filter(pay => getPaymentEntryStatus(pay) === payStatusFilter)
-      } else {
-        // Default date view = revenue: only approved deposits in range
+      } else if (!payStatusFilter && dateFilter.isDefaultMonth) {
+        // Stats default-month scope = revenue: only approved deposits
         paysInRange = paysInRange.filter(pay => getPaymentEntryStatus(pay) === PAYMENT_STATUS.approved)
       }
+      // else: «همه وضعیت‌های واریزی» — keep every payment in the date range
       if (!paysInRange.length) return false
       const paidInRange = sumPayments(paysInRange)
       const lastInRange = paysInRange[paysInRange.length - 1]
