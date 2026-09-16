@@ -1242,14 +1242,20 @@ export async function saveCustomerCodes(codes) {
 }
 
 /**
- * Build a new catalog entry with expiry based on current TTL setting.
- * months=0 → no expiresAt (permanent until manually removed).
+ * Build a new catalog entry.
+ * - expiresAt string → use as-is
+ * - expiresAt null → no expiry
+ * - expiresAt undefined → default from customer_code_expiry_months (0 → none)
  */
-export function buildCustomerCodeEntry({ key, label, order = 0, nowIso = new Date().toISOString() } = {}) {
-  const months = getCustomerCodeExpiryMonths()
+export function buildCustomerCodeEntry({ key, label, order = 0, expiresAt, nowIso = new Date().toISOString() } = {}) {
   const entry = { key, label, order, createdAt: nowIso }
-  const expiresAt = addCalendarMonthsIso(nowIso, months)
-  if (expiresAt) entry.expiresAt = expiresAt
+  if (expiresAt === null) return entry
+  if (typeof expiresAt === 'string' && expiresAt) {
+    entry.expiresAt = expiresAt
+    return entry
+  }
+  const computed = addCalendarMonthsIso(nowIso, getCustomerCodeExpiryMonths())
+  if (computed) entry.expiresAt = computed
   return entry
 }
 
