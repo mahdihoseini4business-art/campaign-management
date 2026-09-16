@@ -113,6 +113,7 @@ function emptyCoreData() {
     platforms: [],
     statuses: [],
     customerCodes: [],
+    customerCodeExpiryMonths: 3,
     salesTargets: [],
     salesTargetDeadlineUrgency: null,
     saleToastEnabled: false,
@@ -218,6 +219,35 @@ export function getDefaultStatuses() {
 
 /** Admin-defined customer codes (کد مشتری); empty until configured in settings */
 const DEFAULT_CUSTOMER_CODES = []
+
+/** Default TTL (months) for newly defined customer codes; 0 = never expire */
+export const DEFAULT_CUSTOMER_CODE_EXPIRY_MONTHS = 3
+
+export function normalizeCustomerCodeExpiryMonths(raw) {
+  if (raw == null || raw === '') return DEFAULT_CUSTOMER_CODE_EXPIRY_MONTHS
+  // app_settings may store a bare number or a JSON object
+  const n = Number(typeof raw === 'object' && raw !== null && 'months' in raw ? raw.months : raw)
+  if (!Number.isFinite(n)) return DEFAULT_CUSTOMER_CODE_EXPIRY_MONTHS
+  return Math.max(0, Math.min(120, Math.round(n)))
+}
+
+/** Add calendar months to an ISO timestamp (local time). */
+export function addCalendarMonthsIso(iso, months) {
+  const d = new Date(iso)
+  if (!Number.isFinite(d.getTime())) return null
+  const m = Number(months)
+  if (!Number.isFinite(m) || m <= 0) return null
+  const day = d.getDate()
+  d.setMonth(d.getMonth() + m)
+  if (d.getDate() < day) d.setDate(0)
+  return d.toISOString()
+}
+
+function isCustomerCodeExpired(code, nowMs = Date.now()) {
+  if (!code?.expiresAt) return false
+  const t = new Date(code.expiresAt).getTime()
+  return Number.isFinite(t) && t <= nowMs
+}
 
 /** Legacy Carno catalog names (kept for reference / import helpers; not auto-seeded) */
 export const DEFAULT_PRODUCT_CATALOG = [
@@ -733,6 +763,7 @@ function applySettingsRows(rows) {
   data.statuses = Array.isArray(settings.statuses)
     ? [...settings.statuses].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : []
+  data.customerCodeExpiryMonths = normalizeCustomerCodeExpiryMonths(settings.customer_code_expiry_months)
   data.customerCodes = Array.isArray(settings.customer_codes)
     ? [...settings.customer_codes].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [...DEFAULT_CUSTOMER_CODES]
@@ -1183,9 +1214,82 @@ export function getCustomerCodes() {
   return Array.isArray(data.customerCodes) ? data.customerCodes : [...DEFAULT_CUSTOMER_CODES]
 }
 
+export function getCustomerCodeExpiryMonths() {
+  return normalizeCustomerCodeExpiryMonths(data.customerCodeExpiryMonths)
+}
+
+export async function saveCustomerCodeExpiryMonths(months) {
+  const cleaned = normalizeCustomerCodeExpiryMonths(months)
+  data.customerCodeExpiryMonths = cleaned
+  await saveSetting('customer_code_expiry_months', cleaned)
+  return cleaned
+}
+
+function serializeCustomerCodeEntry(c, order) {
+  const entry = {
+    key: String(c?.key || '').trim(),
+    label: String(c?.label || '').trim(),
+    order
+  }
+  if (c?.createdAt) entry.createdAt = c.createdAt
+  if (c?.expiresAt) entry.expiresAt = c.expiresAt
+  return entry
+}
+
 export async function saveCustomerCodes(codes) {
-  data.customerCodes = codes.map((c, i) => ({ ...c, order: i }))
+  data.customerCodes = (codes || []).map((c, i) => serializeCustomerCodeEntry(c, i))
   await saveSetting('customer_codes', data.customerCodes)
+}
+
+/**
+ * Build a new catalog entry with expiry based on current TTL setting.
+ * months=0 → no expiresAt (permanent until manually removed).
+ */
+export function buildCustomerCodeEntry({ key, label, order = 0, nowIso = new Date().toISOString() } = {}) {
+  const months = getCustomerCodeExpiryMonths()
+  const entry = { key, label, order, createdAt: nowIso }
+  const expiresAt = addCalendarMonthsIso(nowIso, months)
+  if (expiresAt) entry.expiresAt = expiresAt
+  return entry
+}
+
+async function clearCustomerCodeKeysFromCustomers(keys) {
+  const unique = [...new Set((keys || []).map(k => String(k || '').trim()).filter(Boolean))]
+  if (!unique.length) return 0
+  const keySet = new Set(unique)
+  let cleared = 0
+  for (const c of data.customers || []) {
+    if (c?.customerCode && keySet.has(c.customerCode)) {
+      c.customerCode = ''
+      cleared++
+    }
+  }
+  const tenantId = getStoredTenantId()
+  let q = supabase.from('customers').update({ customer_code: '' }).in('customer_code', unique)
+  if (tenantId) q = q.eq('tenant_id', tenantId)
+  const { error } = await q
+  if (error) {
+    console.error('clearCustomerCodeKeysFromCustomers error:', error)
+    throw new Error('خطا در پاک‌سازی کد مشتری از مشتریان: ' + error.message)
+  }
+  schedulePersistCoreCache()
+  return cleared
+}
+
+/**
+ * Remove catalog codes past expiresAt and clear those keys from customers.
+ * Safe to call on boot / when opening settings. Returns { removed, clearedCustomers }.
+ */
+export async function purgeExpiredCustomerCodes() {
+  const codes = getCustomerCodes()
+  if (!codes.length) return { removed: 0, clearedCustomers: 0 }
+  const nowMs = Date.now()
+  const expired = codes.filter(c => isCustomerCodeExpired(c, nowMs))
+  if (!expired.length) return { removed: 0, clearedCustomers: 0 }
+  const remaining = codes.filter(c => !isCustomerCodeExpired(c, nowMs))
+  const clearedCustomers = await clearCustomerCodeKeysFromCustomers(expired.map(c => c.key))
+  await saveCustomerCodes(remaining)
+  return { removed: expired.length, clearedCustomers }
 }
 
 function injectDynamicStyles() {

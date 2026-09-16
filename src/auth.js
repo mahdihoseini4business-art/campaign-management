@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali } from './utils.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
 import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS } from './sms-features.js'
 import { canManageSmsSettings, canViewSmsHistory, canEditSmsTemplates } from './sms-business.js'
 import {
@@ -584,7 +584,17 @@ function applySettingsSection(sectionId) {
   else if (sectionId === 'sales-targets') renderSalesTargetsSettings()
   else if (sectionId === 'platforms') renderPlatformsSettings()
   else if (sectionId === 'statuses') renderStatusesSettings()
-  else if (sectionId === 'customer-codes') renderCustomerCodesSettings()
+  else if (sectionId === 'customer-codes') {
+    renderCustomerCodesSettings()
+    purgeExpiredCustomerCodes()
+      .then((r) => {
+        if (r?.removed > 0) {
+          showToast(`${r.removed} کد منقضی حذف شد`)
+          renderCustomerCodesSettings()
+        }
+      })
+      .catch((e) => console.error('purgeExpiredCustomerCodes', e))
+  }
   else if (sectionId === 'sms') renderSmsPanelSettings()
   else if (sectionId === 'shipping-sender') renderShippingSenderSettings()
 }
@@ -4119,8 +4129,19 @@ export async function saveStatusEdit(index) {
 // Customer Codes Settings
 // ============================================
 
+function formatCustomerCodeExpiryLabel(iso) {
+  if (!iso) return 'بدون انقضا'
+  const d = new Date(iso)
+  if (!Number.isFinite(d.getTime())) return 'بدون انقضا'
+  const tehran = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Tehran' }))
+  const j = toJalali(tehran)
+  return `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.day).padStart(2, '0')}`
+}
+
 export function renderCustomerCodesSettings() {
   const list = document.getElementById('settingsCustomerCodesList')
+  const monthsEl = document.getElementById('customerCodeExpiryMonths')
+  if (monthsEl) monthsEl.value = String(getCustomerCodeExpiryMonths())
   if (!list) return
   const codes = getCustomerCodes()
   _editingCustomerCodeIdx = (_editingCustomerCodeIdx != null && _editingCustomerCodeIdx < codes.length)
@@ -4135,16 +4156,31 @@ export function renderCustomerCodesSettings() {
           <button type="button" class="btn btn-sm" onclick="app.cancelCustomerCodeEdit()">لغو</button>
         </div>`
     }
+    const expireLabel = formatCustomerCodeExpiryLabel(c.expiresAt)
     return `
       <div class="settings-config-row" data-idx="${idx}" draggable="true" ondragstart="app.onCustomerCodeDragStart(event,${idx})" ondragover="app.onCustomerCodeDragOver(event)" ondrop="app.onCustomerCodeDrop(event,${idx})">
         <span class="drag-handle" title="جابجایی">☰</span>
         <span class="settings-config-label">${escapeHtml(c.label)}</span>
         <span class="settings-config-meta">${escapeHtml(c.key)}</span>
+        <span class="settings-config-meta" title="تاریخ انقضا">انقضا: ${escapeHtml(expireLabel)}</span>
         <span style="flex:1;"></span>
         <button type="button" class="btn-icon" title="ویرایش" onclick="app.editCustomerCode(${idx})">✏️</button>
         <button type="button" class="btn-icon" title="حذف" onclick="app.removeCustomerCode(${idx})" style="color:var(--danger);">🗑</button>
       </div>`
   }).join('') || '<div class="settings-empty-detail">هنوز کدی تعریف نشده است</div>'
+}
+
+export async function saveCustomerCodeExpiryMonthsFromUi() {
+  if (!requireMainAdmin()) return
+  const el = document.getElementById('customerCodeExpiryMonths')
+  const months = el ? el.value : getCustomerCodeExpiryMonths()
+  try {
+    const saved = await saveCustomerCodeExpiryMonths(months)
+    if (el) el.value = String(saved)
+    showToast(saved === 0 ? 'کدهای جدید بدون انقضا ذخیره می‌شوند' : `مدت اعتبار کدهای جدید: ${saved} ماه`)
+  } catch (e) {
+    showToast('خطا در ذخیره مدت اعتبار')
+  }
 }
 
 let draggedCustomerCodeIdx = null
@@ -4182,11 +4218,14 @@ export async function addCustomerCode() {
   const codes = getCustomerCodes()
   if (codes.some(c => c.key === key)) { showToast('این کلید قبلاً وجود دارد'); return }
   try {
-    await saveCustomerCodes([...codes, { key, label, order: codes.length }])
+    const entry = buildCustomerCodeEntry({ key, label, order: codes.length })
+    await saveCustomerCodes([...codes, entry])
     if (keyInput) keyInput.value = ''
     if (labelInput) labelInput.value = ''
     renderCustomerCodesSettings()
-    showToast('کد مشتری اضافه شد')
+    showToast(entry.expiresAt
+      ? `کد مشتری اضافه شد · انقضا: ${formatCustomerCodeExpiryLabel(entry.expiresAt)}`
+      : 'کد مشتری اضافه شد')
   } catch (e) {
     showToast('خطا در ذخیره کد مشتری')
   }

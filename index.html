@@ -450,7 +450,14 @@
         <section class="settings-pane" data-settings-pane="customer-codes" hidden>
           <div class="settings-pane-header">
             <h3>کدهای مشتری</h3>
-            <p class="settings-pane-desc">این کدها در پنل مشتری به‌صورت دراپ‌داون قابل انتخاب‌اند و در فیلتر فروش و داشبورد استفاده می‌شوند.</p>
+            <p class="settings-pane-desc">این کدها در پنل مشتری به‌صورت دراپ‌داون قابل انتخاب‌اند و در فیلتر فروش و داشبورد استفاده می‌شوند. هر کد پس از مدت اعتبار تعریف‌شده به‌صورت خودکار از لیست و از مشتریان حذف می‌شود.</p>
+          </div>
+          <div class="form-row settings-add-row" style="align-items:flex-end;">
+            <div class="form-group" style="flex:0 0 160px;margin-bottom:0;">
+              <label for="customerCodeExpiryMonths">مدت اعتبار (ماه)</label>
+              <input type="number" class="form-input" id="customerCodeExpiryMonths" min="0" max="120" step="1" value="3" onchange="app.saveCustomerCodeExpiryMonthsFromUi()">
+            </div>
+            <p class="settings-pane-desc" style="flex:1;margin:0 0 4px;">پیش‌فرض ۳ ماه برای کدهای جدید. صفر یعنی بدون انقضا.</p>
           </div>
           <div class="form-row settings-add-row">
             <div class="form-group" style="flex:1;margin-bottom:0;">
