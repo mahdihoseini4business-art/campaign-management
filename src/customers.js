@@ -3933,7 +3933,6 @@ export async function renderProducts(customerId, users = null) {
         <span class="product-meta">پرداخت‌شده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${approved ? formatNumber(approved) : '۰'}</b></span>
         ${balance > 0 && !closed ? `<span class="product-balance negative">مانده: ${formatNumber(balance)}</span>` : `<span class="product-meta">مانده: <b style="font-family:'Vazirmatn',sans-serif;direction:ltr;">۰</b></span>`}
         ${balance > 0 && !closed ? `<button type="button" class="btn btn-sm" data-perm="sms_sales_single" onclick="app.openSaleBalanceSms('${escapeAttr(customerId)}', ${i})">پیامک مانده</button>` : ''}
-        ${balance > 0 && !closed && (p.settlementDate || '') ? `<button type="button" class="btn btn-sm" data-perm="sms_sales_settlement" onclick="app.openSaleSettlementDueSms('${escapeAttr(customerId)}', ${i})">پیامک موعد تسویه</button>` : ''}
         ${closedBadge}
       </div>`
     const refundSummariesHtml = renderSaleRefundSummaries(customerId, p)

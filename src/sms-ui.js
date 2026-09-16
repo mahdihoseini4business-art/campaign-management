@@ -367,43 +367,6 @@ export async function openSaleBalanceSms(customerId, productIndex) {
   })
 }
 
-/** Sales: manual settlement-due SMS for one product (also available as template in sale compose). */
-export async function openSaleSettlementDueSms(customerId, productIndex) {
-  if (!canUseSmsKind('sale_settlement_due')) {
-    showToast('پیامک موعد تسویه فعال نیست یا دسترسی ندارید')
-    return
-  }
-  const data = getData()
-  const customer = data.customers.find((c) => c.id === customerId)
-  const product = customer?.products?.[productIndex]
-  if (!customer || !product) {
-    showToast('فروش یافت نشد')
-    return
-  }
-  const balance = getOperationalBalance(product)
-  if (balance <= 0) {
-    showToast('مانده‌ای برای این فروش نیست')
-    return
-  }
-  const settlementDate = String(product.settlementDate || '').trim()
-  if (!settlementDate) {
-    showToast('ابتدا تاریخ تسویه را ثبت کنید')
-    return
-  }
-  const recipient = buildRecipientFromCustomer(customer, {
-    product_name: product.name || '',
-    balance: formatBalanceFa(balance),
-    total_balance: formatBalanceFa(balance),
-    settlement_date: settlementDate,
-  }, { productIndex, settlementDate })
-  await openSmsComposeModal({
-    kind: 'sale_settlement_due',
-    title: 'پیامک موعد تسویه',
-    templateKey: 'sale_settlement_due',
-    recipients: [recipient],
-  })
-}
-
 /**
  * Sales tab: debtors from currently filtered sales rows (balance > 0).
  */
