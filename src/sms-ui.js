@@ -875,7 +875,7 @@ export async function submitSmsCampaign() {
     showToast('مخاطبی انتخاب نشده')
     return
   }
-  const title = document.getElementById('smsCampaignTitle')?.value?.trim() || 'کمپین پیامک'
+  const title = document.getElementById('smsCampaignTitle')?.value?.trim() || 'پیامک مشتریان'
   const mode = document.getElementById('smsCampaignMode')?.value || 'immediate'
   const templateKey = document.getElementById('smsCampaignTemplate')?.value || 'customer_campaign'
   const body = document.getElementById('smsCampaignBody')?.value || ''
@@ -951,9 +951,9 @@ export async function submitSmsCampaign() {
       sent: campaignAudience.length,
       updated_at: new Date().toISOString(),
     }).eq('id', campaign.id).eq('tenant_id', tenantId)
-    showToast('کمپین ارسال شد')
+    showToast('ارسال انجام شد')
   } else {
-    showToast(mode === 'scheduled' ? 'کمپین زمان‌بندی شد' : 'کمپین قطره‌ای شروع شد — کرون دسته‌ها را می‌فرستد')
+    showToast(mode === 'scheduled' ? 'ارسال زمان‌بندی شد' : 'ارسال قطره‌ای شروع شد — کرون دسته‌ها را می‌فرستد')
   }
   closeSmsCampaignModal()
 }
