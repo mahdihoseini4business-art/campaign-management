@@ -1,7 +1,8 @@
 import { getData, listSmsTemplates, createSmsCampaign, createSmsSchedule, cancelPendingSmsSchedulesForCustomer, getFollowupSmsDefaultHour, getStatuses, getProductCatalogNames } from './data.js'
-import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normalizePhone, getOperationalBalance, getPrimaryPhone } from './utils.js'
-import { canUseSmsKind, invokeSendSms, buildRecipientFromCustomer, formatBalanceFa } from './sms-business.js'
+import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normalizePhone, getOperationalBalance, getPrimaryPhone, jalaliDateTimeToIso, CUSTOMER_LEVELS, resolveCustomerLevel, formatTeamFilterLabel } from './utils.js'
+import { canUseSmsKind, invokeSendSms, buildRecipientFromCustomer, formatBalanceFa, fetchSmsQuota } from './sms-business.js'
 import { getStoredTenantId } from './tenant.js'
+import { getReferralCountForCustomer } from './derived-cache.js'
 
 const SMS_TEST_PHONE_KEY = 'sms_test_phone'
 
@@ -114,6 +115,64 @@ function updateSmsComposeMetaAndCount(previewText) {
       ? `${formatNumber(info.len)} کاراکتر · حدود ${formatNumber(info.parts)} پیامک`
       : ''
   }
+  renderAudienceSample('smsComposeAudienceSample', composeState?.recipients || [])
+}
+
+const AUDIENCE_SAMPLE_MAX = 8
+
+function renderAudienceSample(elId, recipients) {
+  const el = document.getElementById(elId)
+  if (!el) return
+  const list = recipients || []
+  if (list.length <= 1) {
+    el.style.display = 'none'
+    el.innerHTML = ''
+    return
+  }
+  const slice = list.slice(0, AUDIENCE_SAMPLE_MAX)
+  const lines = slice.map((r) => {
+    const name = escapeHtml(r?.vars?.customer_name || '—')
+    const phone = escapeHtml(r?.phone || '')
+    return `<div>${name} — <span dir="ltr">${phone}</span></div>`
+  })
+  if (list.length > AUDIENCE_SAMPLE_MAX) {
+    lines.push(`<div class="settings-pane-desc">و ${formatNumber(list.length - AUDIENCE_SAMPLE_MAX)} نفر دیگر</div>`)
+  }
+  el.innerHTML = lines.join('')
+  el.style.display = ''
+}
+
+async function refreshSmsQuotaDisplay(elId) {
+  const el = document.getElementById(elId)
+  if (!el) return
+  el.textContent = 'در حال دریافت سقف روزانه…'
+  const q = await fetchSmsQuota()
+  if (!q?.success) {
+    el.textContent = q?.error ? `سقف روزانه: ${q.error}` : 'سقف روزانه در دسترس نیست'
+    return null
+  }
+  const remaining = Number(q.remaining || 0)
+  const limit = Number(q.limit || 0)
+  const used = Number(q.used || 0)
+  el.textContent = `امروز: ${formatNumber(remaining)} از ${formatNumber(limit)} باقی‌مانده (مصرف‌شده ${formatNumber(used)})`
+  return q
+}
+
+async function assertWithinQuota(needed) {
+  const q = await fetchSmsQuota()
+  if (!q?.success) return true // don't hard-block if quota endpoint unavailable
+  const remaining = Number(q.remaining || 0)
+  if (remaining <= 0) {
+    showToast('سقف روزانه پیامک تمام شده است')
+    return false
+  }
+  if (needed > remaining) {
+    const ok = window.confirm(
+      `تعداد گیرنده (${formatNumber(needed)}) بیشتر از باقی‌مانده امروز (${formatNumber(remaining)}) است. ادامه؟`
+    )
+    return ok
+  }
+  return true
 }
 
 export async function openSmsComposeModal(opts) {
@@ -145,6 +204,7 @@ export async function openSmsComposeModal(opts) {
   if (bodyEl) bodyEl.value = opts.body || tpl?.body || ''
   fillTestPhoneInput('smsComposeTestPhone')
   updateSmsComposePreview()
+  void refreshSmsQuotaDisplay('smsComposeQuota')
   document.getElementById('smsComposeModal')?.classList.add('active')
 }
 
@@ -238,6 +298,7 @@ export async function sendSmsComposeTest() {
     showToast('شماره تست معتبر نیست (مثلاً 09123456789)')
     return
   }
+  if (!(await assertWithinQuota(1))) return
   const templateKey = document.getElementById('smsComposeTemplate')?.value || composeState.templateKey || ''
   const sample = composeState.recipients?.[0] || null
   const result = await invokeSendSms({
@@ -250,6 +311,7 @@ export async function sendSmsComposeTest() {
   if (result?.success || Number(result?.sent || 0) > 0) {
     saveTestPhone(phone)
     showToast(`پیام تست به ${phone} ارسال شد`)
+    void refreshSmsQuotaDisplay('smsComposeQuota')
   } else {
     showToast(result?.error || 'ارسال تست ناموفق بود')
   }
@@ -268,6 +330,7 @@ export async function submitSmsCompose() {
     showToast('گیرنده‌ای نیست')
     return
   }
+  if (!(await assertWithinQuota(recipients.length))) return
   if (recipients.length > 1) {
     const ok = window.confirm(`ارسال به ${recipients.length} گیرنده؟`)
     if (!ok) return
@@ -289,6 +352,7 @@ export async function submitSmsCompose() {
     failed += Number(result.failed || 0) + Number(result.skipped || 0)
     if (!result.success && result.error && !result.sent) {
       showToast(result.error)
+      void refreshSmsQuotaDisplay('smsComposeQuota')
       return
     }
   }
@@ -457,7 +521,13 @@ export async function openFollowupBulkSms(items) {
 export async function scheduleFollowupSms(customer, followupDate, { bodyOverride = null, templateKey = 'followup_due' } = {}) {
   if (!canUseSmsKind('followup_schedule')) return null
   const hour = getFollowupSmsDefaultHour()
-  const sendAt = jalaliDateToApproxIso(followupDate, hour)
+  const timeStr = `${String(hour).padStart(2, '0')}:00`
+  let sendAt = jalaliDateTimeToIso(followupDate, timeStr)
+  if (!sendAt) {
+    const d = new Date()
+    d.setHours(hour, 0, 0, 0)
+    sendAt = d.toISOString()
+  }
   await cancelPendingSmsSchedulesForCustomer(customer.id)
   return createSmsSchedule({
     customer_id: customer.id,
@@ -476,24 +546,6 @@ export async function scheduleFollowupSms(customer, followupDate, { bodyOverride
       },
     },
   })
-}
-
-/** Very rough Jalali→ISO for scheduling (same-day hour in Asia/Tehran wall clock via offset). */
-function jalaliDateToApproxIso(jalaliDate, hour) {
-  const parts = String(jalaliDate || '').split('/').map((x) => parseInt(x, 10))
-  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) {
-    const d = new Date()
-    d.setHours(hour, 0, 0, 0)
-    return d.toISOString()
-  }
-  try {
-    const gy = parts[0] - 621
-    const d = new Date(Date.UTC(gy, parts[1] - 1, parts[2], hour - 3.5, 0, 0))
-    if (!Number.isNaN(d.getTime())) return d.toISOString()
-  } catch (_) { /* fallthrough */ }
-  const d = new Date()
-  d.setHours(hour, 0, 0, 0)
-  return d.toISOString()
 }
 
 // —— Campaign wizard ——
@@ -565,6 +617,13 @@ export async function openSmsCampaignModal() {
       `<option value="${escapeAttr(name)}">${escapeHtml(name)}</option>`
     ).join('')
   }
+  const levelSel = document.getElementById('smsCampaignLevel')
+  if (levelSel) {
+    levelSel.innerHTML = `<option value="">همه سطوح</option>` + Object.values(CUSTOMER_LEVELS).map((l) =>
+      `<option value="${escapeAttr(l.key)}">${l.emoji || ''} ${escapeHtml(l.label || l.key)}</option>`
+    ).join('')
+  }
+  await populateCampaignAdvisorSelect()
   const templates = await listSmsTemplates().catch(() => [])
   const campaignTemplates = templatesForKind(templates, 'customer_campaign', 'customer_campaign')
   const tplSel = document.getElementById('smsCampaignTemplate')
@@ -581,7 +640,31 @@ export async function openSmsCampaignModal() {
   fillTestPhoneInput('smsCampaignTestPhone')
   onSmsCampaignModeChange()
   await refreshSmsCampaignAudienceAsync()
+  void refreshSmsQuotaDisplay('smsCampaignQuota')
   document.getElementById('smsCampaignModal')?.classList.add('active')
+}
+
+async function populateCampaignAdvisorSelect() {
+  const sel = document.getElementById('smsCampaignAdvisor')
+  if (!sel) return
+  const currentVal = sel.value
+  try {
+    const { getUsersSafe } = await import('./auth.js')
+    const { loadGroupsData, buildGroupedAdvisorSelectHtml } = await import('./groups.js')
+    const users = await getUsersSafe()
+    try { await loadGroupsData() } catch (_) { /* optional */ }
+    sel.innerHTML = buildGroupedAdvisorSelectHtml({
+      users,
+      selectedValue: currentVal,
+      teamLabel: formatTeamFilterLabel(getCurrentUser()),
+      emptyLabel: 'همه کارشناسان',
+    })
+    if (![...sel.options].some((o) => o.value === currentVal)) sel.value = ''
+    else sel.value = currentVal
+  } catch (e) {
+    console.warn('populateCampaignAdvisorSelect', e)
+    sel.innerHTML = '<option value="">همه کارشناسان</option>'
+  }
 }
 
 export function closeSmsCampaignModal() {
@@ -609,11 +692,25 @@ export function onSmsCampaignBodyInput() {
   updateSmsCampaignPreview()
 }
 
-function finishAudience(base, status, productName) {
+function finishAudience(base, { status, productName, advisorPhones, advisorFilter, levelFilter }) {
   campaignAudience = []
+  const data = getData()
   for (const c of base) {
     if (status && String(c.status || '') !== status) continue
     if (!customerHasProduct(c, productName)) continue
+    if (advisorPhones instanceof Set) {
+      const owner = normalizePhone(c.advisorPhone)
+      if (!owner || !advisorPhones.has(owner)) continue
+    }
+    if (levelFilter) {
+      const resolved = resolveCustomerLevel(
+        c,
+        data.customers,
+        data.followups,
+        getReferralCountForCustomer(c.id)
+      )
+      if (resolved !== levelFilter) continue
+    }
     const phone = getPrimaryPhone(c) || c.phone
     if (!phone) continue
     const extra = {}
@@ -623,12 +720,18 @@ function finishAudience(base, status, productName) {
   const el = document.getElementById('smsCampaignCount')
   const parts = [`${campaignAudience.length} گیرنده`]
   if (productName) parts.push(`محصول: ${productName}`)
+  if (advisorFilter) parts.push('کارشناس فیلترشده')
+  if (levelFilter) {
+    const lv = CUSTOMER_LEVELS[levelFilter]
+    parts.push(`سطح: ${lv?.label || levelFilter}`)
+  }
   parts.push('فیلتر تب مشتریان')
   if (el) el.textContent = parts.join(' · ')
   updateSmsCampaignPreview()
+  renderAudienceSample('smsCampaignAudienceSample', campaignAudience)
 }
 
-/** Audience = customers-tab filters, optionally narrowed by campaign status/product. */
+/** Audience = customers-tab filters, optionally narrowed by campaign status/product/advisor/level. */
 export function refreshSmsCampaignAudience() {
   void refreshSmsCampaignAudienceAsync()
 }
@@ -636,12 +739,26 @@ export function refreshSmsCampaignAudience() {
 export async function refreshSmsCampaignAudienceAsync() {
   const status = document.getElementById('smsCampaignStatus')?.value || ''
   const productName = document.getElementById('smsCampaignProduct')?.value || ''
+  const advisorFilter = document.getElementById('smsCampaignAdvisor')?.value || ''
+  const levelFilter = document.getElementById('smsCampaignLevel')?.value || ''
   let base = getData().customers || []
   try {
     const { getFilteredCustomers } = await import('./customers.js')
     base = getFilteredCustomers() || base
   } catch (_) { /* keep all */ }
-  finishAudience(base, status, productName)
+
+  let advisorPhones = null
+  if (advisorFilter) {
+    try {
+      const { phonesMatchingAdvisorFilter } = await import('./groups.js')
+      advisorPhones = phonesMatchingAdvisorFilter(advisorFilter, getCurrentUser())
+    } catch (_) {
+      const p = normalizePhone(advisorFilter)
+      advisorPhones = p ? new Set([p]) : null
+    }
+  }
+
+  finishAudience(base, { status, productName, advisorPhones, advisorFilter, levelFilter })
   return campaignAudience
 }
 
@@ -657,6 +774,7 @@ export async function sendSmsCampaignTest() {
     showToast('شماره تست معتبر نیست (مثلاً 09123456789)')
     return
   }
+  if (!(await assertWithinQuota(1))) return
   await refreshSmsCampaignAudienceAsync()
   const templateKey = document.getElementById('smsCampaignTemplate')?.value || 'customer_campaign'
   const sample = campaignAudience[0] || null
@@ -673,6 +791,7 @@ export async function sendSmsCampaignTest() {
   if (result?.success || Number(result?.sent || 0) > 0) {
     saveTestPhone(phone)
     showToast(`پیام تست به ${phone} ارسال شد`)
+    void refreshSmsQuotaDisplay('smsCampaignQuota')
   } else {
     showToast(result?.error || 'ارسال تست ناموفق بود')
   }
@@ -695,6 +814,9 @@ export async function submitSmsCampaign() {
   }
   const productName = document.getElementById('smsCampaignProduct')?.value || ''
   const status = document.getElementById('smsCampaignStatus')?.value || ''
+  const advisor = document.getElementById('smsCampaignAdvisor')?.value || ''
+  const level = document.getElementById('smsCampaignLevel')?.value || ''
+  if (!(await assertWithinQuota(campaignAudience.length))) return
   const ok = window.confirm(`شروع کمپین برای ${campaignAudience.length} گیرنده؟`)
   if (!ok) return
 
@@ -714,7 +836,7 @@ export async function submitSmsCampaign() {
     title,
     template_key: templateKey || null,
     body,
-    filter: { status, product: productName, recipients: campaignAudience },
+    filter: { status, product: productName, advisor, level, recipients: campaignAudience },
     mode,
     status: 'sending',
     total: campaignAudience.length,

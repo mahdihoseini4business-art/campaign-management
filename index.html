@@ -547,8 +547,16 @@
 
           <div class="settings-subsection" id="smsHistorySection">
             <h4 class="settings-subhead">تاریخچه پیامک</h4>
-            <div class="form-row" style="gap:8px;margin-bottom:8px;">
+            <div class="form-row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;">
               <button type="button" class="btn btn-sm" onclick="app.refreshSmsHistory()">بروزرسانی</button>
+              <label class="settings-perm-chip" style="display:inline-flex;align-items:center;gap:6px;margin:0;">
+                <input type="checkbox" id="smsHistoryOnlyTest" onchange="app.refreshSmsHistory()">
+                فقط تست
+              </label>
+              <label class="settings-perm-chip" style="display:inline-flex;align-items:center;gap:6px;margin:0;">
+                <input type="checkbox" id="smsHistoryHideTest" onchange="app.refreshSmsHistory()">
+                بدون تست
+              </label>
             </div>
             <div class="table-wrap" style="max-height:280px;overflow:auto;">
               <table class="data-table">
@@ -1972,6 +1980,8 @@
     </div>
     <div class="modal-body">
       <p class="settings-pane-desc" id="smsComposeMeta"></p>
+      <p class="settings-pane-desc" id="smsComposeQuota" style="margin-top:0;"></p>
+      <div id="smsComposeAudienceSample" class="settings-pane-desc" style="display:none;max-height:120px;overflow:auto;border:1px solid var(--border);padding:8px;border-radius:8px;margin-bottom:10px;font-size:12px;"></div>
       <div class="form-group">
         <label for="smsComposeTemplate">الگو</label>
         <select class="form-input" id="smsComposeTemplate" onchange="app.onSmsComposeTemplateChange()"></select>
@@ -2035,6 +2045,20 @@
           </select>
         </div>
       </div>
+      <div class="form-row" style="flex-wrap:wrap;gap:12px;">
+        <div class="form-group" style="flex:1;min-width:160px;">
+          <label for="smsCampaignAdvisor">کارشناس</label>
+          <select class="form-input" id="smsCampaignAdvisor" onchange="app.refreshSmsCampaignAudience()">
+            <option value="">همه کارشناسان</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1;min-width:140px;">
+          <label for="smsCampaignLevel">سطح مشتری</label>
+          <select class="form-input" id="smsCampaignLevel" onchange="app.refreshSmsCampaignAudience()">
+            <option value="">همه سطوح</option>
+          </select>
+        </div>
+      </div>
       <div class="form-row" style="flex-wrap:wrap;gap:12px;" id="smsCampaignScheduleRow">
         <div class="form-group" style="flex:1;min-width:140px;">
           <label for="smsCampaignSendAt">زمان ارسال (برای زمان‌بندی)</label>
@@ -2062,6 +2086,8 @@
         <div id="smsCampaignPreview" class="settings-pane-desc" style="min-height:3em;white-space:pre-wrap;border:1px solid var(--border);padding:10px;border-radius:8px;">—</div>
       </div>
       <p class="settings-pane-desc" id="smsCampaignCount">۰ گیرنده</p>
+      <p class="settings-pane-desc" id="smsCampaignQuota" style="margin-top:0;"></p>
+      <div id="smsCampaignAudienceSample" class="settings-pane-desc" style="display:none;max-height:120px;overflow:auto;border:1px solid var(--border);padding:8px;border-radius:8px;margin-bottom:10px;font-size:12px;"></div>
       <div class="form-row" style="flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px;">
         <div class="form-group" style="flex:1;min-width:160px;margin:0;">
           <label for="smsCampaignTestPhone">شماره تست</label>

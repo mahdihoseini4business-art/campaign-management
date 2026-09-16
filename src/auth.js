@@ -4596,20 +4596,39 @@ export async function refreshSmsHistory() {
     return
   }
   try {
-    const rows = await listSmsLogs({ limit: 40 })
+    const onlyTest = !!document.getElementById('smsHistoryOnlyTest')?.checked
+    const hideTest = !!document.getElementById('smsHistoryHideTest')?.checked
+    if (onlyTest && hideTest) {
+      const hideEl = document.getElementById('smsHistoryHideTest')
+      if (hideEl) hideEl.checked = false
+    }
+    let rows = await listSmsLogs({ limit: 80 })
+    if (onlyTest) {
+      rows = rows.filter((r) => !!(r.meta && r.meta.test))
+    } else if (hideTest) {
+      rows = rows.filter((r) => !(r.meta && r.meta.test))
+    }
     if (!rows.length) {
       tbody.innerHTML = '<tr><td colspan="5">تاریخی نیست</td></tr>'
       return
     }
-    tbody.innerHTML = rows.map((r) => `
+    tbody.innerHTML = rows.map((r) => {
+      const isTest = !!(r.meta && r.meta.test)
+      const kindCell = isTest
+        ? `${escapeHtml(r.kind || '')} <span class="role-badge" style="background:var(--warning);color:#111;">تست</span>`
+        : escapeHtml(r.kind || '')
+      const statusCell = isTest
+        ? `${escapeHtml(r.status || '')} · تست`
+        : escapeHtml(r.status || '')
+      return `
       <tr>
         <td style="font-size:12px;direction:ltr;">${escapeHtml(String(r.created_at || '').replace('T', ' ').slice(0, 19))}</td>
-        <td>${escapeHtml(r.kind || '')}</td>
+        <td>${kindCell}</td>
         <td style="direction:ltr;">${escapeHtml(r.to_phone || '')}</td>
-        <td>${escapeHtml(r.status || '')}</td>
+        <td>${statusCell}</td>
         <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeAttr(r.body || '')}">${escapeHtml((r.body || '').slice(0, 80))}</td>
-      </tr>
-    `).join('')
+      </tr>`
+    }).join('')
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="5">${escapeHtml(e.message || 'خطا')}</td></tr>`
   }

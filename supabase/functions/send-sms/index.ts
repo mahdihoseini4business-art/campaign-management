@@ -148,6 +148,46 @@ serve(async (req) => {
     }
 
     const mode = String(body?.mode || 'single')
+
+    // Quota peek — no send, no kind/recipients required
+    if (mode === 'quota') {
+      const { data: sub } = await admin
+        .from('subscriptions')
+        .select('plan_id')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const planId = String(sub?.plan_id || 'trial')
+      const limitKey = `sms_daily_limit_${planId}`
+      const { data: limitRow } = await admin
+        .from('platform_settings')
+        .select('value')
+        .eq('key', limitKey)
+        .maybeSingle()
+      const dayLimit = Number(limitRow?.value)
+      const effectiveLimit = Number.isFinite(dayLimit) && dayLimit > 0
+        ? dayLimit
+        : (planId === 'diamond' ? 200 : planId === 'gold' ? 50 : 20)
+      const day = todayUtcDate()
+      const { data: usage } = await admin
+        .from('sms_usage_daily')
+        .select('sent_count')
+        .eq('tenant_id', tenantId)
+        .eq('day', day)
+        .maybeSingle()
+      const used = Number(usage?.sent_count || 0)
+      const remaining = Math.max(0, effectiveLimit - used)
+      return json({
+        success: true,
+        limit: effectiveLimit,
+        used,
+        remaining,
+        plan_id: planId,
+        day,
+      })
+    }
+
     const kind = String(body?.kind || '')
     const featureKey = KIND_FEATURE[kind]
     if (!featureKey) return json({ success: false, error: 'نوع پیامک نامعتبر است' }, 400)

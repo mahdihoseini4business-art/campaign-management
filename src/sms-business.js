@@ -59,6 +59,11 @@ export async function invokeSendSms(payload) {
   }
 }
 
+/** Daily SMS quota for current tenant (no send). */
+export async function fetchSmsQuota() {
+  return invokeSendSms({ mode: 'quota' })
+}
+
 export function formatBalanceFa(n) {
   return formatNumber(Math.max(0, Number(n) || 0))
 }
