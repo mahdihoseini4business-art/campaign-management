@@ -1270,8 +1270,13 @@
             <button type="button" class="toolbar-actions-item" data-perm="customers_import" onclick="app.openImportModal();app.closeAllToolbarActions()">ایمپورت اکسل</button>
           </div>
         </div>
-        <button type="button" class="btn" data-perm="sms_customer_campaign" onclick="app.openCustomersFilteredSms()" title="ارسال به مشتریان فیلترشده همین تب">پیامک دسته‌ای</button>
-        <button type="button" class="btn" data-perm="sms_customer_campaign" onclick="app.openSmsCampaignModal()" title="کمپین فوری / زمان‌بندی / قطره‌ای">کمپین پیامک</button>
+        <div class="toolbar-actions" id="customersSmsMenu">
+          <button type="button" class="btn" data-perm="sms_customer_campaign" onclick="app.toggleToolbarActions(this, event)">پیامک ▾</button>
+          <div class="toolbar-actions-dropdown" hidden>
+            <button type="button" class="toolbar-actions-item" data-perm="sms_customer_campaign" onclick="app.openCustomersFilteredSms();app.closeAllToolbarActions()">ارسال به فیلتر فعلی</button>
+            <button type="button" class="toolbar-actions-item" data-perm="sms_customer_campaign" onclick="app.openSmsCampaignModal();app.closeAllToolbarActions()">کمپین پیامک</button>
+          </div>
+        </div>
       </div>
       <button class="btn btn-primary" data-perm="customers_add" onclick="app.openCustomerModal()">+ مشتری جدید</button>
     </div>
