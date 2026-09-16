@@ -507,7 +507,6 @@ const app = {
   sendSmsComposeTest,
   submitSmsCompose,
   openSaleBalanceSms,
-  openSaleSettlementDueSms,
   openDebtorsGroupSms,
   openCustomerSingleSms,
   openCustomersFilteredSms,
