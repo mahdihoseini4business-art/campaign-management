@@ -131,7 +131,7 @@ import {
   assertFeature
 } from './entitlements.js'
 import {
-  openSmsComposeModal, closeSmsComposeModal, onSmsComposeTemplateChange, onSmsComposeBodyInput, previewSmsCompose, sendSmsComposeTest, submitSmsCompose,
+  openSmsComposeModal, closeSmsComposeModal, onSmsComposeTemplateChange, onSmsComposeBodyInput, sendSmsComposeTest, submitSmsCompose,
   openSaleBalanceSms, openDebtorsGroupSms, openCustomerSingleSms, openCustomersFilteredSms, openFollowupBulkSms,
   openSmsCampaignModal, closeSmsCampaignModal, onSmsCampaignTemplateChange, onSmsCampaignBodyInput, onSmsCampaignModeChange, refreshSmsCampaignAudience, sendSmsCampaignTest, submitSmsCampaign
 } from './sms-ui.js'
@@ -502,7 +502,6 @@ const app = {
   closeSmsComposeModal,
   onSmsComposeTemplateChange,
   onSmsComposeBodyInput,
-  previewSmsCompose,
   sendSmsComposeTest,
   submitSmsCompose,
   openSaleBalanceSms,

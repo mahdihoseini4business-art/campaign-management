@@ -253,38 +253,6 @@ function updateSmsComposePreview() {
   updateSmsComposeMetaAndCount(rendered)
 }
 
-export async function previewSmsCompose() {
-  if (!composeState) {
-    updateSmsComposePreview()
-    return
-  }
-  const body = document.getElementById('smsComposeBody')?.value || ''
-  const templateKey = document.getElementById('smsComposeTemplate')?.value || composeState.templateKey || ''
-  const recipients = composeState.recipients || []
-  if (!recipients.length) {
-    updateSmsComposePreview()
-    showToast('گیرنده‌ای برای پیش‌نمایش نیست')
-    return
-  }
-  // Always refresh client preview first
-  updateSmsComposePreview()
-  const result = await invokeSendSms({
-    mode: 'preview',
-    kind: composeState.kind,
-    template_key: templateKey || null,
-    body_override: body,
-    recipients: [recipients[0]],
-  })
-  const preview = document.getElementById('smsComposePreview')
-  if (result?.success && result.preview != null) {
-    if (preview) preview.textContent = String(result.preview)
-    updateSmsComposeMetaAndCount(String(result.preview))
-  } else if (result?.error) {
-    // Keep client preview; surface soft warning
-    showToast(result.error)
-  }
-}
-
 /** Send one real SMS to a manual test number using current compose text/vars. */
 export async function sendSmsComposeTest() {
   if (!composeState) return
