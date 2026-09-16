@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { getStoredTenantId } from './tenant.js'
 import { readFunctionsInvokeError } from './edge-error.js'
-import { hasPermission, isMainAdmin, formatNumber } from './utils.js'
+import { hasPermission, isMainAdmin, formatNumber, jalaliDiffDays, getTodayJalaliStr } from './utils.js'
 import { SMS_KIND_FEATURE, SMS_KIND_PERMISSION } from './sms-features.js'
 import { getSmsFeatures, getFollowupSmsDefaultHour } from './data.js'
 
@@ -66,6 +66,38 @@ export async function fetchSmsQuota() {
 
 export function formatBalanceFa(n) {
   return formatNumber(Math.max(0, Number(n) || 0))
+}
+
+/**
+ * Placeholders for settlement-due personalization.
+ * days_to_settlement: signed integer (positive = remaining, 0 = today, negative = overdue)
+ * days_to_settlement_text: Persian phrase for remaining/overdue
+ */
+export function buildSettlementSmsVars(settlementDate) {
+  const date = String(settlementDate || '').trim()
+  if (!date) {
+    return {
+      settlement_date: '',
+      days_to_settlement: '',
+      days_to_settlement_text: '',
+    }
+  }
+  const days = jalaliDiffDays(getTodayJalaliStr(), date)
+  if (days == null) {
+    return {
+      settlement_date: date,
+      days_to_settlement: '',
+      days_to_settlement_text: '',
+    }
+  }
+  let text = 'امروز'
+  if (days > 0) text = `${formatNumber(days)} روز مانده`
+  else if (days < 0) text = `${formatNumber(-days)} روز از موعد گذشته`
+  return {
+    settlement_date: date,
+    days_to_settlement: String(days),
+    days_to_settlement_text: text,
+  }
 }
 
 export function buildRecipientFromCustomer(customer, vars = {}, meta = {}) {

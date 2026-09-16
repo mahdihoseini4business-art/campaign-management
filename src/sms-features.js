@@ -79,7 +79,7 @@ export const DEFAULT_SMS_TEMPLATES = Object.freeze([
   {
     key: 'sale_settlement_due',
     name: 'موعد تسویه',
-    body: 'سلام {customer_name} عزیز، موعد تسویه «{product_name}» ({settlement_date}) فرا رسیده است. مانده حساب شما: {balance} ریال.',
+    body: 'سلام {customer_name} عزیز، موعد تسویه «{product_name}» ({settlement_date}) — {days_to_settlement_text}. مانده حساب شما: {balance} ریال.',
   },
   {
     key: 'customer_campaign',

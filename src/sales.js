@@ -335,6 +335,11 @@ export function getFilteredSales(dateFilterOverride = null) {
   const codeFilter = document.getElementById('filterSalesCustomerCode')?.value || ''
   const statusFilter = document.getElementById('filterSalesStatus')?.value || ''
   const payStatusFilter = document.getElementById('filterSalesPaymentStatus')?.value || ''
+  const settlementFrom = document.getElementById('filterSalesSettlementFrom')?.value.trim() || ''
+  const settlementTo = document.getElementById('filterSalesSettlementTo')?.value.trim() || ''
+  const settlementFromNum = settlementFrom ? jalaliToNum(settlementFrom) : 0
+  const settlementToNum = settlementTo ? jalaliToNum(settlementTo) : 99999999
+  const hasSettlementFilter = !!(settlementFrom || settlementTo)
   const productMatchSet = buildSalesProductMatchSet()
   const dateFilter = dateFilterOverride || getSalesDateFilter()
   let allSales = getAllSales()
@@ -376,6 +381,11 @@ export function getFilteredSales(dateFilterOverride = null) {
     if (platformFilter && s.platform !== platformFilter) return false
     if (statusFilter && s.status !== statusFilter) return false
     if (!saleMatchesSelectedProducts(s.productName, productMatchSet)) return false
+    if (hasSettlementFilter) {
+      if (!s.settlementDate) return false
+      const sn = jalaliToNum(s.settlementDate)
+      if (sn < settlementFromNum || sn > settlementToNum) return false
+    }
     // Without a date scope, match product-level worst payment status.
     // With a date scope, status is applied to payments inside the range (below).
     if (payStatusFilter === 'gift') {
@@ -642,7 +652,7 @@ export function onSalesSearchInput() {
 export async function renderSales() {
   const tbody = document.getElementById('salesBody')
   const search = toEnDigits(document.getElementById('searchSales')?.value || '').toLowerCase()
-  const cacheKey = `${search}|${sortSig(salesSortState)}|${tabPageKey('sales', getPage('sales'))}|${salesProductFilterSig()}|${document.getElementById('filterSalesPlatform')?.value || ''}|${document.getElementById('filterSalesAdvisor')?.value || ''}|${document.getElementById('filterSalesLevel')?.value || ''}|${document.getElementById('filterSalesCustomerCode')?.value || ''}|${document.getElementById('filterSalesStatus')?.value || ''}|${document.getElementById('filterSalesPaymentStatus')?.value || ''}|${document.getElementById('filterSalesDateFrom')?.value || ''}|${document.getElementById('filterSalesDateTo')?.value || ''}`
+  const cacheKey = `${search}|${sortSig(salesSortState)}|${tabPageKey('sales', getPage('sales'))}|${salesProductFilterSig()}|${document.getElementById('filterSalesPlatform')?.value || ''}|${document.getElementById('filterSalesAdvisor')?.value || ''}|${document.getElementById('filterSalesLevel')?.value || ''}|${document.getElementById('filterSalesCustomerCode')?.value || ''}|${document.getElementById('filterSalesStatus')?.value || ''}|${document.getElementById('filterSalesPaymentStatus')?.value || ''}|${document.getElementById('filterSalesDateFrom')?.value || ''}|${document.getElementById('filterSalesDateTo')?.value || ''}|${document.getElementById('filterSalesSettlementFrom')?.value || ''}|${document.getElementById('filterSalesSettlementTo')?.value || ''}`
   if (shouldSkipTabRender('sales', cacheKey)) return
 
   populateSalesFilterDropdowns()

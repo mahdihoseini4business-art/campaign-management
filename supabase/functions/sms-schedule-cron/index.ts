@@ -32,6 +32,68 @@ function formatBalanceFa(n: number): string {
   }
 }
 
+function jalaliParts(dateStr: string): { y: number, m: number, d: number } | null {
+  const m = String(dateStr || '').trim().match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/)
+  if (!m) return null
+  const y = Number(m[1])
+  const mo = Number(m[2])
+  const d = Number(m[3])
+  if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return null
+  return { y, m: mo, d }
+}
+
+function isJalaliLeap(y: number): boolean {
+  const breaks = [1, 5, 9, 13, 17, 22, 26, 30]
+  return breaks.includes(y % 33)
+}
+
+function jalaliDaySerial(dateStr: string): number | null {
+  const p = jalaliParts(dateStr)
+  if (!p) return null
+  let days = 0
+  for (let yy = 1; yy < p.y; yy++) days += isJalaliLeap(yy) ? 366 : 365
+  const dim = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, isJalaliLeap(p.y) ? 30 : 29]
+  for (let mm = 1; mm < p.m; mm++) days += dim[mm - 1]
+  return days + p.d
+}
+
+function todayJalaliInTehran(): string {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tehran',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    calendar: 'persian',
+  })
+  const parts = fmt.formatToParts(new Date())
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value || 0)
+  const y = get('year')
+  const m = get('month')
+  const d = get('day')
+  if (!y || !m || !d) return ''
+  return `${y}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}`
+}
+
+function buildSettlementDayVars(settlementDate: string): Record<string, string> {
+  const date = String(settlementDate || '').trim()
+  if (!date) return { settlement_date: '', days_to_settlement: '', days_to_settlement_text: '' }
+  const today = todayJalaliInTehran()
+  const a = jalaliDaySerial(today)
+  const b = jalaliDaySerial(date)
+  if (a == null || b == null) {
+    return { settlement_date: date, days_to_settlement: '', days_to_settlement_text: '' }
+  }
+  const days = b - a
+  let text = 'امروز'
+  if (days > 0) text = `${formatBalanceFa(days)} روز مانده`
+  else if (days < 0) text = `${formatBalanceFa(-days)} روز از موعد گذشته`
+  return {
+    settlement_date: date,
+    days_to_settlement: String(days),
+    days_to_settlement_text: text,
+  }
+}
+
 /** Recompute operational balance for a product line (approved + pending, not rejected). */
 function operationalBalance(product: Record<string, unknown> | null | undefined): number {
   if (!product) return 0
@@ -126,7 +188,7 @@ serve(async (req) => {
           product_name: String(product.name || meta.product_name || ''),
           balance: formatBalanceFa(balance),
           total_balance: formatBalanceFa(balance),
-          settlement_date: settlementDate,
+          ...buildSettlementDayVars(settlementDate),
         }
       }
 

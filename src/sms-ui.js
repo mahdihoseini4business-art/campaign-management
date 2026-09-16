@@ -1,6 +1,6 @@
 import { getData, listSmsTemplates, createSmsCampaign, createSmsSchedule, cancelPendingSmsSchedulesForCustomer, cancelPendingSettlementSmsForCustomer, getFollowupSmsDefaultHour, getStatuses, getProductCatalogNames, getPlatforms } from './data.js'
-import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normalizePhone, getOperationalBalance, getPrimaryPhone, jalaliDateTimeToIso, isGiftSale, isDealCancelled, CUSTOMER_LEVELS, resolveCustomerLevel, formatTeamFilterLabel } from './utils.js'
-import { canUseSmsKind, invokeSendSms, buildRecipientFromCustomer, formatBalanceFa, fetchSmsQuota } from './sms-business.js'
+import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normalizePhone, getOperationalBalance, getPrimaryPhone, jalaliDateTimeToIso, jalaliToNum, isGiftSale, isDealCancelled, CUSTOMER_LEVELS, resolveCustomerLevel, formatTeamFilterLabel } from './utils.js'
+import { canUseSmsKind, invokeSendSms, buildRecipientFromCustomer, formatBalanceFa, fetchSmsQuota, buildSettlementSmsVars } from './sms-business.js'
 import { getStoredTenantId } from './tenant.js'
 import { getReferralCountForCustomer } from './derived-cache.js'
 
@@ -357,7 +357,7 @@ export async function openSaleBalanceSms(customerId, productIndex) {
     product_name: product.name || '',
     balance: formatBalanceFa(balance),
     total_balance: formatBalanceFa(balance),
-    settlement_date: settlementDate,
+    ...buildSettlementSmsVars(settlementDate),
   }, { productIndex })
   await openSmsComposeModal({
     kind: 'sale_single',
@@ -399,24 +399,32 @@ export async function openDebtorsGroupSms(productNameFilter = '') {
     if (bal <= 0) continue
     let entry = byCustomer.get(customer.id)
     if (!entry) {
-      entry = { customer, total: 0, parts: [], seen: new Set() }
+      entry = { customer, total: 0, parts: [], seen: new Set(), earliestSettlement: '', earliestNum: 99999999 }
       byCustomer.set(customer.id, entry)
     }
     if (entry.seen.has(productIndex)) continue
     entry.seen.add(productIndex)
     entry.total += bal
     entry.parts.push(`${product.name || s.productName || 'محصول'}: ${formatBalanceFa(bal)}`)
+    const settle = String(product.settlementDate || s.settlementDate || '').trim()
+    if (settle) {
+      const n = jalaliToNum(settle)
+      if (n < entry.earliestNum) {
+        entry.earliestNum = n
+        entry.earliestSettlement = settle
+      }
+    }
   }
 
   const recipients = []
-  for (const { customer, total, parts } of byCustomer.values()) {
+  for (const { customer, total, parts, earliestSettlement } of byCustomer.values()) {
     const phone = getPrimaryPhone(customer) || customer.phone
     if (!phone) continue
     recipients.push(buildRecipientFromCustomer(customer, {
       product_name: parts.join('، ') || 'محصولات',
       balance: formatBalanceFa(total),
       total_balance: formatBalanceFa(total),
-      settlement_date: '',
+      ...buildSettlementSmsVars(earliestSettlement),
     }))
   }
 
@@ -536,6 +544,7 @@ export async function syncSettlementDueSmsForCustomer(customer) {
       const balance = getOperationalBalance(product)
       let sendAt = jalaliDateTimeToIso(settlementDate, timeStr)
       if (!sendAt) continue
+      const settleVars = buildSettlementSmsVars(settlementDate)
       await createSmsSchedule({
         customer_id: customer.id,
         kind: 'sale_settlement_due',
@@ -553,8 +562,8 @@ export async function syncSettlementDueSmsForCustomer(customer) {
             product_name: product.name || '',
             balance: formatBalanceFa(balance),
             total_balance: formatBalanceFa(balance),
-            settlement_date: settlementDate,
             org_name: 'آکادمی کارنو',
+            ...settleVars,
           },
         },
       })

@@ -1405,6 +1405,8 @@
       <div class="toolbar-filter-grid">
         <input type="text" class="form-input" id="filterSalesDateFrom" placeholder="از تاریخ واریز" data-jdp style="width:140px;" onchange="app.renderSales()">
         <input type="text" class="form-input" id="filterSalesDateTo" placeholder="تا تاریخ واریز" data-jdp style="width:140px;" onchange="app.renderSales()">
+        <input type="text" class="form-input" id="filterSalesSettlementFrom" placeholder="از موعد تسویه" data-jdp style="width:140px;" onchange="app.renderSales()" title="فیلتر تاریخ تسویه (از)">
+        <input type="text" class="form-input" id="filterSalesSettlementTo" placeholder="تا موعد تسویه" data-jdp style="width:140px;" onchange="app.renderSales()" title="فیلتر تاریخ تسویه (تا)">
         <select class="form-select" id="filterSalesPlatform" style="width:140px;" onchange="app.renderSales()">
           <option value="">همه پلتفرم‌ها</option>
         </select>
@@ -2004,7 +2006,7 @@
       <div class="form-group">
         <label for="smsComposeBody">متن پیام (الگو یا دستی)</label>
         <textarea class="form-input" id="smsComposeBody" rows="5" dir="rtl" oninput="app.onSmsComposeBodyInput()"></textarea>
-        <p class="settings-pane-desc" style="margin-top:6px;">Placeholderها: {customer_name} {phone} {product_name} {balance} {total_balance} {settlement_date} {tracking_code} {followup_date} {advisor} {org_name}</p>
+        <p class="settings-pane-desc" style="margin-top:6px;">Placeholderها: {customer_name} {phone} {product_name} {balance} {total_balance} {settlement_date} {days_to_settlement} {days_to_settlement_text} {tracking_code} {followup_date} {advisor} {org_name}</p>
       </div>
       <div class="form-group">
         <label>پیش‌نمایش (نمونه اولین گیرنده)</label>
