@@ -5171,6 +5171,25 @@
     color: var(--text-muted);
   }
 
+  .settings-scope-banner {
+    padding: 8px 20px;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: color-mix(in srgb, var(--border) 55%, transparent);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .settings-scope-banner.is-group-scope {
+    color: var(--ink);
+    background: color-mix(in srgb, #f59e0b 14%, transparent);
+    border-bottom-color: color-mix(in srgb, #f59e0b 35%, var(--border));
+  }
+
+  .settings-target-form.is-group-scope-limited #salesTargetTitle {
+    opacity: 0.85;
+  }
+
   .settings-access-list {
     display: flex;
     flex-direction: column;

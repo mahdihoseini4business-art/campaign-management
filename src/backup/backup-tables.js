@@ -48,6 +48,7 @@ export const BACKUP_TABLE_CONFIG = Object.freeze({
     primaryKey: 'username'
   },
   groups: {
+    // `*` includes settings_access when migration 046 is applied
     select: '*',
     orderCol: 'name',
     ascending: true,

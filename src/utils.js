@@ -2552,6 +2552,20 @@ export function isSettingsSectionGroupScoped(sectionId, user = getCurrentUser())
   return getSettingsSectionScope(sectionId, user) === 'group'
 }
 
+/**
+ * Short Persian hint for current section scope (null when main admin / no access).
+ * @returns {string|null}
+ */
+export function getSettingsSectionScopeHint(sectionId, user = getCurrentUser()) {
+  if (!user || isMainAdmin(user) || !canAccessSettingsSection(sectionId, user)) return null
+  if (!settingsSectionSupportsScope(sectionId)) {
+    return 'ویرایش دادهٔ مشترک سازمان'
+  }
+  return getSettingsSectionScope(sectionId, user) === 'group'
+    ? 'محدود به اعضای گروه شما'
+    : 'دسترسی برای همه کاربران'
+}
+
 // ============================================
 // Global digit conversion listener
 // ============================================

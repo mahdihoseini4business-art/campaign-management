@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali, canOpenSettings, canAccessSettingsSection, listAccessibleSettingsSectionIds, requireSettingsAccess, requireSettingsSection, SETTINGS_SECTION_ACCESS, settingsSectionSupportsScope, readSettingsAccessEntry, normalizeSettingsAccess, canManageSettingsUserRecord, requireManageSettingsUser, isSettingsSectionGroupScoped } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali, canOpenSettings, canAccessSettingsSection, listAccessibleSettingsSectionIds, requireSettingsAccess, requireSettingsSection, SETTINGS_SECTION_ACCESS, settingsSectionSupportsScope, readSettingsAccessEntry, normalizeSettingsAccess, canManageSettingsUserRecord, requireManageSettingsUser, isSettingsSectionGroupScoped, getSettingsSectionScopeHint } from './utils.js'
 import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
 import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS } from './sms-features.js'
 import { canManageSmsSettings, canViewSmsHistory, canEditSmsTemplates } from './sms-business.js'
@@ -593,6 +593,8 @@ function applySettingsSection(sectionId) {
   const select = document.getElementById('settingsNavSelect')
   if (select && select.value !== sectionId) select.value = sectionId
 
+  updateSettingsScopeChrome(sectionId)
+
   if (sectionId === 'groups') renderGroupsSettings()
   else if (sectionId === 'banks') renderDestinationBanksSettings()
   else if (sectionId === 'products') renderProductsSettingsPane()
@@ -613,6 +615,72 @@ function applySettingsSection(sectionId) {
   }
   else if (sectionId === 'sms') renderSmsPanelSettings()
   else if (sectionId === 'shipping-sender') renderShippingSenderSettings()
+}
+
+/** Header subtitle + scope banner + section-specific limited UI. */
+function updateSettingsScopeChrome(sectionId = _settingsSection) {
+  const user = getCurrentUser()
+  const subtitle = document.getElementById('settingsModalSubtitle')
+  const banner = document.getElementById('settingsScopeBanner')
+  const hint = getSettingsSectionScopeHint(sectionId)
+
+  if (subtitle) {
+    if (isMainAdmin()) {
+      subtitle.hidden = true
+      subtitle.textContent = ''
+    } else {
+      const gName = (user?.groupName || '').trim()
+      const base = gName
+        ? `دسترسی محدود — مدیر گروه «${gName}»`
+        : 'دسترسی محدود — مدیر گروه'
+      subtitle.textContent = hint ? `${base} · ${hint}` : base
+      subtitle.hidden = false
+    }
+  }
+
+  if (banner) {
+    if (isMainAdmin() || !hint) {
+      banner.hidden = true
+      banner.textContent = ''
+    } else {
+      banner.textContent = hint
+      banner.hidden = false
+      banner.classList.toggle('is-group-scope', isSettingsSectionGroupScoped(sectionId))
+    }
+  }
+
+  applySalesTargetsLimitedUi()
+}
+
+function applySalesTargetsLimitedUi() {
+  const limited = isSettingsSectionGroupScoped('sales-targets')
+  const form = document.getElementById('settingsTargetForm')
+  form?.classList.toggle('is-group-scope-limited', limited)
+
+  const barsSection = document.getElementById('salesTargetBarsSection')
+  const urgencySection = document.getElementById('salesTargetUrgencySection')
+  if (barsSection) barsSection.hidden = limited
+  if (urgencySection) urgencySection.hidden = limited
+
+  const titleEl = document.getElementById('salesTargetTitle')
+  if (titleEl) {
+    titleEl.readOnly = limited
+    titleEl.title = limited ? 'با دسترسی گروهی فقط سهمیه‌بندی قابل ویرایش است' : ''
+  }
+
+  const saveBtn = document.getElementById('salesTargetSaveBtn')
+  if (saveBtn && limited) {
+    saveBtn.textContent = _editingSalesTargetId ? 'ذخیره سهمیه گروه من' : 'ذخیره سهمیه گروه من'
+  } else if (saveBtn && !_editingSalesTargetId) {
+    saveBtn.textContent = 'ذخیره گروه'
+  }
+
+  const allocDesc = document.querySelector('#salesTargetAllocSection .settings-pane-desc')
+  if (allocDesc) {
+    allocDesc.textContent = limited
+      ? 'فقط سهمیه گروه خودتان را می‌توانید تنظیم کنید. ساختار نوارها و رنگ تایمر توسط ادمین مدیریت می‌شود.'
+      : 'برای هر گروه می‌توانید تارگت جدا با همان تعداد مرحلهٔ نوار بگذارید.'
+  }
 }
 
 function openSettingsConfirm(message, onConfirm, confirmLabel = 'تأیید') {
@@ -689,9 +757,13 @@ export async function openSettingsModal(sectionId = 'users') {
   }
 
   renderSettingsNav()
-  applySettingsSection(initialSection)
 
   const needsUsers = isMainAdmin() || canAccessSettingsSection('users')
+  const needsGroupsData = isMainAdmin()
+    || canAccessSettingsSection('users')
+    || canAccessSettingsSection('sales-targets')
+    || canAccessSettingsSection('notif-compose')
+
   if (needsUsers) {
     try {
       _settingsUsersCache = await getUsers()
@@ -703,42 +775,37 @@ export async function openSettingsModal(sectionId = 'users') {
     _settingsUsersCache = []
   }
 
-  if (isMainAdmin()) {
+  if (needsGroupsData) {
     try {
       await loadGroupsData()
-      const migration = await migrateLegacyViewUserPhones(_settingsUsersCache)
-      if (!migration.skipped && migration.created > 0) {
-        showToast(`${migration.created} گروه از زیرمجموعه‌های قبلی ساخته شد`)
+      if (isMainAdmin()) {
+        const migration = await migrateLegacyViewUserPhones(_settingsUsersCache)
+        if (!migration.skipped && migration.created > 0) {
+          showToast(`${migration.created} گروه از زیرمجموعه‌های قبلی ساخته شد`)
+        }
+        if (migration.conflicts?.length) {
+          console.warn('تداخل مهاجرت گروه:', migration.conflicts)
+        }
+        await loadGroupsData()
+        if (needsUsers) _settingsUsersCache = await getUsers()
       }
-      if (migration.conflicts?.length) {
-        console.warn('تداخل مهاجرت گروه:', migration.conflicts)
-      }
-      await loadGroupsData()
-      _settingsUsersCache = await getUsers()
     } catch (e) {
       console.error('openSettingsModal groups error:', e)
     }
   }
 
+  const roleFilterEl = document.getElementById('settingsUsersRoleFilter')
+  if (roleFilterEl) {
+    const adminOpt = roleFilterEl.querySelector('option[value="admin"]')
+    if (adminOpt) adminOpt.hidden = !isMainAdmin()
+  }
+
+  applySettingsSection(initialSection)
+
   if (needsUsers) await renderUsersList()
 
   const addUserDetails = document.getElementById('settingsAddUserDetails')
   if (addUserDetails) addUserDetails.hidden = !isMainAdmin()
-
-  const subtitle = document.getElementById('settingsModalSubtitle')
-  const user = getCurrentUser()
-  if (subtitle) {
-    if (isMainAdmin()) {
-      subtitle.hidden = true
-      subtitle.textContent = ''
-    } else {
-      const gName = (user?.groupName || '').trim()
-      subtitle.textContent = gName
-        ? `دسترسی محدود — مدیر گروه «${gName}»`
-        : 'دسترسی محدود — مدیر گروه'
-      subtitle.hidden = false
-    }
-  }
 
   document.getElementById('settingsModal')?.classList.add('active')
   document.getElementById('profileDropdown')?.classList.remove('active')
@@ -755,12 +822,28 @@ function finishCloseSettingsModal() {
       () => {
         discardSalesTargetDraft()
         document.getElementById('settingsModal')?.classList.remove('active')
+        clearSettingsScopeChrome()
       },
       'بستن'
     )
     return
   }
   document.getElementById('settingsModal')?.classList.remove('active')
+  clearSettingsScopeChrome()
+}
+
+function clearSettingsScopeChrome() {
+  const banner = document.getElementById('settingsScopeBanner')
+  if (banner) {
+    banner.hidden = true
+    banner.textContent = ''
+  }
+  const form = document.getElementById('settingsTargetForm')
+  form?.classList.remove('is-group-scope-limited')
+  const barsSection = document.getElementById('salesTargetBarsSection')
+  const urgencySection = document.getElementById('salesTargetUrgencySection')
+  if (barsSection) barsSection.hidden = false
+  if (urgencySection) urgencySection.hidden = false
 }
 
 export function closeSettingsModal() {
@@ -3850,6 +3933,7 @@ export function renderSalesTargetsSettings() {
   renderSalesTargetDraftBars()
   initSalesTargetUrgencySection()
   updateSalesTargetSectionSummaries()
+  applySalesTargetsLimitedUi()
 
   const list = document.getElementById('settingsSalesTargetsList')
   if (!list) return
@@ -3858,6 +3942,7 @@ export function renderSalesTargetsSettings() {
     list.innerHTML = '<div class="settings-empty-detail">هنوز گروهی ثبت نشده</div>'
     return
   }
+  const limited = isSettingsSectionGroupScoped('sales-targets')
   const userGroupName = (id) => getGroupsCache().find(g => g.id === id)?.name || 'گروه'
   list.innerHTML = groups.map(group => {
     const allocCount = (group.allocations || []).length
@@ -3877,8 +3962,8 @@ export function renderSalesTargetsSettings() {
           ${(group.items || []).map(bar => `<div class="settings-config-meta">${escapeHtml(salesTargetBarMetaText(bar))}</div>`).join('')}
         </div>
       </div>
-      <button type="button" class="btn-icon" title="ویرایش گروه" onclick="app.startSalesTargetEdit('${escapeAttr(group.id)}')">✏️</button>
-      <button type="button" class="btn-icon" title="حذف گروه" onclick="app.removeSalesTarget('${escapeAttr(group.id)}')" style="color:var(--danger);">🗑</button>
+      <button type="button" class="btn-icon" title="${limited ? 'ویرایش سهمیه گروه من' : 'ویرایش گروه'}" onclick="app.startSalesTargetEdit('${escapeAttr(group.id)}')">✏️</button>
+      ${limited ? '' : `<button type="button" class="btn-icon" title="حذف گروه" onclick="app.removeSalesTarget('${escapeAttr(group.id)}')" style="color:var(--danger);">🗑</button>`}
     </div>
   `
   }).join('')
@@ -3903,11 +3988,20 @@ export function startSalesTargetEdit(id) {
   if (titleEl) titleEl.value = group.title || ''
   clearSalesTargetBarFields()
   const saveBtn = document.getElementById('salesTargetSaveBtn')
-  if (saveBtn) saveBtn.textContent = 'ذخیره تغییرات گروه'
+  if (saveBtn) {
+    saveBtn.textContent = isSettingsSectionGroupScoped('sales-targets')
+      ? 'ذخیره سهمیه گروه من'
+      : 'ذخیره تغییرات گروه'
+  }
   const cancelBtn = document.getElementById('salesTargetCancelBtn')
   if (cancelBtn) cancelBtn.hidden = false
   renderSalesTargetsSettings()
-  titleEl?.focus()
+  applySalesTargetsLimitedUi()
+  if (!isSettingsSectionGroupScoped('sales-targets')) titleEl?.focus()
+  else {
+    const allocSection = document.getElementById('salesTargetAllocSection')
+    if (allocSection) allocSection.open = true
+  }
 }
 
 export function cancelSalesTargetEdit() {

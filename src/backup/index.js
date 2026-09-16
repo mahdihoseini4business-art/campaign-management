@@ -30,6 +30,7 @@ export {
   normalizeDeletions,
   tableDataPath,
   sanitizeUsersForBackup,
+  sanitizeGroupsForBackup,
   sanitizeTableForBackup,
   suggestBackupFilename,
   suggestDistributionFilename,

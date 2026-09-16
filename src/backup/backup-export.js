@@ -113,7 +113,7 @@ export async function collectFullBackupFromSupabase(opts = {}) {
   if (groupsRes.error && !/groups|does not exist|relation/i.test(groupsRes.error.message || '')) {
     throw new Error('گروه‌ها: ' + groupsRes.error.message)
   }
-  tables.groups = groupsRes.error ? [] : groupsRes.data
+  tables.groups = groupsRes.error ? [] : sanitizeTableForBackup('groups', groupsRes.data)
   report('groups')
 
   const membersRes = await fetchAllRows('group_members', {

@@ -190,7 +190,25 @@ export function sanitizeUsersForBackup(rows) {
  */
 export function sanitizeTableForBackup(table, rows) {
   if (table === 'users') return sanitizeUsersForBackup(rows)
+  if (table === 'groups') return sanitizeGroupsForBackup(rows)
   return rows || []
+}
+
+/**
+ * Normalize groups.settings_access JSON for portable backup/restore.
+ * @param {Record<string, unknown>[]} rows
+ */
+export function sanitizeGroupsForBackup(rows) {
+  return (rows || []).map(row => {
+    const copy = { ...row }
+    let access = copy.settings_access
+    if (typeof access === 'string') {
+      try { access = JSON.parse(access) } catch { access = {} }
+    }
+    if (!access || typeof access !== 'object' || Array.isArray(access)) access = {}
+    copy.settings_access = access
+    return copy
+  })
 }
 
 /**
