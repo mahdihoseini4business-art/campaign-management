@@ -12,12 +12,60 @@ import { getStoredTenantId } from './tenant.js'
  * }} */
 let composeState = null
 
+/** Templates shown per compose kind (manual text always available). */
+const KIND_TEMPLATE_KEYS = Object.freeze({
+  sale_single: ['sale_balance'],
+  sale_group: ['sale_balance'],
+  customer_single: ['customer_campaign'],
+  customer_campaign: ['customer_campaign'],
+  followup_bulk: ['followup_bulk', 'followup_due'],
+  followup_schedule: ['followup_due'],
+  shipment_queued: ['shipment_queued'],
+  shipment_shipped: ['shipment_shipped'],
+})
+
 function renderPreviewText(body, vars) {
   let out = String(body || '')
-  for (const [k, v] of Object.entries(vars || {})) {
+  const merged = { phone: '', ...(vars || {}) }
+  for (const [k, v] of Object.entries(merged)) {
     out = out.split(`{${k}}`).join(String(v ?? ''))
   }
   return out
+}
+
+function smsSegmentInfo(text) {
+  const len = String(text || '').length
+  // Rough GSM-7 vs UCS-2: Persian → UCS-2 (70 / 67)
+  const isUcs2 = /[^\x00-\x7F]/.test(text || '')
+  const single = isUcs2 ? 70 : 160
+  const multi = isUcs2 ? 67 : 153
+  const parts = len === 0 ? 0 : (len <= single ? 1 : Math.ceil(len / multi))
+  return { len, parts }
+}
+
+function templatesForKind(templates, kind, preferredKey) {
+  const keys = KIND_TEMPLATE_KEYS[kind]
+  if (!keys || !keys.length) return templates || []
+  const set = new Set(keys)
+  const filtered = (templates || []).filter((t) => set.has(t.key))
+  if (preferredKey && !filtered.some((t) => t.key === preferredKey)) {
+    const preferred = (templates || []).find((t) => t.key === preferredKey)
+    if (preferred) filtered.unshift(preferred)
+  }
+  return filtered.length ? filtered : (templates || [])
+}
+
+function updateSmsComposeMetaAndCount(previewText) {
+  const metaEl = document.getElementById('smsComposeMeta')
+  const countEl = document.getElementById('smsComposeCount')
+  const n = composeState?.recipients?.length || 0
+  if (metaEl) metaEl.textContent = `${n} گیرنده`
+  const info = smsSegmentInfo(previewText ?? (document.getElementById('smsComposeBody')?.value || ''))
+  if (countEl) {
+    countEl.textContent = info.len
+      ? `${formatNumber(info.len)} کاراکتر · حدود ${formatNumber(info.parts)} پیامک`
+      : ''
+  }
 }
 
 export async function openSmsComposeModal(opts) {
@@ -34,23 +82,18 @@ export async function openSmsComposeModal(opts) {
     onSent: opts.onSent,
   }
   const titleEl = document.getElementById('smsComposeTitle')
-  const metaEl = document.getElementById('smsComposeMeta')
   const sel = document.getElementById('smsComposeTemplate')
   const bodyEl = document.getElementById('smsComposeBody')
-  const countEl = document.getElementById('smsComposeCount')
   if (titleEl) titleEl.textContent = composeState.title
-  if (metaEl) metaEl.textContent = `${composeState.recipients.length} گیرنده`
-  if (countEl) countEl.textContent = ''
+  updateSmsComposeMetaAndCount('')
+  const relevant = templatesForKind(templates, opts.kind, opts.templateKey)
   if (sel) {
-    const relevant = templates.filter((t) => {
-      if (opts.templateKey) return true
-      return true
-    })
     sel.innerHTML = `<option value="">متن دستی</option>` + relevant.map((t) =>
       `<option value="${escapeAttr(t.key)}" ${t.key === opts.templateKey ? 'selected' : ''}>${escapeHtml(t.name || t.key)}</option>`
     ).join('')
   }
-  const tpl = templates.find((t) => t.key === (opts.templateKey || sel?.value))
+  const selectedKey = opts.templateKey || sel?.value || ''
+  const tpl = templates.find((t) => t.key === selectedKey)
   if (bodyEl) bodyEl.value = opts.body || tpl?.body || ''
   updateSmsComposePreview()
   document.getElementById('smsComposeModal')?.classList.add('active')
@@ -62,26 +105,75 @@ export function closeSmsComposeModal() {
 }
 
 export function onSmsComposeTemplateChange() {
+  if (!composeState) return
   const key = document.getElementById('smsComposeTemplate')?.value || ''
-  if (!key || !composeState) return
+  composeState.templateKey = key
+  if (!key) {
+    updateSmsComposePreview()
+    return
+  }
   listSmsTemplates().then((templates) => {
     const tpl = templates.find((t) => t.key === key)
     const bodyEl = document.getElementById('smsComposeBody')
     if (tpl && bodyEl) bodyEl.value = tpl.body || ''
-    if (composeState) composeState.templateKey = key
     updateSmsComposePreview()
-  }).catch(() => {})
+  }).catch(() => {
+    updateSmsComposePreview()
+  })
+}
+
+export function onSmsComposeBodyInput() {
+  updateSmsComposePreview()
+}
+
+function sampleComposeVars() {
+  const sample = composeState?.recipients?.[0]
+  return {
+    phone: sample?.phone || '',
+    ...(sample?.vars || {}),
+  }
 }
 
 function updateSmsComposePreview() {
   const body = document.getElementById('smsComposeBody')?.value || ''
-  const sample = composeState?.recipients?.[0]?.vars || {}
   const preview = document.getElementById('smsComposePreview')
-  if (preview) preview.textContent = renderPreviewText(body, sample)
+  const rendered = renderPreviewText(body, sampleComposeVars())
+  if (preview) {
+    preview.textContent = rendered || '—'
+  }
+  updateSmsComposeMetaAndCount(rendered)
 }
 
-export function previewSmsCompose() {
+export async function previewSmsCompose() {
+  if (!composeState) {
+    updateSmsComposePreview()
+    return
+  }
+  const body = document.getElementById('smsComposeBody')?.value || ''
+  const templateKey = document.getElementById('smsComposeTemplate')?.value || composeState.templateKey || ''
+  const recipients = composeState.recipients || []
+  if (!recipients.length) {
+    updateSmsComposePreview()
+    showToast('گیرنده‌ای برای پیش‌نمایش نیست')
+    return
+  }
+  // Always refresh client preview first
   updateSmsComposePreview()
+  const result = await invokeSendSms({
+    mode: 'preview',
+    kind: composeState.kind,
+    template_key: templateKey || null,
+    body_override: body,
+    recipients: [recipients[0]],
+  })
+  const preview = document.getElementById('smsComposePreview')
+  if (result?.success && result.preview != null) {
+    if (preview) preview.textContent = String(result.preview)
+    updateSmsComposeMetaAndCount(String(result.preview))
+  } else if (result?.error) {
+    // Keep client preview; surface soft warning
+    showToast(result.error)
+  }
 }
 
 export async function submitSmsCompose() {
@@ -123,6 +215,17 @@ export async function submitSmsCompose() {
   if (typeof cb === 'function') cb({ sent, failed })
 }
 
+function recipientsFromCustomers(customers, extraVarsFn) {
+  const recipients = []
+  for (const c of customers || []) {
+    const phone = getPrimaryPhone(c) || c.phone
+    if (!phone) continue
+    const extra = typeof extraVarsFn === 'function' ? (extraVarsFn(c) || {}) : {}
+    recipients.push(buildRecipientFromCustomer(c, extra))
+  }
+  return recipients
+}
+
 /** Sales: single product balance */
 export async function openSaleBalanceSms(customerId, productIndex) {
   const data = getData()
@@ -146,30 +249,60 @@ export async function openSaleBalanceSms(customerId, productIndex) {
   })
 }
 
-/** Sales: all debtors (optional product name filter) */
+/**
+ * Sales tab: debtors from currently filtered sales rows (balance > 0).
+ */
 export async function openDebtorsGroupSms(productNameFilter = '') {
+  if (!canUseSmsKind('sale_group')) {
+    showToast('پیامک گروهی بدهکاران فعال نیست یا دسترسی ندارید')
+    return
+  }
   const data = getData()
+  const byCustomer = new Map()
+
+  let sales = []
+  try {
+    const { getFilteredSales } = await import('./sales.js')
+    sales = getFilteredSales() || []
+  } catch (e) {
+    console.warn('openDebtorsGroupSms filtered sales', e)
+    showToast('خطا در خواندن لیست فروش')
+    return
+  }
+
+  for (const s of sales) {
+    if (productNameFilter && String(s.productName || '') !== productNameFilter) continue
+    const customer = data.customers.find((c) => c.id === s.customerId)
+    if (!customer) continue
+    const productIndex = Number(s.productIndex)
+    const product = customer.products?.[productIndex]
+    if (!product) continue
+    const bal = getOperationalBalance(product)
+    if (bal <= 0) continue
+    let entry = byCustomer.get(customer.id)
+    if (!entry) {
+      entry = { customer, total: 0, parts: [], seen: new Set() }
+      byCustomer.set(customer.id, entry)
+    }
+    if (entry.seen.has(productIndex)) continue
+    entry.seen.add(productIndex)
+    entry.total += bal
+    entry.parts.push(`${product.name || s.productName || 'محصول'}: ${formatBalanceFa(bal)}`)
+  }
+
   const recipients = []
-  for (const c of data.customers) {
-    let total = 0
-    const parts = []
-    ;(c.products || []).forEach((p, idx) => {
-      if (productNameFilter && String(p.name || '') !== productNameFilter) return
-      const bal = getOperationalBalance(p)
-      if (bal > 0) {
-        total += bal
-        parts.push(`${p.name}: ${formatBalanceFa(bal)}`)
-      }
-    })
-    if (total <= 0) continue
-    recipients.push(buildRecipientFromCustomer(c, {
+  for (const { customer, total, parts } of byCustomer.values()) {
+    const phone = getPrimaryPhone(customer) || customer.phone
+    if (!phone) continue
+    recipients.push(buildRecipientFromCustomer(customer, {
       product_name: parts.join('، ') || 'محصولات',
       balance: formatBalanceFa(total),
       total_balance: formatBalanceFa(total),
     }))
   }
+
   if (!recipients.length) {
-    showToast('بدهکاری یافت نشد')
+    showToast('بدهکاری در لیست فیلترشده فعلی یافت نشد')
     return
   }
   await openSmsComposeModal({
@@ -194,10 +327,33 @@ export async function openCustomerSingleSms(customerId) {
   })
 }
 
+/** Customers tab: bulk SMS to currently filtered customers (not follow-up queue). */
+export async function openCustomersFilteredSms() {
+  if (!canUseSmsKind('customer_campaign')) {
+    showToast('کمپین / پیامک مشتریان فعال نیست یا دسترسی ندارید')
+    return
+  }
+  const { getFilteredCustomers } = await import('./customers.js')
+  const filtered = getFilteredCustomers() || []
+  const recipients = recipientsFromCustomers(filtered)
+  if (!recipients.length) {
+    showToast('در فیلتر فعلی مشتری با شماره معتبر نیست')
+    return
+  }
+  await openSmsComposeModal({
+    kind: 'customer_campaign',
+    title: 'پیامک به مشتریان فیلترشده',
+    templateKey: 'customer_campaign',
+    recipients,
+  })
+}
+
 export async function openFollowupBulkSms(items) {
   const recipients = (items || []).map((item) => {
     const customer = getData().customers.find((c) => c.id === item.customerId)
     if (!customer) return null
+    const phone = getPrimaryPhone(customer) || customer.phone
+    if (!phone) return null
     return buildRecipientFromCustomer(customer, {
       followup_date: item.nextDate || customer.nextFollowupDate || '',
     })
@@ -218,9 +374,6 @@ export async function openFollowupBulkSms(items) {
 export async function scheduleFollowupSms(customer, followupDate, { bodyOverride = null, templateKey = 'followup_due' } = {}) {
   if (!canUseSmsKind('followup_schedule')) return null
   const hour = getFollowupSmsDefaultHour()
-  // followupDate is Jalali YYYY/MM/DD — store send_at as approx: use local Date with that calendar string in meta; convert via midday UTC offset heuristic
-  // Practical approach: send_at = now if date is today/past morning; else encode as ISO from a parsed approximation.
-  // We keep Jalali in meta and set send_at to tomorrow-equivalent using a simple local construction:
   const sendAt = jalaliDateToApproxIso(followupDate, hour)
   await cancelPendingSmsSchedulesForCustomer(customer.id)
   return createSmsSchedule({
@@ -250,10 +403,7 @@ function jalaliDateToApproxIso(jalaliDate, hour) {
     d.setHours(hour, 0, 0, 0)
     return d.toISOString()
   }
-  // Use Intl-free approximation: treat as gregorian offset ~621 years for scheduling MVP
-  // Better: store as UTC date constructed from jalaali if available — check if project has helper
   try {
-    // dynamic: many carno files use jalali — look for toGregorian
     const gy = parts[0] - 621
     const d = new Date(Date.UTC(gy, parts[1] - 1, parts[2], hour - 3.5, 0, 0))
     if (!Number.isNaN(d.getTime())) return d.toISOString()
@@ -266,6 +416,16 @@ function jalaliDateToApproxIso(jalaliDate, hour) {
 // —— Campaign wizard ——
 let campaignAudience = []
 
+function updateSmsCampaignPreview() {
+  const body = document.getElementById('smsCampaignBody')?.value || ''
+  const sample = campaignAudience[0]?.vars || {}
+  const phone = campaignAudience[0]?.phone || ''
+  const preview = document.getElementById('smsCampaignPreview')
+  if (preview) {
+    preview.textContent = renderPreviewText(body, { phone, ...sample }) || '—'
+  }
+}
+
 export async function openSmsCampaignModal() {
   if (!canUseSmsKind('customer_campaign')) {
     showToast('کمپین پیامک فعال نیست یا دسترسی ندارید')
@@ -274,23 +434,24 @@ export async function openSmsCampaignModal() {
   const statuses = getStatuses()
   const statusSel = document.getElementById('smsCampaignStatus')
   if (statusSel) {
-    statusSel.innerHTML = `<option value="">همه</option>` + statuses.map((s) =>
+    statusSel.innerHTML = `<option value="">همه (فیلتر تب مشتریان)</option>` + statuses.map((s) =>
       `<option value="${escapeAttr(s.key)}">${escapeHtml(s.label || s.key)}</option>`
     ).join('')
   }
   const templates = await listSmsTemplates().catch(() => [])
+  const campaignTemplates = templatesForKind(templates, 'customer_campaign', 'customer_campaign')
   const tplSel = document.getElementById('smsCampaignTemplate')
   if (tplSel) {
-    tplSel.innerHTML = templates.map((t) =>
+    tplSel.innerHTML = `<option value="">متن دستی</option>` + campaignTemplates.map((t) =>
       `<option value="${escapeAttr(t.key)}" ${t.key === 'customer_campaign' ? 'selected' : ''}>${escapeHtml(t.name || t.key)}</option>`
     ).join('')
   }
-  const tpl = templates.find((t) => t.key === 'customer_campaign') || templates[0]
+  const tpl = templates.find((t) => t.key === 'customer_campaign') || campaignTemplates[0]
   const bodyEl = document.getElementById('smsCampaignBody')
   if (bodyEl) bodyEl.value = tpl?.body || ''
   const titleEl = document.getElementById('smsCampaignTitle')
   if (titleEl) titleEl.value = ''
-  refreshSmsCampaignAudience()
+  await refreshSmsCampaignAudienceAsync()
   document.getElementById('smsCampaignModal')?.classList.add('active')
 }
 
@@ -301,30 +462,56 @@ export function closeSmsCampaignModal() {
 
 export function onSmsCampaignTemplateChange() {
   const key = document.getElementById('smsCampaignTemplate')?.value || ''
+  if (!key) {
+    updateSmsCampaignPreview()
+    return
+  }
   listSmsTemplates().then((templates) => {
     const tpl = templates.find((t) => t.key === key)
     const bodyEl = document.getElementById('smsCampaignBody')
     if (tpl && bodyEl) bodyEl.value = tpl.body || ''
-  }).catch(() => {})
+    updateSmsCampaignPreview()
+  }).catch(() => {
+    updateSmsCampaignPreview()
+  })
 }
 
-export function refreshSmsCampaignAudience() {
-  const status = document.getElementById('smsCampaignStatus')?.value || ''
-  const data = getData()
+export function onSmsCampaignBodyInput() {
+  updateSmsCampaignPreview()
+}
+
+function finishAudience(base, status) {
   campaignAudience = []
-  for (const c of data.customers) {
+  for (const c of base) {
     if (status && String(c.status || '') !== status) continue
     const phone = getPrimaryPhone(c) || c.phone
     if (!phone) continue
     campaignAudience.push(buildRecipientFromCustomer(c))
   }
   const el = document.getElementById('smsCampaignCount')
-  if (el) el.textContent = `${campaignAudience.length} گیرنده`
+  if (el) el.textContent = `${campaignAudience.length} گیرنده (بر اساس فیلتر تب مشتریان)`
+  updateSmsCampaignPreview()
+}
+
+/** Audience = customers-tab filters, optionally narrowed by campaign status select. */
+export function refreshSmsCampaignAudience() {
+  void refreshSmsCampaignAudienceAsync()
+}
+
+export async function refreshSmsCampaignAudienceAsync() {
+  const status = document.getElementById('smsCampaignStatus')?.value || ''
+  let base = getData().customers || []
+  try {
+    const { getFilteredCustomers } = await import('./customers.js')
+    base = getFilteredCustomers() || base
+  } catch (_) { /* keep all */ }
+  finishAudience(base, status)
+  return campaignAudience
 }
 
 export async function submitSmsCampaign() {
   if (!canUseSmsKind('customer_campaign')) return
-  refreshSmsCampaignAudience()
+  await refreshSmsCampaignAudienceAsync()
   if (!campaignAudience.length) {
     showToast('مخاطبی انتخاب نشده')
     return
@@ -333,6 +520,10 @@ export async function submitSmsCampaign() {
   const mode = document.getElementById('smsCampaignMode')?.value || 'immediate'
   const templateKey = document.getElementById('smsCampaignTemplate')?.value || 'customer_campaign'
   const body = document.getElementById('smsCampaignBody')?.value || ''
+  if (!body.trim()) {
+    showToast('متن پیام را وارد کنید')
+    return
+  }
   const dripInterval = Number(document.getElementById('smsCampaignDripInterval')?.value || 5)
   const dripBatch = Number(document.getElementById('smsCampaignDripBatch')?.value || 20)
   let sendAt = null
@@ -343,7 +534,7 @@ export async function submitSmsCampaign() {
 
   const campaign = await createSmsCampaign({
     title,
-    template_key: templateKey,
+    template_key: templateKey || null,
     body,
     filter: { status: document.getElementById('smsCampaignStatus')?.value || '', recipients: campaignAudience },
     mode,
@@ -357,18 +548,16 @@ export async function submitSmsCampaign() {
   })
 
   if (mode === 'immediate') {
-    // Kick first batches from client
     for (let i = 0; i < campaignAudience.length; i += 50) {
       const chunk = campaignAudience.slice(i, i + 50)
       await invokeSendSms({
         mode: 'bulk',
         kind: 'customer_campaign',
-        template_key: templateKey,
+        template_key: templateKey || null,
         body_override: body,
         recipients: chunk,
       })
     }
-    // mark done via update
     const { supabase } = await import('./supabase.js')
     const tenantId = getStoredTenantId()
     await supabase.from('sms_campaigns').update({
