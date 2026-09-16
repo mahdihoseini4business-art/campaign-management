@@ -3477,6 +3477,12 @@ export async function setProducts(customerId, products) {
   invalidateProductSalesCountCache()
   syncCustomerLevel(data.customers[idx], data.customers, data.followups)
   await saveCustomerToDB(data.customers[idx])
+  try {
+    const { syncSettlementDueSmsForCustomer } = await import('./sms-ui.js')
+    await syncSettlementDueSmsForCustomer(data.customers[idx])
+  } catch (e) {
+    console.error('settlement due SMS sync:', e)
+  }
 }
 let detailUsersCache = []
 

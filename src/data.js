@@ -3791,6 +3791,19 @@ export async function cancelPendingSmsSchedulesForCustomer(customerId) {
     .eq('kind', 'followup_schedule')
 }
 
+/** Cancel pending settlement-due SMS schedules for a customer (all products). */
+export async function cancelPendingSettlementSmsForCustomer(customerId) {
+  const tenantId = getStoredTenantId()
+  if (!tenantId || !customerId) return
+  await supabase
+    .from('sms_schedules')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('tenant_id', tenantId)
+    .eq('customer_id', customerId)
+    .eq('status', 'pending')
+    .eq('kind', 'sale_settlement_due')
+}
+
 export function getShippingSender() {
   return normalizeShippingSender(data.shippingSender)
 }

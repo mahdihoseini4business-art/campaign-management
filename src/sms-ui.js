@@ -1,5 +1,5 @@
-import { getData, listSmsTemplates, createSmsCampaign, createSmsSchedule, cancelPendingSmsSchedulesForCustomer, getFollowupSmsDefaultHour, getStatuses, getProductCatalogNames, getPlatforms } from './data.js'
-import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normalizePhone, getOperationalBalance, getPrimaryPhone, jalaliDateTimeToIso, CUSTOMER_LEVELS, resolveCustomerLevel, formatTeamFilterLabel } from './utils.js'
+import { getData, listSmsTemplates, createSmsCampaign, createSmsSchedule, cancelPendingSmsSchedulesForCustomer, cancelPendingSettlementSmsForCustomer, getFollowupSmsDefaultHour, getStatuses, getProductCatalogNames, getPlatforms } from './data.js'
+import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normalizePhone, getOperationalBalance, getPrimaryPhone, jalaliDateTimeToIso, isGiftSale, isDealCancelled, CUSTOMER_LEVELS, resolveCustomerLevel, formatTeamFilterLabel } from './utils.js'
 import { canUseSmsKind, invokeSendSms, buildRecipientFromCustomer, formatBalanceFa, fetchSmsQuota } from './sms-business.js'
 import { getStoredTenantId } from './tenant.js'
 import { getReferralCountForCustomer } from './derived-cache.js'
@@ -65,6 +65,7 @@ let composeState = null
 const KIND_TEMPLATE_KEYS = Object.freeze({
   sale_single: ['sale_balance'],
   sale_group: ['sale_balance'],
+  sale_settlement_due: ['sale_settlement_due'],
   customer_single: ['customer_campaign'],
   customer_campaign: ['customer_campaign'],
   followup_bulk: ['followup_bulk', 'followup_due'],
@@ -498,6 +499,66 @@ export async function scheduleFollowupSms(customer, followupDate, { bodyOverride
       },
     },
   })
+}
+
+function isSettlementDueSmsEligible(product) {
+  if (!product) return false
+  if (isGiftSale(product) || isDealCancelled(product)) return false
+  if (product.status === 'تکمیل') return false
+  const settlementDate = String(product.settlementDate || '').trim()
+  if (!settlementDate) return false
+  const balance = getOperationalBalance(product)
+  return balance > 0
+}
+
+/**
+ * Rebuild pending settlement-due SMS schedules for all products of a customer.
+ * Org feature must be on; runs as auto (no per-user permission required).
+ */
+export async function syncSettlementDueSmsForCustomer(customer) {
+  if (!customer?.id) return
+  try {
+    await cancelPendingSettlementSmsForCustomer(customer.id)
+    if (!canUseSmsKind('sale_settlement_due', { auto: true })) return
+
+    const products = customer.products || []
+    const hour = getFollowupSmsDefaultHour()
+    const timeStr = `${String(hour).padStart(2, '0')}:00`
+    const createdBy = normalizePhone(getCurrentUser()?.phone || '')
+
+    for (let productIndex = 0; productIndex < products.length; productIndex++) {
+      const product = products[productIndex]
+      if (!isSettlementDueSmsEligible(product)) continue
+      const settlementDate = String(product.settlementDate || '').trim()
+      const balance = getOperationalBalance(product)
+      let sendAt = jalaliDateTimeToIso(settlementDate, timeStr)
+      if (!sendAt) continue
+      await createSmsSchedule({
+        customer_id: customer.id,
+        kind: 'sale_settlement_due',
+        template_key: 'sale_settlement_due',
+        body_override: null,
+        send_at: sendAt,
+        created_by: createdBy,
+        meta: {
+          productIndex,
+          settlementDate,
+          product_name: product.name || '',
+          vars: {
+            customer_name: customer.name || '',
+            advisor: customer.advisor || '',
+            product_name: product.name || '',
+            balance: formatBalanceFa(balance),
+            total_balance: formatBalanceFa(balance),
+            settlement_date: settlementDate,
+            org_name: 'آکادمی کارنو',
+          },
+        },
+      })
+    }
+  } catch (e) {
+    console.error('syncSettlementDueSmsForCustomer', e)
+  }
 }
 
 // —— Campaign wizard ——

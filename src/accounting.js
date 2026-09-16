@@ -367,6 +367,12 @@ async function updatePaymentEntry(customerId, productIndex, paymentIndex, patch)
   Object.assign(product.payments[paymentIndex], patch)
   syncProductStatus(product)
   await saveCustomerToDB(customer)
+  try {
+    const { syncSettlementDueSmsForCustomer } = await import('./sms-ui.js')
+    await syncSettlementDueSmsForCustomer(customer)
+  } catch (e) {
+    console.error('settlement due SMS sync after payment:', e)
+  }
   return true
 }
 

@@ -5,6 +5,7 @@ export const SMS_FEATURE_KEYS = [
   'shipment_shipped',
   'sales_single',
   'sales_group_debtors',
+  'sales_settlement_due',
   'customer_single',
   'customer_campaign',
   'followup_on_schedule',
@@ -14,7 +15,9 @@ export const SMS_FEATURE_KEYS = [
 ]
 
 export const DEFAULT_SMS_FEATURES = Object.freeze(
-  Object.fromEntries(SMS_FEATURE_KEYS.map((k) => [k, true]))
+  Object.fromEntries(
+    SMS_FEATURE_KEYS.map((k) => [k, k === 'sales_settlement_due' ? false : true])
+  )
 )
 
 export const SMS_FEATURE_LABELS = Object.freeze({
@@ -22,6 +25,7 @@ export const SMS_FEATURE_LABELS = Object.freeze({
   shipment_shipped: 'پیامک تأیید ارسال و کد رهگیری',
   sales_single: 'پیامک فروش / مانده تکی',
   sales_group_debtors: 'پیامک گروهی به بدهکاران',
+  sales_settlement_due: 'پیامک خودکار در موعد تسویه (بر اساس مانده)',
   customer_single: 'پیامک تکی به مشتری',
   customer_campaign: 'کمپین پیامکی مشتریان',
   followup_on_schedule: 'پیامک زمان‌بندی‌شده روی موعد فالوآپ',
@@ -36,6 +40,7 @@ export const SMS_KIND_FEATURE = Object.freeze({
   shipment_shipped: 'shipment_shipped',
   sale_single: 'sales_single',
   sale_group: 'sales_group_debtors',
+  sale_settlement_due: 'sales_settlement_due',
   customer_single: 'customer_single',
   customer_campaign: 'customer_campaign',
   followup_schedule: 'followup_on_schedule',
@@ -48,6 +53,7 @@ export const SMS_KIND_PERMISSION = Object.freeze({
   shipment_shipped: 'sms_shipment_shipped',
   sale_single: 'sms_sales_single',
   sale_group: 'sms_sales_group',
+  sale_settlement_due: 'sms_sales_settlement',
   customer_single: 'sms_customer_single',
   customer_campaign: 'sms_customer_campaign',
   followup_schedule: 'sms_followup_schedule',
@@ -69,6 +75,11 @@ export const DEFAULT_SMS_TEMPLATES = Object.freeze([
     key: 'sale_balance',
     name: 'مانده حساب',
     body: 'سلام {customer_name} عزیز، مانده حساب شما بابت «{product_name}»: {balance} ریال.',
+  },
+  {
+    key: 'sale_settlement_due',
+    name: 'موعد تسویه',
+    body: 'سلام {customer_name} عزیز، موعد تسویه «{product_name}» ({settlement_date}) فرا رسیده است. مانده حساب شما: {balance} ریال.',
   },
   {
     key: 'customer_campaign',

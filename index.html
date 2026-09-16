@@ -528,8 +528,9 @@
             <div id="smsFeaturesToggles" class="sms-features-list"></div>
             <div class="form-row" style="flex-wrap:wrap;gap:12px;margin-top:12px;">
               <div class="form-group" style="min-width:140px;">
-                <label for="smsFollowupDefaultHour">ساعت پیش‌فرض پیامک فالوآپ</label>
+                <label for="smsFollowupDefaultHour">ساعت پیش‌فرض پیامک فالوآپ / موعد تسویه</label>
                 <input type="number" class="form-input" id="smsFollowupDefaultHour" min="0" max="23" step="1" value="10">
+                <p class="form-hint" style="margin-top:6px;">اگر «پیامک خودکار در موعد تسویه» فعال باشد، در تاریخ تسویهٔ هر فروش باز با مانده، در این ساعت پیامک شخصی‌سازی‌شده با مبلغ بدهی ارسال می‌شود.</p>
               </div>
             </div>
             <div class="form-row settings-add-row" style="justify-content:flex-start;gap:8px;">
@@ -1988,7 +1989,7 @@
       <div class="form-group">
         <label for="smsComposeBody">متن پیام (الگو یا دستی)</label>
         <textarea class="form-input" id="smsComposeBody" rows="5" dir="rtl" oninput="app.onSmsComposeBodyInput()"></textarea>
-        <p class="settings-pane-desc" style="margin-top:6px;">Placeholderها: {customer_name} {phone} {product_name} {balance} {total_balance} {tracking_code} {followup_date} {advisor} {org_name}</p>
+        <p class="settings-pane-desc" style="margin-top:6px;">Placeholderها: {customer_name} {phone} {product_name} {balance} {total_balance} {settlement_date} {tracking_code} {followup_date} {advisor} {org_name}</p>
       </div>
       <div class="form-group">
         <label>پیش‌نمایش (نمونه اولین گیرنده)</label>

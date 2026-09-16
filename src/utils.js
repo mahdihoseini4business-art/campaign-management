@@ -1264,6 +1264,7 @@ export const ALL_PERMISSIONS = {
   sms_shipment_shipped: 'پیامک تأیید ارسال و رهگیری',
   sms_sales_single: 'پیامک فروش تکی (الگو / دستی)',
   sms_sales_group: 'پیامک گروهی بدهکاران',
+  sms_sales_settlement: 'پیامک خودکار موعد تسویه فروش',
   sms_customer_single: 'پیامک تکی به مشتری',
   sms_customer_campaign: 'کمپین پیامکی مشتریان',
   sms_followup_schedule: 'زمان‌بندی پیامک روی موعد فالوآپ',
@@ -1290,6 +1291,7 @@ export const PERMISSION_GROUPS = [
       'sms_shipment_shipped',
       'sms_sales_single',
       'sms_sales_group',
+      'sms_sales_settlement',
       'sms_customer_single',
       'sms_customer_campaign',
       'sms_followup_schedule',
@@ -1910,6 +1912,7 @@ export function getDefaultPermissions() {
   p.sms_shipment_shipped = false
   p.sms_sales_single = false
   p.sms_sales_group = false
+  p.sms_sales_settlement = false
   p.sms_customer_single = false
   p.sms_customer_campaign = false
   p.sms_followup_schedule = false

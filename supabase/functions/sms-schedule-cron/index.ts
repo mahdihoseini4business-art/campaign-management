@@ -24,6 +24,30 @@ function normalizePhone(raw: unknown): string {
   return ''
 }
 
+function formatBalanceFa(n: number): string {
+  try {
+    return Math.max(0, Math.floor(n || 0)).toLocaleString('fa-IR')
+  } catch (_) {
+    return String(Math.max(0, Math.floor(n || 0)))
+  }
+}
+
+/** Recompute operational balance for a product line (approved + pending, not rejected). */
+function operationalBalance(product: Record<string, unknown> | null | undefined): number {
+  if (!product) return 0
+  const price = Number(product.price) || 0
+  const payments = Array.isArray(product.payments) ? product.payments : []
+  let paid = 0
+  for (const pay of payments) {
+    const p = pay && typeof pay === 'object' ? pay as Record<string, unknown> : null
+    if (!p) continue
+    const status = String(p.paymentStatus || 'approved')
+    if (status === 'rejected') continue
+    paid += Number(p.amount) || 0
+  }
+  return Math.max(0, price - paid)
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -59,10 +83,11 @@ serve(async (req) => {
       let customerName = ''
       let advisor = ''
       let followupDate = ''
+      let products: unknown[] = []
       if (sch.customer_id) {
         const { data: cust } = await admin
           .from('customers')
-          .select('id, name, phone, phones, advisor, next_followup_date')
+          .select('id, name, phone, phones, advisor, next_followup_date, products')
           .eq('tenant_id', tenantId)
           .eq('id', sch.customer_id)
           .maybeSingle()
@@ -74,16 +99,47 @@ serve(async (req) => {
           customerName = String(cust.name || '')
           advisor = String(cust.advisor || '')
           followupDate = String(cust.next_followup_date || '')
+          products = Array.isArray(cust.products) ? cust.products : []
         }
       }
-      const meta = sch.meta && typeof sch.meta === 'object' ? sch.meta : {}
+      const meta = sch.meta && typeof sch.meta === 'object' ? sch.meta as Record<string, unknown> : {}
       const kind = String(sch.kind || 'followup_schedule')
+
+      // Settlement-due: refresh balance; skip if already paid / completed / gift
+      let settlementVars: Record<string, string> = {}
+      if (kind === 'sale_settlement_due') {
+        const productIndex = Number(meta.productIndex)
+        const product = Number.isFinite(productIndex) ? products[productIndex] as Record<string, unknown> | undefined : undefined
+        const status = String(product?.status || '')
+        const balance = operationalBalance(product)
+        const settlementDate = String(product?.settlementDate || meta.settlementDate || '')
+        if (!product || status === 'تکمیل' || status === 'هدیه' || balance <= 0 || !settlementDate) {
+          await admin.from('sms_schedules').update({
+            status: 'cancelled',
+            updated_at: nowIso,
+            meta: { ...meta, skip_reason: 'no_balance_or_settled' },
+          }).eq('id', sch.id)
+          schedulesProcessed += 1
+          continue
+        }
+        settlementVars = {
+          product_name: String(product.name || meta.product_name || ''),
+          balance: formatBalanceFa(balance),
+          total_balance: formatBalanceFa(balance),
+          settlement_date: settlementDate,
+        }
+      }
+
       const invokeBody = {
         tenant_id: tenantId,
         mode: 'single',
         kind,
         auto: true,
-        template_key: sch.template_key || (kind === 'followup_bulk' ? 'followup_bulk' : 'followup_due'),
+        template_key: sch.template_key || (
+          kind === 'sale_settlement_due'
+            ? 'sale_settlement_due'
+            : (kind === 'followup_bulk' ? 'followup_bulk' : 'followup_due')
+        ),
         body_override: sch.body_override || null,
         recipients: [{
           phone,
@@ -93,7 +149,8 @@ serve(async (req) => {
             advisor,
             followup_date: followupDate || String(meta.followup_date || ''),
             org_name: String(meta.org_name || 'آکادمی کارنو'),
-            ...(meta.vars || {}),
+            ...((meta.vars && typeof meta.vars === 'object') ? meta.vars as Record<string, string> : {}),
+            ...settlementVars,
           },
           meta: { schedule_id: sch.id, ...meta },
         }],
