@@ -12,14 +12,17 @@ import {
   getCurrentUser,
   normalizePhone,
   userDisplayName,
-  requireMainAdmin,
   isMainAdmin,
   toJalali,
   jalaliDateTimeToIso,
   toEnDigits,
   normalizeTimeTo24h,
   renderMarkdown,
-  plainTextFromMarkdown
+  plainTextFromMarkdown,
+  canAccessSettingsSection,
+  requireSettingsSection,
+  isSettingsSectionGroupScoped,
+  getSettingsManagedPhoneSet
 } from './utils.js'
 import {
   isDigestKind,
@@ -497,20 +500,29 @@ export async function renderNotificationAdminSection() {
   const listEl = document.getElementById('notifRecipientList')
   if (!listEl) return
 
-  if (!isMainAdmin()) return
+  const canCompose = canAccessSettingsSection('notif-compose')
+  const canHistory = canAccessSettingsSection('notif-history')
+  if (!canCompose && !canHistory) return
 
   clearComposeFields()
 
   // Warm markdown libs for compose preview
   import('./utils.js').then(m => m.renderMarkdown('')).catch(() => {})
 
-  const users = (await getUsersSafe()).filter(u => u.phone)
-  try { await loadGroupsData() } catch (_) { /* optional */ }
-  listEl.innerHTML = buildGroupedRecipientListHtml(users)
+  if (canCompose) {
+    let users = (await getUsersSafe()).filter(u => u.phone)
+    if (isSettingsSectionGroupScoped('notif-compose')) {
+      const allowed = getSettingsManagedPhoneSet()
+      users = users.filter(u => allowed.has(normalizePhone(u.phone)))
+    }
+    try { await loadGroupsData() } catch (_) { /* optional */ }
+    listEl.innerHTML = buildGroupedRecipientListHtml(users)
+    updateNotifRecipientCount()
+  }
 
-  updateNotifRecipientCount()
-
-  await refreshNotifications()
+  if (canHistory || canCompose) {
+    await refreshNotifications()
+  }
   if (window.jalaliDatepicker) {
     try { window.jalaliDatepicker.startWatch({ selector: 'input[data-jdp]', time: false, zIndex: 11000 }) } catch (_) { /* ignore */ }
   }
@@ -591,7 +603,7 @@ function parseExpireAtFromForm() {
 }
 
 export async function sendNotification() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('notif-compose')) return
 
   const titleEl = document.getElementById('notifTitle')
   const msgEl = document.getElementById('notifMessage')
@@ -607,9 +619,14 @@ export async function sendNotification() {
     return
   }
 
-  const phones = [...document.querySelectorAll('#notifRecipientList .notif-recipient-cb:checked')]
+  let phones = [...document.querySelectorAll('#notifRecipientList .notif-recipient-cb:checked')]
     .map(cb => normalizePhone(cb.value))
     .filter(Boolean)
+
+  if (isSettingsSectionGroupScoped('notif-compose')) {
+    const allowed = getSettingsManagedPhoneSet()
+    phones = phones.filter(p => allowed.has(p))
+  }
 
   if (!phones.length) {
     showToast('حداقل یک عضو را انتخاب کنید')

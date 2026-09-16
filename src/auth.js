@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali, canOpenSettings, canAccessSettingsSection, listAccessibleSettingsSectionIds, requireSettingsAccess, SETTINGS_SECTION_ACCESS, settingsSectionSupportsScope, readSettingsAccessEntry, normalizeSettingsAccess } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali, canOpenSettings, canAccessSettingsSection, listAccessibleSettingsSectionIds, requireSettingsAccess, requireSettingsSection, SETTINGS_SECTION_ACCESS, settingsSectionSupportsScope, readSettingsAccessEntry, normalizeSettingsAccess, canManageSettingsUserRecord, requireManageSettingsUser, isSettingsSectionGroupScoped } from './utils.js'
 import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
 import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS } from './sms-features.js'
 import { canManageSmsSettings, canViewSmsHistory, canEditSmsTemplates } from './sms-business.js'
@@ -722,6 +722,9 @@ export async function openSettingsModal(sectionId = 'users') {
 
   if (needsUsers) await renderUsersList()
 
+  const addUserDetails = document.getElementById('settingsAddUserDetails')
+  if (addUserDetails) addUserDetails.hidden = !isMainAdmin()
+
   const subtitle = document.getElementById('settingsModalSubtitle')
   const user = getCurrentUser()
   if (subtitle) {
@@ -816,7 +819,9 @@ export async function addUser() {
 }
 
 export function startEditUserInfo(username) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('users')) return
+  const cached = _settingsUsersCache.find(u => u.username === username)
+  if (!requireManageSettingsUser(cached)) return
   _editingUserInfo = username
   renderSelectedUserDetail(false)
   document.getElementById('editUserFirstName')?.focus()
@@ -828,15 +833,19 @@ export function cancelEditUserInfo() {
 }
 
 export async function saveEditUserInfo(username) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('users')) return
   const cached = _settingsUsersCache.find(u => u.username === username)
   if (!cached) { showToast('کاربر یافت نشد'); return }
+  if (!requireManageSettingsUser(cached)) return
 
   const firstName = document.getElementById('editUserFirstName')?.value.trim() || ''
   const lastName = document.getElementById('editUserLastName')?.value.trim() || ''
   const phone = normalizePhone(document.getElementById('editUserPhone')?.value.trim() || '')
   const roleEl = document.getElementById('editUserRole')
-  const role = cached.username === 'admin' ? 'admin' : (roleEl?.value || cached.role)
+  // Group managers cannot promote/demote roles
+  const role = !isMainAdmin()
+    ? (cached.role || 'user')
+    : (cached.username === 'admin' ? 'admin' : (roleEl?.value || cached.role))
 
   if (!firstName) { showToast('نام را وارد کنید'); return }
   if (!lastName) { showToast('نام خانوادگی را وارد کنید'); return }
@@ -917,8 +926,8 @@ export async function saveEditUserInfo(username) {
 }
 
 function renderUserInfoEditForm(u) {
-  const isMainAdmin = u.username === 'admin'
-  const roleDisabled = isMainAdmin ? 'disabled' : ''
+  const lockedRole = u.username === 'admin' || !isMainAdmin()
+  const roleDisabled = lockedRole ? 'disabled' : ''
   return `
     <div class="settings-user-info-edit">
       <div class="form-row">
@@ -978,8 +987,10 @@ function renderUserInfoHead(u, isCurrentUser) {
 }
 
 export async function deleteUser(username) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('users')) return
   if (username === 'admin') { showToast('امکان حذف مدیر وجود ندارد'); return }
+  const cached = _settingsUsersCache.find(u => u.username === username)
+  if (!requireManageSettingsUser(cached)) return
   const currentUser = getCurrentUser()
   if (currentUser && currentUser.username === username) { showToast('امکان حذف کاربر جاری وجود ندارد'); return }
 
@@ -1006,6 +1017,7 @@ function getFilteredSettingsUsers() {
   const q = toEnDigits(document.getElementById('settingsUsersSearch')?.value || '').trim().toLowerCase()
   const role = document.getElementById('settingsUsersRoleFilter')?.value || 'all'
   return _settingsUsersCache.filter(u => {
+    if (!isMainAdmin() && !canManageSettingsUserRecord(u)) return false
     if (role !== 'all' && u.role !== role) return false
     if (!q) return true
     const hay = `${userDisplayName(u) || ''} ${u.username || ''} ${u.phone || ''}`.toLowerCase()
@@ -1104,13 +1116,18 @@ function renderUsersListMaster() {
             <div class="user-role"><span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${userRole}</span>${groupBadge}</div>
           </div>
         </button>
-        ${!isAdminUser ? `<button type="button" class="btn-icon settings-user-delete" title="حذف" onclick="app.deleteUser('${escapeAttr(u.username)}')" style="color:var(--danger);">🗑</button>` : ''}
+        ${!isAdminUser && canManageSettingsUserRecord(u) ? `<button type="button" class="btn-icon settings-user-delete" title="حذف" onclick="app.deleteUser('${escapeAttr(u.username)}')" style="color:var(--danger);">🗑</button>` : ''}
       </div>
     `
   }).join('')
 }
 
 export function selectSettingsUser(username) {
+  const target = _settingsUsersCache.find(u => u.username === username)
+  if (!isMainAdmin() && !canManageSettingsUserRecord(target)) {
+    showToast('اجازه مدیریت این کاربر را ندارید')
+    return
+  }
   if ((_permissionsDirty || _editingUserInfo) && _selectedSettingsUser && _selectedSettingsUser !== username) {
     openSettingsConfirm(
       _editingUserInfo
@@ -1197,7 +1214,7 @@ function renderSelectedUserDetail(enterMobileDetail) {
     )
   ].join('')
 
-  const groupHtml = `
+  const groupHtml = isMainAdmin() ? `
     <div class="settings-user-group-block">
       <div class="settings-perm-group-head" style="margin-bottom:6px;">
         <span>گروه کاربری</span>
@@ -1217,7 +1234,12 @@ function renderSelectedUserDetail(enterMobileDetail) {
              <span class="settings-pane-desc">${escapeHtml(membership.group.name)}${membership.isManager && managedCount ? ` · مشاهده ${managedCount} عضو` : ''}</span>`
           : '<span class="settings-pane-desc">هنوز در گروهی عضو نیست</span>'}
       </div>
-    </div>`
+    </div>` : (membership
+    ? `<div class="settings-user-group-block" style="margin-bottom:10px;">
+         <span class="role-badge ${membership.isManager ? 'role-admin' : 'role-user'}">${membership.isManager ? 'مدیر گروه' : 'عضو گروه'}</span>
+         <span class="settings-pane-desc" style="margin-right:8px;">${escapeHtml(membership.group.name)}</span>
+       </div>`
+    : '')
 
   detail.innerHTML = `
     ${renderUserInfoHead(u, isCurrentUser)}
@@ -1691,7 +1713,7 @@ export function renderDestinationBanksSettings() {
 }
 
 export function startDestinationBankEdit(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('banks')) return
   _editingBankIdx = index
   renderDestinationBanksSettings()
 }
@@ -1702,7 +1724,7 @@ export function cancelDestinationBankEdit() {
 }
 
 export async function saveDestinationBankEdit(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('banks')) return
   const input = document.getElementById('editBankInput')
   const name = (input?.value || '').trim()
   if (!name) { showToast('نام بانک را وارد کنید'); return }
@@ -1725,7 +1747,7 @@ export async function saveDestinationBankEdit(index) {
 }
 
 export async function addDestinationBank() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('banks')) return
   const input = document.getElementById('newDestinationBank')
   const name = (input?.value || '').trim()
   if (!name) { showToast('نام بانک را وارد کنید'); return }
@@ -1746,7 +1768,7 @@ export async function addDestinationBank() {
 }
 
 export async function removeDestinationBank(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('banks')) return
   const banks = getDestinationBanks()
   if (index < 0 || index >= banks.length) return
   openSettingsConfirm(`حذف بانک «${banks[index]}»؟`, async () => {
@@ -2120,7 +2142,7 @@ export function onInPersonAssignCourseFilterFromAdd() {
 }
 
 export async function addInPersonSession() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('in-person-sessions')) return
   const courseName = document.getElementById('newInPersonCourseName')?.value || ''
   const sessionDate = toEnDigits(document.getElementById('newInPersonSessionDate')?.value || '').trim()
   const capacity = toEnDigits(document.getElementById('newInPersonSessionCapacity')?.value || '').trim()
@@ -2140,7 +2162,7 @@ export async function addInPersonSession() {
 }
 
 export function startInPersonSessionEdit(id) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('in-person-sessions')) return
   _editingInPersonSessionId = id
   renderInPersonSessionsList()
 }
@@ -2151,7 +2173,7 @@ export function cancelInPersonSessionEdit() {
 }
 
 export async function saveInPersonSessionEdit(id) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('in-person-sessions')) return
   const courseName = document.getElementById('editInPersonCourseName')?.value || ''
   const sessionDate = toEnDigits(document.getElementById('editInPersonSessionDate')?.value || '').trim()
   const capacity = toEnDigits(document.getElementById('editInPersonSessionCapacity')?.value || '').trim()
@@ -2189,7 +2211,7 @@ function applyInPersonListFilters(saved) {
 }
 
 export async function removeInPersonSession(id) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('in-person-sessions')) return
   const linked = countSalesLinkedToInPersonSession(id)
   const session = getInPersonSessions().find(s => s.id === id)
   if (!session) return
@@ -2212,7 +2234,7 @@ export async function removeInPersonSession(id) {
 }
 
 export async function assignUnassignedInPersonSale(customerId, productIndex, rowKey) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('in-person-sessions')) return
   const sel = document.querySelector(`select[data-unassigned-select="${rowKey.replace(/"/g, '')}"]`)
   const sessionId = sel?.value || ''
   if (!sessionId) {
@@ -2235,7 +2257,7 @@ export async function assignUnassignedInPersonSale(customerId, productIndex, row
 }
 
 export async function unassignInPersonSale(customerId, productIndex) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('in-person-sessions')) return
   try {
     await unassignInPersonSessionFromSale(customerId, productIndex)
     showToast('تخصیص برداشته شد')
@@ -2308,7 +2330,7 @@ export function renderProductCatalogSettings() {
 }
 
 export function startProductCatalogEdit(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('products')) return
   _editingProductIdx = index
   renderProductCatalogSettings()
 }
@@ -2319,7 +2341,7 @@ export function cancelProductCatalogEdit() {
 }
 
 export async function saveProductCatalogEdit(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('products')) return
   const input = document.getElementById('editProductInput')
   const name = (input?.value || '').trim()
   if (!name) { showToast('نام محصول را وارد کنید'); return }
@@ -2366,7 +2388,7 @@ export async function saveProductCatalogEdit(index) {
 }
 
 export async function addProductCatalogItem() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('products')) return
   const input = document.getElementById('newProductCatalogItem')
   const name = (input?.value || '').trim()
   if (!name) { showToast('نام محصول را وارد کنید'); return }
@@ -2406,7 +2428,7 @@ export async function addProductCatalogItem() {
 }
 
 export async function removeProductCatalogItem(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('products')) return
   const products = getProductCatalog()
   if (index < 0 || index >= products.length) return
   if (products.length <= 1) {
@@ -2536,7 +2558,7 @@ export function renderProductBundleSettings() {
 }
 
 export function startProductBundleEdit(bundleId) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('products')) return
   _editingBundleId = bundleId
   renderProductBundleSettings()
   document.getElementById('newBundleName')?.focus()
@@ -2548,7 +2570,7 @@ export function cancelProductBundleEdit() {
 }
 
 export async function saveProductBundleForm() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('products')) return
   const idEl = document.getElementById('editBundleId')
   const excludeId = (idEl?.value || _editingBundleId || '').trim() || null
   const name = (document.getElementById('newBundleName')?.value || '').trim()
@@ -2574,7 +2596,7 @@ export async function saveProductBundleForm() {
 }
 
 export async function removeProductBundle(bundleId) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('products')) return
   const bundle = getProductBundles().find(b => b.id === bundleId)
   if (!bundle) return
   openSettingsConfirm(`حذف باندل «${bundle.name}»؟ فروش‌های قبلی با این نام تغییر نمی‌کنند.`, async () => {
@@ -2617,7 +2639,7 @@ export function renderBundleMigrationForm() {
 }
 
 export async function runCatalogToBundleMigration() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('products')) return
   const fromName = (document.getElementById('migrateFromCatalogSelect')?.value || '').trim()
   const bundleId = (document.getElementById('migrateToBundleSelect')?.value || '').trim()
   if (!fromName) { showToast('نام قدیمی را از لیست انتخاب کنید'); return }
@@ -2835,6 +2857,9 @@ function scheduleDeadlineUrgencySave({ immediate = false, toastOnSuccess = false
 }
 
 async function persistDeadlineUrgencyFromDom({ toastOnSuccess = false, successMessage = 'رنگ‌های تایمر ددلاین ذخیره شد' } = {}) {
+  if (!canAccessSettingsSection('sales-targets')) return
+  // Timer colors are org-wide; group-scoped managers cannot change them
+  if (isSettingsSectionGroupScoped('sales-targets')) return
   try {
     await saveDeadlineUrgency(collectDeadlineUrgencyFromDom())
     refreshDashboardTargets()
@@ -2898,6 +2923,11 @@ export function renderDeadlineUrgencySettings() {
 }
 
 export async function addDeadlineUrgencyStage() {
+  if (!requireSettingsSection('sales-targets')) return
+  if (isSettingsSectionGroupScoped('sales-targets')) {
+    showToast('تغییر رنگ تایمر فقط با دسترسی سراسری ممکن است')
+    return
+  }
   if (_deadlineUrgencySaveTimer) {
     clearTimeout(_deadlineUrgencySaveTimer)
     _deadlineUrgencySaveTimer = null
@@ -2924,6 +2954,11 @@ export async function addDeadlineUrgencyStage() {
 }
 
 export async function removeDeadlineUrgencyStage(index) {
+  if (!requireSettingsSection('sales-targets')) return
+  if (isSettingsSectionGroupScoped('sales-targets')) {
+    showToast('تغییر رنگ تایمر فقط با دسترسی سراسری ممکن است')
+    return
+  }
   if (_deadlineUrgencySaveTimer) {
     clearTimeout(_deadlineUrgencySaveTimer)
     _deadlineUrgencySaveTimer = null
@@ -3174,7 +3209,11 @@ function renderSalesTargetFormStages() {
 }
 
 export function addSalesTargetFormStage() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('sales-targets')) return
+  if (isSettingsSectionGroupScoped('sales-targets')) {
+    showToast('ویرایش ساختار تارگت فقط با دسترسی سراسری ممکن است')
+    return
+  }
   syncFormStagesFromDom()
   _draftFormStages.push({
     id: `stg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -3185,7 +3224,11 @@ export function addSalesTargetFormStage() {
 }
 
 export function removeSalesTargetFormStage(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('sales-targets')) return
+  if (isSettingsSectionGroupScoped('sales-targets')) {
+    showToast('ویرایش ساختار تارگت فقط با دسترسی سراسری ممکن است')
+    return
+  }
   syncFormStagesFromDom()
   const idx = Number(index)
   if (!Number.isInteger(idx) || idx < 0 || idx >= _draftFormStages.length) return
@@ -3500,14 +3543,18 @@ function renderSalesTargetAllocations() {
   syncAllocationsFromDom()
   pruneDraftAllocations(_draftTargetBars)
 
-  const userGroups = getGroupsCache()
+  const userGroups = isSettingsSectionGroupScoped('sales-targets')
+    ? getGroupsCache().filter(g => g.id === getCurrentUser()?.groupId)
+    : getGroupsCache()
   if (!_draftTargetBars.length) {
     box.innerHTML = '<div class="settings-target-draft-empty">اول نوار اضافه کنید تا سهمیه‌بندی فعال شود</div>'
     updateSalesTargetAllocSums()
     return
   }
   if (!userGroups.length) {
-    box.innerHTML = '<div class="settings-target-draft-empty">هنوز گروه کاربری تعریف نشده</div>'
+    box.innerHTML = isSettingsSectionGroupScoped('sales-targets')
+      ? '<div class="settings-target-draft-empty">گروه شما برای سهمیه‌بندی در دسترس نیست</div>'
+      : '<div class="settings-target-draft-empty">هنوز گروه کاربری تعریف نشده</div>'
     updateSalesTargetAllocSums()
     return
   }
@@ -3603,6 +3650,11 @@ function syncMemberInputsEnabled(gid, bar) {
 }
 
 export function onSalesTargetAllocationChange(inputEl) {
+  if (!canAccessSettingsSection('sales-targets')) return
+  if (isSettingsSectionGroupScoped('sales-targets')) {
+    const gid = inputEl?.getAttribute('data-alloc-group') || ''
+    if (gid && gid !== getCurrentUser()?.groupId) return
+  }
   if (inputEl) formatInput(inputEl)
   syncAllocationsFromDom()
   const gid = inputEl?.getAttribute('data-alloc-group') || ''
@@ -3704,7 +3756,11 @@ function commitParsedBarToDraft(parsedBar) {
 }
 
 export function startSalesTargetBarEdit(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('sales-targets')) return
+  if (isSettingsSectionGroupScoped('sales-targets')) {
+    showToast('ویرایش ساختار تارگت فقط با دسترسی سراسری ممکن است')
+    return
+  }
   const idx = Number(index)
   const bar = _draftTargetBars[idx]
   if (!bar) return
@@ -3732,7 +3788,7 @@ export function startSalesTargetBarEdit(index) {
 }
 
 export function cancelSalesTargetBarEdit() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('sales-targets')) return
   _editingDraftBarIndex = null
   clearSalesTargetBarFields()
   syncSalesTargetAddBarButton()
@@ -3740,7 +3796,11 @@ export function cancelSalesTargetBarEdit() {
 }
 
 export function addSalesTargetBarToDraft() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('sales-targets')) return
+  if (isSettingsSectionGroupScoped('sales-targets')) {
+    showToast('ویرایش ساختار تارگت فقط با دسترسی سراسری ممکن است')
+    return
+  }
   const parsed = readSalesTargetBarFromForm()
   if (parsed.empty) { showToast('مقدار هدف را وارد کنید'); return }
   if (parsed.error) { showToast(parsed.error); return }
@@ -3753,7 +3813,11 @@ export function addSalesTargetBarToDraft() {
 }
 
 export function removeSalesTargetBarFromDraft(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('sales-targets')) return
+  if (isSettingsSectionGroupScoped('sales-targets')) {
+    showToast('ویرایش ساختار تارگت فقط با دسترسی سراسری ممکن است')
+    return
+  }
   const idx = Number(index)
   if (!Number.isInteger(idx) || idx < 0 || idx >= _draftTargetBars.length) return
   const removed = _draftTargetBars[idx]
@@ -3821,7 +3885,7 @@ export function renderSalesTargetsSettings() {
 }
 
 export function startSalesTargetEdit(id) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('sales-targets')) return
   const group = getSalesTargets().find(t => t.id === id)
   if (!group) return
   _editingSalesTargetId = id
@@ -3852,7 +3916,17 @@ export function cancelSalesTargetEdit() {
 }
 
 export async function saveSalesTargetForm() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('sales-targets')) return
+  if (isSettingsSectionGroupScoped('sales-targets')) {
+    const editingId = _editingSalesTargetId || document.getElementById('editSalesTargetId')?.value || ''
+    if (!editingId) {
+      showToast('ایجاد گروه تارگت جدید فقط برای ادمین یا دسترسی سراسری است')
+      return
+    }
+    const title = (document.getElementById('salesTargetTitle')?.value || '').trim() || 'تارگت'
+    await persistSalesTargetGroup(title)
+    return
+  }
   const title = (document.getElementById('salesTargetTitle')?.value || '').trim()
   if (!title) { showToast('عنوان گروه را وارد کنید'); return }
 
@@ -3906,7 +3980,21 @@ async function persistSalesTargetGroup(title) {
   }
 
   const allocations = collectDraftAllocations(items)
-  const allocError = validateAllocationsAgainstBars(items, allocations)
+  let mergedAllocations = allocations
+  if (isSettingsSectionGroupScoped('sales-targets')) {
+    const myGroupId = getCurrentUser()?.groupId
+    if (!myGroupId) {
+      showToast('گروه شما مشخص نیست')
+      return
+    }
+    const existing = getSalesTargets()
+    const editingId = _editingSalesTargetId || document.getElementById('editSalesTargetId')?.value || ''
+    const prev = existing.find(t => t.id === editingId)
+    const prevOthers = (prev?.allocations || []).filter(a => a.userGroupId !== myGroupId)
+    const mine = allocations.filter(a => a.userGroupId === myGroupId)
+    mergedAllocations = [...prevOthers, ...mine]
+  }
+  const allocError = validateAllocationsAgainstBars(items, mergedAllocations)
   if (allocError) {
     const allocSection = document.getElementById('salesTargetAllocSection')
     if (allocSection) allocSection.open = true
@@ -3918,18 +4006,21 @@ async function persistSalesTargetGroup(title) {
   const editingId = _editingSalesTargetId || document.getElementById('editSalesTargetId')?.value || ''
   let next
   if (editingId && existing.some(t => t.id === editingId)) {
-    next = existing.map(t => t.id === editingId ? {
-      ...t,
-      title,
-      items,
-      allocations
-    } : t)
+    next = existing.map(t => t.id === editingId ? (
+      isSettingsSectionGroupScoped('sales-targets')
+        ? { ...t, allocations: mergedAllocations }
+        : { ...t, title, items, allocations: mergedAllocations }
+    ) : t)
   } else {
+    if (isSettingsSectionGroupScoped('sales-targets')) {
+      showToast('ایجاد گروه تارگت جدید فقط برای ادمین یا دسترسی سراسری است')
+      return
+    }
     next = [...existing, {
       id: `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       title,
       items,
-      allocations,
+      allocations: mergedAllocations,
       createdAt: new Date().toISOString()
     }]
   }
@@ -3947,7 +4038,11 @@ async function persistSalesTargetGroup(title) {
 }
 
 export async function removeSalesTarget(id) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('sales-targets')) return
+  if (isSettingsSectionGroupScoped('sales-targets')) {
+    showToast('حذف گروه تارگت فقط با دسترسی سراسری ممکن است')
+    return
+  }
   const group = getSalesTargets().find(t => t.id === id)
   if (!group) return
   openSettingsConfirm(`حذف گروه «${group.title}» و تمام نوارهایش؟`, async () => {
@@ -4014,7 +4109,7 @@ export function renderPlatformsSettings() {
 }
 
 export async function loadDefaultPlatforms() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('platforms')) return
   const apply = async () => {
     try {
       await savePlatforms(getDefaultPlatforms())
@@ -4034,7 +4129,7 @@ export async function loadDefaultPlatforms() {
 }
 
 export async function addPlatform() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('platforms')) return
   const keyInput = document.getElementById('newPlatformKey')
   const labelInput = document.getElementById('newPlatformLabel')
   const key = (keyInput?.value || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
@@ -4055,7 +4150,7 @@ export async function addPlatform() {
 }
 
 export async function removePlatform(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('platforms')) return
   const platforms = [...getPlatforms()]
   if (index < 0 || index >= platforms.length) return
   openSettingsConfirm(`حذف پلتفرم «${platforms[index].label}»؟`, async () => {
@@ -4073,7 +4168,7 @@ export async function removePlatform(index) {
 }
 
 export async function updatePlatformField(index, field, value) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('platforms')) return
   const platforms = [...getPlatforms()]
   if (!platforms[index]) return
   platforms[index][field] = value
@@ -4087,7 +4182,7 @@ export async function updatePlatformField(index, field, value) {
 }
 
 export function editPlatform(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('platforms')) return
   _editingPlatformIdx = index
   renderPlatformsSettings()
 }
@@ -4098,7 +4193,7 @@ export function cancelPlatformEdit() {
 }
 
 export async function savePlatformEdit(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('platforms')) return
   const platforms = [...getPlatforms()]
   const p = platforms[index]
   if (!p) return
@@ -4155,7 +4250,7 @@ export function renderStatusesSettings() {
 let draggedStatusIdx = null
 
 export async function loadDefaultStatuses() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('statuses')) return
   const apply = async () => {
     try {
       await saveStatuses(getDefaultStatuses())
@@ -4178,6 +4273,7 @@ export function onStatusDragStart(e, idx) { draggedStatusIdx = idx; e.dataTransf
 export function onStatusDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }
 export async function onStatusDrop(e, targetIdx) {
   e.preventDefault()
+  if (!requireSettingsSection('statuses')) return
   if (draggedStatusIdx === null || draggedStatusIdx === targetIdx) return
   const statuses = [...getStatuses()]
   const [moved] = statuses.splice(draggedStatusIdx, 1)
@@ -4191,7 +4287,7 @@ export async function onStatusDrop(e, targetIdx) {
 }
 
 export async function addStatus() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('statuses')) return
   const keyInput = document.getElementById('newStatusKey')
   const labelInput = document.getElementById('newStatusLabel')
   const key = (keyInput?.value || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
@@ -4211,7 +4307,7 @@ export async function addStatus() {
 }
 
 export async function removeStatus(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('statuses')) return
   const statuses = [...getStatuses()]
   if (index < 0 || index >= statuses.length) return
   openSettingsConfirm(`حذف وضعیت «${statuses[index].label}»؟`, async () => {
@@ -4227,7 +4323,7 @@ export async function removeStatus(index) {
 }
 
 export async function updateStatusField(index, field, value) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('statuses')) return
   const statuses = [...getStatuses()]
   if (!statuses[index]) return
   statuses[index][field] = value
@@ -4239,7 +4335,7 @@ export async function updateStatusField(index, field, value) {
 }
 
 export function editStatus(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('statuses')) return
   _editingStatusIdx = index
   renderStatusesSettings()
 }
@@ -4250,7 +4346,7 @@ export function cancelStatusEdit() {
 }
 
 export async function saveStatusEdit(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('statuses')) return
   const statuses = [...getStatuses()]
   const s = statuses[index]
   if (!s) return
@@ -4313,7 +4409,7 @@ export function renderCustomerCodesSettings() {
 }
 
 export async function saveCustomerCodeExpiryMonthsFromUi() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('customer-codes')) return
   const el = document.getElementById('customerCodeExpiryMonths')
   const months = el ? el.value : getCustomerCodeExpiryMonths()
   try {
@@ -4336,6 +4432,7 @@ export function onCustomerCodeDragOver(e) {
 }
 export async function onCustomerCodeDrop(e, targetIdx) {
   e.preventDefault()
+  if (!requireSettingsSection('customer-codes')) return
   if (draggedCustomerCodeIdx === null || draggedCustomerCodeIdx === targetIdx) return
   const codes = [...getCustomerCodes()]
   const [moved] = codes.splice(draggedCustomerCodeIdx, 1)
@@ -4351,7 +4448,7 @@ export async function onCustomerCodeDrop(e, targetIdx) {
 }
 
 export async function addCustomerCode() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('customer-codes')) return
   const keyInput = document.getElementById('newCustomerCodeKey')
   const labelInput = document.getElementById('newCustomerCodeLabel')
   const key = (keyInput?.value || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
@@ -4374,7 +4471,7 @@ export async function addCustomerCode() {
 }
 
 export async function removeCustomerCode(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('customer-codes')) return
   const codes = [...getCustomerCodes()]
   if (index < 0 || index >= codes.length) return
   openSettingsConfirm(`حذف کد «${codes[index].label}»؟`, async () => {
@@ -4392,7 +4489,7 @@ export async function removeCustomerCode(index) {
 }
 
 export function editCustomerCode(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('customer-codes')) return
   _editingCustomerCodeIdx = index
   renderCustomerCodesSettings()
 }
@@ -4403,7 +4500,7 @@ export function cancelCustomerCodeEdit() {
 }
 
 export async function saveCustomerCodeEdit(index) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('customer-codes')) return
   const codes = [...getCustomerCodes()]
   const c = codes[index]
   if (!c) return
@@ -4421,7 +4518,9 @@ export async function saveCustomerCodeEdit(index) {
 }
 
 export async function saveUserPermissions(username) {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('users')) return
+  const cached = _settingsUsersCache.find(u => u.username === username)
+  if (!requireManageSettingsUser(cached)) return
 
   const checkboxes = document.querySelectorAll(`input[data-perm-user="${username}"]`)
   if (checkboxes.length === 0) {
@@ -4434,7 +4533,6 @@ export async function saveUserPermissions(username) {
   })
 
   // Preserve group-derived viewUserPhones (not edited via boolean chips)
-  const cached = _settingsUsersCache.find(u => u.username === username)
   const phone = normalizePhone(cached?.phone)
   const membership = phone ? getMembershipByPhone(phone) : null
   permissions.viewUserPhones = membership?.isManager
@@ -4971,6 +5069,10 @@ async function resizeImageFileToDataUrl(file, maxWidth = 480) {
 }
 
 export async function onShippingSenderLogoChange(input) {
+  if (!requireSettingsSection('shipping-sender')) {
+    if (input) input.value = ''
+    return
+  }
   const file = input?.files?.[0]
   if (!file) return
   if (!file.type.startsWith('image/')) {
@@ -4989,6 +5091,7 @@ export async function onShippingSenderLogoChange(input) {
 }
 
 export function removeShippingSenderLogo() {
+  if (!requireSettingsSection('shipping-sender')) return
   _shippingLogoDraft = null
   const fileEl = document.getElementById('shippingSenderLogoFile')
   if (fileEl) fileEl.value = ''
@@ -4996,7 +5099,7 @@ export function removeShippingSenderLogo() {
 }
 
 export async function saveShippingSenderSettings() {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsSection('shipping-sender')) return
 
   const name = String(document.getElementById('shippingSenderName')?.value || '').trim()
   const phone = toEnDigits(document.getElementById('shippingSenderPhone')?.value || '').trim()

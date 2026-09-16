@@ -28,7 +28,7 @@ import {
   isEmptySaleProductDraft,
   applyProfitSnapshotToProduct, isGiftSale, getGiftAccountingStatus,
   getPaymentRefundBadge, getProductRefundBadge, getProductRefundRecords, getProductPendingRefundLabel,
-  REFUND_STATUS, requireMainAdmin, isMainAdmin
+  REFUND_STATUS, requireMainAdmin, requireSettingsSection, isMainAdmin
 } from './utils.js'
 import { toggleSortField, sortRecords, syncSortHeaders, sortSig, compareSortValues } from './table-sort.js'
 import { restoreSelection } from './bulk.js'
@@ -1968,7 +1968,7 @@ export function syncRequireFollowupOnCreateUi() {
 }
 
 export async function toggleRequireFollowupOnCreate(enabled) {
-  if (!requireMainAdmin()) {
+  if (!requireSettingsSection('customer-prefs')) {
     syncRequireFollowupOnCreateUi()
     return
   }

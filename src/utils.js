@@ -2517,6 +2517,41 @@ export function requireSettingsSection(sectionId) {
   return false
 }
 
+/** Phones a group manager may touch under group-scoped settings (self + members). */
+export function getSettingsManagedPhoneSet(user = getCurrentUser()) {
+  const set = new Set(normalizeViewUserPhones(user?.viewUserPhones))
+  const self = normalizePhone(user?.phone)
+  if (self) set.add(self)
+  return set
+}
+
+/**
+ * Whether current user may manage a settings user row for section `users`
+ * (or similar). Admins always; managers never touch admins; group scope limited to team.
+ */
+export function canManageSettingsUserRecord(targetUser, sectionId = 'users', user = getCurrentUser()) {
+  if (!targetUser || !canAccessSettingsSection(sectionId, user)) return false
+  if (isMainAdmin(user)) return true
+  if (targetUser.role === 'admin' || targetUser.username === 'admin') return false
+  const scope = getSettingsSectionScope(sectionId, user)
+  if (scope !== 'group') return true
+  const phone = normalizePhone(targetUser.phone)
+  if (!phone) return false
+  return getSettingsManagedPhoneSet(user).has(phone)
+}
+
+export function requireManageSettingsUser(targetUser, sectionId = 'users') {
+  if (canManageSettingsUserRecord(targetUser, sectionId)) return true
+  showToast('اجازه مدیریت این کاربر را ندارید')
+  return false
+}
+
+/** True when section is opened with group scope (non-admin). */
+export function isSettingsSectionGroupScoped(sectionId, user = getCurrentUser()) {
+  if (!user || isMainAdmin(user)) return false
+  return getSettingsSectionScope(sectionId, user) === 'group'
+}
+
 // ============================================
 // Global digit conversion listener
 // ============================================

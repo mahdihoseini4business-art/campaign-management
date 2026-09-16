@@ -8,7 +8,7 @@ import {
   getSaleToastEnabled, setSaleToastEnabledLocal, saveSaleToastEnabled, coerceProductName,
   setRequireFollowupOnCreateLocal, setDmChatEnabledLocal
 } from './data.js'
-import { escapeHtml, formatNumber, requireMainAdmin, userDisplayName, getCurrentUser, normalizePhone } from './utils.js'
+import { escapeHtml, formatNumber, requireSettingsSection, userDisplayName, getCurrentUser, normalizePhone } from './utils.js'
 import { showBrowserNotificationFromHtml } from './browser-notifications.js'
 
 const CHANNEL_NAME = 'sale-live-toasts'
@@ -324,7 +324,7 @@ export function syncSaleToastToggleUi() {
 }
 
 export async function toggleSaleToastSetting(enabled) {
-  if (!requireMainAdmin()) {
+  if (!requireSettingsSection('notif-prefs')) {
     syncSaleToastToggleUi()
     return
   }
