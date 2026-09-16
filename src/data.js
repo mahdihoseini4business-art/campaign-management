@@ -3776,10 +3776,22 @@ export async function listSmsTemplates() {
   if (tenantId) q = q.eq('tenant_id', tenantId)
   const { data: rows, error } = await q
   if (error) throw new Error('خطا در خواندن قالب‌ها: ' + error.message)
-  if (rows?.length) return rows
-  // Seed locally if migration defaults missing
-  if (!tenantId) return DEFAULT_SMS_TEMPLATES.map((t) => ({ ...t, enabled: true }))
-  const inserts = DEFAULT_SMS_TEMPLATES.map((t) => ({
+
+  const existing = rows || []
+  const have = new Set(existing.map((r) => String(r.key || '')))
+  const missing = DEFAULT_SMS_TEMPLATES.filter((t) => !have.has(t.key))
+
+  if (!missing.length) return existing
+
+  // Seed any newly added default templates (e.g. sale_settlement_due) without wiping customs
+  if (!tenantId) {
+    return [
+      ...existing,
+      ...missing.map((t) => ({ ...t, enabled: true })),
+    ].sort((a, b) => String(a.key).localeCompare(String(b.key)))
+  }
+
+  const inserts = missing.map((t) => ({
     tenant_id: tenantId,
     key: t.key,
     name: t.name,
@@ -3791,10 +3803,17 @@ export async function listSmsTemplates() {
     .upsert(inserts, { onConflict: 'tenant_id,key' })
     .select('*')
   if (seedErr) {
-    console.warn('sms template seed', seedErr)
-    return DEFAULT_SMS_TEMPLATES.map((t) => ({ ...t, enabled: true }))
+    console.warn('sms template seed missing', seedErr)
+    return [
+      ...existing,
+      ...missing.map((t) => ({ ...t, enabled: true })),
+    ].sort((a, b) => String(a.key).localeCompare(String(b.key)))
   }
-  return seeded || []
+
+  const byKey = new Map()
+  for (const r of existing) byKey.set(String(r.key), r)
+  for (const r of seeded || []) byKey.set(String(r.key), r)
+  return [...byKey.values()].sort((a, b) => String(a.key).localeCompare(String(b.key)))
 }
 
 export async function saveSmsTemplateRow(template) {
