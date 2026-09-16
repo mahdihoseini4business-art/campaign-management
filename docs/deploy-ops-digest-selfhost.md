@@ -18,7 +18,26 @@ bash /tmp/deploy-edge-functions-selfhost.sh
 - migration `040` (ستون‌های digest) و `044` (SMS) را روی DB اجرا می‌کند
 - کانتینر `functions` را ری‌استارت می‌کند
 
-## ۲) تست دستی (روی همان سرور)
+## رفع فوری اگر `column tenants.archived_at does not exist` دیدی
+
+روی سرور (بدون صبر برای دیپلوی دوباره):
+
+```bash
+DB_CID=$(docker ps --filter name=supabase-db --format '{{.ID}}' | head -1)
+docker exec -i "$DB_CID" psql -U postgres -d postgres <<'SQL'
+ALTER TABLE public.tenants
+  ADD COLUMN IF NOT EXISTS subdomain TEXT,
+  ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+SQL
+```
+
+بعد دوباره تست:
+
+```bash
+curl -sS -X POST 'http://127.0.0.1:8000/functions/v1/ops-digest-cron?kind=morning' \
+  -H "x-cron-secret: $CRON_SECRET"
+```
+
 
 ```bash
 # باید JSON با success:true برگردد (حتی اگر sent:0)

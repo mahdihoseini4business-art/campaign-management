@@ -120,7 +120,8 @@ if [[ "${SKIP_MIGRATE:-0}" != "1" ]]; then
     fi
   }
 
-  # Digests (kind/meta) then SMS business — order matters if both pending
+  # Tenants archive/subdomain (035), digests kind/meta (040), SMS business (044)
+  apply_mig "$WORKDIR/supabase/migrations/035_subdomain_audit.sql"
   apply_mig "$WORKDIR/supabase/migrations/040_notification_digest_meta.sql"
   apply_mig "$WORKDIR/supabase/migrations/044_sms_business.sql"
 fi

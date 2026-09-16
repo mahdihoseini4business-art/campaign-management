@@ -140,13 +140,29 @@ serve(async (req) => {
     let tenantsSkipped = 0
     const insertErrors: string[] = []
 
-    const { data: tenants, error: tenantsErr } = await admin
-      .from('tenants')
-      .select('id, status, archived_at')
-      .is('archived_at', null)
-      .eq('status', 'active')
+    // Prefer non-archived tenants; fall back if migration 035 (archived_at) is missing.
+    let tenants: Array<{ id: string, status?: string }> | null = null
+    {
+      const withArchived = await admin
+        .from('tenants')
+        .select('id, status, archived_at')
+        .is('archived_at', null)
+        .eq('status', 'active')
 
-    if (tenantsErr) return json({ success: false, error: tenantsErr.message }, 500)
+      if (!withArchived.error) {
+        tenants = withArchived.data
+      } else if (/archived_at/i.test(withArchived.error.message || '')) {
+        console.warn('ops-digest-cron: tenants.archived_at missing — falling back without archive filter')
+        const fallback = await admin
+          .from('tenants')
+          .select('id, status')
+          .eq('status', 'active')
+        if (fallback.error) return json({ success: false, error: fallback.error.message }, 500)
+        tenants = fallback.data
+      } else {
+        return json({ success: false, error: withArchived.error.message }, 500)
+      }
+    }
 
     for (const tenant of tenants || []) {
       const tenantId = tenant.id
