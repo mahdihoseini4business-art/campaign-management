@@ -1312,6 +1312,22 @@ function clearAovLegendHoverFocus(chart) {
   chart.draw()
 }
 
+/** Legend swatches must stay full-opacity even while lines are dimmed on hover. */
+function aovLegendGenerateLabels(chart) {
+  const defaults = ChartLib?.defaults?.plugins?.legend?.labels
+  const items = typeof defaults?.generateLabels === 'function'
+    ? defaults.generateLabels(chart)
+    : []
+  for (const item of items) {
+    const ds = chart.data.datasets?.[item.datasetIndex]
+    const base = ds?._baseBorderColor
+    if (!base) continue
+    item.strokeStyle = base
+    item.fillStyle = base
+  }
+  return items
+}
+
 /**
  * Rolling AOV (SMA-style): for each display day D, AOV of completed sales in
  * [D - (maDays-1) .. D] inclusive — same formula as the dashboard card, over a window.
@@ -1446,7 +1462,20 @@ function renderAovMaChart(dateFromNum, dateToNum) {
       plugins: {
         legend: {
           position: 'bottom',
-          labels: { font: { family: 'Vazirmatn', size: 11 }, boxWidth: 12 },
+          labels: {
+            font: { family: 'Vazirmatn', size: 11 },
+            boxWidth: 12,
+            generateLabels: aovLegendGenerateLabels
+          },
+          onClick(evt, legendItem, legend) {
+            // Restore full colors before Chart.js update so dimmed hover
+            // colors are not baked into the next legend rebuild.
+            clearAovLegendHoverFocus(legend.chart)
+            const defaultClick = ChartLib?.defaults?.plugins?.legend?.onClick
+            if (typeof defaultClick === 'function') {
+              defaultClick.call(this, evt, legendItem, legend)
+            }
+          },
           onHover(evt, legendItem, legend) {
             const native = evt?.native
             if (native?.target) native.target.style.cursor = 'pointer'
