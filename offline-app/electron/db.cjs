@@ -88,6 +88,16 @@ function initSchema() {
   const sql = fs.readFileSync(schemaPath, 'utf8')
   database.run(sql)
 
+  try {
+    const info = database.exec('PRAGMA table_info(groups)')
+    const cols = (info?.[0]?.values || []).map(row => String(row[1] || ''))
+    if (!cols.includes('settings_access')) {
+      database.run(`ALTER TABLE groups ADD COLUMN settings_access TEXT NOT NULL DEFAULT '{}'`)
+    }
+  } catch (e) {
+    console.warn('ensure groups.settings_access:', e)
+  }
+
   database.run(`
     INSERT INTO app_meta (key, value) VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value

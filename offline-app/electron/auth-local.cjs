@@ -38,11 +38,17 @@ function getUserByUsername(username) {
 }
 
 function resolveGroupSessionInfo(user) {
-  const empty = { viewUserPhones: [], groupId: null, groupName: null, isGroupManager: false }
+  const empty = {
+    viewUserPhones: [],
+    groupId: null,
+    groupName: null,
+    isGroupManager: false,
+    settingsAccess: {}
+  }
   if (!user || user.role === 'admin') return empty
 
   const member = queryOne(
-    `SELECT gm.group_id, gm.is_manager, g.name AS group_name
+    `SELECT gm.group_id, gm.is_manager, g.name AS group_name, g.settings_access AS settings_access
      FROM group_members gm
      LEFT JOIN groups g ON g.id = gm.group_id
      WHERE gm.user_phone = ?
@@ -55,14 +61,38 @@ function resolveGroupSessionInfo(user) {
       viewUserPhones: phones,
       groupId: null,
       groupName: null,
-      isGroupManager: phones.length > 0
+      isGroupManager: phones.length > 0,
+      settingsAccess: {}
     }
   }
 
-  const phoneRows = queryAll(
-    `SELECT user_phone FROM group_members WHERE group_id = ? AND user_phone != ?`,
-    [member.group_id, user.phone || '']
-  )
+  const isGroupManager = !!member.is_manager
+  let settingsAccess = {}
+  if (isGroupManager && member.settings_access) {
+    try {
+      const raw = typeof member.settings_access === 'string'
+        ? JSON.parse(member.settings_access)
+        : member.settings_access
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        for (const [id, entry] of Object.entries(raw)) {
+          if (!entry || typeof entry !== 'object' || !entry.enabled) continue
+          settingsAccess[id] = {
+            enabled: true,
+            scope: entry.scope === 'group' ? 'group' : 'org'
+          }
+        }
+      }
+    } catch (_) {
+      settingsAccess = {}
+    }
+  }
+
+  const phoneRows = isGroupManager
+    ? queryAll(
+      `SELECT user_phone FROM group_members WHERE group_id = ? AND is_manager = 0`,
+      [member.group_id]
+    )
+    : []
   const viewUserPhones = phoneRows
     .map(r => String(r.user_phone || ''))
     .filter(Boolean)
@@ -71,7 +101,8 @@ function resolveGroupSessionInfo(user) {
     viewUserPhones,
     groupId: member.group_id || null,
     groupName: member.group_name || null,
-    isGroupManager: !!member.is_manager
+    isGroupManager,
+    settingsAccess: isGroupManager ? settingsAccess : {}
   }
 }
 
@@ -130,7 +161,8 @@ async function login(username, password) {
       viewUserPhones: groupInfo.viewUserPhones,
       groupId: groupInfo.groupId,
       groupName: groupInfo.groupName,
-      isGroupManager: groupInfo.isGroupManager
+      isGroupManager: groupInfo.isGroupManager,
+      settingsAccess: groupInfo.settingsAccess || {}
     }
   }
 }

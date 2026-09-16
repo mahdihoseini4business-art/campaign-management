@@ -3,17 +3,25 @@
  * Manager's permissions.viewUserPhones is derived from other group members.
  */
 import { supabase } from './supabase.js'
-import { normalizePhone, normalizeViewUserPhones, userDisplayName, escapeHtml, escapeAttr } from './utils.js'
+import { normalizePhone, normalizeViewUserPhones, userDisplayName, escapeHtml, escapeAttr, normalizeSettingsAccess } from './utils.js'
 import { saveSetting } from './data.js'
 
 export const GROUP_FILTER_PREFIX = '__group__:'
 
 const MIGRATION_SETTING_KEY = 'groups_migrated_from_view_phones_v1'
 
-/** @type {Array<{id: string, name: string, description?: string, created_at?: string}>} */
+/** @type {Array<{id: string, name: string, description?: string, created_at?: string, settings_access?: Record<string, {enabled: true, scope: 'org'|'group'}>}>} */
 let _groupsCache = []
 /** @type {Array<{group_id: string, user_phone: string, is_manager: boolean}>} */
 let _membersCache = []
+
+function mapGroupRow(row) {
+  if (!row) return null
+  const raw = (row.settings_access && typeof row.settings_access === 'object' && !Array.isArray(row.settings_access))
+    ? row.settings_access
+    : {}
+  return { ...row, settings_access: raw }
+}
 
 export function getGroupsCache() {
   return _groupsCache
@@ -41,7 +49,7 @@ export async function loadGroupsData() {
     console.error('loadGroupsData members error:', mRes.error)
     throw mRes.error
   }
-  _groupsCache = gRes.data || []
+  _groupsCache = (gRes.data || []).map(mapGroupRow).filter(Boolean)
   _membersCache = (mRes.data || []).map(m => ({
     ...m,
     user_phone: normalizePhone(m.user_phone),
@@ -268,37 +276,53 @@ export async function fetchManagedMemberPhones(phone) {
 
 /**
  * Load group membership + derived view phones for session.
- * @returns {Promise<{groupId: string|null, groupName: string|null, isGroupManager: boolean, viewUserPhones: string[]}|null>}
+ * @returns {Promise<{groupId: string|null, groupName: string|null, isGroupManager: boolean, viewUserPhones: string[], settingsAccess: Record<string, {enabled: true, scope: 'org'|'group'}>}|null>}
  *   null when groups table is unavailable
  */
 export async function fetchGroupMembershipInfo(phone) {
-  const p = normalizePhone(phone)
-  if (!p) {
-    return { groupId: null, groupName: null, isGroupManager: false, viewUserPhones: [] }
+  const empty = {
+    groupId: null,
+    groupName: null,
+    isGroupManager: false,
+    viewUserPhones: [],
+    settingsAccess: {}
   }
+  const p = normalizePhone(phone)
+  if (!p) return empty
 
-  const { data: myRow, error: myErr } = await supabase
+  let { data: myRow, error: myErr } = await supabase
     .from('group_members')
-    .select('group_id, is_manager, groups(id, name)')
+    .select('group_id, is_manager, groups(id, name, settings_access)')
     .eq('user_phone', p)
     .limit(1)
 
   if (myErr) {
-    console.error('fetchGroupMembershipInfo membership error:', myErr)
-    return null
+    // Column may be missing before migration 046 — retry without settings_access
+    const retry = await supabase
+      .from('group_members')
+      .select('group_id, is_manager, groups(id, name)')
+      .eq('user_phone', p)
+      .limit(1)
+    if (retry.error) {
+      console.error('fetchGroupMembershipInfo membership error:', myErr)
+      return null
+    }
+    myRow = retry.data
+    myErr = null
   }
-  if (!myRow?.length) {
-    return { groupId: null, groupName: null, isGroupManager: false, viewUserPhones: [] }
-  }
+  if (!myRow?.length) return { ...empty }
 
   const row = myRow[0]
   const groupMeta = Array.isArray(row.groups) ? row.groups[0] : row.groups
   const groupId = row.group_id || groupMeta?.id || null
   const groupName = groupMeta?.name || null
   const isGroupManager = !!row.is_manager
+  const settingsAccess = isGroupManager
+    ? normalizeSettingsAccess(groupMeta?.settings_access)
+    : {}
 
   if (!isGroupManager || !groupId) {
-    return { groupId, groupName, isGroupManager: false, viewUserPhones: [] }
+    return { groupId, groupName, isGroupManager: false, viewUserPhones: [], settingsAccess: {} }
   }
 
   const { data: peers, error: peersErr } = await supabase
@@ -316,7 +340,8 @@ export async function fetchGroupMembershipInfo(phone) {
     groupId,
     groupName,
     isGroupManager: true,
-    viewUserPhones: [...new Set((peers || []).map(r => normalizePhone(r.user_phone)).filter(Boolean))]
+    viewUserPhones: [...new Set((peers || []).map(r => normalizePhone(r.user_phone)).filter(Boolean))],
+    settingsAccess
   }
 }
 
@@ -399,8 +424,9 @@ export async function createGroup(name, description = '') {
     .single()
 
   if (error) throw error
-  _groupsCache = [..._groupsCache, data].sort((a, b) => a.name.localeCompare(b.name, 'fa'))
-  return data
+  const mapped = mapGroupRow(data)
+  _groupsCache = [..._groupsCache, mapped].sort((a, b) => a.name.localeCompare(b.name, 'fa'))
+  return mapped
 }
 
 export async function renameGroup(groupId, name) {
@@ -415,8 +441,25 @@ export async function renameGroup(groupId, name) {
     .single()
 
   if (error) throw error
-  _groupsCache = _groupsCache.map(g => (g.id === groupId ? data : g))
-  return data
+  const mapped = mapGroupRow(data)
+  _groupsCache = _groupsCache.map(g => (g.id === groupId ? mapped : g))
+  return mapped
+}
+
+/** Persist delegated settings access for the group's manager. */
+export async function saveGroupSettingsAccess(groupId, settingsAccess) {
+  const cleaned = normalizeSettingsAccess(settingsAccess)
+  const { data, error } = await supabase
+    .from('groups')
+    .update({ settings_access: cleaned })
+    .eq('id', groupId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  const mapped = mapGroupRow(data)
+  _groupsCache = _groupsCache.map(g => (g.id === groupId ? mapped : g))
+  return mapped
 }
 
 /**
@@ -647,10 +690,16 @@ export async function migrateLegacyViewUserPhones(users = []) {
 
 /**
  * Align session viewUserPhones + group metadata with membership.
- * @returns {Promise<{viewUserPhones: string[], groupId: string|null, groupName: string|null, isGroupManager: boolean}>}
+ * @returns {Promise<{viewUserPhones: string[], groupId: string|null, groupName: string|null, isGroupManager: boolean, settingsAccess: Record<string, {enabled: true, scope: 'org'|'group'}>}>}
  */
 export async function resolveGroupSessionInfo(user) {
-  const empty = { viewUserPhones: [], groupId: null, groupName: null, isGroupManager: false }
+  const empty = {
+    viewUserPhones: [],
+    groupId: null,
+    groupName: null,
+    isGroupManager: false,
+    settingsAccess: {}
+  }
   if (!user || user.role === 'admin') return empty
 
   const info = await fetchGroupMembershipInfo(user.phone)
@@ -659,7 +708,8 @@ export async function resolveGroupSessionInfo(user) {
       viewUserPhones: normalizeViewUserPhones(user.permissions?.viewUserPhones ?? user.viewUserPhones),
       groupId: user.groupId || null,
       groupName: user.groupName || null,
-      isGroupManager: normalizeViewUserPhones(user.permissions?.viewUserPhones ?? user.viewUserPhones).length > 0
+      isGroupManager: normalizeViewUserPhones(user.permissions?.viewUserPhones ?? user.viewUserPhones).length > 0,
+      settingsAccess: normalizeSettingsAccess(user.settingsAccess)
     }
   }
 
@@ -673,7 +723,8 @@ export async function resolveGroupSessionInfo(user) {
     viewUserPhones: derived,
     groupId: info.groupId,
     groupName: info.groupName,
-    isGroupManager: info.isGroupManager
+    isGroupManager: info.isGroupManager,
+    settingsAccess: info.settingsAccess || {}
   }
 }
 

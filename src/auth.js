@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali, canOpenSettings, canAccessSettingsSection, listAccessibleSettingsSectionIds, requireSettingsAccess, SETTINGS_SECTION_ACCESS, settingsSectionSupportsScope, readSettingsAccessEntry, normalizeSettingsAccess } from './utils.js'
 import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
 import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS } from './sms-features.js'
 import { canManageSmsSettings, canViewSmsHistory, canEditSmsTemplates } from './sms-business.js'
@@ -19,7 +19,8 @@ import {
   migrateLegacyViewUserPhones,
   resolveGroupSessionInfo,
   resolveViewUserPhonesForSession,
-  clearUserViewPhones
+  clearUserViewPhones,
+  saveGroupSettingsAccess
 } from './groups.js'
 import { clearAuthSession, ensureTenantContextOnBoot } from './tenant.js'
 import {
@@ -325,7 +326,8 @@ export async function doLogin() {
     viewUserPhones: groupInfo.viewUserPhones,
     groupId: groupInfo.groupId,
     groupName: groupInfo.groupName,
-    isGroupManager: groupInfo.isGroupManager
+    isGroupManager: groupInfo.isGroupManager,
+    settingsAccess: groupInfo.settingsAccess
   })
   window.location.href = appPageHref()
 }
@@ -429,7 +431,8 @@ export async function refreshSessionFromServer(localUser) {
       viewUserPhones: groupInfo.viewUserPhones,
       groupId: groupInfo.groupId,
       groupName: groupInfo.groupName,
-      isGroupManager: groupInfo.isGroupManager
+      isGroupManager: groupInfo.isGroupManager,
+      settingsAccess: groupInfo.settingsAccess
     })
   } catch (e) {
     console.error('refreshSessionFromServer error:', e)
@@ -489,8 +492,13 @@ export function renderSettingsNav(filterQuery = '') {
   const select = document.getElementById('settingsNavSelect')
   if (!list || !select) return
 
+  const allowedIds = listAccessibleSettingsSectionIds()
+  const baseSections = allowedIds
+    ? SETTINGS_SECTIONS.filter(s => allowedIds.includes(s.id))
+    : SETTINGS_SECTIONS
+
   const q = toEnDigits(String(filterQuery || '')).trim().toLowerCase()
-  const visible = SETTINGS_SECTIONS.filter(s => {
+  const visible = baseSections.filter(s => {
     if (!q) return true
     const hay = `${s.label} ${s.group || ''} ${s.keywords}`.toLowerCase()
     return hay.includes(q)
@@ -507,7 +515,7 @@ export function renderSettingsNav(filterQuery = '') {
   })
   list.innerHTML = html || '<div class="settings-nav-empty">بخشی یافت نشد</div>'
 
-  select.innerHTML = SETTINGS_SECTIONS.map(s =>
+  select.innerHTML = baseSections.map(s =>
     `<option value="${escapeAttr(s.id)}"${_settingsSection === s.id ? ' selected' : ''}>${s.group ? `${escapeHtml(s.group)} — ` : ''}${escapeHtml(s.label)}</option>`
   ).join('')
 }
@@ -538,6 +546,10 @@ function discardSalesTargetDraft() {
 
 export function switchSettingsSection(sectionId) {
   if (!SETTINGS_SECTIONS.some(s => s.id === sectionId)) return
+  if (!canAccessSettingsSection(sectionId)) {
+    showToast('به این بخش تنظیمات دسترسی ندارید')
+    return
+  }
   if (_settingsSection === 'users' && sectionId !== 'users' && (_permissionsDirty || _editingUserInfo)) {
     openSettingsConfirm(
       _editingUserInfo
@@ -567,6 +579,10 @@ export function switchSettingsSection(sectionId) {
 }
 
 function applySettingsSection(sectionId) {
+  if (!canAccessSettingsSection(sectionId)) {
+    showToast('به این بخش تنظیمات دسترسی ندارید')
+    return
+  }
   _settingsSection = sectionId
   document.querySelectorAll('[data-settings-pane]').forEach(pane => {
     pane.hidden = pane.getAttribute('data-settings-pane') !== sectionId
@@ -630,7 +646,7 @@ function openSettingsConfirm(message, onConfirm, confirmLabel = 'تأیید') {
 }
 
 export async function openSettingsModal(sectionId = 'users') {
-  if (!requireMainAdmin()) return
+  if (!requireSettingsAccess()) return
   _permissionsDirty = false
   _editingUserInfo = null
   _selectedSettingsUser = null
@@ -658,33 +674,68 @@ export async function openSettingsModal(sectionId = 'users') {
   const roleFilter = document.getElementById('settingsUsersRoleFilter')
   if (roleFilter) roleFilter.value = 'all'
 
+  const allowedIds = listAccessibleSettingsSectionIds()
+  let initialSection = sectionId
+  if (allowedIds) {
+    if (!allowedIds.includes(initialSection)) {
+      initialSection = allowedIds[0] || null
+    }
+    if (!initialSection) {
+      showToast('هیچ بخشی از تنظیمات برای شما فعال نشده')
+      return
+    }
+  } else if (!SETTINGS_SECTIONS.some(s => s.id === initialSection)) {
+    initialSection = 'users'
+  }
+
   renderSettingsNav()
-  const initialSection = SETTINGS_SECTIONS.some(s => s.id === sectionId) ? sectionId : 'users'
   applySettingsSection(initialSection)
 
-  try {
-    _settingsUsersCache = await getUsers()
-  } catch (e) {
-    console.error('openSettingsModal users error:', e)
+  const needsUsers = isMainAdmin() || canAccessSettingsSection('users')
+  if (needsUsers) {
+    try {
+      _settingsUsersCache = await getUsers()
+    } catch (e) {
+      console.error('openSettingsModal users error:', e)
+      _settingsUsersCache = []
+    }
+  } else {
     _settingsUsersCache = []
   }
 
-  try {
-    await loadGroupsData()
-    const migration = await migrateLegacyViewUserPhones(_settingsUsersCache)
-    if (!migration.skipped && migration.created > 0) {
-      showToast(`${migration.created} گروه از زیرمجموعه‌های قبلی ساخته شد`)
+  if (isMainAdmin()) {
+    try {
+      await loadGroupsData()
+      const migration = await migrateLegacyViewUserPhones(_settingsUsersCache)
+      if (!migration.skipped && migration.created > 0) {
+        showToast(`${migration.created} گروه از زیرمجموعه‌های قبلی ساخته شد`)
+      }
+      if (migration.conflicts?.length) {
+        console.warn('تداخل مهاجرت گروه:', migration.conflicts)
+      }
+      await loadGroupsData()
+      _settingsUsersCache = await getUsers()
+    } catch (e) {
+      console.error('openSettingsModal groups error:', e)
     }
-    if (migration.conflicts?.length) {
-      console.warn('تداخل مهاجرت گروه:', migration.conflicts)
-    }
-    await loadGroupsData()
-    _settingsUsersCache = await getUsers()
-  } catch (e) {
-    console.error('openSettingsModal groups error:', e)
   }
 
-  await renderUsersList()
+  if (needsUsers) await renderUsersList()
+
+  const subtitle = document.getElementById('settingsModalSubtitle')
+  const user = getCurrentUser()
+  if (subtitle) {
+    if (isMainAdmin()) {
+      subtitle.hidden = true
+      subtitle.textContent = ''
+    } else {
+      const gName = (user?.groupName || '').trim()
+      subtitle.textContent = gName
+        ? `دسترسی محدود — مدیر گروه «${gName}»`
+        : 'دسترسی محدود — مدیر گروه'
+      subtitle.hidden = false
+    }
+  }
 
   document.getElementById('settingsModal')?.classList.add('active')
   document.getElementById('profileDropdown')?.classList.remove('active')
@@ -1365,10 +1416,13 @@ function renderSelectedGroupDetail(enterMobileDetail) {
         return `<option value="${escapeAttr(phone)}">${escapeHtml(userDisplayName(u) || u.username)} · ${escapeHtml(phone)}</option>`
       }).join('')}`
 
+  const hasManager = members.some(m => m.is_manager)
+  const accessHtml = buildGroupSettingsAccessHtml(group, hasManager)
+
   detail.innerHTML = `
     <div class="settings-detail-head">
       <div class="user-name">${escapeHtml(group.name)}</div>
-      <div class="user-role">${members.length} عضو · ${members.some(m => m.is_manager) ? 'دارای مدیر' : 'بدون مدیر'}</div>
+      <div class="user-role">${members.length} عضو · ${hasManager ? 'دارای مدیر' : 'بدون مدیر'}</div>
     </div>
     <div class="form-row settings-add-row" style="margin-bottom:12px;">
       <div class="form-group" style="flex:1;margin:0;">
@@ -1387,7 +1441,95 @@ function renderSelectedGroupDetail(enterMobileDetail) {
       <button type="button" class="btn btn-sm btn-primary" onclick="app.addSettingsGroupMember('${escapeAttr(group.id)}')">افزودن</button>
     </div>
     <p class="settings-pane-desc" style="margin-top:10px;">مدیر گروه به‌صورت خودکار مشتریان سایر اعضا را می‌بیند. هر گروه باید یک مدیر از بین اعضا داشته باشد.</p>
+    ${accessHtml}
   `
+}
+
+function buildGroupSettingsAccessHtml(group, hasManager) {
+  const delegable = SETTINGS_SECTIONS.filter(s => SETTINGS_SECTION_ACCESS[s.id]?.delegable)
+  const rows = delegable.map(s => {
+    const entry = readSettingsAccessEntry(group.settings_access, s.id)
+    const enabled = !!entry?.enabled
+    const scope = entry?.scope === 'group' ? 'group' : 'org'
+    const supportsScope = settingsSectionSupportsScope(s.id)
+    const scopeHtml = supportsScope
+      ? `<select class="form-select settings-access-scope" data-settings-access-scope="${escapeAttr(s.id)}"${enabled && hasManager ? '' : ' disabled'}>
+          <option value="org"${scope === 'org' ? ' selected' : ''}>کل کاربران</option>
+          <option value="group"${scope === 'group' ? ' selected' : ''}>فقط اعضای گروه</option>
+        </select>`
+      : '<span class="settings-access-scope-fixed">سراسری (مشترک)</span>'
+    return `
+      <div class="settings-access-row">
+        <label class="settings-access-enable">
+          <input type="checkbox" data-settings-access-id="${escapeAttr(s.id)}"${enabled ? ' checked' : ''}${hasManager ? '' : ' disabled'}
+            onchange="app.onGroupSettingsAccessToggle(this)">
+          <span>${escapeHtml(s.label)}</span>
+        </label>
+        ${scopeHtml}
+      </div>`
+  }).join('')
+
+  return `
+    <div class="settings-manager-access" id="settingsGroupAccessPanel">
+      <div class="settings-perm-group-head" style="margin:18px 0 8px;"><span>دسترسی تنظیمات مدیر</span></div>
+      <p class="settings-pane-desc" style="margin:0 0 10px;">
+        بخش‌هایی که مدیر این گروه می‌تواند در تنظیمات ببیند و ویرایش کند.
+        بخش‌های گروه‌ها، پیامک، بکاپ و چت قابل واگذاری نیستند.
+      </p>
+      ${!hasManager ? '<p class="settings-pane-desc" style="margin:0 0 10px;color:var(--danger);">ابتدا یک مدیر برای گروه تعیین کنید.</p>' : ''}
+      <div class="settings-access-list">${rows}</div>
+      <div class="settings-perms-footer" style="margin-top:12px;">
+        <button type="button" class="btn btn-primary btn-sm" onclick="app.saveSettingsGroupAccess('${escapeAttr(group.id)}')"${!hasManager ? ' disabled' : ''}>
+          ذخیره دسترسی تنظیمات
+        </button>
+      </div>
+    </div>`
+}
+
+export function onGroupSettingsAccessToggle(checkbox) {
+  const id = checkbox?.getAttribute?.('data-settings-access-id')
+  if (!id) return
+  const scopeEl = document.querySelector(`[data-settings-access-scope="${CSS.escape(id)}"]`)
+  if (scopeEl) scopeEl.disabled = !checkbox.checked
+}
+
+export async function saveSettingsGroupAccess(groupId) {
+  if (!requireMainAdmin()) return
+  const group = getGroupsCache().find(g => g.id === groupId)
+  if (!group) {
+    showToast('گروه یافت نشد')
+    return
+  }
+  const hasManager = getMembersOfGroup(groupId).some(m => m.is_manager)
+  if (!hasManager) {
+    showToast('ابتدا یک مدیر برای گروه تعیین کنید')
+    return
+  }
+
+  const draft = {}
+  document.querySelectorAll('#settingsGroupAccessPanel [data-settings-access-id]').forEach(cb => {
+    const id = cb.getAttribute('data-settings-access-id')
+    if (!id || !cb.checked) return
+    const scopeEl = document.querySelector(`#settingsGroupAccessPanel [data-settings-access-scope="${CSS.escape(id)}"]`)
+    const scope = scopeEl?.value === 'group' ? 'group' : 'org'
+    draft[id] = { enabled: true, scope }
+  })
+
+  try {
+    await saveGroupSettingsAccess(groupId, normalizeSettingsAccess(draft))
+    await loadGroupsData()
+    renderGroupsListMaster()
+    renderSelectedGroupDetail(false)
+    showToast('دسترسی تنظیمات مدیر ذخیره شد')
+  } catch (e) {
+    console.error('saveSettingsGroupAccess error:', e)
+    const msg = String(e?.message || e?.details || '')
+    showToast(
+      msg.includes('settings_access') || msg.includes('column')
+        ? 'ستون settings_access روی جدول groups نیست — ابتدا migration را اعمال کنید'
+        : (e.message || 'خطا در ذخیره دسترسی تنظیمات')
+    )
+  }
 }
 
 export async function createSettingsGroup() {
@@ -4384,7 +4526,7 @@ export function applyPermissions() {
 
   const settingsItem = document.querySelector('.profile-dropdown-item[onclick*="openSettingsModal"]')
   if (settingsItem) {
-    settingsItem.style.display = isMainAdmin() ? '' : 'none'
+    settingsItem.style.display = canOpenSettings() ? '' : 'none'
   }
 
   const activeTab = document.querySelector('.tab.active')

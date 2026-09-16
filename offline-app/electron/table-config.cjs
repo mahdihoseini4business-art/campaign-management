@@ -52,7 +52,7 @@ const TABLE_COLUMNS = {
     'username', 'first_name', 'last_name', 'phone', 'display_name', 'role',
     'permissions', 'password_hash'
   ],
-  groups: ['id', 'name', 'description', 'created_at'],
+  groups: ['id', 'name', 'description', 'settings_access', 'created_at'],
   group_members: ['group_id', 'user_phone', 'is_manager'],
   app_settings: ['key', 'value'],
   notifications: [
@@ -72,6 +72,7 @@ const TABLE_COLUMNS = {
 const JSON_COLUMNS = {
   customers: ['phones', 'addresses', 'products'],
   users: ['permissions'],
+  groups: ['settings_access'],
   app_settings: ['value'],
   notifications: ['recipient_phones']
 }

@@ -5154,11 +5154,58 @@
     flex-shrink: 0;
   }
 
+  .settings-shell-header-text {
+    min-width: 0;
+  }
+
   .settings-shell-header h2 {
     font-size: 18px;
     font-weight: 700;
     color: var(--ink);
     margin: 0;
+  }
+
+  .settings-shell-subtitle {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .settings-access-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .settings-access-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+  }
+
+  .settings-access-enable {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    cursor: pointer;
+  }
+
+  .settings-access-scope {
+    width: auto;
+    min-width: 160px;
+    max-width: 220px;
+  }
+
+  .settings-access-scope-fixed {
+    font-size: 12px;
+    color: var(--text-muted);
   }
 
   .settings-shell-body {

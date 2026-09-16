@@ -2350,6 +2350,7 @@ export async function setCurrentUser(user) {
     groupId: user.groupId || null,
     groupName: user.groupName || null,
     isGroupManager: !!user.isGroupManager,
+    settingsAccess: normalizeSettingsAccess(user.settingsAccess),
     tenantId: user.tenantId || null,
     tenantName: user.tenantName || null
   }
@@ -2397,6 +2398,122 @@ export function isMainAdmin(user = getCurrentUser()) {
 export function requireMainAdmin() {
   if (isMainAdmin()) return true
   showToast('فقط ادمین اصلی به این بخش دسترسی دارد')
+  return false
+}
+
+// ============================================
+// Settings section access (group managers)
+// ============================================
+
+/**
+ * Meta for settings panes. Locked = never delegable to group managers.
+ * supportsScope: admin may choose org (all users) vs group (team members only).
+ */
+export const SETTINGS_SECTION_ACCESS = {
+  users: { delegable: true, supportsScope: true },
+  groups: { delegable: false },
+  banks: { delegable: true, supportsScope: false },
+  products: { delegable: true, supportsScope: false },
+  'in-person-sessions': { delegable: true, supportsScope: false },
+  'sales-targets': { delegable: true, supportsScope: true },
+  platforms: { delegable: true, supportsScope: false },
+  statuses: { delegable: true, supportsScope: false },
+  'customer-codes': { delegable: true, supportsScope: false },
+  'customer-prefs': { delegable: true, supportsScope: false },
+  sms: { delegable: false },
+  'shipping-sender': { delegable: true, supportsScope: false },
+  backup: { delegable: false },
+  'notif-compose': { delegable: true, supportsScope: true },
+  'notif-prefs': { delegable: true, supportsScope: true },
+  'notif-history': { delegable: true, supportsScope: true },
+  'chat-prefs': { delegable: false },
+  'chat-oversight': { delegable: false }
+}
+
+/** Nav order for delegated sections (matches settings shell). */
+export const DELEGABLE_SETTINGS_SECTION_IDS = Object.keys(SETTINGS_SECTION_ACCESS)
+  .filter(id => SETTINGS_SECTION_ACCESS[id].delegable)
+
+export function isSettingsSectionLocked(sectionId) {
+  const meta = SETTINGS_SECTION_ACCESS[sectionId]
+  return !meta || !meta.delegable
+}
+
+export function settingsSectionSupportsScope(sectionId) {
+  return !!SETTINGS_SECTION_ACCESS[sectionId]?.supportsScope
+}
+
+/**
+ * Keep only enabled delegable sections; coerce scope.
+ * @returns {Record<string, {enabled: true, scope: 'org'|'group'}>}
+ */
+export function normalizeSettingsAccess(raw) {
+  const out = {}
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out
+  for (const id of DELEGABLE_SETTINGS_SECTION_IDS) {
+    const meta = SETTINGS_SECTION_ACCESS[id]
+    const entry = raw[id]
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue
+    if (!entry.enabled) continue
+    const scope = meta.supportsScope && entry.scope === 'group' ? 'group' : 'org'
+    out[id] = { enabled: true, scope }
+  }
+  return out
+}
+
+/** UI helper: enabled + scope for one section from raw JSON. */
+export function readSettingsAccessEntry(raw, sectionId) {
+  const meta = SETTINGS_SECTION_ACCESS[sectionId]
+  if (!meta?.delegable) return null
+  const entry = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw[sectionId] : null
+  const enabled = !!(entry && typeof entry === 'object' && entry.enabled)
+  const scope = meta.supportsScope && entry?.scope === 'group' ? 'group' : 'org'
+  return { enabled, scope }
+}
+
+export function canOpenSettings(user = getCurrentUser()) {
+  if (!user) return false
+  if (isMainAdmin(user)) return true
+  if (!user.isGroupManager) return false
+  return Object.keys(normalizeSettingsAccess(user.settingsAccess)).length > 0
+}
+
+export function canAccessSettingsSection(sectionId, user = getCurrentUser()) {
+  if (!user || !sectionId) return false
+  if (isMainAdmin(user)) return true
+  if (isSettingsSectionLocked(sectionId)) return false
+  if (!user.isGroupManager) return false
+  return !!normalizeSettingsAccess(user.settingsAccess)[sectionId]?.enabled
+}
+
+/** @returns {'org'|'group'|null} */
+export function getSettingsSectionScope(sectionId, user = getCurrentUser()) {
+  if (!user) return null
+  if (isMainAdmin(user)) return 'org'
+  const entry = normalizeSettingsAccess(user.settingsAccess)[sectionId]
+  return entry?.enabled ? entry.scope : null
+}
+
+/**
+ * Ordered list of section ids the user may open.
+ * null = main admin (all sections in shell).
+ */
+export function listAccessibleSettingsSectionIds(user = getCurrentUser()) {
+  if (!user) return []
+  if (isMainAdmin(user)) return null
+  const access = normalizeSettingsAccess(user.settingsAccess)
+  return DELEGABLE_SETTINGS_SECTION_IDS.filter(id => access[id]?.enabled)
+}
+
+export function requireSettingsAccess() {
+  if (canOpenSettings()) return true
+  showToast('به تنظیمات دسترسی ندارید')
+  return false
+}
+
+export function requireSettingsSection(sectionId) {
+  if (canAccessSettingsSection(sectionId)) return true
+  showToast('به این بخش تنظیمات دسترسی ندارید')
   return false
 }
 
