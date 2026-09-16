@@ -44,6 +44,22 @@ fi
 
 SRC="$WORKDIR/supabase/functions"
 
+# Portable sync without rsync (many minimal servers lack it)
+sync_dir() {
+  local from="$1"
+  local to="$2"
+  mkdir -p "$to"
+  # wipe managed contents then copy (keeps destination root)
+  find "$to" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  # copy including hidden files
+  shopt -s dotglob nullglob
+  local items=("$from"/*)
+  if ((${#items[@]})); then
+    cp -a "${items[@]}" "$to/"
+  fi
+  shopt -u dotglob nullglob
+}
+
 # Functions shipped by this app (skip hello/main provided by supabase docker)
 FUNCS=(
   send-otp
@@ -60,9 +76,8 @@ FUNCS=(
 )
 
 echo "==> Syncing shared helpers"
-mkdir -p "$FUNCTIONS_DST/_shared"
 if [[ -d "$SRC/_shared" ]]; then
-  rsync -a --delete "$SRC/_shared/" "$FUNCTIONS_DST/_shared/"
+  sync_dir "$SRC/_shared" "$FUNCTIONS_DST/_shared"
 fi
 
 echo "==> Syncing edge functions → $FUNCTIONS_DST"
@@ -72,10 +87,7 @@ for name in "${FUNCS[@]}"; do
     continue
   fi
   echo "  → $name"
-  mkdir -p "$FUNCTIONS_DST/$name"
-  rsync -a --delete \
-    --exclude 'node_modules' \
-    "$SRC/$name/" "$FUNCTIONS_DST/$name/"
+  sync_dir "$SRC/$name" "$FUNCTIONS_DST/$name"
 done
 
 # Ensure Deno can resolve relative ../_shared imports from each function dir
