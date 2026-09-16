@@ -367,32 +367,61 @@
     display: none;
   }
 
-  .login-stage.is-active {
+  .login-stage.is-active,
+  .login-stage.is-leaving {
     display: block;
   }
 
-  .login-stage.is-animating-in {
-    animation: stageFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  .login-stage.is-leaving {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    pointer-events: none;
   }
 
-  .login-card.is-stage-shifting {
-    animation: cardStageShift 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  .login-stage.is-leaving.is-dir-forward {
+    animation: stageSlideOutRight 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   }
 
-  @keyframes stageFadeIn {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
+  .login-stage.is-entering.is-dir-forward {
+    animation: stageSlideInLeft 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   }
 
-  @keyframes cardStageShift {
-    0% { transform: translateY(0) scale(1); }
-    45% { transform: translateY(3px) scale(0.99); }
-    100% { transform: translateY(0) scale(1); }
+  .login-stage.is-leaving.is-dir-back {
+    animation: stageSlideOutLeft 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .login-stage.is-entering.is-dir-back {
+    animation: stageSlideInRight 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  @keyframes stageSlideOutRight {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(100%); }
+  }
+
+  @keyframes stageSlideInLeft {
+    from { opacity: 0; transform: translateX(-100%); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  @keyframes stageSlideOutLeft {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(-100%); }
+  }
+
+  @keyframes stageSlideInRight {
+    from { opacity: 0; transform: translateX(100%); }
+    to { opacity: 1; transform: translateX(0); }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .login-stage.is-animating-in,
-    .login-card.is-stage-shifting {
+    .login-stage.is-leaving.is-dir-forward,
+    .login-stage.is-entering.is-dir-forward,
+    .login-stage.is-leaving.is-dir-back,
+    .login-stage.is-entering.is-dir-back {
       animation: none;
     }
     .step-dot { transition: none; }
@@ -830,36 +859,53 @@
   }
 
   function transitionToStep(nextStep, direction = 'forward') {
-    const card = document.getElementById('loginCard')
+    const stages = document.querySelector('.login-stages')
+    const fromEl = document.getElementById(`step${currentLoginStep}`)
     const toEl = document.getElementById(`step${nextStep}`)
-    if (!toEl) return
+    if (!toEl || nextStep === currentLoginStep) return
 
     updateStepIndicator(nextStep)
     currentLoginStep = nextStep
 
+    const stageAnimClasses = [
+      'is-leaving',
+      'is-entering',
+      'is-dir-forward',
+      'is-dir-back',
+      'is-animating-in',
+    ]
+
     document.querySelectorAll('.login-stage').forEach((el) => {
-      el.classList.remove('is-active', 'is-animating-in')
+      el.classList.remove(...stageAnimClasses)
     })
 
-    // Show target first (display:block), then animate — avoids opacity stuck at 0
-    toEl.classList.add('is-active')
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduceMotion || !fromEl || fromEl === toEl) {
+      document.querySelectorAll('.login-stage').forEach((el) => el.classList.remove('is-active'))
+      toEl.classList.add('is-active')
+      if (stages) stages.style.minHeight = ''
+      return
+    }
+
+    const dirClass = direction === 'back' ? 'is-dir-back' : 'is-dir-forward'
+    const fromHeight = fromEl.offsetHeight
+
+    fromEl.classList.remove('is-active')
+    fromEl.classList.add('is-leaving', dirClass)
+    toEl.classList.add('is-active', 'is-entering', dirClass)
     void toEl.offsetWidth
 
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (!reduceMotion) {
-      toEl.classList.add('is-animating-in')
-      if (card) {
-        card.classList.remove('is-stage-shifting')
-        void card.offsetWidth
-        card.classList.add('is-stage-shifting')
-      }
-      const token = ++stageTransitionToken
-      window.setTimeout(() => {
-        if (token !== stageTransitionToken) return
-        toEl.classList.remove('is-animating-in')
-        card?.classList.remove('is-stage-shifting')
-      }, 400)
+    if (stages) {
+      stages.style.minHeight = `${Math.max(fromHeight, toEl.offsetHeight)}px`
     }
+
+    const token = ++stageTransitionToken
+    window.setTimeout(() => {
+      if (token !== stageTransitionToken) return
+      fromEl.classList.remove('is-leaving', 'is-dir-forward', 'is-dir-back')
+      toEl.classList.remove('is-entering', 'is-dir-forward', 'is-dir-back')
+      if (stages) stages.style.minHeight = ''
+    }, 400)
   }
 
   function goToStep2(phone) {
