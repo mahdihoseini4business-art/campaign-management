@@ -856,6 +856,16 @@
     height: 40px;
   }
 
+  .btn:disabled,
+  .btn[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+    background: #e7e5e4;
+    color: #78716c;
+    border-color: #d6d3d1;
+  }
+
   .btn-primary { background: var(--accent); color: white; border: none; }
   .btn-primary:hover { background: var(--accent-hover); box-shadow: var(--shadow-subtle); }
   .btn:hover:not(.btn-primary):not(.btn-danger) { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }

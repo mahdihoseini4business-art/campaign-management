@@ -4659,6 +4659,9 @@ export async function saveShippingSenderSettings() {
   const phone = toEnDigits(document.getElementById('shippingSenderPhone')?.value || '').trim()
   const address = String(document.getElementById('shippingSenderAddress')?.value || '').trim().replace(/\s+/g, ' ')
   const postalCode = toEnDigits(document.getElementById('shippingSenderPostal')?.value || '').trim().replace(/\s+/g, '')
+  const orientation = document.getElementById('shippingSenderOrientationLandscape')?.checked
+    ? 'landscape'
+    : 'portrait'
 
   if (!name) { showToast('نام فرستنده را وارد کنید'); return }
   if (!address) { showToast('آدرس فرستنده را وارد کنید'); return }
@@ -4669,7 +4672,8 @@ export async function saveShippingSenderSettings() {
       phone,
       address,
       postalCode,
-      logoDataUrl: _shippingLogoDraft
+      logoDataUrl: _shippingLogoDraft,
+      orientation
     })
     showToast('اطلاعات فرستنده پستی ذخیره شد')
     renderShippingSenderSettings()

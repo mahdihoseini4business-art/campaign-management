@@ -131,8 +131,6 @@ function renderShipmentsHeader() {
       ${th('advisor', 'کارشناس')}
       ${th('productName', 'محصول')}
       ${th('productStatus', 'وضعیت فروش')}
-      ${th('shippingAddress', 'آدرس گیرنده')}
-      ${th('shippingPostalCode', 'کد پستی گیرنده')}
       ${th('trackingCode', 'کد رهگیری')}
       ${th('shippedAt', 'تاریخ و ساعت ارسال')}
       ${actionsTh}
@@ -150,8 +148,6 @@ function renderShipmentsHeader() {
     ${th('productStatus', 'وضعیت فروش')}
     ${th('approved', 'مبلغ تأییدشده / قیمت کل')}
     ${th('lastApprovedAt', 'تاریخ آخرین واریز تأییدشده')}
-    ${th('shippingAddress', 'آدرس گیرنده')}
-    ${th('shippingPostalCode', 'کد پستی گیرنده')}
     ${actionsTh}
   </tr>`
   syncSortHeaders(thead, shipmentsSortState)
@@ -175,7 +171,14 @@ function selectCellHtml(s) {
   </td>`
 }
 
+function hasShippingAddress(s) {
+  return !!(s && String(s.shippingAddress || '').trim())
+}
+
 function printBtnHtml(s) {
+  if (!hasShippingAddress(s)) {
+    return `<button type="button" class="btn btn-sm" disabled title="آدرس گیرنده ثبت نشده">پرینت لیبل</button>`
+  }
   return `<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); app.printShipmentLabel('${escapeAttr(s.customerId)}', ${s.productIndex})">پرینت لیبل</button>`
 }
 
@@ -224,6 +227,10 @@ export async function printShipmentLabel(customerId, productIndex) {
     showToast('ردیف ارسالی یافت نشد')
     return
   }
+  if (!hasShippingAddress(row)) {
+    showToast('آدرس گیرنده ثبت نشده است')
+    return
+  }
   const result = printShippingLabels([shipmentToLabelItem(row)])
   if (result.reason === 'sender_incomplete') await handleSenderIncomplete()
   else if (result.reason === 'empty') showToast('موردی برای پرینت نیست')
@@ -237,11 +244,14 @@ export async function printSelectedShipmentLabels() {
   }
   const all = getAllShipments()
   const byKey = new Map(all.map(s => [shipmentKey(s.customerId, s.productIndex), s]))
-  const items = [...selectedShipmentKeys]
+  const rows = [...selectedShipmentKeys]
     .map(k => byKey.get(k))
-    .filter(Boolean)
-    .map(shipmentToLabelItem)
-  const result = printShippingLabels(items)
+    .filter(s => s && hasShippingAddress(s))
+  if (!rows.length) {
+    showToast('هیچ‌کدام از ردیف‌های انتخاب‌شده آدرس ندارند')
+    return
+  }
+  const result = printShippingLabels(rows.map(shipmentToLabelItem))
   if (result.reason === 'sender_incomplete') await handleSenderIncomplete()
   else if (result.reason === 'empty') showToast('حداقل یک ردیف انتخاب کنید')
 }
@@ -312,8 +322,7 @@ export async function renderShipments() {
   setStat('stat-ship-pending', allShipments.filter(s => s.shipmentStatus === SHIPMENT_STATUS.pending).length)
   setStat('stat-ship-shipped', allShipments.filter(s => s.shipmentStatus === SHIPMENT_STATUS.shipped).length)
 
-  // select + base cols + actions
-  const colCount = shipmentsFilter === 'shipped' ? 11 : 11
+  const colCount = 9
 
   if (shipments.length === 0) {
     tbody.innerHTML = `
@@ -350,8 +359,6 @@ export async function renderShipments() {
     if (shipmentsFilter === 'shipped') {
       return `<tr class="clickable-row${s.isGift ? ' gift-row' : ''}" onclick="app.onCustomerRowClick(event, '${escapeAttr(s.customerId)}')">
         ${common}
-        <td>${renderCopyableCell(s.shippingAddress)}</td>
-        <td>${renderCopyableCell(s.shippingPostalCode)}</td>
         <td>${renderCopyableCell(s.trackingCode, { truncate: true })}</td>
         <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;direction:ltr;text-align:right;">${escapeHtml(formatSoldAt24h(s.shippedAt) || s.shippedAt || '—')}</td>
         <td class="actions-col" onclick="event.stopPropagation()">${printBtnHtml(s)}</td>
@@ -373,8 +380,6 @@ export async function renderShipments() {
         ${amountHtml}
       </td>
       <td style="font-family:'Vazirmatn',sans-serif;font-size:13px;direction:ltr;text-align:right;">${escapeHtml(formatSoldAt24h(s.lastApprovedAt) || '—')}</td>
-      <td>${renderCopyableCell(s.shippingAddress)}</td>
-      <td>${renderCopyableCell(s.shippingPostalCode)}</td>
       <td class="actions-col" onclick="event.stopPropagation()">
         <div class="shipments-actions">
           ${printBtnHtml(s)}
@@ -477,8 +482,12 @@ export async function confirmShipment(options = {}) {
     renderShipments()
     try { renderProducts(customerId) } catch (_) { /* detail may be closed */ }
     if (print) {
-      const result = printShippingLabels([shipmentToLabelItem(labelSnapshot)])
-      if (result.reason === 'sender_incomplete') await handleSenderIncomplete()
+      if (!hasShippingAddress(labelSnapshot)) {
+        showToast('آدرس گیرنده ثبت نشده — لیبل چاپ نشد')
+      } else {
+        const result = printShippingLabels([shipmentToLabelItem(labelSnapshot)])
+        if (result.reason === 'sender_incomplete') await handleSenderIncomplete()
+      }
     }
   } catch (e) {
     console.error('confirmShipment error:', e)
