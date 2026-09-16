@@ -902,6 +902,12 @@ async function init() {
   try { updateTransferInboxBadge() } catch (e) { console.error('updateTransferInboxBadge error:', e) }
   try { renderSalesTargetBand() } catch (e) { console.error('renderSalesTargetBand error:', e) }
   refreshNotifications().catch(e => console.error('notifications init error:', e))
+  import('./ops-digest.js')
+    .then(async ({ ensureOpsDigestsForCurrentUser }) => {
+      const result = await ensureOpsDigestsForCurrentUser()
+      if (result?.created > 0) await refreshNotifications()
+    })
+    .catch(e => console.error('ops digest ensure error:', e))
   initSaleToastFeed().catch(e => console.error('sale toast init error:', e))
   initDmChat().catch(e => console.error('dm chat init error:', e))
   initLiveSync().catch(e => console.error('live sync init error:', e))
@@ -915,6 +921,13 @@ async function init() {
           if (typeof refreshActiveViews === 'function') await refreshActiveViews()
         } catch (e) {
           console.error('refresh after cached boot', e)
+        }
+        try {
+          const { ensureOpsDigestsForCurrentUser } = await import('./ops-digest.js')
+          const result = await ensureOpsDigestsForCurrentUser({ force: true })
+          if (result?.created > 0) await refreshNotifications()
+        } catch (e) {
+          console.error('ops digest ensure after sync error:', e)
         }
       })
       .catch(e => {
