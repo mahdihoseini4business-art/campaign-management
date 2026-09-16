@@ -1,6 +1,8 @@
 import { supabase } from './supabase.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
+import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS } from './sms-features.js'
+import { canManageSmsSettings, canViewSmsHistory, canEditSmsTemplates } from './sms-business.js'
 import {
   loadGroupsData,
   getGroupsCache,
@@ -450,7 +452,7 @@ const SETTINGS_SECTIONS = [
   { id: 'statuses', label: 'وضعیت‌های مشتری', group: 'داده‌های پایه', keywords: 'وضعیت status' },
   { id: 'customer-codes', label: 'کدهای مشتری', group: 'داده‌های پایه', keywords: 'کد مشتری customer code' },
   { id: 'customer-prefs', label: 'ترجیحات مشتری', group: 'داده‌های پایه', keywords: 'پیگیری اجبار فروش followup مشتری ثبت' },
-  { id: 'sms', label: 'پنل پیامک', group: 'ارتباطات', keywords: 'پیامک sms otp ملی پیامک melipayamak فرستنده api' },
+  { id: 'sms', label: 'پنل پیامک', group: 'ارتباطات', keywords: 'پیامک sms otp ملی پیامک melipayamak فرستنده api قالب کمپین تاریخچه قابلیت' },
   { id: 'shipping-sender', label: 'فرستنده پستی', group: 'سیستم', keywords: 'پست لیبل فرستنده آدرس کد پستی لوگو shipping label sender' },
   { id: 'backup', label: 'بکاپ و بازیابی', group: 'سیستم', keywords: 'بکاپ backup restore بازیابی پشتیبان آفلاین carno' },
   { id: 'notif-compose', label: 'ارسال اعلان', group: 'اعلان‌ها', keywords: 'اعلان notification ارسال' },
@@ -4490,10 +4492,151 @@ export function renderSmsPanelSettings() {
       ? 'رمز فعلی ذخیره شده است. اگر فیلد را خالی بگذارید، رمز قبلی حفظ می‌شود.'
       : 'رمز عبور پنل پیامک را وارد کنید.'
   }
+
+  renderSmsFeaturesToggles()
+  const hourEl = document.getElementById('smsFollowupDefaultHour')
+  if (hourEl) hourEl.value = String(getFollowupSmsDefaultHour())
+  renderSmsTemplatesEditor().catch((e) => console.error(e))
+  if (canViewSmsHistory()) refreshSmsHistory().catch(() => {})
+  refreshSmsCampaigns().catch(() => {})
+}
+
+function renderSmsFeaturesToggles() {
+  const host = document.getElementById('smsFeaturesToggles')
+  if (!host) return
+  const features = getSmsFeatures()
+  const canEdit = canManageSmsSettings()
+  host.innerHTML = SMS_FEATURE_KEYS.map((key) => `
+    <label class="settings-perm-chip${features[key] ? ' is-on' : ''}" style="display:flex;align-items:center;gap:8px;margin:6px 0;">
+      <input type="checkbox" data-sms-feature="${escapeAttr(key)}" ${features[key] ? 'checked' : ''} ${canEdit ? '' : 'disabled'}>
+      <span>${escapeHtml(SMS_FEATURE_LABELS[key] || key)}</span>
+    </label>
+  `).join('')
+}
+
+export async function saveSmsFeaturesSettings() {
+  if (!canManageSmsSettings()) {
+    showToast('دسترسی مدیریت پیامک ندارید')
+    return
+  }
+  const features = { ...getSmsFeatures() }
+  document.querySelectorAll('[data-sms-feature]').forEach((el) => {
+    const key = el.getAttribute('data-sms-feature')
+    if (key) features[key] = !!el.checked
+  })
+  const hour = Number(document.getElementById('smsFollowupDefaultHour')?.value || 10)
+  try {
+    await saveSmsFeatures(features)
+    await saveFollowupSmsDefaultHour(hour)
+    showToast('قابلیت‌های پیامک ذخیره شد')
+    renderSmsFeaturesToggles()
+  } catch (e) {
+    console.error(e)
+    showToast(e.message || 'خطا در ذخیره')
+  }
+}
+
+let _smsTemplatesCache = []
+
+async function renderSmsTemplatesEditor() {
+  const host = document.getElementById('smsTemplatesList')
+  if (!host) return
+  const canEdit = canEditSmsTemplates()
+  try {
+    _smsTemplatesCache = await listSmsTemplates()
+  } catch (e) {
+    host.innerHTML = `<p class="settings-pane-desc">${escapeHtml(e.message || 'خطا')}</p>`
+    return
+  }
+  host.innerHTML = _smsTemplatesCache.map((t, i) => `
+    <div class="settings-subsection" style="border:1px solid var(--border);padding:10px;border-radius:8px;margin-bottom:8px;" data-sms-tpl-idx="${i}">
+      <div class="form-row" style="justify-content:space-between;align-items:center;">
+        <strong>${escapeHtml(t.name || t.key)}</strong>
+        <label class="settings-perm-chip">
+          <input type="checkbox" data-sms-tpl-enabled="${i}" ${t.enabled !== false ? 'checked' : ''} ${canEdit ? '' : 'disabled'}>
+          فعال
+        </label>
+      </div>
+      <p class="settings-pane-desc" style="margin:4px 0;">کلید: <code>${escapeHtml(t.key)}</code></p>
+      <textarea class="form-input" rows="3" data-sms-tpl-body="${i}" ${canEdit ? '' : 'readonly'}>${escapeHtml(t.body || '')}</textarea>
+    </div>
+  `).join('') || '<p class="settings-pane-desc">قالبی نیست</p>'
+}
+
+export async function saveSmsTemplatesSettings() {
+  if (!canEditSmsTemplates()) {
+    showToast('ویرایش قالب مجاز نیست')
+    return
+  }
+  try {
+    for (let i = 0; i < _smsTemplatesCache.length; i++) {
+      const t = _smsTemplatesCache[i]
+      const bodyEl = document.querySelector(`[data-sms-tpl-body="${i}"]`)
+      const enEl = document.querySelector(`[data-sms-tpl-enabled="${i}"]`)
+      await saveSmsTemplateRow({
+        key: t.key,
+        name: t.name,
+        body: bodyEl?.value ?? t.body,
+        enabled: enEl ? !!enEl.checked : t.enabled !== false,
+      })
+    }
+    showToast('قالب‌ها ذخیره شد')
+    await renderSmsTemplatesEditor()
+  } catch (e) {
+    console.error(e)
+    showToast(e.message || 'خطا در ذخیره قالب')
+  }
+}
+
+export async function refreshSmsHistory() {
+  const tbody = document.getElementById('smsHistoryBody')
+  if (!tbody) return
+  if (!canViewSmsHistory()) {
+    tbody.innerHTML = '<tr><td colspan="5">دسترسی مشاهده تاریخچه ندارید</td></tr>'
+    return
+  }
+  try {
+    const rows = await listSmsLogs({ limit: 40 })
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="5">تاریخی نیست</td></tr>'
+      return
+    }
+    tbody.innerHTML = rows.map((r) => `
+      <tr>
+        <td style="font-size:12px;direction:ltr;">${escapeHtml(String(r.created_at || '').replace('T', ' ').slice(0, 19))}</td>
+        <td>${escapeHtml(r.kind || '')}</td>
+        <td style="direction:ltr;">${escapeHtml(r.to_phone || '')}</td>
+        <td>${escapeHtml(r.status || '')}</td>
+        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeAttr(r.body || '')}">${escapeHtml((r.body || '').slice(0, 80))}</td>
+      </tr>
+    `).join('')
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5">${escapeHtml(e.message || 'خطا')}</td></tr>`
+  }
+}
+
+export async function refreshSmsCampaigns() {
+  const host = document.getElementById('smsCampaignsList')
+  if (!host) return
+  try {
+    const rows = await listSmsCampaigns({ limit: 15 })
+    if (!rows.length) {
+      host.textContent = 'کمپینی ثبت نشده'
+      return
+    }
+    host.innerHTML = rows.map((c) =>
+      `<div style="margin-bottom:6px;"><b>${escapeHtml(c.title || '')}</b> — ${escapeHtml(c.mode)} / ${escapeHtml(c.status)} — ${c.sent || 0}/${c.total || 0}</div>`
+    ).join('')
+  } catch (e) {
+    host.textContent = e.message || 'خطا'
+  }
 }
 
 export async function saveSmsPanelSettings() {
-  if (!requireMainAdmin()) return
+  if (!canManageSmsSettings()) {
+    showToast('دسترسی مدیریت پیامک ندارید')
+    return
+  }
 
   const username = toEnDigits(document.getElementById('smsUsername')?.value || '').trim()
   const passwordInput = document.getElementById('smsPassword')?.value || ''

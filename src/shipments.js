@@ -18,6 +18,8 @@ import { SEARCH_HOST } from './search-overlay.js'
 import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
 import { assertFeature, assertWritable } from './entitlements.js'
 import { printShippingLabels, shipmentToLabelItem } from './shipping-label.js'
+import { canUseSmsKind } from './sms-business.js'
+import { sendShipmentShippedSms } from './sms-ui.js'
 
 let shipmentsFilter = 'pending' // pending | shipped
 let shipmentsSortState = { field: null, asc: true }
@@ -425,6 +427,11 @@ export function openConfirmShipmentModal(customerId, productIndex) {
   const modal = document.getElementById('confirmShipmentModal')
   const input = document.getElementById('shipmentTrackingCode')
   if (input) input.value = product.trackingCode || ''
+  const smsWrap = document.getElementById('shipmentSmsSendWrap')
+  const smsCb = document.getElementById('shipmentSmsSend')
+  const showSms = canUseSmsKind('shipment_shipped')
+  if (smsWrap) smsWrap.style.display = showSms ? '' : 'none'
+  if (smsCb) smsCb.checked = showSms
   if (modal) modal.classList.add('active')
   input?.focus()
 }
@@ -473,9 +480,21 @@ export async function confirmShipment(options = {}) {
   product.trackingCode = trackingCode
   product.shippedAt = dateTime
   product.shippedBy = shippedBy
+  const wantSms = !!document.getElementById('shipmentSmsSend')?.checked && canUseSmsKind('shipment_shipped')
   const labelSnapshot = buildShipmentSnapshot(customer, product, productIndex, trackingCode, dateTime, shippedBy)
   try {
     await saveCustomerToDB(customer)
+    if (wantSms && !product.smsShippedAt) {
+      try {
+        const smsResult = await sendShipmentShippedSms(customer, product, productIndex)
+        if (smsResult?.sent > 0) {
+          product.smsShippedAt = dateTime
+          await saveCustomerToDB(customer)
+        }
+      } catch (smsErr) {
+        console.error('shipment SMS', smsErr)
+      }
+    }
     closeConfirmShipmentModal()
     showToast('ارسال تأیید شد')
     selectedShipmentKeys.delete(shipmentKey(customerId, productIndex))
