@@ -132,7 +132,7 @@ import {
 } from './entitlements.js'
 import {
   openSmsComposeModal, closeSmsComposeModal, onSmsComposeTemplateChange, onSmsComposeBodyInput, sendSmsComposeTest, submitSmsCompose,
-  openSaleBalanceSms, openDebtorsGroupSms, openCustomerSingleSms, openCustomersFilteredSms, openFollowupBulkSms,
+  openSaleBalanceSms, openSaleSettlementDueSms, openDebtorsGroupSms, openCustomerSingleSms, openCustomersFilteredSms, openFollowupBulkSms,
   openSmsCampaignModal, closeSmsCampaignModal, onSmsCampaignTemplateChange, onSmsCampaignBodyInput, onSmsCampaignModeChange, refreshSmsCampaignAudience, sendSmsCampaignTest, submitSmsCampaign
 } from './sms-ui.js'
 import {
@@ -507,6 +507,7 @@ const app = {
   sendSmsComposeTest,
   submitSmsCompose,
   openSaleBalanceSms,
+  openSaleSettlementDueSms,
   openDebtorsGroupSms,
   openCustomerSingleSms,
   openCustomersFilteredSms,

@@ -63,8 +63,8 @@ let composeState = null
 
 /** Templates shown per compose kind (manual text always available). */
 const KIND_TEMPLATE_KEYS = Object.freeze({
-  sale_single: ['sale_balance'],
-  sale_group: ['sale_balance'],
+  sale_single: ['sale_balance', 'sale_settlement_due'],
+  sale_group: ['sale_balance', 'sale_settlement_due'],
   sale_settlement_due: ['sale_settlement_due'],
   customer_single: ['customer_campaign'],
   customer_campaign: ['customer_campaign'],
@@ -352,15 +352,54 @@ export async function openSaleBalanceSms(customerId, productIndex) {
     return
   }
   const balance = getOperationalBalance(product)
+  const settlementDate = String(product.settlementDate || '').trim()
   const recipient = buildRecipientFromCustomer(customer, {
     product_name: product.name || '',
     balance: formatBalanceFa(balance),
     total_balance: formatBalanceFa(balance),
+    settlement_date: settlementDate,
   }, { productIndex })
   await openSmsComposeModal({
     kind: 'sale_single',
     title: 'پیامک مانده حساب',
     templateKey: 'sale_balance',
+    recipients: [recipient],
+  })
+}
+
+/** Sales: manual settlement-due SMS for one product (also available as template in sale compose). */
+export async function openSaleSettlementDueSms(customerId, productIndex) {
+  if (!canUseSmsKind('sale_settlement_due')) {
+    showToast('پیامک موعد تسویه فعال نیست یا دسترسی ندارید')
+    return
+  }
+  const data = getData()
+  const customer = data.customers.find((c) => c.id === customerId)
+  const product = customer?.products?.[productIndex]
+  if (!customer || !product) {
+    showToast('فروش یافت نشد')
+    return
+  }
+  const balance = getOperationalBalance(product)
+  if (balance <= 0) {
+    showToast('مانده‌ای برای این فروش نیست')
+    return
+  }
+  const settlementDate = String(product.settlementDate || '').trim()
+  if (!settlementDate) {
+    showToast('ابتدا تاریخ تسویه را ثبت کنید')
+    return
+  }
+  const recipient = buildRecipientFromCustomer(customer, {
+    product_name: product.name || '',
+    balance: formatBalanceFa(balance),
+    total_balance: formatBalanceFa(balance),
+    settlement_date: settlementDate,
+  }, { productIndex, settlementDate })
+  await openSmsComposeModal({
+    kind: 'sale_settlement_due',
+    title: 'پیامک موعد تسویه',
+    templateKey: 'sale_settlement_due',
     recipients: [recipient],
   })
 }
@@ -414,6 +453,7 @@ export async function openDebtorsGroupSms(productNameFilter = '') {
       product_name: parts.join('، ') || 'محصولات',
       balance: formatBalanceFa(total),
       total_balance: formatBalanceFa(total),
+      settlement_date: '',
     }))
   }
 
