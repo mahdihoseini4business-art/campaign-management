@@ -460,25 +460,6 @@
   }
   .app-update-btn:hover { background: #0146b0; }
 
-  /* TEMP: stage animation debug — remove after QA */
-  .login-stage-debug-btn {
-    position: fixed;
-    bottom: 16px;
-    left: 16px;
-    z-index: 13000;
-    border: none;
-    border-radius: 10px;
-    padding: 10px 14px;
-    font-size: 12px;
-    font-weight: 600;
-    font-family: 'Vazirmatn', sans-serif;
-    cursor: pointer;
-    background: #0f172a;
-    color: #f8fafc;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  }
-  .login-stage-debug-btn:hover { background: #1e293b; }
-
   /* Responsive */
   @media (max-width: 480px) {
     body { padding: 16px; }
@@ -501,61 +482,6 @@
   <span class="app-update-banner-text">نسخه جدید آماده است. برای اعمال بروزرسانی کنید.</span>
   <button type="button" class="app-update-btn" id="appUpdateReloadBtn">بروزرسانی</button>
 </div>
-
-<!-- TEMP: stage animation debug — remove after QA -->
-<button type="button" class="login-stage-debug-btn" id="loginStageDebugBtn" onclick="__debugToggleLoginStage()">تست انیمیشن مرحله</button>
-
-<script>
-  // TEMP: independent of ES module so the debug toggle always works
-  function __debugToggleLoginStage() {
-    const step1 = document.getElementById('step1')
-    const step2 = document.getElementById('step2')
-    const stages = document.querySelector('.login-stages')
-    if (!step1 || !step2) return
-
-    const goingTo2 = step1.classList.contains('is-active')
-    const fromEl = goingTo2 ? step1 : step2
-    const toEl = goingTo2 ? step2 : step1
-    const dirClass = goingTo2 ? 'is-dir-forward' : 'is-dir-back'
-    const nextStep = goingTo2 ? 2 : 1
-
-    ;[step1, step2].forEach((el) => {
-      el.classList.remove('is-leaving', 'is-entering', 'is-dir-forward', 'is-dir-back')
-    })
-
-    const phone = document.getElementById('otpPhoneDisplay')
-    if (phone && goingTo2) phone.textContent = '۰۹۱۲۳۴۵۶۷۸۹'
-
-    const fromHeight = fromEl.offsetHeight
-    fromEl.classList.remove('is-active')
-    fromEl.classList.add('is-leaving', dirClass)
-
-    toEl.classList.add('is-active')
-    void toEl.offsetWidth
-    toEl.classList.add('is-entering', dirClass)
-
-    if (stages) {
-      stages.style.minHeight = `${Math.max(fromHeight, toEl.offsetHeight)}px`
-    }
-
-    const indicator = document.getElementById('stepIndicator')
-    indicator?.querySelectorAll('.step-dot').forEach((dot) => {
-      const n = Number(dot.dataset.dot)
-      dot.classList.toggle('completed', n < nextStep)
-      dot.classList.toggle('active', n === nextStep)
-    })
-
-    if (typeof window.__setLoginStep === 'function') {
-      window.__setLoginStep(nextStep)
-    }
-
-    window.setTimeout(() => {
-      fromEl.classList.remove('is-leaving', 'is-dir-forward', 'is-dir-back')
-      toEl.classList.remove('is-entering', 'is-dir-forward', 'is-dir-back')
-      if (stages) stages.style.minHeight = ''
-    }, 400)
-  }
-</script>
 
 <div class="login-card" id="loginCard">
   <img src="/logo.webp" alt="سیستم مدیریت عملکرد سازمان کارنو" class="login-logo">
@@ -1002,11 +928,6 @@
     document.getElementById('error2').classList.remove('show')
     document.getElementById('success2').classList.remove('show')
     transitionToStep(1, 'back')
-  }
-
-  // TEMP: keep module step state in sync with debug toggle
-  window.__setLoginStep = function(step) {
-    currentLoginStep = step
   }
 
   function formatPhoneDisplay(phone) {
