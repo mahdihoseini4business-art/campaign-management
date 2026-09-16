@@ -1986,6 +1986,14 @@
         <div id="smsComposePreview" class="settings-pane-desc" style="min-height:3em;white-space:pre-wrap;border:1px solid var(--border);padding:10px;border-radius:8px;"></div>
       </div>
       <p class="settings-pane-desc" id="smsComposeCount"></p>
+      <div class="form-row" style="flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px;">
+        <div class="form-group" style="flex:1;min-width:160px;margin:0;">
+          <label for="smsComposeTestPhone">شماره تست</label>
+          <input type="tel" class="form-input" id="smsComposeTestPhone" inputmode="numeric" dir="ltr" placeholder="09xxxxxxxxx" autocomplete="tel">
+        </div>
+        <button type="button" class="btn" onclick="app.sendSmsComposeTest()">ارسال تستی</button>
+      </div>
+      <p class="settings-pane-desc" style="margin-top:4px;">فقط به همین شماره یک پیام واقعی می‌رود (متغیرها از نمونه اولین گیرنده).</p>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="app.closeSmsComposeModal()">انصراف</button>
@@ -2013,15 +2021,21 @@
           <select class="form-input" id="smsCampaignStatus" onchange="app.refreshSmsCampaignAudience()"><option value="">همه</option></select>
         </div>
         <div class="form-group" style="flex:1;min-width:140px;">
+          <label for="smsCampaignProduct">محصول</label>
+          <select class="form-input" id="smsCampaignProduct" onchange="app.refreshSmsCampaignAudience()">
+            <option value="">همه محصولات</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1;min-width:140px;">
           <label for="smsCampaignMode">شیوه ارسال</label>
-          <select class="form-input" id="smsCampaignMode">
+          <select class="form-input" id="smsCampaignMode" onchange="app.onSmsCampaignModeChange()">
             <option value="immediate">فوری</option>
             <option value="scheduled">زمان‌بندی‌شده</option>
             <option value="drip">قطره‌ای</option>
           </select>
         </div>
       </div>
-      <div class="form-row" style="flex-wrap:wrap;gap:12px;">
+      <div class="form-row" style="flex-wrap:wrap;gap:12px;" id="smsCampaignScheduleRow">
         <div class="form-group" style="flex:1;min-width:140px;">
           <label for="smsCampaignSendAt">زمان ارسال (برای زمان‌بندی)</label>
           <input type="datetime-local" class="form-input" id="smsCampaignSendAt" dir="ltr">
@@ -2048,6 +2062,14 @@
         <div id="smsCampaignPreview" class="settings-pane-desc" style="min-height:3em;white-space:pre-wrap;border:1px solid var(--border);padding:10px;border-radius:8px;">—</div>
       </div>
       <p class="settings-pane-desc" id="smsCampaignCount">۰ گیرنده</p>
+      <div class="form-row" style="flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px;">
+        <div class="form-group" style="flex:1;min-width:160px;margin:0;">
+          <label for="smsCampaignTestPhone">شماره تست</label>
+          <input type="tel" class="form-input" id="smsCampaignTestPhone" inputmode="numeric" dir="ltr" placeholder="09xxxxxxxxx" autocomplete="tel">
+        </div>
+        <button type="button" class="btn" onclick="app.sendSmsCampaignTest()">ارسال تستی</button>
+      </div>
+      <p class="settings-pane-desc" style="margin-top:4px;">فقط به شماره تست یک پیام واقعی می‌رود؛ کمپین اصلی هنوز شروع نشده است.</p>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="app.closeSmsCampaignModal()">انصراف</button>

@@ -131,9 +131,9 @@ import {
   assertFeature
 } from './entitlements.js'
 import {
-  openSmsComposeModal, closeSmsComposeModal, onSmsComposeTemplateChange, onSmsComposeBodyInput, previewSmsCompose, submitSmsCompose,
+  openSmsComposeModal, closeSmsComposeModal, onSmsComposeTemplateChange, onSmsComposeBodyInput, previewSmsCompose, sendSmsComposeTest, submitSmsCompose,
   openSaleBalanceSms, openDebtorsGroupSms, openCustomerSingleSms, openCustomersFilteredSms, openFollowupBulkSms,
-  openSmsCampaignModal, closeSmsCampaignModal, onSmsCampaignTemplateChange, onSmsCampaignBodyInput, refreshSmsCampaignAudience, submitSmsCampaign
+  openSmsCampaignModal, closeSmsCampaignModal, onSmsCampaignTemplateChange, onSmsCampaignBodyInput, onSmsCampaignModeChange, refreshSmsCampaignAudience, sendSmsCampaignTest, submitSmsCampaign
 } from './sms-ui.js'
 import {
   openSubscriptionStatusModal,
@@ -503,6 +503,7 @@ const app = {
   onSmsComposeTemplateChange,
   onSmsComposeBodyInput,
   previewSmsCompose,
+  sendSmsComposeTest,
   submitSmsCompose,
   openSaleBalanceSms,
   openDebtorsGroupSms,
@@ -514,7 +515,9 @@ const app = {
   closeSmsCampaignModal,
   onSmsCampaignTemplateChange,
   onSmsCampaignBodyInput,
+  onSmsCampaignModeChange,
   refreshSmsCampaignAudience,
+  sendSmsCampaignTest,
   submitSmsCampaign,
   saveShippingSenderSettings,
   onShippingSenderLogoChange,

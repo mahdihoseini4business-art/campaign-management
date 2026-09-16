@@ -1,7 +1,55 @@
-import { getData, listSmsTemplates, createSmsCampaign, createSmsSchedule, cancelPendingSmsSchedulesForCustomer, getFollowupSmsDefaultHour, getStatuses } from './data.js'
+import { getData, listSmsTemplates, createSmsCampaign, createSmsSchedule, cancelPendingSmsSchedulesForCustomer, getFollowupSmsDefaultHour, getStatuses, getProductCatalogNames } from './data.js'
 import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normalizePhone, getOperationalBalance, getPrimaryPhone } from './utils.js'
 import { canUseSmsKind, invokeSendSms, buildRecipientFromCustomer, formatBalanceFa } from './sms-business.js'
 import { getStoredTenantId } from './tenant.js'
+
+const SMS_TEST_PHONE_KEY = 'sms_test_phone'
+
+function readSavedTestPhone() {
+  try {
+    return String(localStorage.getItem(SMS_TEST_PHONE_KEY) || '').trim()
+  } catch (_) {
+    return ''
+  }
+}
+
+function saveTestPhone(phone) {
+  try {
+    if (phone) localStorage.setItem(SMS_TEST_PHONE_KEY, phone)
+  } catch (_) { /* ignore */ }
+}
+
+function fillTestPhoneInput(id) {
+  const el = document.getElementById(id)
+  if (!el) return
+  if (!String(el.value || '').trim()) el.value = readSavedTestPhone()
+}
+
+function parseTestPhone(raw) {
+  const phone = normalizePhone(raw)
+  if (!phone || !/^09\d{9}$/.test(phone)) return null
+  return phone
+}
+
+function buildTestRecipient(phone, sample) {
+  return {
+    phone,
+    customer_id: sample?.customer_id || null,
+    vars: {
+      customer_name: 'تست',
+      advisor: '',
+      followup_date: '',
+      org_name: 'آکادمی کارنو',
+      product_name: '',
+      balance: '',
+      total_balance: '',
+      tracking_code: '',
+      ...(sample?.vars || {}),
+      phone,
+    },
+    meta: { ...(sample?.meta || {}), test: true },
+  }
+}
 
 /** @type {null | {
  *  kind: string,
@@ -95,6 +143,7 @@ export async function openSmsComposeModal(opts) {
   const selectedKey = opts.templateKey || sel?.value || ''
   const tpl = templates.find((t) => t.key === selectedKey)
   if (bodyEl) bodyEl.value = opts.body || tpl?.body || ''
+  fillTestPhoneInput('smsComposeTestPhone')
   updateSmsComposePreview()
   document.getElementById('smsComposeModal')?.classList.add('active')
 }
@@ -176,6 +225,36 @@ export async function previewSmsCompose() {
   }
 }
 
+/** Send one real SMS to a manual test number using current compose text/vars. */
+export async function sendSmsComposeTest() {
+  if (!composeState) return
+  const body = document.getElementById('smsComposeBody')?.value || ''
+  if (!body.trim()) {
+    showToast('متن پیام را وارد کنید')
+    return
+  }
+  const phone = parseTestPhone(document.getElementById('smsComposeTestPhone')?.value)
+  if (!phone) {
+    showToast('شماره تست معتبر نیست (مثلاً 09123456789)')
+    return
+  }
+  const templateKey = document.getElementById('smsComposeTemplate')?.value || composeState.templateKey || ''
+  const sample = composeState.recipients?.[0] || null
+  const result = await invokeSendSms({
+    mode: 'single',
+    kind: composeState.kind,
+    template_key: templateKey || null,
+    body_override: body,
+    recipients: [buildTestRecipient(phone, sample)],
+  })
+  if (result?.success || Number(result?.sent || 0) > 0) {
+    saveTestPhone(phone)
+    showToast(`پیام تست به ${phone} ارسال شد`)
+  } else {
+    showToast(result?.error || 'ارسال تست ناموفق بود')
+  }
+}
+
 export async function submitSmsCompose() {
   if (!composeState) return
   const body = document.getElementById('smsComposeBody')?.value || ''
@@ -188,6 +267,10 @@ export async function submitSmsCompose() {
   if (!recipients.length) {
     showToast('گیرنده‌ای نیست')
     return
+  }
+  if (recipients.length > 1) {
+    const ok = window.confirm(`ارسال به ${recipients.length} گیرنده؟`)
+    if (!ok) return
   }
 
   // Batch in chunks of 50
@@ -426,6 +509,43 @@ function updateSmsCampaignPreview() {
   }
 }
 
+function collectCampaignProductOptions() {
+  const names = new Set()
+  for (const n of getProductCatalogNames()) {
+    const t = String(n || '').trim()
+    if (t) names.add(t)
+  }
+  for (const c of getData().customers || []) {
+    for (const p of c.products || []) {
+      const t = String(p?.name || '').trim()
+      if (t) names.add(t)
+    }
+  }
+  return [...names].sort((a, b) => a.localeCompare(b, 'fa'))
+}
+
+function customerHasProduct(customer, productName) {
+  if (!productName) return true
+  const key = String(productName).trim().toLowerCase()
+  if (!key) return true
+  return (customer.products || []).some((p) => String(p?.name || '').trim().toLowerCase() === key)
+}
+
+export function onSmsCampaignModeChange() {
+  const mode = document.getElementById('smsCampaignMode')?.value || 'immediate'
+  const row = document.getElementById('smsCampaignScheduleRow')
+  if (!row) return
+  const showSchedule = mode === 'scheduled'
+  const showDrip = mode === 'drip'
+  const sendAt = document.getElementById('smsCampaignSendAt')?.closest('.form-group')
+  const dripInterval = document.getElementById('smsCampaignDripInterval')?.closest('.form-group')
+  const dripBatch = document.getElementById('smsCampaignDripBatch')?.closest('.form-group')
+  if (sendAt) sendAt.style.display = showSchedule ? '' : 'none'
+  if (dripInterval) dripInterval.style.display = showDrip ? '' : 'none'
+  if (dripBatch) dripBatch.style.display = showDrip ? '' : 'none'
+  row.style.display = (showSchedule || showDrip) ? '' : 'none'
+}
+
 export async function openSmsCampaignModal() {
   if (!canUseSmsKind('customer_campaign')) {
     showToast('کمپین پیامک فعال نیست یا دسترسی ندارید')
@@ -436,6 +556,13 @@ export async function openSmsCampaignModal() {
   if (statusSel) {
     statusSel.innerHTML = `<option value="">همه (فیلتر تب مشتریان)</option>` + statuses.map((s) =>
       `<option value="${escapeAttr(s.key)}">${escapeHtml(s.label || s.key)}</option>`
+    ).join('')
+  }
+  const productSel = document.getElementById('smsCampaignProduct')
+  if (productSel) {
+    const products = collectCampaignProductOptions()
+    productSel.innerHTML = `<option value="">همه محصولات</option>` + products.map((name) =>
+      `<option value="${escapeAttr(name)}">${escapeHtml(name)}</option>`
     ).join('')
   }
   const templates = await listSmsTemplates().catch(() => [])
@@ -451,6 +578,8 @@ export async function openSmsCampaignModal() {
   if (bodyEl) bodyEl.value = tpl?.body || ''
   const titleEl = document.getElementById('smsCampaignTitle')
   if (titleEl) titleEl.value = ''
+  fillTestPhoneInput('smsCampaignTestPhone')
+  onSmsCampaignModeChange()
   await refreshSmsCampaignAudienceAsync()
   document.getElementById('smsCampaignModal')?.classList.add('active')
 }
@@ -480,33 +609,73 @@ export function onSmsCampaignBodyInput() {
   updateSmsCampaignPreview()
 }
 
-function finishAudience(base, status) {
+function finishAudience(base, status, productName) {
   campaignAudience = []
   for (const c of base) {
     if (status && String(c.status || '') !== status) continue
+    if (!customerHasProduct(c, productName)) continue
     const phone = getPrimaryPhone(c) || c.phone
     if (!phone) continue
-    campaignAudience.push(buildRecipientFromCustomer(c))
+    const extra = {}
+    if (productName) extra.product_name = productName
+    campaignAudience.push(buildRecipientFromCustomer(c, extra))
   }
   const el = document.getElementById('smsCampaignCount')
-  if (el) el.textContent = `${campaignAudience.length} گیرنده (بر اساس فیلتر تب مشتریان)`
+  const parts = [`${campaignAudience.length} گیرنده`]
+  if (productName) parts.push(`محصول: ${productName}`)
+  parts.push('فیلتر تب مشتریان')
+  if (el) el.textContent = parts.join(' · ')
   updateSmsCampaignPreview()
 }
 
-/** Audience = customers-tab filters, optionally narrowed by campaign status select. */
+/** Audience = customers-tab filters, optionally narrowed by campaign status/product. */
 export function refreshSmsCampaignAudience() {
   void refreshSmsCampaignAudienceAsync()
 }
 
 export async function refreshSmsCampaignAudienceAsync() {
   const status = document.getElementById('smsCampaignStatus')?.value || ''
+  const productName = document.getElementById('smsCampaignProduct')?.value || ''
   let base = getData().customers || []
   try {
     const { getFilteredCustomers } = await import('./customers.js')
     base = getFilteredCustomers() || base
   } catch (_) { /* keep all */ }
-  finishAudience(base, status)
+  finishAudience(base, status, productName)
   return campaignAudience
+}
+
+export async function sendSmsCampaignTest() {
+  if (!canUseSmsKind('customer_campaign')) return
+  const body = document.getElementById('smsCampaignBody')?.value || ''
+  if (!body.trim()) {
+    showToast('متن پیام را وارد کنید')
+    return
+  }
+  const phone = parseTestPhone(document.getElementById('smsCampaignTestPhone')?.value)
+  if (!phone) {
+    showToast('شماره تست معتبر نیست (مثلاً 09123456789)')
+    return
+  }
+  await refreshSmsCampaignAudienceAsync()
+  const templateKey = document.getElementById('smsCampaignTemplate')?.value || 'customer_campaign'
+  const sample = campaignAudience[0] || null
+  const productName = document.getElementById('smsCampaignProduct')?.value || ''
+  const recipient = buildTestRecipient(phone, sample)
+  if (productName) recipient.vars.product_name = productName
+  const result = await invokeSendSms({
+    mode: 'single',
+    kind: 'customer_campaign',
+    template_key: templateKey || null,
+    body_override: body,
+    recipients: [recipient],
+  })
+  if (result?.success || Number(result?.sent || 0) > 0) {
+    saveTestPhone(phone)
+    showToast(`پیام تست به ${phone} ارسال شد`)
+  } else {
+    showToast(result?.error || 'ارسال تست ناموفق بود')
+  }
 }
 
 export async function submitSmsCampaign() {
@@ -524,11 +693,20 @@ export async function submitSmsCampaign() {
     showToast('متن پیام را وارد کنید')
     return
   }
+  const productName = document.getElementById('smsCampaignProduct')?.value || ''
+  const status = document.getElementById('smsCampaignStatus')?.value || ''
+  const ok = window.confirm(`شروع کمپین برای ${campaignAudience.length} گیرنده؟`)
+  if (!ok) return
+
   const dripInterval = Number(document.getElementById('smsCampaignDripInterval')?.value || 5)
   const dripBatch = Number(document.getElementById('smsCampaignDripBatch')?.value || 20)
   let sendAt = null
   const sendAtRaw = document.getElementById('smsCampaignSendAt')?.value
-  if (mode === 'scheduled' && sendAtRaw) {
+  if (mode === 'scheduled') {
+    if (!sendAtRaw) {
+      showToast('زمان ارسال را مشخص کنید')
+      return
+    }
     sendAt = new Date(sendAtRaw).toISOString()
   }
 
@@ -536,7 +714,7 @@ export async function submitSmsCampaign() {
     title,
     template_key: templateKey || null,
     body,
-    filter: { status: document.getElementById('smsCampaignStatus')?.value || '', recipients: campaignAudience },
+    filter: { status, product: productName, recipients: campaignAudience },
     mode,
     status: 'sending',
     total: campaignAudience.length,
