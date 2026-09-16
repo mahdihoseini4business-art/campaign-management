@@ -94,23 +94,35 @@ done
 # (layout: volumes/functions/<fn>/index.ts and volumes/functions/_shared/)
 
 if [[ "${SKIP_MIGRATE:-0}" != "1" ]]; then
-  MIG="$WORKDIR/supabase/migrations/044_sms_business.sql"
-  if [[ -f "$MIG" ]]; then
-    echo "==> Applying migration 044_sms_business.sql (if not already applied)"
-    # Prefer docker exec into db container — names vary
-    DB_CID="$(docker ps --filter name=supabase-db --format '{{.ID}}' | head -1 || true)"
-    if [[ -z "$DB_CID" ]]; then
-      DB_CID="$(docker ps --filter name=db --format '{{.ID}}' | head -1 || true)"
-    fi
-    if [[ -n "$DB_CID" ]]; then
-      # Record in supabase_migrations.schema_migrations if table exists; else just run SQL
-      docker exec -i "$DB_CID" psql -U postgres -d postgres < "$MIG" \
-        && echo "  migration SQL executed" \
-        || echo "  WARN: migration failed (may already be applied) — check output above"
-    else
-      echo "  WARN: could not find supabase-db container; apply $MIG manually"
-    fi
+  # Prefer docker exec into db container — names vary
+  DB_CID="$(docker ps --filter name=supabase-db --format '{{.ID}}' | head -1 || true)"
+  if [[ -z "$DB_CID" ]]; then
+    DB_CID="$(docker ps --filter name=db --format '{{.ID}}' | head -1 || true)"
   fi
+
+  apply_mig() {
+    local mig_path="$1"
+    local label
+    label="$(basename "$mig_path")"
+    if [[ ! -f "$mig_path" ]]; then
+      echo "  skip missing migration: $label"
+      return 0
+    fi
+    echo "==> Applying migration $label (idempotent / IF NOT EXISTS)"
+    if [[ -z "$DB_CID" ]]; then
+      echo "  WARN: could not find supabase-db container; apply $mig_path manually"
+      return 0
+    fi
+    if docker exec -i "$DB_CID" psql -U postgres -d postgres < "$mig_path"; then
+      echo "  migration SQL executed: $label"
+    else
+      echo "  WARN: migration $label failed (may already be applied) — check output above"
+    fi
+  }
+
+  # Digests (kind/meta) then SMS business — order matters if both pending
+  apply_mig "$WORKDIR/supabase/migrations/040_notification_digest_meta.sql"
+  apply_mig "$WORKDIR/supabase/migrations/044_sms_business.sql"
 fi
 
 if [[ "${SKIP_RESTART:-0}" != "1" ]]; then
@@ -128,16 +140,25 @@ if [[ "${SKIP_RESTART:-0}" != "1" ]]; then
 fi
 
 echo
-echo "==> Deployed. Smoke (replace ANON_KEY):"
+echo "==> Deployed. Smoke (replace ANON_KEY / CRON_SECRET):"
+echo "  # SMS"
 echo "  curl -sS -X POST http://127.0.0.1:8000/functions/v1/send-sms \\"
 echo "    -H \"apikey: \$ANON_KEY\" -H \"Authorization: Bearer \$ANON_KEY\" \\"
 echo "    -H 'Content-Type: application/json' -d '{\"kind\":\"sale_single\"}'"
+echo
+echo "  # Ops digest (morning)"
+echo "  curl -sS -X POST 'http://127.0.0.1:8000/functions/v1/ops-digest-cron?kind=morning' \\"
+echo "    -H \"x-cron-secret: \$CRON_SECRET\""
 echo
 echo "==> Reminders:"
 echo "  1) Ensure SMS_* and CRON_SECRET are in functions env (.env / docker-compose), then:"
 echo "       sh run.sh recreate functions"
 echo "  2) Cron every 5 min for sms-schedule-cron with header x-cron-secret"
-echo "  3) Grant SMS permissions + toggle features in app settings"
+echo "  3) Schedule ops-digest-cron twice daily Tehran:"
+echo "       morning ~04:30 UTC (= 08:00 IRST): ?kind=morning"
+echo "       evening ~14:30 UTC (= 18:00 IRST): ?kind=evening"
+echo "  4) Redeploy Liara frontend so client-side digest-on-open is live"
+echo "  5) Grant SMS permissions + toggle features in app settings"
 
 if [[ "$CLEANUP_WORKDIR" == "1" ]]; then
   rm -rf "$WORKDIR"
