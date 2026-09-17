@@ -2023,6 +2023,16 @@ export function hasPermissionForUser(user, key) {
   return !!(user.permissions && user.permissions[key] === true)
 }
 
+/**
+ * Whether the editor may grant/revoke a permission key on another user.
+ * Main admins can grant anything; managers only keys they themselves have.
+ */
+export function canGrantPermissionKey(key, editor = getCurrentUser()) {
+  if (!editor) return false
+  if (isMainAdmin(editor)) return true
+  return hasPermissionForUser(editor, key)
+}
+
 /** True if the user has at least one permission in the refunds group. */
 export function hasAnyRefundPermission() {
   return REFUND_PERMISSION_KEYS.some(key => hasPermission(key))

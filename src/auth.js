@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali, gregorianToJalaliStr, jalaliDateTimeToIso, canOpenSettings, canAccessSettingsSection, listAccessibleSettingsSectionIds, requireSettingsAccess, requireSettingsSection, SETTINGS_SECTION_ACCESS, settingsSectionSupportsScope, readSettingsAccessEntry, normalizeSettingsAccess, canManageSettingsUserRecord, requireManageSettingsUser, isSettingsSectionGroupScoped, getSettingsSectionScopeHint } from './utils.js'
+import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali, gregorianToJalaliStr, jalaliDateTimeToIso, canOpenSettings, canAccessSettingsSection, listAccessibleSettingsSectionIds, requireSettingsAccess, requireSettingsSection, SETTINGS_SECTION_ACCESS, settingsSectionSupportsScope, readSettingsAccessEntry, normalizeSettingsAccess, canManageSettingsUserRecord, requireManageSettingsUser, isSettingsSectionGroupScoped, getSettingsSectionScopeHint, canGrantPermissionKey } from './utils.js'
 import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
 import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS } from './sms-features.js'
 import { canManageSmsSettings, canViewSmsHistory, canEditSmsTemplates } from './sms-business.js'
@@ -1261,29 +1261,52 @@ function renderSelectedUserDetail(enterMobileDetail) {
   }
 
   const perms = u.permissions || getDefaultPermissions()
+  const editorIsMainAdmin = isMainAdmin()
 
   const permsHtml = PERMISSION_GROUPS.map(g => {
-    const allChecked = g.keys.every(k => !!perms[k])
+    const grantableKeys = g.keys.filter(k => canGrantPermissionKey(k))
+    const lockedKeys = g.keys.filter(k => !canGrantPermissionKey(k))
+    // Hide empty groups when editor has none of the keys (unless target has locked ones to show)
+    const visibleLocked = lockedKeys.filter(k => !!perms[k])
+    if (!grantableKeys.length && !visibleLocked.length) return ''
+
+    const keysToShow = editorIsMainAdmin
+      ? g.keys
+      : [...grantableKeys, ...visibleLocked]
+
+    const controllable = grantableKeys
+    const allChecked = controllable.length > 0 && controllable.every(k => !!perms[k])
+    const allToggle = controllable.length
+      ? `<label class="settings-perm-all">
+            <input type="checkbox" ${allChecked ? 'checked' : ''} onchange="app.togglePermGroup('${escapeAttr(u.username)}', '${escapeAttr(g.label)}', this.checked)">
+            همه
+          </label>`
+      : ''
+
     return `
       <div class="settings-perm-group" data-perm-group="${escapeAttr(u.username)}:${escapeAttr(g.label)}">
         <div class="settings-perm-group-head">
           <span>${escapeHtml(g.label)}</span>
-          <label class="settings-perm-all">
-            <input type="checkbox" ${allChecked ? 'checked' : ''} onchange="app.togglePermGroup('${escapeAttr(u.username)}', '${escapeAttr(g.label)}', this.checked)">
-            همه
-          </label>
+          ${allToggle}
         </div>
         <div class="settings-perm-chips">
-          ${g.keys.map(k => `
-            <label class="settings-perm-chip${perms[k] ? ' is-on' : ''}">
-              <input type="checkbox" data-perm-user="${escapeAttr(u.username)}" data-perm-key="${k}" ${perms[k] ? 'checked' : ''} onchange="app.togglePermCheckbox(this)">
-              ${ALL_PERMISSIONS[k]}
-            </label>
-          `).join('')}
+          ${keysToShow.map(k => {
+            const canGrant = canGrantPermissionKey(k)
+            const locked = !canGrant
+            return `
+            <label class="settings-perm-chip${perms[k] ? ' is-on' : ''}${locked ? ' is-locked' : ''}"${locked ? ' title="این دسترسی را خودتان ندارید — قابل تغییر نیست"' : ''}>
+              <input type="checkbox" data-perm-user="${escapeAttr(u.username)}" data-perm-key="${k}" ${perms[k] ? 'checked' : ''}${locked ? ' disabled' : ''} onchange="app.togglePermCheckbox(this)">
+              ${ALL_PERMISSIONS[k]}${locked ? ' <span class="settings-perm-lock">قفل</span>' : ''}
+            </label>`
+          }).join('')}
         </div>
       </div>
     `
-  }).join('')
+  }).filter(Boolean).join('')
+
+  const grantHint = editorIsMainAdmin
+    ? ''
+    : '<p class="settings-pane-desc" style="margin:0 0 8px;">فقط دسترسی‌هایی را می‌توانید بدهید که خودتان دارید. بقیه در صورت وجود، قفل هستند.</p>'
 
   const membership = getMembershipByPhone(u.phone)
   const groups = getGroupsCache()
@@ -1327,7 +1350,8 @@ function renderSelectedUserDetail(enterMobileDetail) {
   detail.innerHTML = `
     ${renderUserInfoHead(u, isCurrentUser)}
     <div class="settings-user-perms">
-      ${permsHtml}
+      ${grantHint}
+      ${permsHtml || '<div class="settings-empty-detail">دسترسی قابل واگذاری ندارید</div>'}
       ${groupHtml}
     </div>
     <div class="settings-perms-footer" id="settingsPermsFooter">
@@ -1357,8 +1381,9 @@ export function togglePermGroup(username, groupLabel, checked) {
   const group = PERMISSION_GROUPS.find(g => g.label === groupLabel)
   if (!group) return
   group.keys.forEach(k => {
+    if (!canGrantPermissionKey(k)) return
     const cb = document.querySelector(`input[data-perm-user="${username}"][data-perm-key="${k}"]`)
-    if (!cb) return
+    if (!cb || cb.disabled) return
     cb.checked = !!checked
     togglePermCheckbox(cb)
   })
@@ -4673,15 +4698,18 @@ export async function saveUserPermissions(username) {
   const cached = _settingsUsersCache.find(u => u.username === username)
   if (!requireManageSettingsUser(cached)) return
 
-  const checkboxes = document.querySelectorAll(`input[data-perm-user="${username}"]`)
-  if (checkboxes.length === 0) {
-    showToast('برای کاربر مدیر نمی‌توان دسترسی جزئی ذخیره کرد')
-    return
+  const prev = { ...(cached.permissions || getDefaultPermissions()) }
+  const permissions = { ...prev }
+
+  // Only keys the editor can grant may change; others stay as previously stored
+  for (const key of Object.keys(ALL_PERMISSIONS)) {
+    if (!canGrantPermissionKey(key)) {
+      permissions[key] = !!prev[key]
+      continue
+    }
+    const cb = document.querySelector(`input[data-perm-user="${CSS.escape(username)}"][data-perm-key="${CSS.escape(key)}"]`)
+    permissions[key] = cb ? !!cb.checked : !!prev[key]
   }
-  let permissions = {}
-  checkboxes.forEach(cb => {
-    permissions[cb.dataset.permKey] = cb.checked
-  })
 
   // Preserve group-derived viewUserPhones (not edited via boolean chips)
   const phone = normalizePhone(cached?.phone)
@@ -4713,6 +4741,14 @@ export async function saveUserPermissions(username) {
 }
 
 export function togglePermCheckbox(el) {
+  if (!el || el.disabled) return
+  const key = el.dataset.permKey
+  if (key && !canGrantPermissionKey(key)) {
+    el.checked = !el.checked
+    showToast('فقط دسترسی‌هایی را می‌توانید بدهید که خودتان دارید')
+    return
+  }
+
   const label = el.closest('label')
   if (label) {
     label.classList.toggle('is-on', el.checked)
@@ -4724,7 +4760,9 @@ export function togglePermCheckbox(el) {
   if (username) {
     PERMISSION_GROUPS.forEach(g => {
       if (!g.keys.includes(el.dataset.permKey)) return
-      const allOn = g.keys.every(k => {
+      const controllable = g.keys.filter(k => canGrantPermissionKey(k))
+      if (!controllable.length) return
+      const allOn = controllable.every(k => {
         const cb = document.querySelector(`input[data-perm-user="${username}"][data-perm-key="${k}"]`)
         return cb?.checked
       })
