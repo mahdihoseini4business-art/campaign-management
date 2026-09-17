@@ -3,6 +3,7 @@ import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normal
 import { canUseSmsKind, canManageSmsSettings, invokeSendSms, buildRecipientFromCustomer, formatBalanceFa, fetchSmsQuota, buildSettlementSmsVars } from './sms-business.js'
 import { normalizeFollowupDefaultHour } from './sms-features.js'
 import { getStoredTenantId } from './tenant.js'
+import { openAppConfirm } from './app-confirm.js'
 
 const SMS_TEST_PHONE_KEY = 'sms_test_phone'
 
@@ -169,10 +170,10 @@ async function assertWithinQuota(needed) {
     return false
   }
   if (needed > remaining) {
-    const ok = window.confirm(
-      `تعداد گیرنده (${formatNumber(needed)}) بیشتر از باقی‌مانده امروز (${formatNumber(remaining)}) است. ادامه؟`
+    return openAppConfirm(
+      `تعداد گیرنده (${formatNumber(needed)}) بیشتر از باقی‌مانده امروز (${formatNumber(remaining)}) است. ادامه؟`,
+      { confirmLabel: 'ادامه' }
     )
-    return ok
   }
   return true
 }
@@ -302,7 +303,7 @@ export async function submitSmsCompose() {
   }
   if (!(await assertWithinQuota(recipients.length))) return
   if (recipients.length > 1) {
-    const ok = window.confirm(`ارسال به ${recipients.length} گیرنده؟`)
+    const ok = await openAppConfirm(`ارسال به ${recipients.length} گیرنده؟`)
     if (!ok) return
   }
 
@@ -758,7 +759,7 @@ export async function sendTodaySettlementSmsManual() {
     return { sent: 0, failed: 0, skipped: 0 }
   }
 
-  const ok = window.confirm(
+  const ok = await openAppConfirm(
     `امروز موعد تسویه ${formatNumber(preview.customerCount)} مشتری` +
     ` (${formatNumber(preview.saleCount)} فروش) است.\n` +
     `آیا می‌خواهید برای آن‌ها پیامک تسویه ارسال شود؟\n` +
@@ -1346,7 +1347,7 @@ export async function submitSmsCampaign() {
   const useTabFilters = document.getElementById('smsCampaignUseTabFilters')?.checked !== false
   if (!(await assertWithinQuota(campaignAudience.length))) return
   const modeLabel = mode === 'scheduled' ? 'زمان‌بندی' : mode === 'drip' ? 'ارسال قطره‌ای' : 'ارسال فوری'
-  const ok = window.confirm(`${modeLabel} برای ${campaignAudience.length} گیرنده؟`)
+  const ok = await openAppConfirm(`${modeLabel} برای ${campaignAudience.length} گیرنده؟`)
   if (!ok) return
 
   const dripInterval = Number(document.getElementById('smsCampaignDripInterval')?.value || 5)

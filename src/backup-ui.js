@@ -11,6 +11,7 @@ import {
   toJalali,
   formatNumber
 } from './utils.js'
+import { openAppConfirm } from './app-confirm.js'
 import { loadData } from './data.js'
 import { loadGroupsData } from './groups.js'
 import { diffRowFields, formatDiffValue, listMergeConflicts } from './backup/backup-merge.js'
@@ -490,7 +491,7 @@ export async function applyBackupRestore() {
     ? 'بازیابی شامل حذف یا بازنویسی داده است. ادامه می‌دهید؟'
     : 'تغییرات بکاپ روی داده‌های آنلاین اعمال شود؟'
 
-  if (!confirm(confirmMsg)) return
+  if (!(await openAppConfirm(confirmMsg, { danger: destructive, confirmLabel: 'ادامه' }))) return
 
   _restoreBusy = true
   setRestoreProgress('در حال اعمال تغییرات…')

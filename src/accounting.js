@@ -1,5 +1,6 @@
 import { getData, saveCustomerToDB, coerceProductName, isGiftSaleLine, getDestinationBanks, collapseDuplicateCustomersInCache } from './data.js'
 import { getUsersSafe } from './auth.js'
+import { openAppConfirm } from './app-confirm.js'
 import {
   toEnDigits, formatNumber, escapeHtml, escapeAttr, showToast, hasPermission,
   requirePermission, getCurrentUser, normalizePhone, getNowJalaliDateTime,
@@ -460,33 +461,9 @@ export async function approveGiftSale(customerId, productIndex) {
 }
 
 function openAccountingConfirm(message, onConfirm, confirmLabel = 'تأیید') {
-  const msg = document.getElementById('deleteMessage')
-  const btn = document.getElementById('deleteConfirmBtn')
-  const header = document.querySelector('#deleteModal .modal-header h2')
-  const modal = document.getElementById('deleteModal')
-  if (!msg || !btn || !modal) {
-    if (window.confirm(message)) onConfirm()
-    return
-  }
-  const prevLabel = btn.textContent
-  const prevHeader = header?.textContent
-  msg.textContent = message
-  btn.textContent = confirmLabel
-  if (header) header.textContent = 'تأیید'
-  const restore = () => {
-    btn.textContent = prevLabel
-    if (header && prevHeader) header.textContent = prevHeader
-  }
-  btn.onclick = () => {
-    modal.classList.remove('active')
-    restore()
-    onConfirm()
-  }
-  const cancelBtn = document.querySelector('#deleteModal .modal-footer .btn:not(.btn-danger)')
-  const closeBtn = document.querySelector('#deleteModal .modal-close')
-  if (cancelBtn) cancelBtn.addEventListener('click', restore, { once: true })
-  if (closeBtn) closeBtn.addEventListener('click', restore, { once: true })
-  modal.classList.add('active')
+  void openAppConfirm(message, { title: 'تأیید', confirmLabel }).then((ok) => {
+    if (ok) onConfirm()
+  })
 }
 
 function productShippedWarning(product) {

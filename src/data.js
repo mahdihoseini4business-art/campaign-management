@@ -2309,41 +2309,6 @@ export function countSalesByProductName(productName) {
 }
 
 /**
- * Sale-line product names that are not in the current catalog or bundles.
- * Used after catalog renames that left customer sales on the old label —
- * those orphans keep the old sales counts until remapped to a catalog name.
- * @returns {Array<{ name: string, count: number }>}
- */
-export function listOrphanSaleProductNames() {
-  const catalogKeys = new Set(
-    getProductCatalogNames().map((n) => String(n || '').trim().toLowerCase()).filter(Boolean)
-  )
-  for (const b of getProductBundles()) {
-    const bn = coerceProductName(b?.name)
-    if (bn) catalogKeys.add(bn.toLowerCase())
-  }
-
-  /** @type {Map<string, { name: string, count: number }>} */
-  const orphans = new Map()
-  for (const c of data.customers || []) {
-    for (const p of c.products || []) {
-      const name = coerceProductName(p?.name)
-      if (!name) continue
-      const key = name.toLowerCase()
-      if (catalogKeys.has(key)) continue
-      const prev = orphans.get(key)
-      if (prev) prev.count += 1
-      else orphans.set(key, { name, count: 1 })
-    }
-  }
-
-  return [...orphans.values()].sort((a, b) => {
-    if (b.count !== a.count) return b.count - a.count
-    return String(a.name).localeCompare(String(b.name), 'fa')
-  })
-}
-
-/**
  * Migrate sale lines + sales-target filters from an old catalog name to a bundle name.
  * @returns {{ updatedCustomers: number, updatedSales: number, updatedTargets: boolean, bundleName: string }}
  */

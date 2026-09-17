@@ -2,6 +2,7 @@ import { BACKUP_FORMAT_VERSION, BACKUP_TABLES, BACKUP_MANIFEST_PATH } from '@bac
 import { validateManifest, BackupFormatError } from '@backup/backup-format.js'
 import { unzipSync, strFromU8 } from 'fflate'
 import { requireSession, getCurrentUser, clearCurrentUser } from './session.js'
+import { openAppConfirm } from '@online-src/app-confirm.js'
 
 const TABLE_LABELS = {
   customers: 'مشتریان',
@@ -101,8 +102,9 @@ async function importBackupReplace() {
   const preview = el('backupPreview')
   if (!window.offlineApi) return
 
-  const ok = window.confirm(
-    'ایمپورت بکاپ جدید، تمام داده‌های محلی فعلی را جایگزین می‌کند. ادامه می‌دهید؟'
+  const ok = await openAppConfirm(
+    'ایمپورت بکاپ جدید، تمام داده‌های محلی فعلی را جایگزین می‌کند. ادامه می‌دهید؟',
+    { danger: true, confirmLabel: 'جایگزینی' }
   )
   if (!ok) return
 

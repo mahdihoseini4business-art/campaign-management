@@ -1,5 +1,6 @@
 import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, invalidateProductSalesCountCache, isEventProductName, getActiveInPersonSessions, formatInPersonSessionLabel, getInPersonSessionById, mapInPersonSessionSelectOptions, assertSaleCanUseInPersonSession, getEventCourseNamesForSellable, saleNeedsInPersonSession, getSaleInPersonSessionMap, applySaleInPersonSessionMap } from './data.js'
 import { getUsersSafe } from './auth.js'
+import { openAppConfirm } from './app-confirm.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
 import { broadcastSaleToast, buildSaleToastPayload, broadcastAppSetting } from './sale-toasts.js'
@@ -4214,7 +4215,7 @@ export async function removeProductPayment(customerId, productIndex, paymentInde
     showToast('فقط ثبت‌کننده این واریز می‌تواند آن را حذف کند')
     return
   }
-  if (!window.confirm('این واریز حذف شود؟')) return
+  if (!(await openAppConfirm('این واریز حذف شود؟', { danger: true, confirmLabel: 'حذف' }))) return
   product.payments.splice(paymentIndex, 1)
   syncProductStatus(product)
   await setProducts(customerId, products)
@@ -4951,7 +4952,7 @@ export async function removeProduct(customerId, index) {
 
   const product = customer.products[i]
   const label = coerceProductName(product?.name) || 'این محصول'
-  if (!window.confirm(`«${label}» به‌طور کامل از خریدهای این مشتری حذف شود؟\nتمام واریزهای مرتبط هم حذف می‌شوند.`)) return
+  if (!(await openAppConfirm(`«${label}» به‌طور کامل از خریدهای این مشتری حذف شود؟\nتمام واریزهای مرتبط هم حذف می‌شوند.`, { danger: true, confirmLabel: 'حذف' }))) return
 
   const snapshot = customer.products.slice()
   customer.products.splice(i, 1)

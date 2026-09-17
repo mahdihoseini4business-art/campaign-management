@@ -14,6 +14,7 @@ import {
   LEGACY_PLATFORM_SESSION_STORAGE_KEY
 } from './session-contract.js'
 import { buildPlatformShellHtml } from './shell-template.js'
+import { openAppConfirm } from '../app-confirm.js'
 
 let shellMounted = false
 let tenantsCache = []
@@ -638,13 +639,15 @@ async function onSetSubdomain(event) {
   const subdomain = ($('opsSubdomain')?.value || '').trim()
   const cached = findCachedTenant(tenantId)
   if (cached && !tenantHasDiamondSubdomain(cached)) {
-    const ok = window.confirm(
-      'این سازمان پلن الماسی ندارد. تنظیم ساب‌دامین به‌عنوان سوپرادمین override entitlement است. ادامه می‌دهید؟'
+    const ok = await openAppConfirm(
+      'این سازمان پلن الماسی ندارد. تنظیم ساب‌دامین به‌عنوان سوپرادمین override entitlement است. ادامه می‌دهید؟',
+      { confirmLabel: 'ادامه' }
     )
     if (!ok) return
   } else if (!cached && tenantId) {
-    const ok = window.confirm(
-      'پلن این سازمان در کش فهرست نیست. اگر entitlement الماس نداشته باشد، باز هم به‌عنوان سوپرادمین override می‌شود. ادامه؟'
+    const ok = await openAppConfirm(
+      'پلن این سازمان در کش فهرست نیست. اگر entitlement الماس نداشته باشد، باز هم به‌عنوان سوپرادمین override می‌شود. ادامه؟',
+      { confirmLabel: 'ادامه' }
     )
     if (!ok) return
   }
@@ -699,7 +702,7 @@ async function onArchiveTenant() {
     flashStatus(status, 'شناسه tenant لازم است', true, 0)
     return
   }
-  if (!window.confirm('آرشیو این سازمان؟ ساب‌دامین پاک و اشتراک معلق می‌شود.')) return
+  if (!(await openAppConfirm('آرشیو این سازمان؟ ساب‌دامین پاک و اشتراک معلق می‌شود.', { danger: true, confirmLabel: 'آرشیو' }))) return
   setFormBusy(form, true)
   setButtonBusy(btn, true)
   setButtonBusy($('platformUnarchiveTenantBtn'), true)
@@ -727,7 +730,7 @@ async function onUnarchiveTenant() {
     flashStatus(status, 'شناسه tenant لازم است', true, 0)
     return
   }
-  if (!window.confirm('خروج از آرشیو؟ سازمان دوباره active می‌شود و وضعیت اشتراک بر اساس تاریخ انقضا تنظیم می‌گردد.')) return
+  if (!(await openAppConfirm('خروج از آرشیو؟ سازمان دوباره active می‌شود و وضعیت اشتراک بر اساس تاریخ انقضا تنظیم می‌گردد.', { confirmLabel: 'خروج از آرشیو' }))) return
   setFormBusy(form, true)
   setButtonBusy(btn, true)
   setButtonBusy($('platformArchiveTenantBtn'), true)
