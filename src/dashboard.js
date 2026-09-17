@@ -29,6 +29,8 @@ async function ensureChartLib() {
 }
 
 let dashCharts = {}
+/** True after at least one full renderDashboard (charts ready for live KPI patch). */
+let dashboardLiveReady = false
 /** @type {Set<string>|null} null = not initialized yet (treat as all) */
 let selectedAdvisorPhones = null
 let dashUsersCache = []
@@ -1709,13 +1711,63 @@ export async function renderDashboard() {
   const cacheKey = `${dateFrom}|${dateTo}|${userSig}|${dashFilterApplied ? 1 : 0}|${dashOverdueShowAll ? 1 : 0}|${dashSoonShowAll ? 1 : 0}|${dashOverdueSort.field}:${dashOverdueSort.asc}|${dashSoonSort.field}:${dashSoonSort.asc}|${conversionCode}`
   if (shouldSkipTabRender('dashboard', cacheKey)) return
 
-  const data = getData()
-  const customersById = getCustomersById()
   await ensureUserFilterUI()
   await ensureChartLib()
   ensureSalesChartDefaults()
   syncSalesChartTimeframeOptions()
 
+  paintDashboardLiveStats()
+
+  const currentUser = getCurrentUser()
+  const dateFromNum = dateFrom ? jalaliToNum(dateFrom) : 0
+  const dateToNum = dateTo ? jalaliToNum(dateTo) : 99999999
+
+  try {
+    renderDashCharts(dateFromNum, dateToNum, currentUser)
+  } catch (e) {
+    console.error('renderDashCharts error:', e)
+  }
+
+  try {
+    paintInPersonSessionsCard()
+  } catch (e) {
+    console.error('in-person sessions card error:', e)
+  }
+
+  markTabRendered('dashboard', cacheKey)
+  dashboardLiveReady = true
+}
+
+/** Drop live-patch readiness (tenant switch / logout). */
+export function resetDashboardLivePatch() {
+  dashboardLiveReady = false
+}
+
+/**
+ * Live-sync path: refresh KPI cards + follow-up tables without destroying Chart.js instances.
+ * @returns {boolean} false when a full renderDashboard() is still required
+ */
+export function patchDashboardLiveStats() {
+  if (!dashboardLiveReady) return false
+  if (!document.getElementById('sheet-dashboard')) return false
+  try {
+    paintDashboardLiveStats()
+    try { paintInPersonSessionsCard() } catch (e) {
+      console.error('in-person sessions card error:', e)
+    }
+    return true
+  } catch (e) {
+    console.error('patchDashboardLiveStats error:', e)
+    return false
+  }
+}
+
+/** KPI / list paint shared by full render and live patch (no charts). */
+function paintDashboardLiveStats() {
+  const data = getData()
+  const customersById = getCustomersById()
+  const dateFrom = document.getElementById('dashDateFrom')?.value.trim() || ''
+  const dateTo = document.getElementById('dashDateTo')?.value.trim() || ''
   const dateFromNum = dateFrom ? jalaliToNum(dateFrom) : 0
   const dateToNum = dateTo ? jalaliToNum(dateTo) : 99999999
   const todayNum = getTodayJalaliNum()
@@ -1727,8 +1779,6 @@ export async function renderDashboard() {
     const dNum = jalaliToNum(dateStr)
     return dNum >= dateFromNum && dNum <= dateToNum
   }
-
-  const currentUser = getCurrentUser()
 
   function inUserScope(c) {
     return matchesSelectedUsers(c)
@@ -1749,9 +1799,13 @@ export async function renderDashboard() {
 
   const datedCustomers = scopedCustomers.filter(customerCreatedInRange)
 
-  document.getElementById('dash-total-customers').textContent = datedCustomers.length
-  document.getElementById('dash-total-leads').textContent = datedCustomers.filter(c => c.id.startsWith('LD')).length
-  document.getElementById('dash-total-cs').textContent = datedCustomers.filter(c => c.id.startsWith('CS')).length
+  const elTotal = document.getElementById('dash-total-customers')
+  if (elTotal) elTotal.textContent = datedCustomers.length
+  const elLeads = document.getElementById('dash-total-leads')
+  if (elLeads) elLeads.textContent = datedCustomers.filter(c => c.id.startsWith('LD')).length
+  const elCs = document.getElementById('dash-total-cs')
+  if (elCs) elCs.textContent = datedCustomers.filter(c => c.id.startsWith('CS')).length
+
   const visibleFollowups = data.followups.filter(f => {
     const customer = customersById.get(f.customerId)
     if (!customer || !inUserScope(customer)) return false
@@ -1770,8 +1824,10 @@ export async function renderDashboard() {
     const nextDate = jalaliDatePart(c.nextFollowupDate)
     return jalaliToNum(nextDate) >= todayNum && inDateRange(nextDate)
   }).length
-  document.getElementById('dash-followups-completed').textContent = completedFollowups
-  document.getElementById('dash-followups-upcoming').textContent = upcomingFollowups
+  const elFuDone = document.getElementById('dash-followups-completed')
+  if (elFuDone) elFuDone.textContent = completedFollowups
+  const elFuUp = document.getElementById('dash-followups-upcoming')
+  if (elFuUp) elFuUp.textContent = upcomingFollowups
 
   let overdueList = []
   let soonList = []
@@ -1783,7 +1839,6 @@ export async function renderDashboard() {
       const nextDate = jalaliDatePart(c.nextFollowupDate)
       if (hasDateFilter && !inDateRange(nextDate)) return
       const dNum = jalaliToNum(nextDate)
-      // Overdue/soon lists: managers only see subordinates
       if (matchesFollowupMonitorScope(c)) {
         if (dNum < todayNum) overdueList.push(c)
         else if (dNum <= in3DaysNum) soonList.push(c)
@@ -1794,22 +1849,26 @@ export async function renderDashboard() {
     }
   })
 
-  document.getElementById('dash-overdue-followup').textContent = overdueList.length
-  document.getElementById('dash-soon-followup').textContent = soonList.length
-  document.getElementById('dash-set-followup').textContent = setCount
-  document.getElementById('dash-no-followup').textContent = noSetCount
-  document.getElementById('dash-overdue-badge').textContent = overdueList.length
-  document.getElementById('dash-soon-badge').textContent = soonList.length
+  const setText = (id, value) => {
+    const el = document.getElementById(id)
+    if (el) el.textContent = value
+  }
+  setText('dash-overdue-followup', overdueList.length)
+  setText('dash-soon-followup', soonList.length)
+  setText('dash-set-followup', setCount)
+  setText('dash-no-followup', noSetCount)
+  setText('dash-overdue-badge', overdueList.length)
+  setText('dash-soon-badge', soonList.length)
 
   const activeCustomers = datedCustomers.filter(c => c.products && c.products.length > 0)
-  document.getElementById('dash-active-customers').textContent = activeCustomers.length
+  setText('dash-active-customers', activeCustomers.length)
 
   const salesMetrics = resolveDashSalesMetrics(hasDateFilter, inDateRange)
 
-  document.getElementById('dash-sales-count').textContent = salesMetrics.salesCount
-  document.getElementById('dash-sales-deposit').textContent = formatNumber(salesMetrics.totalDeposit) + ' ریال'
-  document.getElementById('dash-sales-balance').textContent = formatNumber(salesMetrics.totalBalance) + ' ریال'
-  document.getElementById('dash-sales-total').textContent = formatNumber(salesMetrics.totalApproved) + ' ریال'
+  setText('dash-sales-count', salesMetrics.salesCount)
+  setText('dash-sales-deposit', formatNumber(salesMetrics.totalDeposit) + ' ریال')
+  setText('dash-sales-balance', formatNumber(salesMetrics.totalBalance) + ' ریال')
+  setText('dash-sales-total', formatNumber(salesMetrics.totalApproved) + ' ریال')
   const grossEl = document.getElementById('dash-sales-gross')
   if (grossEl) grossEl.textContent = formatNumber(salesMetrics.completedGrossProfit) + ' ریال'
   const pendingEl = document.getElementById('dash-sales-pending')
@@ -1818,7 +1877,7 @@ export async function renderDashboard() {
   const avgSale = salesMetrics.salesCount > 0
     ? Math.round(salesMetrics.totalApproved / salesMetrics.salesCount)
     : 0
-  document.getElementById('dash-avg-sale').textContent = formatNumber(avgSale) + ' ریال'
+  setText('dash-avg-sale', formatNumber(avgSale) + ' ریال')
 
   try {
     paintAvgBuyerLrfmCard(computeAvgBuyerLrfm(scopedCustomers, data.followups))
@@ -1889,20 +1948,6 @@ export async function renderDashboard() {
     'settlement-soon-badge',
     { showAll: dashSoonShowAll, tableKey: 'soon' }
   )
-
-  try {
-    renderDashCharts(dateFromNum, dateToNum, currentUser)
-  } catch (e) {
-    console.error('renderDashCharts error:', e)
-  }
-
-  try {
-    paintInPersonSessionsCard()
-  } catch (e) {
-    console.error('in-person sessions card error:', e)
-  }
-
-  markTabRendered('dashboard', cacheKey)
 }
 
 function destroyDashChart(keyOrCanvas) {

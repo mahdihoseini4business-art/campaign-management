@@ -97,6 +97,12 @@ async function clearTenantLocalCaches(prevTenantId = null) {
     console.warn('clear tab-cache', e)
   }
   try {
+    const { resetDashboardLivePatch } = await import('./dashboard.js')
+    resetDashboardLivePatch()
+  } catch (e) {
+    console.warn('reset dashboard live patch', e)
+  }
+  try {
     const { clearNotificationsCache } = await import('./notifications.js')
     clearNotificationsCache()
   } catch (e) {

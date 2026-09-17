@@ -32,7 +32,7 @@ import { renderProductMatrix } from './product-matrix.js'
 import { renderAccounting } from './accounting.js'
 import { renderShipments } from './shipments.js'
 import { renderRefunds } from './refunds.js'
-import { renderDashboard } from './dashboard.js'
+import { renderDashboard, patchDashboardLiveStats } from './dashboard.js'
 import { updateTransferInboxBadge } from './transfers.js'
 
 const CHANNEL_NAME = 'live-data-sync'
@@ -213,7 +213,12 @@ export async function refreshActiveViews() {
     } else if (tab === 'refunds') {
       renderRefunds()
     } else if (tab === 'dashboard') {
-      await renderDashboard()
+      if (forceFullUiRefresh) {
+        forceFullUiRefresh = false
+        await renderDashboard()
+      } else if (!patchDashboardLiveStats()) {
+        await renderDashboard()
+      }
     } else {
       // customers — patch visible rows when dirty set is small; else full rebuild
       const { full, ids } = consumeCustomerUiPlan()
