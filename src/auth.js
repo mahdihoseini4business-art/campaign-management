@@ -5105,7 +5105,18 @@ export async function saveSmsFeaturesSettings() {
   try {
     await saveSmsFeatures(features)
     await saveFollowupSmsDefaultHour(hour)
-    showToast('قابلیت‌های پیامک ذخیره شد')
+    let rescheduled = 0
+    try {
+      const { reschedulePendingAutoSmsWithDefaultTime } = await import('./sms-ui.js')
+      rescheduled = await reschedulePendingAutoSmsWithDefaultTime(hour)
+    } catch (e) {
+      console.error('reschedule pending SMS', e)
+    }
+    showToast(
+      rescheduled > 0
+        ? `قابلیت‌ها ذخیره شد · ${rescheduled} زمان‌بندی با ساعت جدید به‌روز شد`
+        : 'قابلیت‌های پیامک ذخیره شد'
+    )
     renderSmsFeaturesToggles()
   } catch (e) {
     console.error(e)

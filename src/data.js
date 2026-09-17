@@ -3977,6 +3977,55 @@ export async function cancelPendingSettlementSmsForCustomer(customerId) {
     .eq('kind', 'sale_settlement_due')
 }
 
+const AUTO_SMS_SCHEDULE_KINDS = ['followup_schedule', 'sale_settlement_due']
+
+/** Pending auto schedules (follow-up + settlement) for current tenant. */
+export async function listPendingAutoSmsSchedules({ limit = 200 } = {}) {
+  const tenantId = getStoredTenantId()
+  if (!tenantId) return []
+  const { data: rows, error } = await supabase
+    .from('sms_schedules')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'pending')
+    .in('kind', AUTO_SMS_SCHEDULE_KINDS)
+    .order('send_at', { ascending: true })
+    .limit(limit)
+  if (error) throw new Error('خطا در خواندن زمان‌بندی پیامک: ' + error.message)
+  return rows || []
+}
+
+/** Pending schedules whose send_at is due (any kind). */
+export async function listDuePendingSmsSchedules({ limit = 50 } = {}) {
+  const tenantId = getStoredTenantId()
+  if (!tenantId) return []
+  const nowIso = new Date().toISOString()
+  const { data: rows, error } = await supabase
+    .from('sms_schedules')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'pending')
+    .lte('send_at', nowIso)
+    .order('send_at', { ascending: true })
+    .limit(limit)
+  if (error) throw new Error('خطا در خواندن صف پیامک: ' + error.message)
+  return rows || []
+}
+
+export async function updateSmsScheduleRow(id, patch) {
+  const tenantId = getStoredTenantId()
+  if (!tenantId || !id) return null
+  const { data: saved, error } = await supabase
+    .from('sms_schedules')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('tenant_id', tenantId)
+    .eq('id', id)
+    .select('*')
+    .maybeSingle()
+  if (error) throw new Error('خطا در به‌روزرسانی زمان‌بندی: ' + error.message)
+  return saved
+}
+
 export function getShippingSender() {
   return normalizeShippingSender(data.shippingSender)
 }

@@ -545,11 +545,12 @@
               <div class="form-group" style="min-width:140px;">
                 <label for="smsFollowupDefaultHour">ساعت پیش‌فرض پیامک فالوآپ / موعد تسویه</label>
                 <input type="time" class="form-input" id="smsFollowupDefaultHour" value="10:00" step="60" dir="ltr" style="max-width:160px;">
-                <p class="form-hint" style="margin-top:6px;">اگر «پیامک خودکار در موعد تسویه» فعال باشد، در تاریخ تسویهٔ هر فروش باز با مانده، در این ساعت پیامک شخصی‌سازی‌شده با مبلغ بدهی ارسال می‌شود.</p>
+                <p class="form-hint" style="margin-top:6px;">اگر «پیامک خودکار در موعد تسویه» فعال باشد، در تاریخ تسویهٔ هر فروش باز با مانده، در این ساعت پیامک شخصی‌سازی‌شده با مبلغ بدهی ارسال می‌شود. با ذخیره، زمان‌بندی‌های در انتظار هم با همین ساعت به‌روز می‌شوند.</p>
               </div>
             </div>
-            <div class="form-row settings-add-row" style="justify-content:flex-start;gap:8px;">
+            <div class="form-row settings-add-row" style="justify-content:flex-start;gap:8px;flex-wrap:wrap;">
               <button type="button" class="btn btn-primary" onclick="app.saveSmsFeaturesSettings()">ذخیره قابلیت‌ها</button>
+              <button type="button" class="btn" onclick="app.processDueSmsSchedulesManually()" title="پیامک‌های زمان‌بندی‌شده‌ای که موعدشان رسیده را همین الان پردازش می‌کند">اجرای دستی صف پیامک</button>
             </div>
           </div>
 

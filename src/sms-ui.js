@@ -1,6 +1,7 @@
-import { getData, listSmsTemplates, createSmsCampaign, createSmsSchedule, cancelPendingSmsSchedulesForCustomer, cancelPendingSettlementSmsForCustomer, getFollowupSmsDefaultHour, getStatuses, getProductCatalogNames, getPlatforms } from './data.js'
-import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normalizePhone, getOperationalBalance, getPrimaryPhone, jalaliDateTimeToIso, jalaliToNum, isGiftSale, isDealCancelled, CUSTOMER_LEVELS, resolveCustomerLevel, formatTeamFilterLabel } from './utils.js'
-import { canUseSmsKind, invokeSendSms, buildRecipientFromCustomer, formatBalanceFa, fetchSmsQuota, buildSettlementSmsVars } from './sms-business.js'
+import { getData, listSmsTemplates, createSmsCampaign, createSmsSchedule, cancelPendingSmsSchedulesForCustomer, cancelPendingSettlementSmsForCustomer, getFollowupSmsDefaultHour, getStatuses, getProductCatalogNames, getPlatforms, listPendingAutoSmsSchedules, listDuePendingSmsSchedules, updateSmsScheduleRow } from './data.js'
+import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normalizePhone, getOperationalBalance, getPrimaryPhone, jalaliDateTimeToIso, jalaliToNum, gregorianToJalaliStr, isGiftSale, isDealCancelled, CUSTOMER_LEVELS, resolveCustomerLevel, formatTeamFilterLabel } from './utils.js'
+import { canUseSmsKind, canManageSmsSettings, invokeSendSms, buildRecipientFromCustomer, formatBalanceFa, fetchSmsQuota, buildSettlementSmsVars } from './sms-business.js'
+import { normalizeFollowupDefaultHour } from './sms-features.js'
 import { getStoredTenantId } from './tenant.js'
 
 const SMS_TEST_PHONE_KEY = 'sms_test_phone'
@@ -570,6 +571,130 @@ export async function syncSettlementDueSmsForCustomer(customer) {
   } catch (e) {
     console.error('syncSettlementDueSmsForCustomer', e)
   }
+}
+
+/**
+ * Keep the calendar day of each pending auto schedule; move clock to new default time (Tehran).
+ * @returns {Promise<number>} updated count
+ */
+export async function reschedulePendingAutoSmsWithDefaultTime(timeRaw) {
+  const timeStr = normalizeFollowupDefaultHour(timeRaw ?? getFollowupSmsDefaultHour())
+  const schedules = await listPendingAutoSmsSchedules({ limit: 300 })
+  let updated = 0
+  for (const sch of schedules) {
+    const jalaliDate = gregorianToJalaliStr(sch.send_at)
+    if (!jalaliDate) continue
+    const sendAt = jalaliDateTimeToIso(jalaliDate, timeStr)
+    if (!sendAt || sendAt === sch.send_at) continue
+    await updateSmsScheduleRow(sch.id, { send_at: sendAt })
+    updated += 1
+  }
+  return updated
+}
+
+/**
+ * Process due pending schedules for this tenant (manual stand-in for sms-schedule-cron).
+ */
+export async function processDueSmsSchedulesManually() {
+  if (!canManageSmsSettings()) {
+    showToast('دسترسی مدیریت پیامک ندارید')
+    return null
+  }
+  const due = await listDuePendingSmsSchedules({ limit: 50 })
+  if (!due.length) {
+    showToast('صف موعدرسیده‌ای نیست')
+    return { processed: 0, sent: 0, failed: 0, cancelled: 0 }
+  }
+
+  let sent = 0
+  let failed = 0
+  let cancelled = 0
+  const data = getData()
+
+  for (const sch of due) {
+    const meta = sch.meta && typeof sch.meta === 'object' ? sch.meta : {}
+    const kind = String(sch.kind || 'followup_schedule')
+    const customer = (data.customers || []).find((c) => c.id === sch.customer_id)
+    const phone = getPrimaryPhone(customer) || customer?.phone || ''
+    if (!phone) {
+      await updateSmsScheduleRow(sch.id, {
+        status: 'failed',
+        meta: { ...meta, last_result: { error: 'no_phone' } },
+      })
+      failed += 1
+      continue
+    }
+
+    let settlementVars = {}
+    if (kind === 'sale_settlement_due') {
+      const productIndex = Number(meta.productIndex)
+      const product = customer?.products?.[productIndex]
+      const balance = getOperationalBalance(product)
+      const settlementDate = String(product?.settlementDate || meta.settlementDate || '').trim()
+      if (
+        !product
+        || isGiftSale(product)
+        || isDealCancelled(product)
+        || product.status === 'تکمیل'
+        || balance <= 0
+        || !settlementDate
+      ) {
+        await updateSmsScheduleRow(sch.id, {
+          status: 'cancelled',
+          meta: { ...meta, skip_reason: 'no_balance_or_settled' },
+        })
+        cancelled += 1
+        continue
+      }
+      settlementVars = {
+        product_name: product.name || '',
+        balance: formatBalanceFa(balance),
+        total_balance: formatBalanceFa(balance),
+        ...buildSettlementSmsVars(settlementDate),
+      }
+    }
+
+    const result = await invokeSendSms({
+      mode: 'single',
+      kind,
+      auto: true,
+      template_key: sch.template_key || (
+        kind === 'sale_settlement_due'
+          ? 'sale_settlement_due'
+          : (kind === 'followup_bulk' ? 'followup_bulk' : 'followup_due')
+      ),
+      body_override: sch.body_override || null,
+      recipients: [{
+        phone,
+        customer_id: sch.customer_id,
+        vars: {
+          customer_name: customer?.name || '',
+          advisor: customer?.advisor || '',
+          followup_date: customer?.nextFollowupDate || String(meta.followup_date || ''),
+          org_name: String(meta.org_name || 'آکادمی کارنو'),
+          ...((meta.vars && typeof meta.vars === 'object') ? meta.vars : {}),
+          ...settlementVars,
+        },
+        meta: { schedule_id: sch.id, ...meta },
+      }],
+    })
+
+    const ok = Number(result?.sent || 0) > 0
+    await updateSmsScheduleRow(sch.id, {
+      status: ok ? 'sent' : 'failed',
+      meta: { ...meta, last_result: result },
+    })
+    if (ok) sent += 1
+    else failed += 1
+  }
+
+  const processed = sent + failed + cancelled
+  showToast(`صف پیامک: ${formatNumber(sent)} ارسال، ${formatNumber(failed)} ناموفق، ${formatNumber(cancelled)} لغو`)
+  try {
+    const { refreshSmsHistory } = await import('./auth.js')
+    await refreshSmsHistory()
+  } catch (_) { /* ignore */ }
+  return { processed, sent, failed, cancelled }
 }
 
 // —— Campaign wizard ——
