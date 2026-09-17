@@ -5105,17 +5105,21 @@ export async function saveSmsFeaturesSettings() {
   try {
     await saveSmsFeatures(features)
     await saveFollowupSmsDefaultHour(hour)
-    let rescheduled = 0
+    let rebuilt = { settlementCreated: 0, followupCreated: 0 }
     try {
-      const { reschedulePendingAutoSmsWithDefaultTime } = await import('./sms-ui.js')
-      rescheduled = await reschedulePendingAutoSmsWithDefaultTime(hour)
+      const { rebuildAllAutoSmsSchedules } = await import('./sms-ui.js')
+      rebuilt = await rebuildAllAutoSmsSchedules()
     } catch (e) {
-      console.error('reschedule pending SMS', e)
+      console.error('rebuild auto SMS schedules', e)
+      showToast(e.message || 'قابلیت‌ها ذخیره شد ولی ساخت زمان‌بندی خطا داد')
+      renderSmsFeaturesToggles()
+      return
     }
+    const total = Number(rebuilt.settlementCreated || 0) + Number(rebuilt.followupCreated || 0)
     showToast(
-      rescheduled > 0
-        ? `قابلیت‌ها ذخیره شد · ${rescheduled} زمان‌بندی با ساعت جدید به‌روز شد`
-        : 'قابلیت‌های پیامک ذخیره شد'
+      total > 0
+        ? `ذخیره شد · زمان‌بندی تسویه: ${rebuilt.settlementCreated} · فالوآپ: ${rebuilt.followupCreated}`
+        : 'قابلیت‌ها ذخیره شد · زمان‌بندی واجد شرایطی برای ساخت پیدا نشد'
     )
     renderSmsFeaturesToggles()
   } catch (e) {

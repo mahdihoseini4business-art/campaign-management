@@ -526,16 +526,18 @@ function isSettlementDueSmsEligible(product) {
 /**
  * Rebuild pending settlement-due SMS schedules for all products of a customer.
  * Org feature must be on; runs as auto (no per-user permission required).
+ * @returns {Promise<number>} number of schedules created
  */
 export async function syncSettlementDueSmsForCustomer(customer) {
-  if (!customer?.id) return
+  if (!customer?.id) return 0
   try {
     await cancelPendingSettlementSmsForCustomer(customer.id)
-    if (!canUseSmsKind('sale_settlement_due', { auto: true })) return
+    if (!canUseSmsKind('sale_settlement_due', { auto: true })) return 0
 
     const products = customer.products || []
     const timeStr = getFollowupSmsDefaultHour()
     const createdBy = normalizePhone(getCurrentUser()?.phone || '')
+    let created = 0
 
     for (let productIndex = 0; productIndex < products.length; productIndex++) {
       const product = products[productIndex]
@@ -567,10 +569,82 @@ export async function syncSettlementDueSmsForCustomer(customer) {
           },
         },
       })
+      created += 1
     }
+    return created
   } catch (e) {
     console.error('syncSettlementDueSmsForCustomer', e)
+    return 0
   }
+}
+
+/**
+ * Build/refresh all auto schedules from current customer data (settlement + follow-up dates).
+ * Loads products from DB so it works even if detail tabs were not opened.
+ */
+export async function rebuildAllAutoSmsSchedules() {
+  const { getStoredTenantId } = await import('./tenant.js')
+  const { supabase } = await import('./supabase.js')
+  const tenantId = getStoredTenantId()
+  if (!tenantId) throw new Error('سازمان انتخاب نشده')
+
+  const { data: rows, error } = await supabase
+    .from('customers')
+    .select('id, name, phone, phones, advisor, next_followup_date, products')
+    .eq('tenant_id', tenantId)
+  if (error) throw new Error('خطا در خواندن مشتریان: ' + error.message)
+
+  let settlementCreated = 0
+  let followupCreated = 0
+  const timeStr = getFollowupSmsDefaultHour()
+  const createdBy = normalizePhone(getCurrentUser()?.phone || '')
+  const followupAuto = canUseSmsKind('followup_schedule', { auto: true })
+
+  for (const row of rows || []) {
+    const customer = {
+      id: row.id,
+      name: row.name || '',
+      phone: row.phone || '',
+      phones: Array.isArray(row.phones) ? row.phones : [],
+      advisor: row.advisor || '',
+      nextFollowupDate: row.next_followup_date || '',
+      products: Array.isArray(row.products) ? row.products : [],
+    }
+
+    settlementCreated += await syncSettlementDueSmsForCustomer(customer)
+
+    if (followupAuto) {
+      const followupDate = String(customer.nextFollowupDate || '').trim()
+      await cancelPendingSmsSchedulesForCustomer(customer.id)
+      if (followupDate) {
+        let sendAt = jalaliDateTimeToIso(followupDate, timeStr)
+        if (sendAt) {
+          await createSmsSchedule({
+            customer_id: customer.id,
+            kind: 'followup_schedule',
+            template_key: 'followup_due',
+            body_override: null,
+            send_at: sendAt,
+            created_by: createdBy,
+            meta: {
+              followup_date: followupDate,
+              vars: {
+                customer_name: customer.name || '',
+                advisor: customer.advisor || '',
+                followup_date: followupDate,
+                org_name: 'آکادمی کارنو',
+              },
+            },
+          })
+          followupCreated += 1
+        }
+      }
+    } else {
+      await cancelPendingSmsSchedulesForCustomer(customer.id)
+    }
+  }
+
+  return { settlementCreated, followupCreated }
 }
 
 /**
@@ -594,29 +668,80 @@ export async function reschedulePendingAutoSmsWithDefaultTime(timeRaw) {
 
 /**
  * Process due pending schedules for this tenant (manual stand-in for sms-schedule-cron).
+ * First rebuilds schedules from sales/follow-ups so the queue is not empty after only changing the hour.
  */
 export async function processDueSmsSchedulesManually() {
   if (!canManageSmsSettings()) {
     showToast('دسترسی مدیریت پیامک ندارید')
     return null
   }
+
+  showToast('در حال ساخت/بروزرسانی زمان‌بندی‌ها…')
+  let rebuilt = { settlementCreated: 0, followupCreated: 0 }
+  try {
+    rebuilt = await rebuildAllAutoSmsSchedules()
+  } catch (e) {
+    console.error('rebuildAllAutoSmsSchedules', e)
+    showToast(e.message || 'خطا در ساخت زمان‌بندی‌ها')
+    return null
+  }
+
+  const pendingAll = await listPendingAutoSmsSchedules({ limit: 300 })
   const due = await listDuePendingSmsSchedules({ limit: 50 })
   if (!due.length) {
-    showToast('صف موعدرسیده‌ای نیست')
-    return { processed: 0, sent: 0, failed: 0, cancelled: 0 }
+    const future = pendingAll.length
+    if (future > 0) {
+      showToast(
+        `زمان‌بندی ساخته شد (تسویه: ${formatNumber(rebuilt.settlementCreated)}، فالوآپ: ${formatNumber(rebuilt.followupCreated)}) · ${formatNumber(future)} مورد در صف است ولی هنوز به ساعت ارسال نرسیده`
+      )
+    } else {
+      const settleOn = canUseSmsKind('sale_settlement_due', { auto: true })
+      showToast(
+        settleOn
+          ? 'زمان‌بندی واجد شرایطی پیدا نشد. فروش باید تاریخ تسویه داشته باشد، مانده > ۰ و وضعیت بیعانه باشد.'
+          : 'قابلیت «پیامک خودکار در موعد تسویه» خاموش است. آن را روشن کنید و ذخیره بزنید.'
+      )
+    }
+    return { processed: 0, sent: 0, failed: 0, cancelled: 0, rebuilt }
   }
+
+  const { supabase } = await import('./supabase.js')
+  const { getStoredTenantId } = await import('./tenant.js')
+  const tenantId = getStoredTenantId()
 
   let sent = 0
   let failed = 0
   let cancelled = 0
-  const data = getData()
 
   for (const sch of due) {
     const meta = sch.meta && typeof sch.meta === 'object' ? sch.meta : {}
     const kind = String(sch.kind || 'followup_schedule')
-    const customer = (data.customers || []).find((c) => c.id === sch.customer_id)
-    const phone = getPrimaryPhone(customer) || customer?.phone || ''
-    if (!phone) {
+
+    let customer = null
+    let products = []
+    if (sch.customer_id && tenantId) {
+      const { data: row } = await supabase
+        .from('customers')
+        .select('id, name, phone, phones, advisor, next_followup_date, products')
+        .eq('tenant_id', tenantId)
+        .eq('id', sch.customer_id)
+        .maybeSingle()
+      if (row) {
+        products = Array.isArray(row.products) ? row.products : []
+        customer = {
+          id: row.id,
+          name: row.name || '',
+          phone: row.phone || '',
+          phones: Array.isArray(row.phones) ? row.phones : [],
+          advisor: row.advisor || '',
+          nextFollowupDate: row.next_followup_date || '',
+          products,
+        }
+      }
+    }
+
+    const sendPhone = getPrimaryPhone(customer) || customer?.phone || ''
+    if (!sendPhone) {
       await updateSmsScheduleRow(sch.id, {
         status: 'failed',
         meta: { ...meta, last_result: { error: 'no_phone' } },
@@ -628,7 +753,7 @@ export async function processDueSmsSchedulesManually() {
     let settlementVars = {}
     if (kind === 'sale_settlement_due') {
       const productIndex = Number(meta.productIndex)
-      const product = customer?.products?.[productIndex]
+      const product = products[productIndex]
       const balance = getOperationalBalance(product)
       const settlementDate = String(product?.settlementDate || meta.settlementDate || '').trim()
       if (
@@ -665,7 +790,7 @@ export async function processDueSmsSchedulesManually() {
       ),
       body_override: sch.body_override || null,
       recipients: [{
-        phone,
+        phone: sendPhone,
         customer_id: sch.customer_id,
         vars: {
           customer_name: customer?.name || '',
@@ -688,13 +813,12 @@ export async function processDueSmsSchedulesManually() {
     else failed += 1
   }
 
-  const processed = sent + failed + cancelled
   showToast(`صف پیامک: ${formatNumber(sent)} ارسال، ${formatNumber(failed)} ناموفق، ${formatNumber(cancelled)} لغو`)
   try {
     const { refreshSmsHistory } = await import('./auth.js')
     await refreshSmsHistory()
   } catch (_) { /* ignore */ }
-  return { processed, sent, failed, cancelled }
+  return { processed: sent + failed + cancelled, sent, failed, cancelled, rebuilt }
 }
 
 // —— Campaign wizard ——
