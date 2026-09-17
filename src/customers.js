@@ -3906,14 +3906,12 @@ export async function renderProducts(customerId, users = null) {
 
     const hasEditablePay = canEdit && pays.some(pay => getPaymentEntryStatus(pay) !== PAYMENT_STATUS.approved)
     const hasCompletedRefund = getProductRefundRecords(p).length > 0
-    const productDetailsBtn = (canEdit && !closed && !hasEditablePay && !hasCompletedRefund)
-      ? `<button type="button" class="btn btn-sm sale-product-save-btn" onclick="app.commitSaleProductDetails('${escapeAttr(customerId)}', ${i})">ذخیره جزئیات محصول</button>`
+    const canSaveProductDetails = canEdit && !closed && !hasEditablePay && !hasCompletedRefund
+    const productDetailsBtn = (canSaveProductDetails || canAdminEditPrice)
+      ? `<button type="button" class="btn btn-sm btn-primary sale-product-save-btn" onclick="app.commitSaleProductDetails('${escapeAttr(customerId)}', ${i})">ذخیره جزئیات محصول</button>`
       : ''
     const sessionSaveBtn = (sessionFieldEditable && closed && needsSession)
       ? `<button type="button" class="btn btn-sm sale-session-save-btn" onclick="app.commitInPersonSession('${escapeAttr(customerId)}', ${i})">ذخیره تاریخ برگزاری</button>`
-      : ''
-    const adminPriceBtn = canAdminEditPrice
-      ? `<button type="button" class="btn btn-sm btn-primary sale-admin-price-btn" onclick="app.updateSaleTotalPrice('${escapeAttr(customerId)}', ${i})">ذخیره قیمت کل</button>`
       : ''
 
     const giftSubmitBtn = (canEdit && !closed && !priceLocked)
@@ -3967,7 +3965,7 @@ export async function renderProducts(customerId, users = null) {
           ${shippingFields}
           ${summaryHtml}
           ${refundSummariesHtml}
-          ${(productDetailsBtn || sessionSaveBtn || adminPriceBtn) ? `<div class="sale-product-actions">${productDetailsBtn}${sessionSaveBtn}${adminPriceBtn}</div>` : ''}
+          ${(productDetailsBtn || sessionSaveBtn) ? `<div class="sale-product-actions">${productDetailsBtn}${sessionSaveBtn}</div>` : ''}
           ${giftSubmitBtn}
         </section>
         <section class="sale-step sale-step-payments" data-sale-payments>
@@ -4446,108 +4444,40 @@ export function markSalePaymentTouched(el) {
   }
 }
 
-/** Admin-only: correct locked total price without deleting/recreating the customer. */
-export async function updateSaleTotalPrice(customerId, productIndex) {
-  if (!isAdmin()) {
-    showToast('فقط مدیر سیستم می‌تواند قیمت کل را اصلاح کند')
-    return
-  }
+/** Save product details; admin may also correct locked total price in the same action. */
+export async function commitSaleProductDetails(customerId, productIndex) {
   const customer = getData().customers.find(c => c.id === customerId)
   if (!customer || !canViewCustomer(customer)) {
     showToast('دسترسی به این مشتری ندارید')
     return
   }
-
   const block = document.querySelector(`#detailProductsList .product-block[data-product-index="${productIndex}"]`)
   if (!block) return
   const products = getProducts(customerId)
   const product = products[productIndex]
   if (!product) return
-  if (isGiftSale(product)) {
-    showToast('قیمت فروش هدیه قابل تغییر نیست')
-    return
-  }
-  if (isDealCancelled(product)) {
-    showToast('معامله لغو شده و قیمت قابل تغییر نیست')
-    return
-  }
-  if (!isProductPriceLocked(product)) {
-    showToast('ابتدا فروش را ثبت کنید')
-    return
-  }
 
-  const priceEl = block.querySelector('[data-sale-field="price"]')
-  clearSaleBlockInvalid(block)
-  const priceRaw = unformatSaleNumber(priceEl)
-  const newPrice = parseFloat(priceRaw) || 0
-  if (!priceRaw || newPrice <= 0) {
-    markSaleFieldInvalid(priceEl, true)
-    showToast('قیمت کل باید بزرگ‌تر از صفر باشد')
-    return
-  }
+  const adminPriceEl = block.querySelector('[data-sale-field="price"][data-admin-price-edit="1"]')
+  const canSaveAdminPrice = !!(
+    isAdmin()
+    && adminPriceEl
+    && isProductPriceLocked(product)
+    && !isDealCancelled(product)
+    && !isGiftSale(product)
+  )
+  const canSaveDetails = !!(
+    canAddSaleOnCustomer(customer)
+    && !isGiftSale(product)
+    && !isProductSaleLocked(product)
+    && !getProductRefundRecords(product).length
+  )
 
-  const approved = getApprovedPaid(product)
-  if (newPrice + 0.5 < approved) {
-    markSaleFieldInvalid(priceEl, true)
-    showToast(`قیمت کل نمی‌تواند کمتر از مبلغ تأییدشده (${formatNumber(approved)} ریال) باشد`)
-    return
-  }
-
-  const prev = parseFloat(product.price) || 0
-  if (Math.abs(prev - newPrice) < 0.5) {
-    showToast('قیمت کل تغییری نکرده است')
-    return
-  }
-
-  const btn = block.querySelector('.sale-admin-price-btn')
-  const prevLabel = btn?.textContent
-  if (btn) {
-    btn.disabled = true
-    btn.textContent = 'در حال ذخیره…'
-  }
-
-  try {
-    product.price = String(newPrice)
-    product.priceLocked = true
-    applyProfitSnapshotToProduct(product)
-    syncProductStatus(product)
-    await setProducts(customerId, products)
-    showToast('قیمت کل اصلاح شد')
-    renderProducts(customerId)
-  } catch (e) {
-    console.error('updateSaleTotalPrice error:', e)
-    showToast('خطا در اصلاح قیمت کل')
-  } finally {
-    if (btn) {
-      btn.disabled = false
-      if (prevLabel) btn.textContent = prevLabel
-    }
-  }
-}
-
-export async function commitSaleProductDetails(customerId, productIndex) {
-  const customer = getData().customers.find(c => c.id === customerId)
-  if (!canAddSaleOnCustomer(customer)) {
-    showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
-    return
-  }
-  const block = document.querySelector(`#detailProductsList .product-block[data-product-index="${productIndex}"]`)
-  if (!block) return
-  const products = getProducts(customerId)
-  const product = products[productIndex]
-  if (!product) return
-  if (isGiftSale(product)) {
-    showToast('جزئیات هدیه پس از ثبت قابل ویرایش نیست')
-    return
-  }
-  if (isProductSaleLocked(product)) {
-    showToast(isDealCancelled(product)
-      ? 'معامله لغو شده و قابل ویرایش نیست'
-      : 'فاکتور بسته شده و قابل ویرایش نیست')
-    return
-  }
-  if (getProductRefundRecords(product).length) {
-    showToast('پس از عودت، جزئیات محصول از این مسیر قابل ویرایش نیست')
+  if (!canSaveDetails && !canSaveAdminPrice) {
+    if (isGiftSale(product)) showToast('جزئیات هدیه پس از ثبت قابل ویرایش نیست')
+    else if (isDealCancelled(product)) showToast('معامله لغو شده و قابل ویرایش نیست')
+    else if (isProductSaleLocked(product) && !canSaveAdminPrice) showToast('فاکتور بسته شده و قابل ویرایش نیست')
+    else if (getProductRefundRecords(product).length) showToast('پس از عودت، جزئیات محصول از این مسیر قابل ویرایش نیست')
+    else showToast('شما دسترسی ثبت فروش برای این مشتری را ندارید')
     return
   }
 
@@ -4559,23 +4489,54 @@ export async function commitSaleProductDetails(customerId, productIndex) {
   }
 
   try {
-    const draft = readSaleProductDraft(block)
     clearSaleBlockInvalid(block)
-    if (draft.nameEl && !String(draft.name || '').trim()) {
-      markSaleFieldInvalid(draft.nameEl, true)
-      showToast('محصول را انتخاب کنید')
-      return
+    let priceChanged = false
+
+    if (canSaveDetails) {
+      const draft = readSaleProductDraft(block)
+      if (draft.nameEl && !String(draft.name || '').trim()) {
+        markSaleFieldInvalid(draft.nameEl, true)
+        showToast('محصول را انتخاب کنید')
+        return
+      }
+      const sessionCheck = validateSaleSessionDraft(draft, customerId, productIndex)
+      if (!sessionCheck.ok) {
+        showToast(sessionCheck.error || 'فیلدهای الزامی را کامل کنید')
+        return
+      }
+      applySaleProductDraft(product, draft, { lockPrice: false })
+      syncSaleShippingToCustomer(customer, product)
     }
-    const sessionCheck = validateSaleSessionDraft(draft, customerId, productIndex)
-    if (!sessionCheck.ok) {
-      showToast(sessionCheck.error || 'فیلدهای الزامی را کامل کنید')
-      return
+
+    if (canSaveAdminPrice) {
+      const priceRaw = unformatSaleNumber(adminPriceEl)
+      const newPrice = parseFloat(priceRaw) || 0
+      if (!priceRaw || newPrice <= 0) {
+        markSaleFieldInvalid(adminPriceEl, true)
+        showToast('قیمت کل باید بزرگ‌تر از صفر باشد')
+        return
+      }
+      const approved = getApprovedPaid(product)
+      if (newPrice + 0.5 < approved) {
+        markSaleFieldInvalid(adminPriceEl, true)
+        showToast(`قیمت کل نمی‌تواند کمتر از مبلغ تأییدشده (${formatNumber(approved)} ریال) باشد`)
+        return
+      }
+      const prev = parseFloat(product.price) || 0
+      if (Math.abs(prev - newPrice) >= 0.5) {
+        product.price = String(newPrice)
+        product.priceLocked = true
+        applyProfitSnapshotToProduct(product)
+        priceChanged = true
+      } else if (!canSaveDetails) {
+        showToast('قیمت کل تغییری نکرده است')
+        return
+      }
     }
-    applySaleProductDraft(product, draft, { lockPrice: false })
-    syncSaleShippingToCustomer(customer, product)
+
     syncProductStatus(product)
     await setProducts(customerId, products)
-    showToast('جزئیات محصول ذخیره شد')
+    showToast(priceChanged && !canSaveDetails ? 'قیمت کل اصلاح شد' : 'جزئیات محصول ذخیره شد')
     renderProducts(customerId)
   } catch (e) {
     console.error('commitSaleProductDetails error:', e)
@@ -4586,6 +4547,11 @@ export async function commitSaleProductDetails(customerId, productIndex) {
       if (prevLabel) btn.textContent = prevLabel
     }
   }
+}
+
+/** @deprecated Use commitSaleProductDetails — kept for any leftover callers. */
+export async function updateSaleTotalPrice(customerId, productIndex) {
+  return commitSaleProductDetails(customerId, productIndex)
 }
 
 /** Assign / change in-person session on a sale, including closed invoices. */
