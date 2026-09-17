@@ -3,8 +3,9 @@
  * notifications inbox even when the external ops-digest-cron has not run.
  */
 import { supabase } from './supabase.js'
-import { getData } from './data.js'
-import { getCurrentUser, normalizePhone, normalizeViewUserPhones } from './utils.js'
+import { getData, getSalesTargets } from './data.js'
+import { getCurrentUser, normalizePhone, normalizeViewUserPhones, userDisplayName } from './utils.js'
+import { getMembersCache } from './groups.js'
 import {
   DIGEST_KIND_EVENING,
   DIGEST_KIND_MORNING,
@@ -40,8 +41,16 @@ function expiresAtIso(hours = 36) {
 
 function mapCustomersForMetrics(customers) {
   return (customers || []).map(c => ({
+    id: c.id || '',
+    name: c.name || '',
     advisor_phone: c.advisorPhone || c.advisor_phone || '',
-    next_followup_date: c.nextFollowupDate || c.next_followup_date || ''
+    advisor: c.advisor || '',
+    next_followup_date: c.nextFollowupDate || c.next_followup_date || '',
+    platform: c.platform || '',
+    platformId: c.platformId || c.platform_id || '',
+    products: Array.isArray(c.products) ? c.products : [],
+    created_at: c.createdAt || c.created_at || null,
+    createdAt: c.createdAt || c.created_at || null
   }))
 }
 
@@ -50,8 +59,58 @@ function mapFollowupsForMetrics(followups) {
     assigned_to_phone: f.assignedToPhone || f.assigned_to_phone || '',
     next_date: f.nextDate || f.next_date || '',
     status: f.status || 'pending',
-    type: f.type || ''
+    type: f.type || '',
+    date: f.date || '',
+    done_at: f.doneAt || f.done_at || '',
+    doneAt: f.doneAt || f.done_at || '',
+    done_by_phone: f.doneByPhone || f.done_by_phone || '',
+    doneByPhone: f.doneByPhone || f.done_by_phone || '',
+    created_by_phone: f.createdByPhone || f.created_by_phone || '',
+    createdByPhone: f.createdByPhone || f.created_by_phone || ''
   }))
+}
+
+function mapRefundsForMetrics(refunds) {
+  return (refunds || []).map(r => ({
+    status: r.status || '',
+    advisor_phone: r.advisorPhone || r.advisor_phone || '',
+    advisorPhone: r.advisorPhone || r.advisor_phone || ''
+  }))
+}
+
+function buildClientPhoneNames(data, teamPhones = []) {
+  const map = {}
+  // Prefer advisor name hints from customers
+  for (const c of data.customers || []) {
+    const phone = normalizePhone(c.advisorPhone || c.advisor_phone)
+    const name = String(c.advisor || '').trim()
+    if (phone && name && !map[phone]) map[phone] = name
+  }
+  const me = getCurrentUser()
+  if (me) {
+    const myPhone = normalizePhone(me.phone)
+    const myName = userDisplayName(me)
+    if (myPhone && myName) map[myPhone] = myName
+  }
+  // Fill gaps from group member phones (no display names in cache — keep hints)
+  for (const p of teamPhones) {
+    const phone = normalizePhone(p)
+    if (phone && !map[phone]) map[phone] = phone.slice(0, 4) + '…' + phone.slice(-4)
+  }
+  return map
+}
+
+function managerGroupIds(user) {
+  const ids = new Set()
+  if (user?.groupId) ids.add(user.groupId)
+  const myPhone = normalizePhone(user?.phone)
+  if (!myPhone) return [...ids]
+  for (const m of getMembersCache() || []) {
+    if (!m.is_manager) continue
+    if (normalizePhone(m.user_phone) !== myPhone) continue
+    if (m.group_id) ids.add(m.group_id)
+  }
+  return [...ids]
 }
 
 async function alreadyHasDigest({ phone, kind, digestDate }) {
@@ -112,8 +171,8 @@ async function insertDigestRow(row) {
 
 /**
  * Ensure today's digests exist for the signed-in user.
- * Morning: first open of the day when advisor has overdue/today/assigned work.
- * Evening: after 16:00 Tehran for group managers with team work.
+ * Morning: first open of the day when advisor has actionable metrics.
+ * Evening: after 16:00 Tehran for group managers (always when team exists).
  * @param {{ force?: boolean }} [opts]
  */
 export async function ensureOpsDigestsForCurrentUser(opts = {}) {
@@ -133,15 +192,22 @@ export async function ensureOpsDigestsForCurrentUser(opts = {}) {
     const data = getData()
     const customers = mapCustomersForMetrics(data.customers)
     const followups = mapFollowupsForMetrics(data.followups)
+    const refunds = mapRefundsForMetrics(data.refunds)
+    const salesTargets = typeof getSalesTargets === 'function' ? getSalesTargets() : (data.salesTargets || [])
     const expiresAt = expiresAtIso(36)
     let created = 0
+
+    const phoneNames = buildClientPhoneNames(data)
 
     // Morning advisor digest (any time of day if missing)
     const morningCounts = countAdvisorMorningMetrics({
       phone,
       customers,
       followups,
-      todayStr: digestDate
+      todayStr: digestDate,
+      salesTargets,
+      refunds,
+      phoneNames
     })
     if (morningHasWork(morningCounts)) {
       const has = await alreadyHasDigest({ phone, kind: DIGEST_KIND_MORNING, digestDate })
@@ -160,31 +226,38 @@ export async function ensureOpsDigestsForCurrentUser(opts = {}) {
       }
     }
 
-    // Evening manager digest (Tehran hour >= 16)
+    // Evening manager digest (Tehran hour >= 16) — always send when team exists
     if (tehranHour() >= 16 && user?.isGroupManager) {
       const teamPhones = normalizeViewUserPhones(
         user.viewUserPhones ?? user.permissions?.viewUserPhones
       ).filter(p => p && p !== phone)
-      const eveningCounts = countManagerEveningMetrics({
-        teamPhones,
-        customers,
-        followups,
-        todayStr: digestDate
-      })
-      if (eveningHasWork(eveningCounts)) {
-        const has = await alreadyHasDigest({ phone, kind: DIGEST_KIND_EVENING, digestDate })
-        if (!has) {
-          await insertDigestRow({
-            title: formatEveningTitle(digestDate),
-            message: formatEveningMessage(eveningCounts),
-            recipient_phones: [phone],
-            created_by_phone: SYSTEM_DIGEST_PHONE,
-            created_by_name: SYSTEM_DIGEST_NAME,
-            expires_at: expiresAt,
-            kind: DIGEST_KIND_EVENING,
-            meta: { digest_date: digestDate, source: 'client' }
-          })
-          created++
+      if (teamPhones.length) {
+        const eveningNames = buildClientPhoneNames(data, teamPhones)
+        const eveningCounts = countManagerEveningMetrics({
+          teamPhones,
+          customers,
+          followups,
+          todayStr: digestDate,
+          salesTargets,
+          refunds,
+          phoneNames: eveningNames,
+          groupIds: managerGroupIds(user)
+        })
+        if (eveningHasWork(eveningCounts)) {
+          const has = await alreadyHasDigest({ phone, kind: DIGEST_KIND_EVENING, digestDate })
+          if (!has) {
+            await insertDigestRow({
+              title: formatEveningTitle(digestDate),
+              message: formatEveningMessage(eveningCounts),
+              recipient_phones: [phone],
+              created_by_phone: SYSTEM_DIGEST_PHONE,
+              created_by_name: SYSTEM_DIGEST_NAME,
+              expires_at: expiresAt,
+              kind: DIGEST_KIND_EVENING,
+              meta: { digest_date: digestDate, source: 'client' }
+            })
+            created++
+          }
         }
       }
     }

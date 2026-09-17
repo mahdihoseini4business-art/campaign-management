@@ -11,6 +11,7 @@ import {
   DIGEST_KIND_MORNING,
   SYSTEM_DIGEST_NAME,
   SYSTEM_DIGEST_PHONE,
+  buildPhoneNameMap,
   countAdvisorMorningMetrics,
   countManagerEveningMetrics,
   eveningHasWork,
@@ -90,6 +91,19 @@ async function fetchAllRows(
     if (chunk.length < PAGE_SIZE) return { data: all, error: null }
     from += PAGE_SIZE
   }
+}
+
+function parseSalesTargetsValue(raw: unknown): any[] {
+  if (raw == null) return []
+  let value = raw
+  if (typeof value === 'string') {
+    try { value = JSON.parse(value) } catch { return [] }
+  }
+  // app_settings sometimes wraps as { value: ... }
+  if (value && typeof value === 'object' && !Array.isArray(value) && Array.isArray((value as any).value)) {
+    value = (value as any).value
+  }
+  return Array.isArray(value) ? value : []
 }
 
 serve(async (req) => {
@@ -201,7 +215,7 @@ serve(async (req) => {
       if (!usernames.length) continue
 
       const { data: users, error: usersErr } = await fetchAllRows(admin, 'users', {
-        select: 'username, phone',
+        select: 'username, phone, display_name, first_name, last_name',
         orderCol: 'username',
         apply: (q) => q.in('username', usernames),
       })
@@ -216,8 +230,10 @@ serve(async (req) => {
       )]
       if (!memberPhones.length) continue
 
+      const phoneNames = buildPhoneNameMap(users || [])
+
       const { data: customers, error: custErr } = await fetchAllRows(admin, 'customers', {
-        select: 'id, advisor_phone, next_followup_date',
+        select: 'id, name, advisor_phone, advisor, next_followup_date, platform, platform_id, products, created_at',
         orderCol: 'id',
         apply: (q) => q.eq('tenant_id', tenantId),
       })
@@ -228,7 +244,7 @@ serve(async (req) => {
       }
 
       const { data: followups, error: fuErr } = await fetchAllRows(admin, 'followups', {
-        select: 'id, customer_id, type, status, next_date, assigned_to_phone',
+        select: 'id, customer_id, type, status, next_date, assigned_to_phone, done_at, done_by_phone, date, created_by_phone',
         orderCol: 'id',
         apply: (q) => q.eq('tenant_id', tenantId),
       })
@@ -236,6 +252,36 @@ serve(async (req) => {
       if (fuErr) {
         console.error('ops-digest-cron followups', tenantId, fuErr)
         continue
+      }
+
+      let refunds: any[] = []
+      {
+        const { data, error: refErr } = await fetchAllRows(admin, 'refunds', {
+          select: 'id, status, advisor_phone',
+          orderCol: 'id',
+          apply: (q) => q.eq('tenant_id', tenantId).in('status', ['requested', 'awaiting']),
+        })
+        if (refErr) {
+          // Refunds table / feature may be absent on some tenants
+          console.warn('ops-digest-cron refunds', tenantId, refErr.message)
+        } else {
+          refunds = data || []
+        }
+      }
+
+      let salesTargets: any[] = []
+      {
+        const { data: settingRow, error: setErr } = await admin
+          .from('app_settings')
+          .select('value')
+          .eq('tenant_id', tenantId)
+          .eq('key', 'sales_targets')
+          .maybeSingle()
+        if (setErr) {
+          console.warn('ops-digest-cron sales_targets', tenantId, setErr.message)
+        } else {
+          salesTargets = parseSalesTargetsValue(settingRow?.value)
+        }
       }
 
       // Idempotency: prefer meta filter; fall back to in-memory filter
@@ -286,6 +332,9 @@ serve(async (req) => {
             customers: customers || [],
             followups: followups || [],
             todayStr: digestDate,
+            salesTargets,
+            refunds,
+            phoneNames,
           })
           if (!morningHasWork(counts)) {
             skippedEmpty++
@@ -343,6 +392,7 @@ serve(async (req) => {
         }
 
         const managerTeams = new Map<string, Set<string>>()
+        const managerGroupIds = new Map<string, Set<string>>()
         const byGroup = new Map<string, { managers: string[], members: string[] }>()
         for (const row of groupMembers || []) {
           const gid = row.group_id
@@ -354,12 +404,14 @@ serve(async (req) => {
           if (row.is_manager) bucket.managers.push(phone)
           else bucket.members.push(phone)
         }
-        for (const [, bucket] of byGroup) {
+        for (const [gid, bucket] of byGroup) {
           const teamPhones = [...new Set(bucket.members)]
           for (const managerPhone of [...new Set(bucket.managers)]) {
             if (!managerTeams.has(managerPhone)) managerTeams.set(managerPhone, new Set())
+            if (!managerGroupIds.has(managerPhone)) managerGroupIds.set(managerPhone, new Set())
             const set = managerTeams.get(managerPhone)!
             for (const p of teamPhones) set.add(p)
+            managerGroupIds.get(managerPhone)!.add(gid)
           }
         }
 
@@ -379,7 +431,12 @@ serve(async (req) => {
             customers: customers || [],
             followups: followups || [],
             todayStr: digestDate,
+            salesTargets,
+            refunds,
+            phoneNames,
+            groupIds: [...(managerGroupIds.get(managerPhone) || [])],
           })
+          // Always send when team exists (even "all clear")
           if (!eveningHasWork(counts)) {
             skippedEmpty++
             continue
