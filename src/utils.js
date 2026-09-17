@@ -600,6 +600,17 @@ export function computeCustomerLrfm(customer, followups = []) {
     : ''
   const lastRecency = lastPurchase || lastFollowup
 
+  return {
+    L: computeCustomerTenureDays(customer, customerFollowups),
+    R: lastRecency,
+    F: freqAvg,
+    M: monetary
+  }
+}
+
+/** Days since first contact / createdAt — used by auto customer level (avoids full LRFM). */
+export function computeCustomerTenureDays(customer, followups = []) {
+  if (!customer) return null
   let entryJalali = customer.createdAt ? gregorianToJalaliStr(customer.createdAt) : ''
   if (!entryJalali || jalaliToNum(entryJalali) === 99999999) {
     const acts = getCustomerActivities(customer, followups)
@@ -608,13 +619,8 @@ export function computeCustomerLrfm(customer, followups = []) {
       entryJalali = jalaliDatePart(earliest.dateStr)
     }
   }
-
-  let lengthDays = null
-  if (entryJalali && jalaliToNum(entryJalali) !== 99999999) {
-    lengthDays = Math.max(0, jalaliDiffDays(entryJalali, getTodayJalaliStr()) ?? 0)
-  }
-
-  return { L: lengthDays, R: lastRecency, F: freqAvg, M: monetary }
+  if (!entryJalali || jalaliToNum(entryJalali) === 99999999) return null
+  return Math.max(0, jalaliDiffDays(entryJalali, getTodayJalaliStr()) ?? 0)
 }
 
 // ============================================
@@ -693,7 +699,7 @@ export function countCustomerReferrals(customer, allCustomers = []) {
 export function computeAutoCustomerLevel(customer, allCustomers = [], followups = [], referralCountOverride = null) {
   if (!customer) return ''
   const purchases = countCustomerPurchases(customer)
-  const days = computeCustomerLrfm(customer, followups).L
+  const days = computeCustomerTenureDays(customer, followups)
   const oneYear = days != null && days >= 365
   const inPerson = hasInPersonPurchase(customer)
   const refs = referralCountOverride != null
@@ -708,22 +714,22 @@ export function computeAutoCustomerLevel(customer, allCustomers = [], followups 
   return ''
 }
 
-/** Effective level: locked manual/import value, else auto. */
-export function resolveCustomerLevel(customer, allCustomers = [], followups = [], referralCountOverride = null) {
+/**
+ * Effective level from persisted customer.customerLevel (manual lock or last auto sync).
+ * Hot paths (filter/sort/list) must not recompute — sync runs on load / mutations.
+ */
+export function resolveCustomerLevel(customer, _allCustomers = [], _followups = [], _referralCountOverride = null) {
   if (!customer) return ''
-  if (customer.customerLevelLocked) {
-    return parseCustomerLevel(customer.customerLevel) || customer.customerLevel || ''
-  }
-  return computeAutoCustomerLevel(customer, allCustomers, followups, referralCountOverride)
+  return parseCustomerLevel(customer.customerLevel) || customer.customerLevel || ''
 }
 
 /** Update customer.customerLevel when not locked. Returns level. */
-export function syncCustomerLevel(customer, allCustomers = [], followups = []) {
+export function syncCustomerLevel(customer, allCustomers = [], followups = [], referralCountOverride = null) {
   if (!customer) return ''
   if (customer.customerLevelLocked) {
     return parseCustomerLevel(customer.customerLevel) || customer.customerLevel || ''
   }
-  const level = computeAutoCustomerLevel(customer, allCustomers, followups)
+  const level = computeAutoCustomerLevel(customer, allCustomers, followups, referralCountOverride)
   customer.customerLevel = level
   return level
 }

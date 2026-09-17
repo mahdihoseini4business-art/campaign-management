@@ -83,20 +83,19 @@ export function getFollowupsByCustomerId() {
 function ensureReferralCountByCustomerId() {
   if (referralCountByCustomerId) return referralCountByCustomerId
   const customers = getData().customers || []
+  // O(n): count how many customers list each phone as referredBy, then sum per referrer
+  const referredByCount = new Map()
+  for (const c of customers) {
+    const ref = normalizePhone(c.referredByPhone)
+    if (!ref) continue
+    referredByCount.set(ref, (referredByCount.get(ref) || 0) + 1)
+  }
   referralCountByCustomerId = new Map()
   for (const c of customers) {
     if (!c?.id) continue
     const phones = getCustomerPhones(c)
-    if (!phones.length) {
-      referralCountByCustomerId.set(c.id, 0)
-      continue
-    }
-    const set = new Set(phones)
     let count = 0
-    for (const other of customers) {
-      if (other.id === c.id) continue
-      if (set.has(normalizePhone(other.referredByPhone))) count++
-    }
+    for (const p of phones) count += referredByCount.get(p) || 0
     referralCountByCustomerId.set(c.id, count)
   }
   return referralCountByCustomerId

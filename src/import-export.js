@@ -4,7 +4,7 @@ import {
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
   getProductBalance, getProductPayments, getPaymentEntryStatus,
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, createPayment, formatSoldAt24h, normalizePhone,
-  formatCustomerLevel, parseCustomerLevel, syncCustomerLevel,
+  formatCustomerLevel, parseCustomerLevel, syncCustomerLevel, resolveCustomerLevel,
   normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone,
   jalaliDatePart, jalaliToNum, escapeHtml, escapeAttr, normalizeTimeTo24h,
   userDisplayName, applyProfitSnapshotToProduct, jalaliDateTimeToIso, jalaliAddDays, getTodayJalaliStr,
@@ -451,9 +451,7 @@ const EXPORT_CONFIG = {
       const data = getData()
       const codeLabels = Object.fromEntries(getCustomerCodes().map(c => [c.key, c.label]))
       return getFilteredCustomers().map(c => {
-        const level = c.customerLevelLocked
-          ? (c.customerLevel || '')
-          : syncCustomerLevel(c, data.customers, data.followups)
+        const level = resolveCustomerLevel(c)
         const phones = getCustomerPhones(c)
         const codeKey = c.customerCode || ''
         return [
@@ -1603,17 +1601,11 @@ export async function doImport() {
   }
 
   // Recompute unlocked levels (CIP may unlock after referrals imported)
-  for (const c of data.customers) {
-    if (c.customerLevelLocked) continue
-    const before = c.customerLevel || ''
-    syncCustomerLevel(c, data.customers, data.followups)
-    if ((c.customerLevel || '') !== before) {
-      try {
-        await saveCustomerToDB(c)
-      } catch (err) {
-        console.error('customer level sync failed', c.id, err)
-      }
-    }
+  try {
+    const { resyncAndPersistCustomerLevels } = await import('./customer-level-sync.js')
+    await resyncAndPersistCustomerLevels()
+  } catch (err) {
+    console.error('customer level resync after import', err)
   }
 
   // Import sheet «پیگیری‌ها» from the same workbook (after customers exist)

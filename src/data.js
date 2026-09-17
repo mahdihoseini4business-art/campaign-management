@@ -638,6 +638,12 @@ export async function tryHydrateFromCoreCache({ tenantId, userPhone, permSig }) 
   if (!snapshot.syncMeta?.customersAt || snapshot.syncMeta.supportsUpdatedAt === false) return false
   if (!hydrateCoreData(snapshot)) return false
   dataLoadState = { status: 'ready', error: null }
+  try {
+    const { scheduleCustomerLevelResync } = await import('./customer-level-sync.js')
+    scheduleCustomerLevelResync()
+  } catch (e) {
+    console.error('customer level resync after hydrate:', e)
+  }
   return true
 }
 
@@ -924,6 +930,13 @@ async function loadDataInner() {
     acks: acksData.data
   })
 
+  try {
+    const { scheduleCustomerLevelResync } = await import('./customer-level-sync.js')
+    scheduleCustomerLevelResync()
+  } catch (e) {
+    console.error('customer level resync after load:', e)
+  }
+
   schedulePersistCoreCache()
   return data
 }
@@ -1073,6 +1086,16 @@ export async function syncDataIncremental() {
   bumpWatermark('transfersAt', maxUpdatedAtFromRows(transfersRes.data, 'updated_at', 'created_at'))
   bumpWatermark('acksAt', maxUpdatedAtFromRows(acksRes.data, 'updated_at', 'seen_at'))
   syncMeta.supportsUpdatedAt = true
+
+  if ((customersRes.data || []).length || (followupsRes.data || []).length) {
+    try {
+      const { scheduleCustomerLevelResync } = await import('./customer-level-sync.js')
+      scheduleCustomerLevelResync()
+    } catch (e) {
+      console.error('customer level resync after incremental:', e)
+    }
+  }
+
   schedulePersistCoreCache()
 
   return {

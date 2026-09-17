@@ -2,7 +2,6 @@ import { getData, listSmsTemplates, createSmsCampaign, createSmsSchedule, cancel
 import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normalizePhone, getOperationalBalance, getPrimaryPhone, jalaliDateTimeToIso, jalaliToNum, isGiftSale, isDealCancelled, CUSTOMER_LEVELS, resolveCustomerLevel, formatTeamFilterLabel } from './utils.js'
 import { canUseSmsKind, invokeSendSms, buildRecipientFromCustomer, formatBalanceFa, fetchSmsQuota, buildSettlementSmsVars } from './sms-business.js'
 import { getStoredTenantId } from './tenant.js'
-import { getReferralCountForCustomer } from './derived-cache.js'
 
 const SMS_TEST_PHONE_KEY = 'sms_test_phone'
 
@@ -789,12 +788,7 @@ function finishAudience(base, opts) {
       if (!owner || !advisorPhones.has(owner)) continue
     }
     if (levelFilter) {
-      const resolved = resolveCustomerLevel(
-        c,
-        data.customers,
-        data.followups,
-        getReferralCountForCustomer(c.id)
-      )
+      const resolved = resolveCustomerLevel(c)
       if (resolved !== levelFilter) continue
     }
     if (segment === 'buyers' && !customerLooksLikeBuyer(c)) continue

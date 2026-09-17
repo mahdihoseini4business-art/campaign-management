@@ -85,7 +85,7 @@ function customerSortValue(c, field, ctx) {
     return { value: idx < 0 ? 999 : idx, type: 'order' }
   }
   if (field === 'level') {
-    const key = resolveCustomerLevel(c, ctx.allCustomers, ctx.followups)
+    const key = resolveCustomerLevel(c)
     const idx = LEVEL_ORDER.indexOf(key)
     return { value: idx < 0 ? -1 : idx, type: 'order' }
   }
@@ -438,12 +438,7 @@ export function getFilteredCustomers() {
     if (platformFilter && c.platform !== platformFilter) return false
     if (statusFilter && c.status !== statusFilter) return false
     if (levelFilter) {
-      const resolved = resolveCustomerLevel(
-        c,
-        null,
-        data.followups,
-        getReferralCountForCustomer(c.id)
-      )
+      const resolved = resolveCustomerLevel(c)
       if (resolved !== levelFilter) return false
     }
     if (transferFilter && !matchesTransferFilter) return false
@@ -658,7 +653,7 @@ export async function renderCustomers() {
         : ''
     ].join('')
 
-    const levelKey = resolveCustomerLevel(c, data.customers, data.followups)
+    const levelKey = resolveCustomerLevel(c)
     const levelLabel = formatCustomerLevel(levelKey)
     const levelCell = levelLabel === '—'
       ? '<span style="color:var(--text-muted)">—</span>'
@@ -2362,10 +2357,11 @@ export async function openCustomerDetail(id, options = {}) {
 
   let levelKey = ''
   if (!isNew) {
-    levelKey = resolveCustomerLevel(c, data.customers, data.followups)
+    levelKey = resolveCustomerLevel(c)
     if (!c.customerLevelLocked) {
       const prev = c.customerLevel || ''
-      levelKey = syncCustomerLevel(c, data.customers, data.followups)
+      const fus = getFollowupsByCustomerId().get(c.id) || []
+      levelKey = syncCustomerLevel(c, data.customers, fus, getReferralCountForCustomer(c.id))
       if ((c.customerLevel || '') !== prev) {
         try { await saveCustomerToDB(c) } catch (e) {
           console.warn('auto level save skipped:', e?.message || e)
@@ -3345,7 +3341,8 @@ export async function updateCustomerLevel(customerId, levelValue) {
 
   if (levelValue === 'auto') {
     c.customerLevelLocked = false
-    syncCustomerLevel(c, data.customers, data.followups)
+    const fus = getFollowupsByCustomerId().get(c.id) || []
+    syncCustomerLevel(c, data.customers, fus, getReferralCountForCustomer(c.id))
   } else {
     const level = parseCustomerLevel(levelValue)
     if (!level || !CUSTOMER_LEVELS[level]) {
@@ -3475,7 +3472,10 @@ export async function setProducts(customerId, products) {
   data.customers[idx]._productsLoaded = true
   data.customers[idx].productCount = products.length
   invalidateProductSalesCountCache()
-  syncCustomerLevel(data.customers[idx], data.customers, data.followups)
+  {
+    const fus = getFollowupsByCustomerId().get(data.customers[idx].id) || []
+    syncCustomerLevel(data.customers[idx], data.customers, fus, getReferralCountForCustomer(data.customers[idx].id))
+  }
   await saveCustomerToDB(data.customers[idx])
   try {
     const { syncSettlementDueSmsForCustomer } = await import('./sms-ui.js')
@@ -4861,7 +4861,10 @@ export async function removeProduct(customerId, index) {
   customer._productsLoaded = true
   customer.productCount = customer.products.length
   invalidateProductSalesCountCache()
-  syncCustomerLevel(customer, data.customers, data.followups)
+  {
+    const fus = getFollowupsByCustomerId().get(customer.id) || []
+    syncCustomerLevel(customer, data.customers, fus, getReferralCountForCustomer(customer.id))
+  }
   try {
     await saveCustomerToDB(customer)
     try {
@@ -4877,7 +4880,10 @@ export async function removeProduct(customerId, index) {
     customer.products = snapshot
     customer.productCount = snapshot.length
     invalidateProductSalesCountCache()
-    syncCustomerLevel(customer, data.customers, data.followups)
+    {
+      const fus = getFollowupsByCustomerId().get(customer.id) || []
+      syncCustomerLevel(customer, data.customers, fus, getReferralCountForCustomer(customer.id))
+    }
     showToast('خطا در حذف محصول')
   }
 }

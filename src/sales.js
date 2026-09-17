@@ -24,8 +24,7 @@ import { debouncedSearchInput } from './search-debounce.js'
 import {
   getCustomersById,
   getAllSalesFromCache,
-  setAllSalesCache,
-  getReferralCountForCustomer
+  setAllSalesCache
 } from './derived-cache.js'
 import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
 import { getPage } from './pagination.js'
@@ -394,12 +393,7 @@ export function getFilteredSales(dateFilterOverride = null) {
       return false
     }
     if (levelFilter && customer) {
-      const resolved = resolveCustomerLevel(
-        customer,
-        null,
-        getData().followups,
-        getReferralCountForCustomer(customer.id)
-      )
+      const resolved = resolveCustomerLevel(customer)
       if (resolved !== levelFilter) return false
     }
     if (codeFilter) {
