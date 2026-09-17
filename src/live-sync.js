@@ -34,6 +34,8 @@ const POLL_MS_HEALTHY = 90_000
 const POLL_MS_DEGRADED = 45_000
 const VISIBILITY_MIN_GAP_MS = 30_000
 const UI_DEBOUNCE_MS = 350
+/** Wait after last pointer/key/scroll before applying a deferred tab re-render. */
+const UI_IDLE_MS = 1000
 const LOCAL_WRITE_SUPPRESS_MS = 2000
 /** After subscribe, ignore "deaf" detection briefly (quiet is normal). */
 const RT_GRACE_MS = 120_000
@@ -42,9 +44,12 @@ const RT_DEAF_SILENCE_MS = 90_000
 /** Min gap between reconnect attempts. */
 const RT_RECONNECT_COOLDOWN_MS = 60_000
 
+const INTERACTION_EVENTS = ['keydown', 'pointerdown', 'touchstart', 'wheel', 'scroll']
+
 let channel = null
 let pollTimer = null
 let uiTimer = null
+let idleFlushTimer = null
 let notifRefreshTimer = null
 let refreshingCore = false
 let refreshingNotif = false
@@ -58,6 +63,9 @@ let subscribedAt = 0
 let lastRealtimeEventAt = 0
 let lastReconnectAt = 0
 let reconnecting = false
+let lastInteractionAt = 0
+let pendingUiRefresh = false
+let interactionListening = false
 
 /** Call after a successful local DB write to ignore echo events briefly. */
 export function noteLocalWrite(ms = LOCAL_WRITE_SUPPRESS_MS) {
@@ -81,6 +89,58 @@ function getActiveSheet() {
 
 function isDetailModalOpen() {
   return !!document.getElementById('detailModal')?.classList.contains('active')
+}
+
+function noteUserInteraction() {
+  lastInteractionAt = Date.now()
+  if (pendingUiRefresh) scheduleIdleFlush()
+}
+
+function isEditableFocus() {
+  const el = document.activeElement
+  if (!el || el === document.body || el === document.documentElement) return false
+  const tag = el.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+  if (el.isContentEditable) return true
+  return !!el.closest?.('[contenteditable="true"]')
+}
+
+/** True while the user is typing/clicking/scrolling — skip heavy tab re-renders. */
+function isUiBusy() {
+  if (isEditableFocus()) return true
+  return Date.now() - lastInteractionAt < UI_IDLE_MS
+}
+
+function startInteractionWatch() {
+  if (interactionListening) return
+  interactionListening = true
+  for (const type of INTERACTION_EVENTS) {
+    document.addEventListener(type, noteUserInteraction, { capture: true, passive: true })
+  }
+}
+
+function stopInteractionWatch() {
+  if (!interactionListening) return
+  interactionListening = false
+  for (const type of INTERACTION_EVENTS) {
+    document.removeEventListener(type, noteUserInteraction, { capture: true })
+  }
+}
+
+function scheduleIdleFlush() {
+  if (idleFlushTimer) clearTimeout(idleFlushTimer)
+  const since = Date.now() - lastInteractionAt
+  const wait = Math.max(UI_DEBOUNCE_MS, UI_IDLE_MS - since + 50)
+  idleFlushTimer = setTimeout(() => {
+    idleFlushTimer = null
+    if (!pendingUiRefresh) return
+    if (isUiBusy()) {
+      scheduleIdleFlush()
+      return
+    }
+    pendingUiRefresh = false
+    refreshActiveViews()
+  }, wait)
 }
 
 export async function refreshActiveViews() {
@@ -143,9 +203,24 @@ export async function refreshActiveViews() {
 }
 
 function scheduleUiRefresh() {
+  if (isUiBusy()) {
+    pendingUiRefresh = true
+    if (uiTimer) {
+      clearTimeout(uiTimer)
+      uiTimer = null
+    }
+    scheduleIdleFlush()
+    return
+  }
   if (uiTimer) clearTimeout(uiTimer)
   uiTimer = setTimeout(() => {
     uiTimer = null
+    if (isUiBusy()) {
+      pendingUiRefresh = true
+      scheduleIdleFlush()
+      return
+    }
+    pendingUiRefresh = false
     refreshActiveViews()
   }, UI_DEBOUNCE_MS)
 }
@@ -419,12 +494,15 @@ export async function initLiveSync() {
   }
 
   startPolling()
+  startInteractionWatch()
   visibilityHandler = onVisibilityChange
   document.addEventListener('visibilitychange', visibilityHandler)
 }
 
 export function disposeLiveSync() {
   started = false
+  stopInteractionWatch()
+  pendingUiRefresh = false
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
@@ -432,6 +510,10 @@ export function disposeLiveSync() {
   if (uiTimer) {
     clearTimeout(uiTimer)
     uiTimer = null
+  }
+  if (idleFlushTimer) {
+    clearTimeout(idleFlushTimer)
+    idleFlushTimer = null
   }
   if (notifRefreshTimer) {
     clearTimeout(notifRefreshTimer)
