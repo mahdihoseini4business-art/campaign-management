@@ -2179,6 +2179,123 @@ export async function renameProductInBundles(oldName, newName) {
 }
 
 /**
+ * Rename a product everywhere it appears: customer sales, follow-ups, refunds, sales-target filters.
+ * Call after renaming in the catalog (bundles via renameProductInBundles separately).
+ */
+export async function renameProductAcrossApp(oldName, newName) {
+  const from = String(oldName || '').trim()
+  const to = String(newName || '').trim()
+  if (!from || !to || from.toLowerCase() === to.toLowerCase()) {
+    return {
+      updatedCustomers: 0,
+      updatedSales: 0,
+      updatedFollowups: 0,
+      updatedRefunds: 0,
+      updatedTargets: false,
+    }
+  }
+  const oldLower = from.toLowerCase()
+  let updatedCustomers = 0
+  let updatedSales = 0
+  let updatedFollowups = 0
+  let updatedRefunds = 0
+
+  const tenantId = getStoredTenantId()
+  if (tenantId) {
+    const { data: rows, error } = await supabase
+      .from('customers')
+      .select('id, products')
+      .eq('tenant_id', tenantId)
+    if (error) throw new Error('خطا در خواندن مشتریان برای تغییر نام محصول: ' + error.message)
+
+    for (const row of rows || []) {
+      const products = Array.isArray(row.products) ? row.products : []
+      let dirty = false
+      const nextProducts = products.map((p) => {
+        if (String(p?.name || '').trim().toLowerCase() !== oldLower) return p
+        dirty = true
+        updatedSales += 1
+        return { ...p, name: to }
+      })
+      if (!dirty) continue
+
+      const cached = (data.customers || []).find((c) => c.id === row.id)
+      if (cached) {
+        cached.products = nextProducts
+        cached._productsLoaded = true
+        await saveCustomerToDB(cached)
+      } else {
+        const { error: upErr } = await supabase
+          .from('customers')
+          .update({ products: nextProducts })
+          .eq('tenant_id', tenantId)
+          .eq('id', row.id)
+        if (upErr) throw new Error('خطا در به‌روزرسانی فروش مشتری: ' + upErr.message)
+      }
+      updatedCustomers += 1
+    }
+  } else {
+    for (const customer of data.customers || []) {
+      const products = customer.products || []
+      let dirty = false
+      for (const p of products) {
+        if (String(p?.name || '').trim().toLowerCase() === oldLower) {
+          p.name = to
+          dirty = true
+          updatedSales += 1
+        }
+      }
+      if (dirty) {
+        await saveCustomerToDB(customer)
+        updatedCustomers += 1
+      }
+    }
+  }
+
+  for (const f of data.followups || []) {
+    if (String(f.productName || '').trim().toLowerCase() !== oldLower) continue
+    f.productName = to
+    await saveFollowupToDB(f)
+    updatedFollowups += 1
+  }
+
+  for (const r of getRefunds()) {
+    if (String(r.productName || '').trim().toLowerCase() !== oldLower) continue
+    r.productName = to
+    await updateRefundInDB(r.id, { productName: to })
+    updatedRefunds += 1
+  }
+
+  let updatedTargets = false
+  const targets = getSalesTargets()
+  const nextTargets = targets.map((group) => {
+    const items = (group.items || []).map((bar) => {
+      const names = bar.productNames || []
+      if (!names.some((n) => n.toLowerCase() === oldLower)) return bar
+      updatedTargets = true
+      const replaced = names.map((n) => (n.toLowerCase() === oldLower ? to : n))
+      return { ...bar, productNames: [...new Set(replaced)] }
+    })
+    return { ...group, items }
+  })
+  if (updatedTargets) await saveSalesTargets(nextTargets)
+
+  invalidateProductSalesCountCache()
+  try {
+    const { invalidateDerivedCache } = await import('./derived-cache.js')
+    invalidateDerivedCache('all')
+  } catch (_) { /* ignore */ }
+
+  return {
+    updatedCustomers,
+    updatedSales,
+    updatedFollowups,
+    updatedRefunds,
+    updatedTargets,
+  }
+}
+
+/**
  * Count customer sale lines whose product.name matches (case-insensitive).
  * Uses the shared sales-count cache (one scan of customers until invalidated).
  */
@@ -3568,6 +3685,7 @@ export async function updateRefundInDB(id, patch) {
   if (patch.status != null) row.status = patch.status
   if (patch.note != null) row.note = patch.note
   if (patch.reason != null) row.refund_reason = patch.reason
+  if (patch.productName != null) row.product_name = patch.productName
   if (patch.accountInfo != null) row.account_info = patch.accountInfo
   if (patch.accountHolderName != null) row.account_holder_name = patch.accountHolderName
   if (patch.sheba != null) row.sheba = patch.sheba
