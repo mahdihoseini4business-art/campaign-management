@@ -2219,10 +2219,12 @@ export async function renameProductAcrossApp(oldName, newName) {
       })
       if (!dirty) continue
 
-      const cached = (data.customers || []).find((c) => c.id === row.id)
+      const rowId = normalizeCustomerId(row.id)
+      const cached = (data.customers || []).find((c) => normalizeCustomerId(c.id) === rowId)
       if (cached) {
         cached.products = nextProducts
         cached._productsLoaded = true
+        cached.productCount = nextProducts.length
         await saveCustomerToDB(cached)
       } else {
         const { error: upErr } = await supabase
@@ -2246,6 +2248,7 @@ export async function renameProductAcrossApp(oldName, newName) {
         }
       }
       if (dirty) {
+        customer.productCount = products.length
         await saveCustomerToDB(customer)
         updatedCustomers += 1
       }
@@ -2303,6 +2306,41 @@ export function countSalesByProductName(productName) {
   const key = String(productName || '').trim().toLowerCase()
   if (!key) return 0
   return getProductSalesCountMap().get(key) || 0
+}
+
+/**
+ * Sale-line product names that are not in the current catalog or bundles.
+ * Used after catalog renames that left customer sales on the old label —
+ * those orphans keep the old sales counts until remapped to a catalog name.
+ * @returns {Array<{ name: string, count: number }>}
+ */
+export function listOrphanSaleProductNames() {
+  const catalogKeys = new Set(
+    getProductCatalogNames().map((n) => String(n || '').trim().toLowerCase()).filter(Boolean)
+  )
+  for (const b of getProductBundles()) {
+    const bn = coerceProductName(b?.name)
+    if (bn) catalogKeys.add(bn.toLowerCase())
+  }
+
+  /** @type {Map<string, { name: string, count: number }>} */
+  const orphans = new Map()
+  for (const c of data.customers || []) {
+    for (const p of c.products || []) {
+      const name = coerceProductName(p?.name)
+      if (!name) continue
+      const key = name.toLowerCase()
+      if (catalogKeys.has(key)) continue
+      const prev = orphans.get(key)
+      if (prev) prev.count += 1
+      else orphans.set(key, { name, count: 1 })
+    }
+  }
+
+  return [...orphans.values()].sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count
+    return String(a.name).localeCompare(String(b.name), 'fa')
+  })
 }
 
 /**

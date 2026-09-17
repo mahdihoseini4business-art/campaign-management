@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali, gregorianToJalaliStr, gregorianToJalaliDateTimeStr, jalaliDateTimeToIso, canOpenSettings, canAccessSettingsSection, listAccessibleSettingsSectionIds, requireSettingsAccess, requireSettingsSection, SETTINGS_SECTION_ACCESS, settingsSectionSupportsScope, readSettingsAccessEntry, normalizeSettingsAccess, canManageSettingsUserRecord, requireManageSettingsUser, isSettingsSectionGroupScoped, getSettingsSectionScopeHint, canGrantPermissionKey } from './utils.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, renameProductAcrossApp, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, renameProductAcrossApp, countSalesByProductName, listOrphanSaleProductNames, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
 import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS } from './sms-features.js'
 import { canManageSmsSettings, canViewSmsHistory, canEditSmsTemplates } from './sms-business.js'
 import {
@@ -1957,6 +1957,7 @@ function catalogEntrySummary(entry) {
 export function renderProductsSettingsPane() {
   renderProductCatalogSettings()
   renderProductBundleSettings()
+  renderOrphanProductRemapForm()
   renderBundleMigrationForm()
 }
 
@@ -2738,6 +2739,75 @@ export async function removeProductBundle(bundleId) {
       showToast('خطا در حذف باندل')
     }
   }, 'حذف')
+}
+
+// ============================================
+// Remap orphan sale product names → catalog
+// ============================================
+
+export function renderOrphanProductRemapForm() {
+  const fromSel = document.getElementById('remapOrphanFromSelect')
+  const toSel = document.getElementById('remapOrphanToSelect')
+  const emptyHint = document.getElementById('remapOrphanEmptyHint')
+  if (!fromSel || !toSel) return
+
+  const orphans = listOrphanSaleProductNames()
+  const prevFrom = fromSel.value
+  fromSel.innerHTML = orphans.length
+    ? '<option value="">— انتخاب کنید —</option>' + orphans.map(({ name, count }) =>
+      `<option value="${escapeAttr(name)}">${escapeHtml(name)} (${formatNumber(count)} فروش)</option>`
+    ).join('')
+    : '<option value="">نام قدیمی خارج از کاتالوگ نیست</option>'
+  fromSel.disabled = orphans.length === 0
+  if (prevFrom && orphans.some((o) => o.name === prevFrom)) fromSel.value = prevFrom
+  if (emptyHint) emptyHint.style.display = orphans.length ? 'none' : 'block'
+
+  const catalog = getProductCatalogNames()
+  const prevTo = toSel.value
+  toSel.innerHTML = '<option value="">— انتخاب کنید —</option>' + catalog.map((name) => {
+    const count = countSalesByProductName(name)
+    const label = count > 0 ? `${name} (${formatNumber(count)} فروش)` : name
+    return `<option value="${escapeAttr(name)}">${escapeHtml(label)}</option>`
+  }).join('')
+  if (prevTo && catalog.includes(prevTo)) toSel.value = prevTo
+}
+
+export async function runOrphanProductRemap() {
+  if (!requireSettingsSection('products')) return
+  const fromName = (document.getElementById('remapOrphanFromSelect')?.value || '').trim()
+  const toName = (document.getElementById('remapOrphanToSelect')?.value || '').trim()
+  if (!fromName) { showToast('نام قدیمی فروش را انتخاب کنید'); return }
+  if (!toName) { showToast('نام کاتالوگ مقصد را انتخاب کنید'); return }
+  if (fromName.toLowerCase() === toName.toLowerCase()) {
+    showToast('نام مبدأ و مقصد یکسان است')
+    return
+  }
+
+  const count = countSalesByProductName(fromName)
+  if (count === 0) {
+    showToast('هیچ فروشی با این نام پیدا نشد')
+    return
+  }
+
+  openSettingsConfirm(
+    `${formatNumber(count)} فروش از «${fromName}» به «${toName}» منتقل شود؟\nترتیب دراپ‌داون محصول بر اساس همین تعداد به‌روز می‌شود.`,
+    async () => {
+      try {
+        showToast('در حال انتقال...')
+        const result = await renameProductAcrossApp(fromName, toName)
+        showToast(
+          result.updatedSales > 0
+            ? `${formatNumber(result.updatedSales)} فروش در ${formatNumber(result.updatedCustomers)} مشتری به «${toName}» منتقل شد`
+            : 'تغییری لازم نبود'
+        )
+        renderProductsSettingsPane()
+      } catch (e) {
+        console.error('runOrphanProductRemap error:', e)
+        showToast(e.message || 'خطا در انتقال نام محصول')
+      }
+    },
+    'انتقال'
+  )
 }
 
 // ============================================
