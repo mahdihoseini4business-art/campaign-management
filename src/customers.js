@@ -345,7 +345,7 @@ function renderCustomerCard(c, {
     : '<span style="color:var(--text-muted)">—</span>'
 
   const cardClass = ['customer-card', nextFollowupClass].filter(Boolean).join(' ')
-  return `<article class="${cardClass}" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
+  return `<article class="${cardClass}" data-customer-id="${escapeAttr(c.id)}" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
     <div class="customer-card-header">
       <div class="customer-card-name">${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}${nameBadges}</div>
       <span class="status-badge ${statusClass}">${escapeHtml(statusLabel)}</span>
@@ -661,11 +661,11 @@ export async function renderCustomers() {
 
     rowHtml.push(`<tr class="clickable-row ${nextFollowupClass}${isMine ? '' : ' row-other-owner'}${transferredIn ? ' row-transferred-in' : ''}${transferredOut ? ' row-transferred-out' : ''}" data-customer-id="${escapeAttr(c.id)}" onclick="app.onCustomerRowClick(event, '${escapeAttr(c.id)}')">
       ${selectCell}
-      <td>${platformIdHtml}</td>
-      <td><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>
+      <td class="customer-platform-id-cell">${platformIdHtml}</td>
+      <td class="customer-platform-cell"><span class="platform-icon"><span class="platform-dot ${platformClass}"></span>${escapeHtml(platformLabel)}</span></td>
       <td class="customer-name-cell">${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}${nameBadges}</td>
-      <td>${levelCell}</td>
-      <td style="font-family:inherit; direction: ltr; text-align: right;">${(() => {
+      <td class="customer-level-cell">${levelCell}</td>
+      <td class="customer-phone-cell" style="font-family:inherit; direction: ltr; text-align: right;">${(() => {
         const disp = formatPhonesDisplay(c)
         if (!disp.text) return '<span style="color:var(--text-muted)">—</span>'
         const extra = disp.extra > 0
@@ -673,10 +673,10 @@ export async function renderCustomers() {
           : ''
         return `${escapeHtml(disp.text)}${extra}`
       })()}</td>
-      <td><span class="status-badge ${statusClass}">${escapeHtml(statusLabel)}</span></td>
-      <td style="font-size:12px;">${escapeHtml(c.advisor) || '<span style="color:var(--text-muted)">—</span>'}</td>
-      <td style="text-align:center;"><span class="followup-count ${countClass}">${followupCount}</span></td>
-      <td style="font-size:13px;color:var(--text-muted);font-family:'Vazirmatn',sans-serif;direction:ltr;text-align:right;">${escapeHtml(lastDate)}</td>
+      <td class="customer-status-cell"><span class="status-badge ${statusClass}">${escapeHtml(statusLabel)}</span></td>
+      <td class="customer-advisor-cell" style="font-size:12px;">${escapeHtml(c.advisor) || '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td class="customer-followup-count-cell" style="text-align:center;"><span class="followup-count ${countClass}">${followupCount}</span></td>
+      <td class="customer-last-followup-cell" style="font-size:13px;color:var(--text-muted);font-family:'Vazirmatn',sans-serif;direction:ltr;text-align:right;">${escapeHtml(lastDate)}</td>
       <td style="font-size:12px;" class="customer-next-followup">${nextFollowupHtml}</td>
       <td class="notes-cell" title="${escapeAttr(noteSource ? `${noteSource}: ${noteText}` : '')}">${escapeHtml(noteText) || '<span style="color:var(--text-muted)">—</span>'}</td>
     </tr>`)
@@ -1689,19 +1689,150 @@ export function patchDetailReadOnlyFields(customerId) {
   }
 }
 
-/** Update one customer row in the list when detail is open (customers tab). */
-export function patchCustomerListRow(customerId) {
-  const row = document.querySelector(`#customerBody tr.clickable-row[data-customer-id="${CSS.escape(customerId)}"]`)
-  if (!row) return
-  const c = getCustomerById(customerId)
-  if (!c) return
-  const nameCell = row.querySelector('.customer-name-cell')
-  if (nameCell) nameCell.textContent = c.name || c.platformId || c.id
-  const nextCell = row.querySelector('.customer-next-followup')
-  if (nextCell) {
-    nextCell.textContent = c.nextFollowupDate || '—'
-    nextCell.classList.toggle('is-overdue', !!c.nextFollowupDate && jalaliToNum(c.nextFollowupDate) < jalaliToNum(getTodayJalaliStr()))
+function buildNextFollowupCellParts(c) {
+  let html = '<span style="color:var(--text-muted)">—</span>'
+  let rowClass = ''
+  if (c?.nextFollowupDate) {
+    const urgency = nextFollowupUrgency(c)
+    if (urgency === 0) {
+      html = `<span class="settlement-badge settlement-overdue-badge">⚠ ${escapeHtml(c.nextFollowupDate)}</span>`
+      rowClass = 'settlement-overdue'
+    } else if (urgency === 1) {
+      html = `<span class="settlement-badge settlement-soon-badge">${escapeHtml(c.nextFollowupDate)}</span>`
+      rowClass = 'settlement-overdue'
+    } else {
+      html = `<span style="font-family:'Vazirmatn',sans-serif;font-size:13px;">${escapeHtml(c.nextFollowupDate)}</span>`
+    }
   }
+  return { html, rowClass }
+}
+
+function buildCustomerNameBadgesHtml(c, currentUser, myPhone) {
+  const isMine = ownsCustomer(c, currentUser) || canViewOrgWideData('customers')
+  const transferredIn = isRecentTransferredIn(c.id, myPhone, 7)
+  const transferredUnread = transferredIn && isUnreadTransferredIn(c.id, myPhone, 7)
+  const transferredOut = isRecentTransferredOut(c.id, myPhone, 7) && !transferredIn
+  return [
+    !isMine ? '<span class="owner-badge">همکار</span>' : '',
+    transferredIn
+      ? `<span class="transfer-in-badge${transferredUnread ? ' is-unread' : ''}" title="تازه‌منتقل‌شده به شما">منتقل‌شده</span>`
+      : '',
+    transferredOut
+      ? '<span class="transfer-out-badge" title="تازه‌ارسال‌شده توسط شما">ارسال‌شده</span>'
+      : ''
+  ].join('')
+}
+
+/**
+ * Update one visible customer row/card after a remote patch.
+ * @returns {boolean} true if a row or card on the current page was updated
+ */
+export function patchCustomerListRow(customerId) {
+  if (!customerId) return false
+  const c = getCustomerById(customerId) || getData().customers.find(x => x.id === customerId)
+  if (!c) return false
+
+  const id = c.id
+  const row = document.querySelector(`#customerBody tr.clickable-row[data-customer-id="${CSS.escape(id)}"]`)
+  const card = document.querySelector(`#customerCards article.customer-card[data-customer-id="${CSS.escape(id)}"]`)
+  if (!row && !card) return false
+
+  const currentUser = getCurrentUser()
+  const myPhone = normalizePhone(currentUser?.phone)
+  const nameBadges = buildCustomerNameBadgesHtml(c, currentUser, myPhone)
+  const { html: nextFollowupHtml, rowClass: nextFollowupClass } = buildNextFollowupCellParts(c)
+  const statusClass = getStatusClass(c.status)
+  const statusLabel = getStatusLabels()[c.status] || c.status
+  const levelKey = resolveCustomerLevel(c)
+  const levelLabel = formatCustomerLevel(levelKey)
+  const levelHtml = levelLabel === '—'
+    ? '<span style="color:var(--text-muted)">—</span>'
+    : `<span class="customer-level-badge">${escapeHtml(levelLabel)}</span>`
+
+  const fus = sortFollowupsNewestFirst(getFollowupsByCustomerId().get(id) || [])
+  const followupCount = fus.length
+  let countClass = 'followup-none'
+  if (followupCount >= 5) countClass = 'followup-high'
+  else if (followupCount >= 3) countClass = 'followup-mid'
+  else if (followupCount >= 1) countClass = 'followup-low'
+  const lastDate = fus.length > 0 ? (formatFollowupHistoryAt(fus[0]) || '—') : '—'
+  const lastNote = fus.length > 0 ? fus[0].notes : ''
+  const noteSource = lastNote ? 'آخرین یادداشت پیگیری' : (c.notes ? 'یادداشت ثابت مشتری' : '')
+  const noteText = lastNote || c.notes || ''
+
+  const phoneDisp = formatPhonesDisplay(c)
+  const phoneHtml = phoneDisp.text
+    ? `${escapeHtml(phoneDisp.text)}${phoneDisp.extra > 0
+      ? ` <span style="color:var(--text-muted);font-size:11px;" title="${escapeAttr(phoneDisp.phones.slice(1).join('، '))}">+${phoneDisp.extra}</span>`
+      : ''}`
+    : '<span style="color:var(--text-muted)">—</span>'
+
+  if (row) {
+    row.classList.toggle('settlement-overdue', nextFollowupClass === 'settlement-overdue')
+    const nameCell = row.querySelector('.customer-name-cell')
+    if (nameCell) {
+      nameCell.innerHTML = `${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}${nameBadges}`
+    }
+    const levelCell = row.querySelector('.customer-level-cell')
+    if (levelCell) levelCell.innerHTML = levelHtml
+    const phoneCell = row.querySelector('.customer-phone-cell')
+    if (phoneCell) phoneCell.innerHTML = phoneHtml
+    const statusCell = row.querySelector('.customer-status-cell')
+    if (statusCell) {
+      statusCell.innerHTML = `<span class="status-badge ${statusClass}">${escapeHtml(statusLabel)}</span>`
+    }
+    const advisorCell = row.querySelector('.customer-advisor-cell')
+    if (advisorCell) {
+      advisorCell.innerHTML = escapeHtml(c.advisor) || '<span style="color:var(--text-muted)">—</span>'
+    }
+    const countCell = row.querySelector('.customer-followup-count-cell')
+    if (countCell) {
+      countCell.innerHTML = `<span class="followup-count ${countClass}">${followupCount}</span>`
+    }
+    const lastCell = row.querySelector('.customer-last-followup-cell')
+    if (lastCell) lastCell.textContent = lastDate
+    const nextCell = row.querySelector('.customer-next-followup')
+    if (nextCell) nextCell.innerHTML = nextFollowupHtml
+    const notesCell = row.querySelector('.notes-cell')
+    if (notesCell) {
+      notesCell.title = noteSource ? `${noteSource}: ${noteText}` : ''
+      notesCell.innerHTML = escapeHtml(noteText) || '<span style="color:var(--text-muted)">—</span>'
+    }
+  }
+
+  if (card) {
+    card.classList.toggle('settlement-overdue', nextFollowupClass === 'settlement-overdue')
+    const nameEl = card.querySelector('.customer-card-name')
+    if (nameEl) {
+      nameEl.innerHTML = `${escapeHtml(c.name) || '<span style="color:var(--text-muted)">—</span>'}${nameBadges}`
+    }
+    const statusEl = card.querySelector('.status-badge')
+    if (statusEl) {
+      statusEl.className = `status-badge ${statusClass}`
+      statusEl.textContent = statusLabel
+    }
+    const phoneEl = card.querySelector('.customer-card-phone')
+    if (phoneEl) phoneEl.innerHTML = phoneHtml
+    const metaEl = card.querySelector('.customer-card-meta')
+    if (metaEl) metaEl.innerHTML = `پیگیری بعدی: ${nextFollowupHtml}`
+    const advisorEl = card.querySelector('.customer-card-advisor')
+    if (advisorEl) advisorEl.textContent = `کارشناس: ${c.advisor || '—'}`
+  }
+
+  return true
+}
+
+/**
+ * Patch several visible customer rows (live-sync). Does not rebuild the table.
+ * @param {Iterable<string>} ids
+ * @returns {{ patched: number }}
+ */
+export function patchCustomerListRows(ids) {
+  let patched = 0
+  for (const id of ids || []) {
+    if (patchCustomerListRow(id)) patched++
+  }
+  return { patched }
 }
 
 export function showMoreDetailFollowups(customerId) {

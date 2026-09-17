@@ -14,10 +14,18 @@ import {
   removeFollowupFromCache,
   upsertRefundInCache,
   removeRefundFromCache,
-  isDataLocalWriteSuppressed
+  isDataLocalWriteSuppressed,
+  normalizeCustomerId
 } from './data.js'
 import { refreshNotifications, updateNotificationBadge } from './notifications.js'
-import { renderCustomers, updateStats, patchDetailReadOnlyFields, patchCustomerListRow, getOpenDetailCustomerId } from './customers.js'
+import {
+  renderCustomers,
+  updateStats,
+  patchDetailReadOnlyFields,
+  patchCustomerListRow,
+  patchCustomerListRows,
+  getOpenDetailCustomerId
+} from './customers.js'
 import { renderFollowups, updateFollowupBadge } from './followups.js'
 import { renderSales } from './sales.js'
 import { renderProductMatrix } from './product-matrix.js'
@@ -43,6 +51,8 @@ const RT_GRACE_MS = 120_000
 const RT_DEAF_SILENCE_MS = 90_000
 /** Min gap between reconnect attempts. */
 const RT_RECONNECT_COOLDOWN_MS = 60_000
+/** Above this many dirty customer ids, fall back to full list re-render. */
+const PATCH_CUSTOMER_THRESHOLD = 10
 
 const INTERACTION_EVENTS = ['keydown', 'pointerdown', 'touchstart', 'wheel', 'scroll']
 
@@ -66,6 +76,9 @@ let reconnecting = false
 let lastInteractionAt = 0
 let pendingUiRefresh = false
 let interactionListening = false
+/** @type {Set<string>} */
+let pendingCustomerIds = new Set()
+let forceFullUiRefresh = false
 
 /** Call after a successful local DB write to ignore echo events briefly. */
 export function noteLocalWrite(ms = LOCAL_WRITE_SUPPRESS_MS) {
@@ -94,6 +107,31 @@ function isDetailModalOpen() {
 function noteUserInteraction() {
   lastInteractionAt = Date.now()
   if (pendingUiRefresh) scheduleIdleFlush()
+}
+
+function noteCustomerDirty(id) {
+  const nid = normalizeCustomerId(id)
+  if (!nid) {
+    forceFullUiRefresh = true
+    return
+  }
+  pendingCustomerIds.add(nid)
+  if (pendingCustomerIds.size > PATCH_CUSTOMER_THRESHOLD) {
+    forceFullUiRefresh = true
+  }
+}
+
+function noteFullUiRefresh() {
+  forceFullUiRefresh = true
+  pendingCustomerIds.clear()
+}
+
+function consumeCustomerUiPlan() {
+  const full = forceFullUiRefresh || pendingCustomerIds.size > PATCH_CUSTOMER_THRESHOLD
+  const ids = full ? [] : [...pendingCustomerIds]
+  forceFullUiRefresh = false
+  pendingCustomerIds.clear()
+  return { full, ids }
 }
 
 function isEditableFocus() {
@@ -177,9 +215,15 @@ export async function refreshActiveViews() {
     } else if (tab === 'dashboard') {
       await renderDashboard()
     } else {
-      // customers (default) — list/stats only; do not rebuild open detail modal
-      await renderCustomers()
-      updateStats()
+      // customers — patch visible rows when dirty set is small; else full rebuild
+      const { full, ids } = consumeCustomerUiPlan()
+      if (!full && ids.length > 0) {
+        patchCustomerListRows(ids)
+        updateStats()
+      } else {
+        await renderCustomers()
+        updateStats()
+      }
     }
   } catch (e) {
     console.error('refreshActiveViews error:', e)
@@ -198,7 +242,6 @@ export async function refreshActiveViews() {
         console.error('patchCustomerListRow error:', e)
       }
     }
-    return
   }
 }
 
@@ -239,6 +282,19 @@ async function refreshCoreData(reason = 'sync', opts = {}) {
     const mode = opts.mode || 'auto'
     const result = await syncCoreData({ mode, reconcile })
     lastSyncAt = Date.now()
+    // Poll / visibility / reconcile / full loads: unknown or many rows → full UI
+    if (
+      reconcile
+      || result?.mode === 'full'
+      || reason === 'poll'
+      || reason === 'visibility'
+      || reason === 'manual'
+      || (typeof reason === 'string' && reason.includes('fallback'))
+    ) {
+      if (coreRemoteHits(result) || result?.mode === 'full' || reconcile) {
+        noteFullUiRefresh()
+      }
+    }
     scheduleUiRefresh()
     return result
   } catch (e) {
@@ -294,6 +350,7 @@ function onCustomerChange(payload) {
         return
       }
       lastSyncAt = Date.now()
+      noteFullUiRefresh()
       scheduleUiRefresh()
       return
     }
@@ -303,6 +360,7 @@ function onCustomerChange(payload) {
       return
     }
     lastSyncAt = Date.now()
+    noteCustomerDirty(row.id)
     scheduleUiRefresh()
   } catch (e) {
     console.error('onCustomerChange error:', e)
@@ -317,11 +375,14 @@ function onFollowupChange(payload) {
   try {
     if (event === 'DELETE') {
       const id = payload.old?.id
+      const customerId = payload.old?.customer_id
       if (id == null || !removeFollowupFromCache(id)) {
         fallbackFullCore('followup-delete')
         return
       }
       lastSyncAt = Date.now()
+      if (customerId) noteCustomerDirty(customerId)
+      else noteFullUiRefresh()
       scheduleUiRefresh()
       return
     }
@@ -331,6 +392,8 @@ function onFollowupChange(payload) {
       return
     }
     lastSyncAt = Date.now()
+    if (row.customer_id) noteCustomerDirty(row.customer_id)
+    else noteFullUiRefresh()
     scheduleUiRefresh()
   } catch (e) {
     console.error('onFollowupChange error:', e)
@@ -356,6 +419,7 @@ function onRefundChange(payload) {
         return
       }
       lastSyncAt = Date.now()
+      noteFullUiRefresh()
       scheduleUiRefresh()
       return
     }
@@ -365,6 +429,7 @@ function onRefundChange(payload) {
       return
     }
     lastSyncAt = Date.now()
+    noteFullUiRefresh()
     scheduleUiRefresh()
   } catch (e) {
     console.error('onRefundChange error:', e)
@@ -503,6 +568,8 @@ export function disposeLiveSync() {
   started = false
   stopInteractionWatch()
   pendingUiRefresh = false
+  pendingCustomerIds.clear()
+  forceFullUiRefresh = false
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
