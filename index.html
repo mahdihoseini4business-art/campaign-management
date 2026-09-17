@@ -329,6 +329,7 @@
                       <select class="form-select" id="salesTargetMetric" onchange="app.onSalesTargetMetricChange()">
                         <option value="amount">مبلغ فروش (تأییدشده)</option>
                         <option value="count">تعداد فروش محصول</option>
+                        <option value="profile_completion">تکمیل پروفایل مشتری</option>
                       </select>
                     </div>
                     <div class="form-group" style="flex:0.7;">
@@ -352,9 +353,14 @@
                       <input type="text" class="form-input" id="salesTargetEnd" placeholder="تا تاریخ" data-jdp autocomplete="off">
                     </div>
                   </div>
-                  <div class="form-group">
+                  <div class="form-group" id="salesTargetProductsGroup">
                     <label>محصولات <span class="settings-optional">(خالی = همه)</span></label>
                     <div id="salesTargetProducts" class="settings-target-products"></div>
+                  </div>
+                  <div class="form-group" id="salesTargetProfileFieldsGroup" hidden>
+                    <label>فیلدهای تکمیل پروفایل <span class="settings-optional">(شرط AND)</span></label>
+                    <p class="settings-pane-desc" style="margin:0 0 8px;">مشتری فقط وقتی شمرده می‌شود که همه فیلدهای تیک‌خورده پر باشند.</p>
+                    <div id="salesTargetProfileFields" class="settings-target-products"></div>
                   </div>
                   <div class="settings-target-bar-actions">
                     <button type="button" class="btn btn-sm" id="salesTargetAddBarBtn" onclick="app.addSalesTargetBarToDraft()">افزودن نوار به گروه</button>

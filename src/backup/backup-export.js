@@ -48,7 +48,7 @@ export async function collectFullBackupFromSupabase(opts = {}) {
     'customers',
     CUSTOMER_DETAIL_SELECT,
     'id',
-    [/,?updated_at/, /,?customer_code/, /,?name_en/, /,?national_id/, /,?birth_date/]
+    [/,?updated_at/, /,?customer_code/, /,?name_en/, /,?national_id/, /,?birth_date/, /,?field_filled_at/]
   )
   if (customersRes.error) throw new Error('مشتریان: ' + customersRes.error.message)
   tables.customers = customersRes.data

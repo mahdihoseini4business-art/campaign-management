@@ -547,6 +547,22 @@ function computeTargetCurrent(bar, customers, phoneSet) {
   const toNum = bar.endDate ? jalaliToNum(bar.endDate) : 99999999
   const productSet = (bar.productNames || []).length ? new Set(bar.productNames) : null
   let current = 0
+  if (bar.metric === 'profile_completion') {
+    const fields = Array.isArray(bar.profileFields) ? bar.profileFields : []
+    if (!fields.length) return 0
+    for (const customer of customers || []) {
+      const phone = normalizePhone(customer.advisor_phone || customer.advisorPhone)
+      if (phoneSet && (!phone || !phoneSet.has(phone))) continue
+      if (!customerMeetsProfileFieldsDigest(customer, fields)) continue
+      const completedIso = completionMomentIsoDigest(customer, fields)
+      if (!completedIso) continue
+      const j = gregorianToJalaliStr(completedIso)
+      const n = jalaliToNum(j)
+      if (n < fromNum || n > toNum) continue
+      current++
+    }
+    return current
+  }
   if (bar.metric === 'count') {
     forEachSalePayment({
       customers,
@@ -567,6 +583,106 @@ function computeTargetCurrent(bar, customers, phoneSet) {
     })
   }
   return current
+}
+
+const PROFILE_FIELD_KEYS = new Set([
+  'name', 'nameEn', 'nationalId', 'birthDate', 'status', 'customerCode', 'customerLevel',
+  'phones', 'addresses', 'advisor', 'platform', 'platformId'
+])
+
+function digestCustomerPhones(c) {
+  const out = []
+  if (Array.isArray(c?.phones)) {
+    for (const p of c.phones) {
+      const n = normalizePhone(typeof p === 'string' ? p : p?.phone || p?.number || '')
+      if (n) out.push(n)
+    }
+  }
+  const primary = normalizePhone(c?.phone)
+  if (primary && !out.includes(primary)) out.unshift(primary)
+  return out
+}
+
+function digestCustomerAddresses(c) {
+  if (!Array.isArray(c?.addresses)) return []
+  return c.addresses.filter(a => String(a?.text || '').trim())
+}
+
+function isProfileFieldFilledDigest(c, key) {
+  if (!c) return false
+  switch (key) {
+    case 'name':
+      return String(c.name || '').trim() !== ''
+    case 'nameEn':
+      return String(c.nameEn || c.name_en || '').trim() !== ''
+    case 'nationalId': {
+      const id = toEnDigits(String(c.nationalId || c.national_id || '')).replace(/\D/g, '')
+      return /^\d{10}$/.test(id)
+    }
+    case 'birthDate': {
+      const d = toEnDigits(String(c.birthDate || c.birth_date || '').trim()).replace(/[-.]/g, '/')
+      return /^\d{4}\/\d{2}\/\d{2}$/.test(d)
+    }
+    case 'status':
+      return String(c.status || '').trim() !== ''
+    case 'customerCode':
+      return String(c.customerCode || c.customer_code || '').trim() !== ''
+    case 'customerLevel':
+      return String(c.customerLevel || c.customer_level || '').trim() !== ''
+    case 'phones':
+      return digestCustomerPhones(c).some(p => /^09\d{9}$/.test(p))
+    case 'addresses':
+      return digestCustomerAddresses(c).length > 0
+    case 'advisor':
+      return !!normalizePhone(c.advisor_phone || c.advisorPhone)
+    case 'platform':
+      return String(c.platform || '').trim() !== ''
+    case 'platformId':
+      return String(c.platformId || c.platform_id || '').trim() !== ''
+    default:
+      return false
+  }
+}
+
+function customerMeetsProfileFieldsDigest(c, keys) {
+  const list = (keys || []).filter(k => PROFILE_FIELD_KEYS.has(k))
+  if (!list.length) return false
+  return list.every(k => isProfileFieldFilledDigest(c, k))
+}
+
+function digestFieldFilledAt(c) {
+  const raw = c?.fieldFilledAt || c?.field_filled_at
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out = {}
+  for (const [k, v] of Object.entries(raw)) {
+    if (!PROFILE_FIELD_KEYS.has(k)) continue
+    const iso = String(v || '').trim()
+    if (iso) out[k] = iso
+  }
+  return out
+}
+
+function completionMomentIsoDigest(c, keys) {
+  const list = (keys || []).filter(k => PROFILE_FIELD_KEYS.has(k))
+  if (!list.length || !customerMeetsProfileFieldsDigest(c, list)) return ''
+  const map = digestFieldFilledAt(c)
+  const legacy = String(c.created_at || c.createdAt || '').trim() || '1970-01-01T00:00:00.000Z'
+  let maxMs = 0
+  for (const key of list) {
+    let iso = map[key]
+    if (!iso && isProfileFieldFilledDigest(c, key)) iso = legacy
+    if (!iso) return ''
+    const ms = Date.parse(iso)
+    if (!Number.isFinite(ms)) return ''
+    if (ms > maxMs) maxMs = ms
+  }
+  return maxMs ? new Date(maxMs).toISOString() : ''
+}
+
+function targetMetricKey(metric) {
+  if (metric === 'count') return 'count'
+  if (metric === 'profile_completion') return 'profile_completion'
+  return 'amount'
 }
 
 function targetPace(bar, todayStr, current, goal) {
@@ -606,7 +722,7 @@ export function pickAdvisorTarget({ salesTargets = [], phone, customers = [], to
           const pace = targetPace(bar, todayStr, current, goal)
           const candidate = {
             title: group.title || 'تارگت',
-            metric: bar.metric === 'count' ? 'count' : 'amount',
+            metric: targetMetricKey(bar.metric),
             current,
             goal,
             ...pace
@@ -629,7 +745,7 @@ export function pickAdvisorTarget({ salesTargets = [], phone, customers = [], to
       const pace = targetPace(bar, todayStr, current, goal)
       const candidate = {
         title: group.title || 'تارگت',
-        metric: bar.metric === 'count' ? 'count' : 'amount',
+        metric: targetMetricKey(bar.metric),
         current,
         goal,
         ...pace
@@ -665,7 +781,7 @@ export function pickGroupTarget({ salesTargets = [], groupIds = [], customers = 
         const pace = targetPace(bar, todayStr, current, goal)
         const candidate = {
           title: group.title || 'تارگت گروه',
-          metric: bar.metric === 'count' ? 'count' : 'amount',
+          metric: targetMetricKey(bar.metric),
           current,
           goal,
           ...pace
@@ -688,7 +804,7 @@ export function pickGroupTarget({ salesTargets = [], groupIds = [], customers = 
       const pace = targetPace(bar, todayStr, current, goal)
       const candidate = {
         title: group.title || 'تارگت',
-        metric: bar.metric === 'count' ? 'count' : 'amount',
+        metric: targetMetricKey(bar.metric),
         current,
         goal,
         ...pace
@@ -1101,8 +1217,10 @@ export function formatEveningTitle(digestDate) {
 
 function formatTargetLine(target, prefix = 'تارگت') {
   if (!target || !(target.goal > 0)) return ''
-  const unit = target.metric === 'count' ? 'فروش' : ''
-  const cur = target.metric === 'count'
+  const unit = target.metric === 'profile_completion'
+    ? 'مشتری'
+    : (target.metric === 'count' ? 'فروش' : '')
+  const cur = (target.metric === 'count' || target.metric === 'profile_completion')
     ? `${formatFaNumber(target.current)}/${formatFaNumber(target.goal)} ${unit}`.trim()
     : `${formatMoneyShort(target.current)} / ${formatMoneyShort(target.goal)}`
   const title = target.title ? ` «${target.title}»` : ''

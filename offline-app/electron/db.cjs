@@ -110,6 +110,9 @@ function initSchema() {
     if (!cols.includes('birth_date')) {
       database.run(`ALTER TABLE customers ADD COLUMN birth_date TEXT NOT NULL DEFAULT ''`)
     }
+    if (!cols.includes('field_filled_at')) {
+      database.run(`ALTER TABLE customers ADD COLUMN field_filled_at TEXT NOT NULL DEFAULT '{}'`)
+    }
   } catch (e) {
     console.warn('ensure customers profile fields:', e)
   }

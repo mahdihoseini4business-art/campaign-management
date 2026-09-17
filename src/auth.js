@@ -3,6 +3,11 @@ import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurre
 import { openAppConfirm } from './app-confirm.js'
 import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, renameProductAcrossApp, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
 import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS } from './sms-features.js'
+import {
+  getCustomerProfileFieldCatalog,
+  sanitizeProfileFieldKeys,
+  profileFieldLabels
+} from './customer-profile-fields.js'
 import { canManageSmsSettings, canViewSmsHistory, canEditSmsTemplates } from './sms-business.js'
 import {
   loadGroupsData,
@@ -479,7 +484,7 @@ let _editingPlatformIdx = null
 let _editingStatusIdx = null
 let _editingCustomerCodeIdx = null
 let _editingSalesTargetId = null
-/** @type {Array<{id?: string, metric: string, value: number, stages?: Array<{id?: string, value: number, label?: string}>, productNames: string[], startDate: string, endDate: string, createdAt?: string}>} */
+/** @type {Array<{id?: string, metric: string, value: number, stages?: Array<{id?: string, value: number, label?: string}>, productNames: string[], profileFields?: string[], startDate: string, endDate: string, createdAt?: string}>} */
 let _draftTargetBars = []
 /** @type {Record<string, { shares: Record<string, Record<string, number>>, members: Record<string, Record<string, Record<string, number>>> }>} */
 let _draftAllocations = {}
@@ -2901,6 +2906,34 @@ function renderSalesTargetProductChecks(selectedNames = []) {
   `).join('')
 }
 
+function getSelectedSalesTargetProfileFields() {
+  const box = document.getElementById('salesTargetProfileFields')
+  if (!box) return []
+  return sanitizeProfileFieldKeys(
+    [...box.querySelectorAll('input[type="checkbox"][data-profile-field]:checked')]
+      .map(el => el.getAttribute('data-profile-field') || '')
+  )
+}
+
+function renderSalesTargetProfileFieldChecks(selectedKeys = []) {
+  const box = document.getElementById('salesTargetProfileFields')
+  if (!box) return
+  const selected = new Set(sanitizeProfileFieldKeys(selectedKeys))
+  box.innerHTML = getCustomerProfileFieldCatalog().map(({ key, label }) => `
+    <label class="settings-target-product-item">
+      <input type="checkbox" data-profile-field="${escapeAttr(key)}"${selected.has(key) ? ' checked' : ''}>
+      <span>${escapeHtml(label)}</span>
+    </label>
+  `).join('')
+}
+
+function readSalesTargetMetricFromForm() {
+  const raw = document.getElementById('salesTargetMetric')?.value
+  if (raw === 'count') return 'count'
+  if (raw === 'profile_completion') return 'profile_completion'
+  return 'amount'
+}
+
 function clearSalesTargetBarFields() {
   const metricEl = document.getElementById('salesTargetMetric')
   if (metricEl) metricEl.value = 'amount'
@@ -2910,6 +2943,7 @@ function clearSalesTargetBarFields() {
   _draftFormStages = []
   renderSalesTargetFormStages()
   renderSalesTargetProductChecks([])
+  renderSalesTargetProfileFieldChecks([])
   onSalesTargetMetricChange()
 }
 
@@ -2953,11 +2987,25 @@ function refreshDashboardTargets() {
 }
 
 export function onSalesTargetMetricChange() {
-  const metric = document.getElementById('salesTargetMetric')?.value === 'count' ? 'count' : 'amount'
+  const metric = readSalesTargetMetricFromForm()
   const label = document.getElementById('salesTargetValueLabel')
   const input = document.getElementById('salesTargetValue')
-  if (label) label.textContent = metric === 'count' ? 'تارگت آخر (تعداد)' : 'تارگت آخر (ریال)'
-  if (input) input.placeholder = metric === 'count' ? 'مثلاً ۵۰' : 'مثلاً ۱۰۰۰۰۰۰۰۰'
+  const productsGroup = document.getElementById('salesTargetProductsGroup')
+  const profileGroup = document.getElementById('salesTargetProfileFieldsGroup')
+  if (metric === 'profile_completion') {
+    if (label) label.textContent = 'تارگت آخر (تعداد مشتری)'
+    if (input) input.placeholder = 'مثلاً ۵۰'
+    if (productsGroup) productsGroup.hidden = true
+    if (profileGroup) profileGroup.hidden = false
+    if (!document.querySelector('#salesTargetProfileFields input[data-profile-field]')) {
+      renderSalesTargetProfileFieldChecks([])
+    }
+  } else {
+    if (label) label.textContent = metric === 'count' ? 'تارگت آخر (تعداد)' : 'تارگت آخر (ریال)'
+    if (input) input.placeholder = metric === 'count' ? 'مثلاً ۵۰' : 'مثلاً ۱۰۰۰۰۰۰۰۰'
+    if (productsGroup) productsGroup.hidden = false
+    if (profileGroup) profileGroup.hidden = true
+  }
 }
 
 function updateSalesTargetSectionSummaries() {
@@ -3164,26 +3212,36 @@ export async function saveDeadlineUrgencySettings() {
 }
 
 function salesTargetBarMetaText(bar) {
-  const metricLabel = bar.metric === 'count' ? 'تعداد' : 'مبلغ'
-  const valueLabel = bar.metric === 'count'
-    ? `${formatNumber(bar.value)} فروش`
-    : `${formatNumber(bar.value)} ریال`
+  const metricLabel = bar.metric === 'profile_completion'
+    ? 'پروفایل'
+    : (bar.metric === 'count' ? 'تعداد' : 'مبلغ')
+  const valueLabel = bar.metric === 'profile_completion'
+    ? `${formatNumber(bar.value)} مشتری`
+    : (bar.metric === 'count'
+      ? `${formatNumber(bar.value)} فروش`
+      : `${formatNumber(bar.value)} ریال`)
   const stages = bar.stages || []
   const stagesLabel = stages.length > 1
     ? ` · ${formatNumber(stages.length)} مرحله`
     : ''
-  const products = (bar.productNames || []).length
-    ? bar.productNames.join('، ')
-    : 'همه محصولات'
+  const scopeHint = bar.metric === 'profile_completion'
+    ? ((bar.profileFields || []).length
+      ? profileFieldLabels(bar.profileFields).join('، ')
+      : 'بدون فیلد')
+    : ((bar.productNames || []).length
+      ? bar.productNames.join('، ')
+      : 'همه محصولات')
   const rangeParts = []
   if (bar.startDate) rangeParts.push(`از ${bar.startDate}`)
   if (bar.endDate) rangeParts.push(`تا ${bar.endDate}`)
   const range = rangeParts.length ? rangeParts.join(' ') : 'بدون بازه زمانی'
-  return `${metricLabel}: ${valueLabel}${stagesLabel} · ${products} · ${range}`
+  return `${metricLabel}: ${valueLabel}${stagesLabel} · ${scopeHint} · ${range}`
 }
 
 function salesTargetBarShortLabel(bar, index) {
-  const unit = bar.metric === 'count' ? 'فروش' : 'ریال'
+  const unit = bar.metric === 'profile_completion'
+    ? 'مشتری'
+    : (bar.metric === 'count' ? 'فروش' : 'ریال')
   return `نوار ${formatNumber(index + 1)} · ${formatNumber(bar.value)} ${unit}`
 }
 
@@ -3874,13 +3932,14 @@ function renderSalesTargetDraftBars() {
 }
 
 function readSalesTargetBarFromForm() {
-  const metric = document.getElementById('salesTargetMetric')?.value === 'count' ? 'count' : 'amount'
+  const metric = readSalesTargetMetricFromForm()
   const valueRaw = String(document.getElementById('salesTargetValue')?.value || '').trim()
   let value = parseSalesTargetValueInput(valueRaw)
   const dates = readSalesTargetFormDates()
   if (dates.error) return dates
   const { startDate, endDate } = dates
-  const productNames = getSelectedSalesTargetProducts()
+  const productNames = metric === 'profile_completion' ? [] : getSelectedSalesTargetProducts()
+  const profileFields = metric === 'profile_completion' ? getSelectedSalesTargetProfileFields() : []
   let hasValueInput = valueRaw !== ''
   syncFormStagesFromDom()
 
@@ -3895,6 +3954,9 @@ function readSalesTargetBarFromForm() {
 
   if (!hasValueInput) return { empty: true }
   if (!Number.isFinite(value) || value <= 0) return { error: 'مقدار هدف باید عدد مثبت باشد' }
+  if (metric === 'profile_completion' && !profileFields.length) {
+    return { error: 'حداقل یک فیلد تکمیل پروفایل را انتخاب کنید' }
+  }
   for (const stage of _draftFormStages) {
     if (Number(stage.value) >= value) {
       return { error: 'مراحل میانی باید کمتر از تارگت آخر باشند' }
@@ -3908,6 +3970,7 @@ function readSalesTargetBarFromForm() {
       value,
       stages,
       productNames,
+      profileFields,
       startDate,
       endDate,
       createdAt: new Date().toISOString()
@@ -3980,7 +4043,11 @@ export function startSalesTargetBarEdit(index) {
   syncAllocationsFromDom()
   _editingDraftBarIndex = idx
   const metricEl = document.getElementById('salesTargetMetric')
-  if (metricEl) metricEl.value = bar.metric === 'count' ? 'count' : 'amount'
+  if (metricEl) {
+    metricEl.value = bar.metric === 'count'
+      ? 'count'
+      : (bar.metric === 'profile_completion' ? 'profile_completion' : 'amount')
+  }
   const valueEl = document.getElementById('salesTargetValue')
   if (valueEl) valueEl.value = bar.value ? formatNumber(bar.value) : ''
   setSalesTargetFormDates(bar.startDate || '', bar.endDate || '')
@@ -3990,6 +4057,7 @@ export function startSalesTargetBarEdit(index) {
     : []
   renderSalesTargetFormStages()
   renderSalesTargetProductChecks(bar.productNames || [])
+  renderSalesTargetProfileFieldChecks(bar.profileFields || [])
   onSalesTargetMetricChange()
   syncSalesTargetAddBarButton()
   updateSalesTargetSectionSummaries()
@@ -4110,6 +4178,7 @@ export function startSalesTargetEdit(id) {
   _draftTargetBars = (group.items || []).map(bar => ({
     ...bar,
     productNames: [...(bar.productNames || [])],
+    profileFields: [...(bar.profileFields || [])],
     stages: (bar.stages || []).map(s => ({ ...s }))
   }))
   loadDraftAllocationsFromGroup(group)
@@ -4213,6 +4282,7 @@ async function persistSalesTargetGroup(title) {
   const items = _draftTargetBars.map(bar => ({
     ...bar,
     productNames: [...(bar.productNames || [])],
+    profileFields: [...(bar.profileFields || [])],
     stages: (bar.stages || []).map(s => ({ ...s }))
   }))
 

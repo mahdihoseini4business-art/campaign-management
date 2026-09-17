@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS customers (
   customer_level_locked INTEGER NOT NULL DEFAULT 0,
   referred_by_phone TEXT NOT NULL DEFAULT '',
   customer_code TEXT NOT NULL DEFAULT '',
+  field_filled_at TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );

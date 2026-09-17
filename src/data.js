@@ -15,6 +15,12 @@ import {
   normalizeFollowupDefaultHour,
   DEFAULT_SMS_TEMPLATES,
 } from './sms-features.js'
+import {
+  sanitizeProfileFieldKeys,
+  normalizeFieldFilledAt,
+  backfillFieldFilledAtInMemory,
+  applyFieldFilledAtOnSave
+} from './customer-profile-fields.js'
 
 const LOCAL_WRITE_SUPPRESS_MS = 2000
 let localWriteUntil = 0
@@ -389,7 +395,7 @@ export function mapCustomerFromDb(c) {
   const productCount = hasProducts
     ? products.length
     : (c.product_count != null ? Number(c.product_count) || 0 : 0)
-  return {
+  const mapped = {
     id,
     platformId: c.platform_id || '',
     platform: c.platform ?? 'instagram',
@@ -413,9 +419,11 @@ export function mapCustomerFromDb(c) {
     customerLevelLocked: !!c.customer_level_locked,
     referredByPhone: c.referred_by_phone || '',
     customerCode: c.customer_code || '',
+    fieldFilledAt: normalizeFieldFilledAt(c.field_filled_at),
     _detailsLoaded: hasNotes,
     _productsLoaded: hasProducts
   }
+  return backfillFieldFilledAtInMemory(mapped)
 }
 
 /** Map a followups DB row → in-memory followup object */
@@ -860,7 +868,16 @@ async function loadDataInner() {
       select: CUSTOMER_LIST_SELECT
         .replace(/,?name_en/, '')
         .replace(/,?national_id/, '')
-        .replace(/,?birth_date/, ''),
+        .replace(/,?birth_date/, '')
+        .replace(/,?field_filled_at/, ''),
+      orderCol: 'id',
+      ...tenantScope
+    })
+  }
+  // Fallback before migration 048 (field_filled_at)
+  if (customersRes.error && /field_filled_at/i.test(customersRes.error.message || '')) {
+    customersRes = await fetchAllRows('customers', {
+      select: CUSTOMER_LIST_SELECT.replace(/,?field_filled_at/, ''),
       orderCol: 'id',
       ...tenantScope
     })
@@ -2574,7 +2591,9 @@ function normalizeStoredJalaliDate(raw) {
 
 function normalizeSalesTargetBar(item) {
   if (!item || typeof item !== 'object') return null
-  const metric = item.metric === 'count' ? 'count' : 'amount'
+  const metric = item.metric === 'count'
+    ? 'count'
+    : (item.metric === 'profile_completion' ? 'profile_completion' : 'amount')
   let value = Number(item.value)
   if (!Number.isFinite(value) || value <= 0) {
     // Allow stages-only input: take max stage as final value
@@ -2584,9 +2603,15 @@ function normalizeSalesTargetBar(item) {
     value = stageVals.length ? Math.max(...stageVals) : NaN
   }
   if (!Number.isFinite(value) || value <= 0) return null
-  const productNames = Array.isArray(item.productNames)
-    ? [...new Set(item.productNames.map(p => String(p || '').trim()).filter(Boolean))]
+  const productNames = metric === 'profile_completion'
+    ? []
+    : (Array.isArray(item.productNames)
+      ? [...new Set(item.productNames.map(p => String(p || '').trim()).filter(Boolean))]
+      : [])
+  const profileFields = metric === 'profile_completion'
+    ? sanitizeProfileFieldKeys(item.profileFields)
     : []
+  if (metric === 'profile_completion' && !profileFields.length) return null
   const stages = normalizeSalesTargetStages(item.stages, value)
   if (stages.length) value = stages[stages.length - 1].value
   const startDate = normalizeStoredJalaliDate(item.startDate)
@@ -2597,6 +2622,7 @@ function normalizeSalesTargetBar(item) {
     value,
     stages,
     productNames,
+    profileFields,
     startDate,
     endDate,
     createdAt: String(item.createdAt || '').trim() || new Date().toISOString()
@@ -2656,7 +2682,10 @@ function normalizeSalesTargets(raw) {
     // Legacy flat format: one bar with its own title → wrap as single-item group
     const bar = normalizeSalesTargetBar(item)
     if (!bar) return null
-    const title = String(item.title || '').trim() || (bar.metric === 'count' ? 'تارگت تعداد' : 'تارگت مبلغ')
+    const title = String(item.title || '').trim()
+      || (bar.metric === 'profile_completion'
+        ? 'تارگت پروفایل'
+        : (bar.metric === 'count' ? 'تارگت تعداد' : 'تارگت مبلغ'))
     return {
       id: String(item.id || '').trim() || `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       title,
@@ -2673,6 +2702,7 @@ function cloneSalesTargetGroup(group) {
     items: (group.items || []).map(bar => ({
       ...bar,
       productNames: [...(bar.productNames || [])],
+      profileFields: [...(bar.profileFields || [])],
       stages: (bar.stages || []).map(stage => ({ ...stage }))
     })),
     allocations: (group.allocations || []).map(alloc => ({
@@ -2814,6 +2844,22 @@ export function getDataLoadState() {
 
 export async function saveCustomerToDB(customer, options = {}) {
   bumpLocalWrite()
+  const prev = customer?.id
+    ? (data.customers || []).find(c => c.id === customer.id) || null
+    : null
+  // Snapshot prev before caller mutations share the same object reference
+  const prevSnap = prev && prev !== customer
+    ? {
+        ...prev,
+        fieldFilledAt: normalizeFieldFilledAt(prev.fieldFilledAt),
+        phones: Array.isArray(prev.phones) ? [...prev.phones] : [],
+        addresses: Array.isArray(prev.addresses) ? prev.addresses.map(a => (a && typeof a === 'object' ? { ...a } : a)) : []
+      }
+    : (prev ? { ...prev, fieldFilledAt: normalizeFieldFilledAt(prev.fieldFilledAt) } : null)
+  // When same reference was mutated in place, treat as no reliable prev field values
+  const prevForStamp = prev === customer ? { fieldFilledAt: normalizeFieldFilledAt(customer.fieldFilledAt) } : prevSnap
+  applyFieldFilledAtOnSave(prevForStamp, customer)
+
   const phones = normalizeCustomerPhonesLocal(customer)
   const addresses = normalizeCustomerAddressesLocal(customer)
   const row = {
@@ -2836,7 +2882,8 @@ export async function saveCustomerToDB(customer, options = {}) {
     customer_level: customer.customerLevel || '',
     customer_level_locked: !!customer.customerLevelLocked,
     referred_by_phone: customer.referredByPhone || '',
-    customer_code: customer.customerCode || ''
+    customer_code: customer.customerCode || '',
+    field_filled_at: normalizeFieldFilledAt(customer.fieldFilledAt)
   }
   // Only set when caller passes createdAt (insert/rekey or historical LRFM backdate).
   if (options.createdAt) row.created_at = options.createdAt
@@ -2844,9 +2891,14 @@ export async function saveCustomerToDB(customer, options = {}) {
   if (options.allowEmptyPlatform) row.platform = customer.platform || ''
 
   let { error } = await supabase.from('customers').upsert(row, { onConflict: 'id' })
+  // Graceful fallback before migration 048 (field_filled_at)
+  if (error && /field_filled_at/i.test(error.message || '')) {
+    const { field_filled_at: _omitFfa, ...withoutFfa } = row
+    ;({ error } = await supabase.from('customers').upsert(withoutFfa, { onConflict: 'id' }))
+  }
   // Graceful fallback before migration 047 (profile fields)
   if (error && /name_en|national_id|birth_date/i.test(error.message || '')) {
-    const { name_en: _omitEn, national_id: _omitNid, birth_date: _omitBd, ...withoutProfile } = row
+    const { name_en: _omitEn, national_id: _omitNid, birth_date: _omitBd, field_filled_at: _omitFfa2, ...withoutProfile } = row
     ;({ error } = await supabase.from('customers').upsert(withoutProfile, { onConflict: 'id' }))
   }
   // Graceful fallback before migration 007 / 015 / 024 is applied
@@ -2938,7 +2990,10 @@ export function cloneCustomerRecord(customer, overrides = {}) {
     phone: phones[0] || overrides.phone || '',
     addresses,
     products,
-    createdAt: overrides.createdAt !== undefined ? overrides.createdAt : (customer?.createdAt || null)
+    createdAt: overrides.createdAt !== undefined ? overrides.createdAt : (customer?.createdAt || null),
+    fieldFilledAt: overrides.fieldFilledAt !== undefined
+      ? normalizeFieldFilledAt(overrides.fieldFilledAt)
+      : normalizeFieldFilledAt(customer?.fieldFilledAt)
   }
 }
 

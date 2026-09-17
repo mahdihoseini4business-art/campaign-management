@@ -26,6 +26,7 @@ const TABLE_COLUMNS = {
     'phone', 'phones', 'addresses',
     'status', 'notes', 'advisor', 'advisor_phone', 'next_followup_date', 'products',
     'customer_level', 'customer_level_locked', 'referred_by_phone', 'customer_code',
+    'field_filled_at',
     'created_at', 'updated_at'
   ],
   followups: [
@@ -71,7 +72,7 @@ const TABLE_COLUMNS = {
 
 /** Stored as JSON text in SQLite. */
 const JSON_COLUMNS = {
-  customers: ['phones', 'addresses', 'products'],
+  customers: ['phones', 'addresses', 'products', 'field_filled_at'],
   users: ['permissions'],
   groups: ['settings_access'],
   app_settings: ['value'],

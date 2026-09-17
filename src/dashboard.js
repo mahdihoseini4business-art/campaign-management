@@ -17,6 +17,11 @@ import { sumCompletedRefundsForDash, countPendingRefundsForDash } from './refund
 import { toggleSortField, sortRecords, syncSortHeaders } from './table-sort.js'
 import { getCustomersById } from './derived-cache.js'
 import { shouldSkipTabRender, markTabRendered } from './tab-cache.js'
+import {
+  customerMeetsProfileFields,
+  completionMomentIso,
+  profileFieldLabels
+} from './customer-profile-fields.js'
 
 let ChartLib = null
 
@@ -2371,6 +2376,25 @@ function computeSalesTargetCurrent(target, dateFromNum, dateToNum, phoneSet = nu
     return n >= fromNum && n <= toNum
   }
 
+  if (target.metric === 'profile_completion') {
+    const fields = target.profileFields || []
+    if (!fields.length) return 0
+    let current = 0
+    for (const customer of getData().customers || []) {
+      if (phoneSet) {
+        const phone = normalizePhone(customer.advisorPhone || '')
+        if (!phone || !phoneSet.has(phone)) continue
+      }
+      if (!customerMeetsProfileFields(customer, fields)) continue
+      const completedIso = completionMomentIso(customer, fields)
+      if (!completedIso) continue
+      const jalali = gregorianToJalaliStr(completedIso)
+      if (!inRange(jalali)) continue
+      current++
+    }
+    return current
+  }
+
   const productSet = new Set(target.productNames || [])
   function productOk(name) {
     return productSet.size === 0 || productSet.has(name || '')
@@ -2408,6 +2432,29 @@ function computeSalesTargetCurrent(target, dateFromNum, dateToNum, phoneSet = nu
     )
   }
   return current
+}
+
+function salesTargetMetricUnit(metric) {
+  if (metric === 'profile_completion') return 'مشتری'
+  if (metric === 'count') return 'فروش'
+  return 'ریال'
+}
+
+function salesTargetBarScopeHint(bar) {
+  if (bar.metric === 'profile_completion') {
+    return (bar.profileFields || []).length
+      ? profileFieldLabels(bar.profileFields).join('، ')
+      : 'بدون فیلد'
+  }
+  return (bar.productNames || []).length
+    ? bar.productNames.join('، ')
+    : 'همه محصولات'
+}
+
+function salesTargetMetricHint(metric) {
+  if (metric === 'profile_completion') return 'تکمیل پروفایل'
+  if (metric === 'count') return 'تعداد'
+  return 'مبلغ تأییدشده'
 }
 
 function memberPhoneSetForUserGroup(userGroupId) {
@@ -2511,13 +2558,11 @@ function renderDashTargetBar(bar, dateFromNum, dateToNum, groupTitle, options = 
   else if (deadline?.overdue) fillClass = 'is-overdue'
   else if (deadline?.warning) fillClass = 'is-warning'
 
-  const unit = bar.metric === 'count' ? 'فروش' : 'ریال'
+  const unit = salesTargetMetricUnit(bar.metric)
   const currentLabel = `${formatNumber(current)} ${unit}`
   const goalLabel = `${formatNumber(goal)} ${unit}`
-  const productsHint = (bar.productNames || []).length
-    ? bar.productNames.join('، ')
-    : 'همه محصولات'
-  const metricHint = bar.metric === 'count' ? 'تعداد' : 'مبلغ تأییدشده'
+  const productsHint = salesTargetBarScopeHint(bar)
+  const metricHint = salesTargetMetricHint(bar.metric)
   const memberHint = options.memberLabel ? ` · ${options.memberLabel}` : ''
   const ariaLabel = `${groupTitle}${memberHint} — ${metricHint} · ${productsHint}`
   const markers = resolveSalesTargetStageMarkers(bar, current, goal, options.scopeStages)
@@ -3055,8 +3100,7 @@ function salesTargetMotivationalCopy(pct, remainingLabel, complete, deadline) {
 function formatSalesTargetRemaining(bar, current, goal) {
   const left = Math.max(0, goal - current)
   if (left <= 0) return ''
-  if (bar.metric === 'count') return `${formatNumber(left)} فروش`
-  return `${formatNumber(left)} ریال`
+  return `${formatNumber(left)} ${salesTargetMetricUnit(bar.metric)}`
 }
 
 /** Nearest unhit stage marker, or null when every stage is hit. */
@@ -3086,7 +3130,7 @@ function computeSalesTargetBarProgress(bar, goalOverride, phoneSet, scopeStages)
   const pct = goal > 0 ? Math.min(100, Math.round(pctRaw * 10) / 10) : 0
   const complete = goal > 0 && current >= goal
   const deadline = targetDeadlineInfo(bar.endDate)
-  const unit = bar.metric === 'count' ? 'فروش' : 'ریال'
+  const unit = salesTargetMetricUnit(bar.metric)
   const stages = resolveSalesTargetStageMarkers(bar, current, goal, scopeStages)
   const display = salesTargetDisplayMetrics(bar, current, goal, complete, stages, unit)
   return {
@@ -3783,8 +3827,11 @@ function collectSalesTargetsForExport(dateFromNum, dateToNum) {
       const pct = goal > 0 ? Math.min(100, Math.round((current / goal) * 1000) / 10) : 0
       rows.push({
         groupTitle: block.title || '',
-        metric: bar.metric === 'count' ? 'count' : 'amount',
+        metric: bar.metric === 'profile_completion'
+          ? 'profile_completion'
+          : (bar.metric === 'count' ? 'count' : 'amount'),
         productNames: bar.productNames || [],
+        profileFields: bar.profileFields || [],
         current,
         goal,
         pct,

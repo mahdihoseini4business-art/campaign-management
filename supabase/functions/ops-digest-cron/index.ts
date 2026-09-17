@@ -232,11 +232,26 @@ serve(async (req) => {
 
       const phoneNames = buildPhoneNameMap(users || [])
 
-      const { data: customers, error: custErr } = await fetchAllRows(admin, 'customers', {
-        select: 'id, name, advisor_phone, advisor, next_followup_date, platform, platform_id, products, created_at',
+      const customerSelectFull = [
+        'id', 'name', 'name_en', 'national_id', 'birth_date',
+        'advisor_phone', 'advisor', 'next_followup_date',
+        'platform', 'platform_id', 'status', 'customer_code', 'customer_level',
+        'phone', 'phones', 'addresses', 'products',
+        'created_at', 'field_filled_at'
+      ].join(',')
+      let customersRes = await fetchAllRows(admin, 'customers', {
+        select: customerSelectFull,
         orderCol: 'id',
         apply: (q) => q.eq('tenant_id', tenantId),
       })
+      if (customersRes.error && /field_filled_at|name_en|national_id|birth_date/i.test(customersRes.error.message || '')) {
+        customersRes = await fetchAllRows(admin, 'customers', {
+          select: 'id, name, advisor_phone, advisor, next_followup_date, platform, platform_id, status, customer_code, customer_level, phone, phones, addresses, products, created_at',
+          orderCol: 'id',
+          apply: (q) => q.eq('tenant_id', tenantId),
+        })
+      }
+      const { data: customers, error: custErr } = customersRes
 
       if (custErr) {
         console.error('ops-digest-cron customers', tenantId, custErr)

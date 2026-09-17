@@ -6,7 +6,7 @@ export const CUSTOMER_LIST_SELECT = [
   'phone', 'phones', 'addresses',
   'status', 'advisor', 'advisor_phone', 'next_followup_date', 'products',
   'created_at', 'updated_at', 'customer_level', 'customer_level_locked', 'referred_by_phone',
-  'customer_code'
+  'customer_code', 'field_filled_at'
 ].join(',')
 
 /** Full customer row including notes for detail panel / backup. */
