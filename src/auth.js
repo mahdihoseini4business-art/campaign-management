@@ -2826,15 +2826,36 @@ function normalizeSalesTargetDateInput(raw) {
   return `${y}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}`
 }
 
+/** Keep global data-jdp watch; only raise z-index above settings shell. Do not narrow selector. */
 function ensureSalesTargetDatepicker() {
-  if (!window.jalaliDatepicker?.startWatch) return
+  if (!window.jalaliDatepicker) return
   try {
-    window.jalaliDatepicker.startWatch({
-      selector: '#salesTargetStart,#salesTargetEnd',
-      time: false,
-      zIndex: 12000
-    })
+    if (typeof window.jalaliDatepicker.updateOptions === 'function') {
+      window.jalaliDatepicker.updateOptions({ time: false, zIndex: 13000 })
+    } else {
+      window.jalaliDatepicker.startWatch?.({
+        selector: 'input[data-jdp]',
+        time: false,
+        zIndex: 13000
+      })
+    }
   } catch (_) { /* ignore */ }
+}
+
+function readSalesTargetFormDates() {
+  const startDate = normalizeSalesTargetDateInput(document.getElementById('salesTargetStart')?.value)
+  const endDate = normalizeSalesTargetDateInput(document.getElementById('salesTargetEnd')?.value)
+  if (startDate && endDate && jalaliToNum(startDate) > jalaliToNum(endDate)) {
+    return { error: 'تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد' }
+  }
+  return { startDate, endDate }
+}
+
+function setSalesTargetFormDates(startDate, endDate) {
+  const startEl = document.getElementById('salesTargetStart')
+  const endEl = document.getElementById('salesTargetEnd')
+  if (startEl) startEl.value = startDate || ''
+  if (endEl) endEl.value = endDate || ''
 }
 
 function getSelectedSalesTargetProducts() {
@@ -2863,10 +2884,7 @@ function clearSalesTargetBarFields() {
   if (metricEl) metricEl.value = 'amount'
   const valueEl = document.getElementById('salesTargetValue')
   if (valueEl) valueEl.value = ''
-  const startEl = document.getElementById('salesTargetStart')
-  if (startEl) startEl.value = ''
-  const endEl = document.getElementById('salesTargetEnd')
-  if (endEl) endEl.value = ''
+  setSalesTargetFormDates('', '')
   _draftFormStages = []
   renderSalesTargetFormStages()
   renderSalesTargetProductChecks([])
@@ -3837,8 +3855,9 @@ function readSalesTargetBarFromForm() {
   const metric = document.getElementById('salesTargetMetric')?.value === 'count' ? 'count' : 'amount'
   const valueRaw = String(document.getElementById('salesTargetValue')?.value || '').trim()
   let value = parseSalesTargetValueInput(valueRaw)
-  const startDate = normalizeSalesTargetDateInput(document.getElementById('salesTargetStart')?.value)
-  const endDate = normalizeSalesTargetDateInput(document.getElementById('salesTargetEnd')?.value)
+  const dates = readSalesTargetFormDates()
+  if (dates.error) return dates
+  const { startDate, endDate } = dates
   const productNames = getSelectedSalesTargetProducts()
   let hasValueInput = valueRaw !== ''
   syncFormStagesFromDom()
@@ -3854,9 +3873,6 @@ function readSalesTargetBarFromForm() {
 
   if (!hasValueInput) return { empty: true }
   if (!Number.isFinite(value) || value <= 0) return { error: 'مقدار هدف باید عدد مثبت باشد' }
-  if (startDate && endDate && jalaliToNum(startDate) > jalaliToNum(endDate)) {
-    return { error: 'تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد' }
-  }
   for (const stage of _draftFormStages) {
     if (Number(stage.value) >= value) {
       return { error: 'مراحل میانی باید کمتر از تارگت آخر باشند' }
@@ -3892,13 +3908,10 @@ function commitEditingBarFromFormIfNeeded() {
       _editingDraftBarIndex = null
       return { ok: true }
     }
-    const startDate = normalizeSalesTargetDateInput(document.getElementById('salesTargetStart')?.value)
-    const endDate = normalizeSalesTargetDateInput(document.getElementById('salesTargetEnd')?.value)
-    if (startDate && endDate && jalaliToNum(startDate) > jalaliToNum(endDate)) {
-      return { error: 'تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد' }
-    }
-    bar.startDate = startDate
-    bar.endDate = endDate
+    const dates = readSalesTargetFormDates()
+    if (dates.error) return dates
+    bar.startDate = dates.startDate
+    bar.endDate = dates.endDate
     _editingDraftBarIndex = null
     clearSalesTargetBarFields()
     syncSalesTargetAddBarButton()
@@ -3948,10 +3961,7 @@ export function startSalesTargetBarEdit(index) {
   if (metricEl) metricEl.value = bar.metric === 'count' ? 'count' : 'amount'
   const valueEl = document.getElementById('salesTargetValue')
   if (valueEl) valueEl.value = bar.value ? formatNumber(bar.value) : ''
-  const startEl = document.getElementById('salesTargetStart')
-  if (startEl) startEl.value = bar.startDate || ''
-  const endEl = document.getElementById('salesTargetEnd')
-  if (endEl) endEl.value = bar.endDate || ''
+  setSalesTargetFormDates(bar.startDate || '', bar.endDate || '')
   const stages = Array.isArray(bar.stages) ? bar.stages : []
   _draftFormStages = stages.length > 1
     ? stages.slice(0, -1).map(s => ({ id: s.id, value: Number(s.value) || 0, label: s.label || '' }))
@@ -3963,6 +3973,8 @@ export function startSalesTargetBarEdit(index) {
   updateSalesTargetSectionSummaries()
   renderSalesTargetDraftBars()
   ensureSalesTargetDatepicker()
+  const barsSection = document.getElementById('salesTargetBarsSection')
+  if (barsSection) barsSection.open = true
   valueEl?.focus()
 }
 
@@ -4094,8 +4106,12 @@ export function startSalesTargetEdit(id) {
   if (cancelBtn) cancelBtn.hidden = false
   renderSalesTargetsSettings()
   applySalesTargetsLimitedUi()
-  if (!isSettingsSectionGroupScoped('sales-targets')) titleEl?.focus()
-  else {
+  // Load first bar into the form so start/deadline dates are visible and editable immediately.
+  if (!isSettingsSectionGroupScoped('sales-targets') && _draftTargetBars.length) {
+    startSalesTargetBarEdit(0)
+  } else if (!isSettingsSectionGroupScoped('sales-targets')) {
+    titleEl?.focus()
+  } else {
     const allocSection = document.getElementById('salesTargetAllocSection')
     if (allocSection) allocSection.open = true
   }
@@ -4121,7 +4137,7 @@ export async function saveSalesTargetForm() {
   const title = (document.getElementById('salesTargetTitle')?.value || '').trim()
   if (!title) { showToast('عنوان گروه را وارد کنید'); return }
 
-  // Mid-edit bar (e.g. deadline change): apply into draft before persist — never discard.
+  // Always flush mid-edit bar (dates included) before any other save path.
   if (_editingDraftBarIndex != null) {
     const applied = commitEditingBarFromFormIfNeeded()
     if (applied.error) { showToast(applied.error); return }
@@ -4129,10 +4145,32 @@ export async function saveSalesTargetForm() {
     return
   }
 
+  // Sole-bar group: form dates still apply even if user never clicked ✏️.
+  if (_draftTargetBars.length === 1) {
+    const dates = readSalesTargetFormDates()
+    if (dates.error) { showToast(dates.error); return }
+    const startRaw = String(document.getElementById('salesTargetStart')?.value || '').trim()
+    const endRaw = String(document.getElementById('salesTargetEnd')?.value || '').trim()
+    if (startRaw || endRaw || dates.startDate || dates.endDate) {
+      const bar = _draftTargetBars[0]
+      bar.startDate = dates.startDate
+      bar.endDate = dates.endDate
+    }
+  }
+
   const pending = readSalesTargetBarFromForm()
   if (pending.error) { showToast(pending.error); return }
 
   if (pending.bar) {
+    // Single existing bar: treat filled form as an update, not a duplicate add.
+    if (_draftTargetBars.length === 1) {
+      _editingDraftBarIndex = 0
+      commitParsedBarToDraft(pending.bar)
+      clearSalesTargetBarFields()
+      syncSalesTargetAddBarButton()
+      await persistSalesTargetGroup(title)
+      return
+    }
     openSettingsConfirm(
       'فیلدهای نوار پر است ولی به گروه اضافه نشده. به گروه اضافه و ذخیره شود؟',
       () => {
