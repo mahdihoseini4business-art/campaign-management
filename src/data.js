@@ -121,7 +121,7 @@ function emptyCoreData() {
     requireFollowupOnCreate: false,
     smsPanel: null,
     smsFeatures: null,
-    smsFollowupDefaultHour: 10,
+    smsFollowupDefaultHour: '10:00',
     shippingSender: null
   }
 }
@@ -3801,6 +3801,11 @@ export async function saveSmsFeatures(features) {
 
 export function getFollowupSmsDefaultHour() {
   return normalizeFollowupDefaultHour(data.smsFollowupDefaultHour)
+}
+
+/** @returns {string} "HH:MM" for scheduling */
+export function getFollowupSmsDefaultTime() {
+  return getFollowupSmsDefaultHour()
 }
 
 export async function saveFollowupSmsDefaultHour(hour) {

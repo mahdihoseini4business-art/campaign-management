@@ -484,12 +484,12 @@ export async function openFollowupBulkSms(items) {
 /** Schedule SMS at follow-up date + default hour */
 export async function scheduleFollowupSms(customer, followupDate, { bodyOverride = null, templateKey = 'followup_due' } = {}) {
   if (!canUseSmsKind('followup_schedule')) return null
-  const hour = getFollowupSmsDefaultHour()
-  const timeStr = `${String(hour).padStart(2, '0')}:00`
+  const timeStr = getFollowupSmsDefaultHour()
   let sendAt = jalaliDateTimeToIso(followupDate, timeStr)
   if (!sendAt) {
+    const [hh, mm] = String(timeStr).split(':').map((x) => Number(x) || 0)
     const d = new Date()
-    d.setHours(hour, 0, 0, 0)
+    d.setHours(hh, mm, 0, 0)
     sendAt = d.toISOString()
   }
   await cancelPendingSmsSchedulesForCustomer(customer.id)
@@ -533,8 +533,7 @@ export async function syncSettlementDueSmsForCustomer(customer) {
     if (!canUseSmsKind('sale_settlement_due', { auto: true })) return
 
     const products = customer.products || []
-    const hour = getFollowupSmsDefaultHour()
-    const timeStr = `${String(hour).padStart(2, '0')}:00`
+    const timeStr = getFollowupSmsDefaultHour()
     const createdBy = normalizePhone(getCurrentUser()?.phone || '')
 
     for (let productIndex = 0; productIndex < products.length; productIndex++) {

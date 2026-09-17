@@ -5072,7 +5072,7 @@ export function renderSmsPanelSettings() {
 
   renderSmsFeaturesToggles()
   const hourEl = document.getElementById('smsFollowupDefaultHour')
-  if (hourEl) hourEl.value = String(getFollowupSmsDefaultHour())
+  if (hourEl) hourEl.value = getFollowupSmsDefaultHour()
   renderSmsTemplatesEditor().catch((e) => console.error(e))
   if (canViewSmsHistory()) refreshSmsHistory().catch(() => {})
   refreshSmsCampaigns().catch(() => {})
@@ -5101,7 +5101,7 @@ export async function saveSmsFeaturesSettings() {
     const key = el.getAttribute('data-sms-feature')
     if (key) features[key] = !!el.checked
   })
-  const hour = Number(document.getElementById('smsFollowupDefaultHour')?.value || 10)
+  const hour = document.getElementById('smsFollowupDefaultHour')?.value || '10:00'
   try {
     await saveSmsFeatures(features)
     await saveFollowupSmsDefaultHour(hour)

@@ -107,8 +107,21 @@ export function normalizeSmsFeatures(raw) {
   return out
 }
 
+/** Normalize to "HH:MM" (supports legacy integer hour 0–23). Default 10:00. */
 export function normalizeFollowupDefaultHour(raw) {
+  if (typeof raw === 'string') {
+    const m = raw.trim().match(/^(\d{1,2})(?::(\d{1,2}))?$/)
+    if (m) {
+      const h = Number(m[1])
+      const min = m[2] != null ? Number(m[2]) : 0
+      if (Number.isFinite(h) && h >= 0 && h <= 23 && Number.isFinite(min) && min >= 0 && min <= 59) {
+        return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
+      }
+    }
+  }
   const n = Number(raw)
-  if (!Number.isFinite(n) || n < 0 || n > 23) return 10
-  return Math.floor(n)
+  if (Number.isFinite(n) && n >= 0 && n <= 23) {
+    return `${String(Math.floor(n)).padStart(2, '0')}:00`
+  }
+  return '10:00'
 }
