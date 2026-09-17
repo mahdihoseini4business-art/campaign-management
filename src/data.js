@@ -2415,6 +2415,20 @@ function normalizeSalesTargetStages(raw, finalValue) {
   return stages.filter(s => s.value <= final)
 }
 
+/** Normalize stored Jalali date → YYYY/MM/DD (empty stays empty). */
+function normalizeStoredJalaliDate(raw) {
+  let s = toEnDigitsLocal(String(raw || '')).trim().split(/\s+/)[0] || ''
+  if (!s) return ''
+  s = s.replace(/[-.]/g, '/')
+  const parts = s.split('/')
+  if (parts.length !== 3) return s
+  const y = parseInt(parts[0], 10)
+  const m = parseInt(parts[1], 10)
+  const d = parseInt(parts[2], 10)
+  if (!y || !m || !d) return s
+  return `${y}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}`
+}
+
 function normalizeSalesTargetBar(item) {
   if (!item || typeof item !== 'object') return null
   const metric = item.metric === 'count' ? 'count' : 'amount'
