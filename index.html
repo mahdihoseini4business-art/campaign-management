@@ -545,12 +545,12 @@
               <div class="form-group" style="min-width:140px;">
                 <label for="smsFollowupDefaultHour">ساعت پیش‌فرض پیامک فالوآپ / موعد تسویه</label>
                 <input type="time" class="form-input" id="smsFollowupDefaultHour" value="10:00" step="60" dir="ltr" style="max-width:160px;">
-                <p class="form-hint" style="margin-top:6px;">با ذخیره قابلیت‌ها، برای همه فروش‌های باز دارای تاریخ تسویه (و موعد فالوآپ) زمان‌بندی با این ساعت ساخته/به‌روز می‌شود. «اجرای دستی صف» همان زمان‌بندی‌های موعدرسیده را ارسال می‌کند.</p>
+                <p class="form-hint" style="margin-top:6px;">ساعت پیش‌فرض برای ارسال خودکار زمان‌بندی‌شده. برای ارسال امروز بدون انتظار ساعت، از دکمه «ارسال دستی موعد تسویه امروز» استفاده کنید (با تأیید پیش‌نمایش). برای هر محصول هر مشتری حداکثر یک پیامک تسویه در روز.</p>
               </div>
             </div>
             <div class="form-row settings-add-row" style="justify-content:flex-start;gap:8px;flex-wrap:wrap;">
               <button type="button" class="btn btn-primary" onclick="app.saveSmsFeaturesSettings()">ذخیره قابلیت‌ها</button>
-              <button type="button" class="btn" onclick="app.processDueSmsSchedulesManually()" title="پیامک‌های زمان‌بندی‌شده‌ای که موعدشان رسیده را همین الان پردازش می‌کند">اجرای دستی صف پیامک</button>
+              <button type="button" class="btn" onclick="app.sendTodaySettlementSmsManual()" title="پیش‌نمایش تعداد مشتریان با موعد تسویه امروز و ارسال فوری پس از تأیید">ارسال دستی موعد تسویه امروز</button>
             </div>
           </div>
 
@@ -1444,6 +1444,7 @@
           </div>
         </div>
         <button type="button" class="btn" data-perm="sms_sales_group" onclick="app.openDebtorsGroupSms()" title="بدهکاران لیست فیلترشده همین تب">پیامک گروهی بدهکاران</button>
+        <button type="button" class="btn" data-perm="sms_sales_settlement" onclick="app.sendTodaySettlementSmsManual()" title="موعد تسویه امروز — پیش‌نمایش و ارسال فوری">ارسال موعد تسویه امروز</button>
       </div>
       <button type="button" class="btn btn-primary" id="startSaleBtn" onclick="app.openStartSaleModal()">+ ثبت فروش</button>
     </div>

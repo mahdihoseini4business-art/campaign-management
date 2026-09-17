@@ -3924,6 +3924,49 @@ export async function listSmsLogs({ limit = 50, kind = '' } = {}) {
   return rows || []
 }
 
+/**
+ * Keys already sent today (Tehran) for settlement-due SMS: `${customerId}::${productIndex}`
+ * Used to enforce at most one settlement SMS per product per customer per day.
+ */
+export async function listSettlementSmsSentTodayKeys() {
+  const tenantId = getStoredTenantId()
+  if (!tenantId) return new Set()
+
+  const day = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tehran',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+  const dayStart = new Date(`${day}T00:00:00+03:30`).toISOString()
+  const dayEnd = new Date(`${day}T23:59:59.999+03:30`).toISOString()
+
+  const { data: rows, error } = await supabase
+    .from('sms_logs')
+    .select('customer_id, meta, status')
+    .eq('tenant_id', tenantId)
+    .eq('kind', 'sale_settlement_due')
+    .eq('status', 'sent')
+    .gte('created_at', dayStart)
+    .lte('created_at', dayEnd)
+    .limit(2000)
+  if (error) {
+    console.warn('listSettlementSmsSentTodayKeys', error)
+    return new Set()
+  }
+  const keys = new Set()
+  for (const r of rows || []) {
+    const cid = String(r.customer_id || '').trim()
+    if (!cid) continue
+    const meta = r.meta && typeof r.meta === 'object' ? r.meta : {}
+    const idx = meta.productIndex
+    const productIndex = Number.isFinite(Number(idx)) ? Number(idx) : null
+    if (productIndex == null || productIndex < 0) continue
+    keys.add(`${cid}::${productIndex}`)
+  }
+  return keys
+}
+
 export async function createSmsCampaign(campaign) {
   const tenantId = getStoredTenantId()
   if (!tenantId) throw new Error('سازمان انتخاب نشده')

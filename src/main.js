@@ -134,7 +134,7 @@ import {
   openSmsComposeModal, closeSmsComposeModal, onSmsComposeTemplateChange, onSmsComposeBodyInput, sendSmsComposeTest, submitSmsCompose,
   openSaleBalanceSms, openDebtorsGroupSms, openCustomerSingleSms, openCustomersFilteredSms, openFollowupBulkSms,
   openSmsCampaignModal, closeSmsCampaignModal, onSmsCampaignTemplateChange, onSmsCampaignBodyInput, onSmsCampaignModeChange, refreshSmsCampaignAudience, sendSmsCampaignTest, submitSmsCampaign,
-  processDueSmsSchedulesManually
+  processDueSmsSchedulesManually, sendTodaySettlementSmsManual
 } from './sms-ui.js'
 import {
   openSubscriptionStatusModal,
@@ -502,6 +502,7 @@ const app = {
   refreshSmsHistory,
   refreshSmsCampaigns,
   processDueSmsSchedulesManually,
+  sendTodaySettlementSmsManual,
   openSmsComposeModal,
   closeSmsComposeModal,
   onSmsComposeTemplateChange,

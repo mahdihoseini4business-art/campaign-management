@@ -167,7 +167,7 @@ serve(async (req) => {
       const meta = sch.meta && typeof sch.meta === 'object' ? sch.meta as Record<string, unknown> : {}
       const kind = String(sch.kind || 'followup_schedule')
 
-      // Settlement-due: refresh balance; skip if already paid / completed / gift
+      // Settlement-due: refresh balance; skip if already paid / completed / gift / already sent today
       let settlementVars: Record<string, string> = {}
       if (kind === 'sale_settlement_due') {
         const productIndex = Number(meta.productIndex)
@@ -184,6 +184,44 @@ serve(async (req) => {
           schedulesProcessed += 1
           continue
         }
+
+        // At most one settlement SMS per customer+product per Tehran day
+        if (sch.customer_id && Number.isFinite(productIndex)) {
+          const day = todayJalaliInTehran()
+          // Convert Jalali day bounds via Gregorian of schedule send day is hard; use ISO day in Tehran
+          const dayIso = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Tehran',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+          }).format(new Date())
+          const dayStart = new Date(`${dayIso}T00:00:00+03:30`).toISOString()
+          const dayEnd = new Date(`${dayIso}T23:59:59.999+03:30`).toISOString()
+          const { data: already } = await admin
+            .from('sms_logs')
+            .select('id, meta')
+            .eq('tenant_id', tenantId)
+            .eq('kind', 'sale_settlement_due')
+            .eq('status', 'sent')
+            .eq('customer_id', sch.customer_id)
+            .gte('created_at', dayStart)
+            .lte('created_at', dayEnd)
+            .limit(50)
+          const dup = (already || []).some((row) => {
+            const m = row.meta && typeof row.meta === 'object' ? row.meta as Record<string, unknown> : {}
+            return Number(m.productIndex) === productIndex
+          })
+          if (dup) {
+            await admin.from('sms_schedules').update({
+              status: 'cancelled',
+              updated_at: nowIso,
+              meta: { ...meta, skip_reason: 'already_sent_today', day },
+            }).eq('id', sch.id)
+            schedulesProcessed += 1
+            continue
+          }
+        }
+
         settlementVars = {
           product_name: String(product.name || meta.product_name || ''),
           balance: formatBalanceFa(balance),

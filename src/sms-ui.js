@@ -1,5 +1,5 @@
-import { getData, listSmsTemplates, createSmsCampaign, createSmsSchedule, cancelPendingSmsSchedulesForCustomer, cancelPendingSettlementSmsForCustomer, getFollowupSmsDefaultHour, getStatuses, getProductCatalogNames, getPlatforms, listPendingAutoSmsSchedules, listDuePendingSmsSchedules, updateSmsScheduleRow } from './data.js'
-import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normalizePhone, getOperationalBalance, getPrimaryPhone, jalaliDateTimeToIso, jalaliToNum, gregorianToJalaliStr, isGiftSale, isDealCancelled, CUSTOMER_LEVELS, resolveCustomerLevel, formatTeamFilterLabel } from './utils.js'
+import { getData, listSmsTemplates, createSmsCampaign, createSmsSchedule, cancelPendingSmsSchedulesForCustomer, cancelPendingSettlementSmsForCustomer, getFollowupSmsDefaultHour, getStatuses, getProductCatalogNames, getPlatforms, listPendingAutoSmsSchedules, listDuePendingSmsSchedules, updateSmsScheduleRow, listSettlementSmsSentTodayKeys } from './data.js'
+import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normalizePhone, getOperationalBalance, getPrimaryPhone, jalaliDateTimeToIso, jalaliToNum, gregorianToJalaliStr, getTodayJalaliStr, isGiftSale, isDealCancelled, CUSTOMER_LEVELS, resolveCustomerLevel, formatTeamFilterLabel } from './utils.js'
 import { canUseSmsKind, canManageSmsSettings, invokeSendSms, buildRecipientFromCustomer, formatBalanceFa, fetchSmsQuota, buildSettlementSmsVars } from './sms-business.js'
 import { normalizeFollowupDefaultHour } from './sms-features.js'
 import { getStoredTenantId } from './tenant.js'
@@ -526,14 +526,17 @@ function isSettlementDueSmsEligible(product) {
 /**
  * Rebuild pending settlement-due SMS schedules for all products of a customer.
  * Org feature must be on; runs as auto (no per-user permission required).
+ * @param {object} customer
+ * @param {{ sentTodayKeys?: Set<string> }} [opts]
  * @returns {Promise<number>} number of schedules created
  */
-export async function syncSettlementDueSmsForCustomer(customer) {
+export async function syncSettlementDueSmsForCustomer(customer, opts = {}) {
   if (!customer?.id) return 0
   try {
     await cancelPendingSettlementSmsForCustomer(customer.id)
     if (!canUseSmsKind('sale_settlement_due', { auto: true })) return 0
 
+    const sentTodayKeys = opts.sentTodayKeys || await listSettlementSmsSentTodayKeys()
     const products = customer.products || []
     const timeStr = getFollowupSmsDefaultHour()
     const createdBy = normalizePhone(getCurrentUser()?.phone || '')
@@ -542,6 +545,7 @@ export async function syncSettlementDueSmsForCustomer(customer) {
     for (let productIndex = 0; productIndex < products.length; productIndex++) {
       const product = products[productIndex]
       if (!isSettlementDueSmsEligible(product)) continue
+      if (sentTodayKeys.has(`${customer.id}::${productIndex}`)) continue
       const settlementDate = String(product.settlementDate || '').trim()
       const balance = getOperationalBalance(product)
       let sendAt = jalaliDateTimeToIso(settlementDate, timeStr)
@@ -599,6 +603,7 @@ export async function rebuildAllAutoSmsSchedules() {
   const timeStr = getFollowupSmsDefaultHour()
   const createdBy = normalizePhone(getCurrentUser()?.phone || '')
   const followupAuto = canUseSmsKind('followup_schedule', { auto: true })
+  const sentTodayKeys = await listSettlementSmsSentTodayKeys()
 
   for (const row of rows || []) {
     const customer = {
@@ -611,7 +616,7 @@ export async function rebuildAllAutoSmsSchedules() {
       products: Array.isArray(row.products) ? row.products : [],
     }
 
-    settlementCreated += await syncSettlementDueSmsForCustomer(customer)
+    settlementCreated += await syncSettlementDueSmsForCustomer(customer, { sentTodayKeys })
 
     if (followupAuto) {
       const followupDate = String(customer.nextFollowupDate || '').trim()
@@ -645,6 +650,144 @@ export async function rebuildAllAutoSmsSchedules() {
   }
 
   return { settlementCreated, followupCreated }
+}
+
+/**
+ * Sales due for settlement SMS today (Jalali today, unpaid deposit lines with phone).
+ * Skips products that already got sale_settlement_due today.
+ */
+export async function collectTodaySettlementDueTargets() {
+  const { getStoredTenantId } = await import('./tenant.js')
+  const { supabase } = await import('./supabase.js')
+  const tenantId = getStoredTenantId()
+  if (!tenantId) throw new Error('سازمان انتخاب نشده')
+
+  const today = getTodayJalaliStr()
+  const todayNum = jalaliToNum(today)
+  const sentTodayKeys = await listSettlementSmsSentTodayKeys()
+
+  const { data: rows, error } = await supabase
+    .from('customers')
+    .select('id, name, phone, phones, advisor, products')
+    .eq('tenant_id', tenantId)
+  if (error) throw new Error('خطا در خواندن مشتریان: ' + error.message)
+
+  const targets = []
+  const customerIds = new Set()
+
+  for (const row of rows || []) {
+    const products = Array.isArray(row.products) ? row.products : []
+    const customer = {
+      id: row.id,
+      name: row.name || '',
+      phone: row.phone || '',
+      phones: Array.isArray(row.phones) ? row.phones : [],
+      advisor: row.advisor || '',
+      products,
+    }
+    const phone = getPrimaryPhone(customer) || customer.phone
+    if (!phone) continue
+
+    for (let productIndex = 0; productIndex < products.length; productIndex++) {
+      const product = products[productIndex]
+      if (!isSettlementDueSmsEligible(product)) continue
+      const settlementDate = String(product.settlementDate || '').trim()
+      if (jalaliToNum(settlementDate) !== todayNum) continue
+      if (sentTodayKeys.has(`${customer.id}::${productIndex}`)) continue
+
+      const balance = getOperationalBalance(product)
+      targets.push({
+        customer,
+        product,
+        productIndex,
+        phone,
+        balance,
+        settlementDate,
+        recipient: buildRecipientFromCustomer(customer, {
+          product_name: product.name || '',
+          balance: formatBalanceFa(balance),
+          total_balance: formatBalanceFa(balance),
+          ...buildSettlementSmsVars(settlementDate),
+        }, { productIndex, settlementDate, manual_today: true }),
+      })
+      customerIds.add(customer.id)
+    }
+  }
+
+  return {
+    today,
+    targets,
+    customerCount: customerIds.size,
+    saleCount: targets.length,
+    skippedAlreadySent: sentTodayKeys.size,
+  }
+}
+
+/**
+ * Manual settlement SMS for today's due sales:
+ * confirm preview → send immediately (ignores default hour).
+ * At most one settlement SMS per customer+product per Tehran day.
+ */
+export async function sendTodaySettlementSmsManual() {
+  if (!canUseSmsKind('sale_settlement_due') && !canManageSmsSettings()) {
+    showToast('پیامک موعد تسویه فعال نیست یا دسترسی ندارید')
+    return null
+  }
+  if (!canUseSmsKind('sale_settlement_due', { auto: true })) {
+    showToast('قابلیت «پیامک خودکار در موعد تسویه» در تنظیمات خاموش است')
+    return null
+  }
+
+  let preview
+  try {
+    preview = await collectTodaySettlementDueTargets()
+  } catch (e) {
+    console.error(e)
+    showToast(e.message || 'خطا در آماده‌سازی لیست موعد تسویه')
+    return null
+  }
+
+  if (!preview.saleCount) {
+    showToast('امروز موعد تسویه واجد شرایطی نیست (یا قبلاً امروز پیامک شده)')
+    return { sent: 0, failed: 0, skipped: 0 }
+  }
+
+  const ok = window.confirm(
+    `امروز موعد تسویه ${formatNumber(preview.customerCount)} مشتری` +
+    ` (${formatNumber(preview.saleCount)} فروش) است.\n` +
+    `آیا می‌خواهید برای آن‌ها پیامک تسویه ارسال شود؟\n` +
+    `(ارسال فوری — بدون توجه به ساعت پیش‌فرض)`
+  )
+  if (!ok) {
+    showToast('ارسال لغو شد')
+    return null
+  }
+
+  let sent = 0
+  let failed = 0
+  const chunkSize = 40
+  for (let i = 0; i < preview.targets.length; i += chunkSize) {
+    const slice = preview.targets.slice(i, i + chunkSize)
+    const result = await invokeSendSms({
+      mode: 'bulk',
+      kind: 'sale_settlement_due',
+      auto: true,
+      template_key: 'sale_settlement_due',
+      recipients: slice.map((t) => t.recipient),
+    })
+    sent += Number(result?.sent || 0)
+    failed += Number(result?.failed || 0) + Number(result?.skipped || 0)
+    if (!result?.success && !result?.sent) {
+      failed += slice.length
+    }
+  }
+
+  showToast(`ارسال موعد تسویه امروز: ${formatNumber(sent)} موفق، ${formatNumber(failed)} ناموفق`)
+  try {
+    const { refreshSmsHistory } = await import('./auth.js')
+    await refreshSmsHistory()
+  } catch (_) { /* ignore */ }
+  return { sent, failed, customerCount: preview.customerCount, saleCount: preview.saleCount }
 }
 
 /**
@@ -708,6 +851,7 @@ export async function processDueSmsSchedulesManually() {
   const { supabase } = await import('./supabase.js')
   const { getStoredTenantId } = await import('./tenant.js')
   const tenantId = getStoredTenantId()
+  const sentTodayKeys = await listSettlementSmsSentTodayKeys()
 
   let sent = 0
   let failed = 0
@@ -716,6 +860,18 @@ export async function processDueSmsSchedulesManually() {
   for (const sch of due) {
     const meta = sch.meta && typeof sch.meta === 'object' ? sch.meta : {}
     const kind = String(sch.kind || 'followup_schedule')
+
+    if (kind === 'sale_settlement_due') {
+      const productIndex = Number(meta.productIndex)
+      if (Number.isFinite(productIndex) && sentTodayKeys.has(`${sch.customer_id}::${productIndex}`)) {
+        await updateSmsScheduleRow(sch.id, {
+          status: 'cancelled',
+          meta: { ...meta, skip_reason: 'already_sent_today' },
+        })
+        cancelled += 1
+        continue
+      }
+    }
 
     let customer = null
     let products = []
@@ -809,8 +965,13 @@ export async function processDueSmsSchedulesManually() {
       status: ok ? 'sent' : 'failed',
       meta: { ...meta, last_result: result },
     })
-    if (ok) sent += 1
-    else failed += 1
+    if (ok) {
+      sent += 1
+      if (kind === 'sale_settlement_due') {
+        const productIndex = Number(meta.productIndex)
+        if (Number.isFinite(productIndex)) sentTodayKeys.add(`${sch.customer_id}::${productIndex}`)
+      }
+    } else failed += 1
   }
 
   showToast(`صف پیامک: ${formatNumber(sent)} ارسال، ${formatNumber(failed)} ناموفق، ${formatNumber(cancelled)} لغو`)
