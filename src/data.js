@@ -394,6 +394,9 @@ export function mapCustomerFromDb(c) {
     platformId: c.platform_id || '',
     platform: c.platform ?? 'instagram',
     name: c.name || '',
+    nameEn: c.name_en || '',
+    nationalId: c.national_id || '',
+    birthDate: c.birth_date || '',
     phones,
     phone: phones[0] || '',
     addresses,
@@ -847,6 +850,17 @@ async function loadDataInner() {
   if (customersRes.error && /customer_code/i.test(customersRes.error.message || '')) {
     customersRes = await fetchAllRows('customers', {
       select: CUSTOMER_LIST_SELECT.replace(/,?customer_code/, ''),
+      orderCol: 'id',
+      ...tenantScope
+    })
+  }
+  // Fallback before migration 047 (name_en / national_id / birth_date)
+  if (customersRes.error && /name_en|national_id|birth_date/i.test(customersRes.error.message || '')) {
+    customersRes = await fetchAllRows('customers', {
+      select: CUSTOMER_LIST_SELECT
+        .replace(/,?name_en/, '')
+        .replace(/,?national_id/, '')
+        .replace(/,?birth_date/, ''),
       orderCol: 'id',
       ...tenantScope
     })
@@ -2807,6 +2821,9 @@ export async function saveCustomerToDB(customer, options = {}) {
     platform_id: customer.platformId || '',
     platform: customer.platform || 'instagram',
     name: customer.name || '',
+    name_en: customer.nameEn || '',
+    national_id: customer.nationalId || '',
+    birth_date: customer.birthDate || '',
     phone: phones[0] || '',
     phones,
     addresses,
@@ -2827,6 +2844,11 @@ export async function saveCustomerToDB(customer, options = {}) {
   if (options.allowEmptyPlatform) row.platform = customer.platform || ''
 
   let { error } = await supabase.from('customers').upsert(row, { onConflict: 'id' })
+  // Graceful fallback before migration 047 (profile fields)
+  if (error && /name_en|national_id|birth_date/i.test(error.message || '')) {
+    const { name_en: _omitEn, national_id: _omitNid, birth_date: _omitBd, ...withoutProfile } = row
+    ;({ error } = await supabase.from('customers').upsert(withoutProfile, { onConflict: 'id' }))
+  }
   // Graceful fallback before migration 007 / 015 / 024 is applied
   if (error && /customer_code/i.test(error.message || '')) {
     const { customer_code: _omitCode, ...withoutCode } = row

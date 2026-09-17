@@ -98,6 +98,22 @@ function initSchema() {
     console.warn('ensure groups.settings_access:', e)
   }
 
+  try {
+    const info = database.exec('PRAGMA table_info(customers)')
+    const cols = (info?.[0]?.values || []).map(row => String(row[1] || ''))
+    if (!cols.includes('name_en')) {
+      database.run(`ALTER TABLE customers ADD COLUMN name_en TEXT NOT NULL DEFAULT ''`)
+    }
+    if (!cols.includes('national_id')) {
+      database.run(`ALTER TABLE customers ADD COLUMN national_id TEXT NOT NULL DEFAULT ''`)
+    }
+    if (!cols.includes('birth_date')) {
+      database.run(`ALTER TABLE customers ADD COLUMN birth_date TEXT NOT NULL DEFAULT ''`)
+    }
+  } catch (e) {
+    console.warn('ensure customers profile fields:', e)
+  }
+
   database.run(`
     INSERT INTO app_meta (key, value) VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value

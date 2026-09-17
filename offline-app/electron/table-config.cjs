@@ -22,7 +22,8 @@ const IMPORT_ORDER = [
 /** @type {Record<string, string[]>} */
 const TABLE_COLUMNS = {
   customers: [
-    'id', 'platform_id', 'platform', 'name', 'phone', 'phones', 'addresses',
+    'id', 'platform_id', 'platform', 'name', 'name_en', 'national_id', 'birth_date',
+    'phone', 'phones', 'addresses',
     'status', 'notes', 'advisor', 'advisor_phone', 'next_followup_date', 'products',
     'customer_level', 'customer_level_locked', 'referred_by_phone', 'customer_code',
     'created_at', 'updated_at'

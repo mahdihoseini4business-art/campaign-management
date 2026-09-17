@@ -2,7 +2,8 @@
 
 /** List load omits heavy `notes` (fetched on detail open). */
 export const CUSTOMER_LIST_SELECT = [
-  'id', 'platform_id', 'platform', 'name', 'phone', 'phones', 'addresses',
+  'id', 'platform_id', 'platform', 'name', 'name_en', 'national_id', 'birth_date',
+  'phone', 'phones', 'addresses',
   'status', 'advisor', 'advisor_phone', 'next_followup_date', 'products',
   'created_at', 'updated_at', 'customer_level', 'customer_level_locked', 'referred_by_phone',
   'customer_code'

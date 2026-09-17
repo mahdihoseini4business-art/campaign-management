@@ -29,6 +29,9 @@ let detailMergePickState = { anchorCustomerId: null, selectedPartnerId: null, la
 
 const SCALAR_FIELDS = [
   { key: 'name', label: 'نام' },
+  { key: 'nameEn', label: 'نام انگلیسی' },
+  { key: 'nationalId', label: 'کد ملی' },
+  { key: 'birthDate', label: 'تاریخ تولد' },
   { key: 'platformId', label: 'آیدی پلتفرم', compare: (a, b) => a.toLowerCase() === b.toLowerCase() },
   { key: 'platform', label: 'پلتفرم', display: (v) => getPlatformLabels()[v] || v },
   { key: 'status', label: 'وضعیت', display: (v) => getStatusLabels()[v] || v },
