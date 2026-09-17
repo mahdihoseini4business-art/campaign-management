@@ -5203,7 +5203,9 @@ export async function refreshSmsHistory() {
         <td>${kindCell}</td>
         <td style="direction:ltr;">${escapeHtml(r.to_phone || '')}</td>
         <td>${statusCell}</td>
-        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeAttr(r.body || '')}">${escapeHtml((r.body || '').slice(0, 80))}</td>
+        <td class="sms-history-body-cell" title="${escapeAttr(r.body || '')}">
+          <div class="sms-history-body-scroll">${escapeHtml(r.body || '')}</div>
+        </td>
       </tr>`
     }).join('')
   } catch (e) {

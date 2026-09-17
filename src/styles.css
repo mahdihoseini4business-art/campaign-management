@@ -9102,3 +9102,54 @@ body.dm-chat-open {
   }
 }
 
+/* SMS history: full body with horizontal scroll + native title tooltip */
+.sms-history-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.sms-history-table th:nth-child(1),
+.sms-history-table td:nth-child(1) {
+  width: 9.5rem;
+}
+
+.sms-history-table th:nth-child(2),
+.sms-history-table td:nth-child(2) {
+  width: 7rem;
+}
+
+.sms-history-table th:nth-child(3),
+.sms-history-table td:nth-child(3) {
+  width: 7.5rem;
+}
+
+.sms-history-table th:nth-child(4),
+.sms-history-table td:nth-child(4) {
+  width: 5.5rem;
+}
+
+.sms-history-body-cell {
+  max-width: 0;
+  vertical-align: middle;
+}
+
+.sms-history-body-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.5;
+  padding-bottom: 2px;
+  cursor: default;
+}
+
+.sms-history-body-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.sms-history-body-scroll::-webkit-scrollbar-thumb {
+  background: var(--border, #cbd5e1);
+  border-radius: 4px;
+}
+
