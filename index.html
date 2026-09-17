@@ -1743,6 +1743,15 @@
           </select>
         </div>
       </div>
+      <div class="form-group">
+        <label>محصول <span class="required">*</span></label>
+        <div class="detail-quick-products" id="followupProductsBox">
+          <div class="detail-quick-product-chips" id="followupProductChips"></div>
+          <select class="form-select detail-quick-product-pick" id="followupProductPick" onchange="app.onFollowupProductPick()">
+            <option value="" disabled selected hidden>محصول</option>
+          </select>
+        </div>
+      </div>
       <div class="form-group"><label for="followupNotes">توضیحات</label><textarea class="form-textarea" id="followupNotes" placeholder="یادداشت این تماس..."></textarea></div>
     </div>
     <div class="modal-footer">

@@ -1,4 +1,4 @@
-import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB, markFollowupDoneInDB } from './data.js'
+import { getData, saveFollowupToDB, deleteFollowupFromDB, updateFollowupInDB, saveCustomerToDB, markFollowupDoneInDB, getSellableNames } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission, canViewCustomer, canAddNoteOnCustomer, canEditFollowup, canDeleteFollowupOnCustomer, getCurrentUser, normalizePhone, canViewScopedCustomer, canViewOrgWideData, matchesTabSearch, getCustomerSearchExtras, getTodayJalaliStr, jalaliToNum, jalaliAddDays, jalaliDiffDays, getNowJalaliDateTime, getCustomerPhones, formatPhonesDisplay, userDisplayName, getStatusLabels, getStatusClass, getPrimaryPhone, formatSoldAt24h, soldAtTimePart, jalaliDatePart, formatTeamFilterLabel, isPaymentFilled, isGiftSale, isProductPriceLocked, ensureProductPayments } from './utils.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
@@ -12,6 +12,9 @@ import { getPage } from './pagination.js'
 
 let followupFilter = 'today' // today | waiting | overdue | done
 let followupSortState = { field: null, asc: true }
+
+const FOLLOWUP_PRODUCTS_SEP = '، '
+let followupSelectedProducts = []
 
 function getFollowupAdvisorFilter() {
   return document.getElementById('filterFollowupAdvisor')?.value || ''
@@ -1295,6 +1298,75 @@ export async function confirmFollowupDone() {
 // Followup Modal (Add/Edit) — history records
 // ============================================
 
+function parseFollowupProductNames(productName) {
+  if (!productName || !String(productName).trim()) return []
+  return String(productName)
+    .split(FOLLOWUP_PRODUCTS_SEP)
+    .map(s => s.trim())
+    .filter(Boolean)
+}
+
+export function onFollowupProductPick() {
+  const select = document.getElementById('followupProductPick')
+  if (!select?.value) return
+  addFollowupProduct(select.value)
+  select.value = ''
+  syncFollowupProductPickOptions()
+}
+
+function addFollowupProduct(name) {
+  const trimmed = String(name || '').trim()
+  if (!trimmed) return
+  const key = trimmed.toLowerCase()
+  if (followupSelectedProducts.some(p => p.toLowerCase() === key)) {
+    showToast('این محصول قبلاً اضافه شده')
+    return
+  }
+  followupSelectedProducts.push(trimmed)
+  renderFollowupProductChips()
+}
+
+function renderFollowupProductChips() {
+  const el = document.getElementById('followupProductChips')
+  if (!el) return
+  el.innerHTML = followupSelectedProducts.map((name, i) =>
+    `<button type="button" class="detail-quick-product-chip" title="کلیک برای حذف" onclick="app.removeFollowupProduct(${i})">${escapeHtml(name)}</button>`
+  ).join('')
+  syncFollowupProductPickOptions()
+}
+
+function syncFollowupProductPickOptions() {
+  const select = document.getElementById('followupProductPick')
+  if (!select) return
+  const selectedSet = new Set(followupSelectedProducts.map(n => n.toLowerCase()))
+  const options = [
+    '<option value="" disabled selected hidden>محصول</option>',
+    ...getSellableNames()
+      .filter(name => !selectedSet.has(name.toLowerCase()))
+      .map(name => `<option value="${escapeAttr(name)}">${escapeHtml(name)}</option>`)
+  ]
+  select.innerHTML = options.join('')
+}
+
+export function removeFollowupProduct(index) {
+  if (index < 0 || index >= followupSelectedProducts.length) return
+  followupSelectedProducts.splice(index, 1)
+  renderFollowupProductChips()
+}
+
+/** @returns {{ ok: true, productName: string } | { ok: false, message: string }} */
+function readFollowupProducts() {
+  if (!followupSelectedProducts.length) {
+    return { ok: false, message: 'حداقل یک محصول انتخاب کنید' }
+  }
+  return { ok: true, productName: followupSelectedProducts.join(FOLLOWUP_PRODUCTS_SEP) }
+}
+
+function resetFollowupProducts(productName = '') {
+  followupSelectedProducts = parseFollowupProductNames(productName)
+  renderFollowupProductChips()
+}
+
 export async function openFollowupModal(editFollowupId) {
   const data = getData()
   if (editFollowupId) {
@@ -1350,6 +1422,7 @@ export async function openFollowupModal(editFollowupId) {
     document.getElementById('followupResult').value = f.result
     document.getElementById('followupNotes').value = f.notes
     if (assignSelect) assignSelect.value = normalizePhone(f.assignedToPhone) || ''
+    resetFollowupProducts(f.productName || '')
     if (guide) guide.hidden = true
     if (saveBtn) saveBtn.textContent = 'ذخیره تغییرات'
   } else {
@@ -1363,6 +1436,7 @@ export async function openFollowupModal(editFollowupId) {
     document.getElementById('followupResult').value = 'پاسخ داد'
     document.getElementById('followupNotes').value = ''
     if (assignSelect) assignSelect.value = ''
+    resetFollowupProducts('')
     if (guide) guide.hidden = false
     if (saveBtn) saveBtn.textContent = 'ثبت یادداشت'
   }
@@ -1373,6 +1447,7 @@ export async function openFollowupModal(editFollowupId) {
 
 export function closeFollowupModal() {
   document.getElementById('followupModal').classList.remove('active')
+  followupSelectedProducts = []
 }
 
 export async function saveFollowup() {
@@ -1392,6 +1467,13 @@ export async function saveFollowup() {
   if (!editFollowupId && !date) { showToast('تاریخ تماس را وارد کنید'); return }
   if (isReferral && !nextDate) {
     showToast('برای ارجاع پیگیری، تاریخ پیگیری بعدی را وارد کنید')
+    return
+  }
+
+  const product = readFollowupProducts()
+  if (!product.ok) {
+    showToast(product.message)
+    document.getElementById('followupProductPick')?.focus()
     return
   }
 
@@ -1434,6 +1516,7 @@ export async function saveFollowup() {
       nextDate,
       type,
       result,
+      productName: product.productName,
       notes,
       ...assignmentFields,
       assignedAt: isReferral
@@ -1457,6 +1540,7 @@ export async function saveFollowup() {
       nextDate,
       type,
       result,
+      productName: product.productName,
       notes,
       createdByPhone: mePhone,
       status: 'pending',
