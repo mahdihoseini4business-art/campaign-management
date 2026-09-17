@@ -114,6 +114,7 @@ export function buildRecipientFromCustomer(customer, vars = {}, meta = {}) {
       customer_name: customer?.name || '',
       phone: phone || '',
       advisor: customer?.advisor || '',
+      advisor_phone: customer?.advisorPhone || '',
       followup_date: customer?.nextFollowupDate || '',
       org_name: 'آکادمی کارنو',
       ...vars,

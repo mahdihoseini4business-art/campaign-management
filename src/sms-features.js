@@ -89,7 +89,7 @@ export const DEFAULT_SMS_TEMPLATES = Object.freeze([
   {
     key: 'followup_due',
     name: 'اطلاع موعد پیگیری',
-    body: 'سلام {customer_name} عزیز، کارشناس ما ({advisor}) در تاریخ {followup_date} با شما تماس خواهد گرفت.',
+    body: 'سلام {customer_name} عزیز، کارشناس ما ({advisor}) با شماره {advisor_phone} در تاریخ {followup_date} با شما تماس خواهد گرفت.',
   },
   {
     key: 'followup_bulk',

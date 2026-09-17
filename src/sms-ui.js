@@ -39,6 +39,7 @@ function buildTestRecipient(phone, sample) {
     vars: {
       customer_name: 'تست',
       advisor: '',
+      advisor_phone: '',
       followup_date: '',
       org_name: 'آکادمی کارنو',
       product_name: '',
@@ -506,6 +507,7 @@ export async function scheduleFollowupSms(customer, followupDate, { bodyOverride
       vars: {
         customer_name: customer.name || '',
         advisor: customer.advisor || '',
+        advisor_phone: customer.advisorPhone || '',
         followup_date: followupDate,
         org_name: 'آکادمی کارنو',
       },
@@ -565,6 +567,7 @@ export async function syncSettlementDueSmsForCustomer(customer, opts = {}) {
           vars: {
             customer_name: customer.name || '',
             advisor: customer.advisor || '',
+            advisor_phone: customer.advisorPhone || '',
             product_name: product.name || '',
             balance: formatBalanceFa(balance),
             total_balance: formatBalanceFa(balance),
@@ -594,7 +597,7 @@ export async function rebuildAllAutoSmsSchedules() {
 
   const { data: rows, error } = await supabase
     .from('customers')
-    .select('id, name, phone, phones, advisor, next_followup_date, products')
+    .select('id, name, phone, phones, advisor, advisor_phone, next_followup_date, products')
     .eq('tenant_id', tenantId)
   if (error) throw new Error('خطا در خواندن مشتریان: ' + error.message)
 
@@ -612,6 +615,7 @@ export async function rebuildAllAutoSmsSchedules() {
       phone: row.phone || '',
       phones: Array.isArray(row.phones) ? row.phones : [],
       advisor: row.advisor || '',
+      advisorPhone: row.advisor_phone || '',
       nextFollowupDate: row.next_followup_date || '',
       products: Array.isArray(row.products) ? row.products : [],
     }
@@ -636,6 +640,7 @@ export async function rebuildAllAutoSmsSchedules() {
               vars: {
                 customer_name: customer.name || '',
                 advisor: customer.advisor || '',
+                advisor_phone: customer.advisorPhone || '',
                 followup_date: followupDate,
                 org_name: 'آکادمی کارنو',
               },
@@ -668,7 +673,7 @@ export async function collectTodaySettlementDueTargets() {
 
   const { data: rows, error } = await supabase
     .from('customers')
-    .select('id, name, phone, phones, advisor, products')
+    .select('id, name, phone, phones, advisor, advisor_phone, products')
     .eq('tenant_id', tenantId)
   if (error) throw new Error('خطا در خواندن مشتریان: ' + error.message)
 
@@ -683,6 +688,7 @@ export async function collectTodaySettlementDueTargets() {
       phone: row.phone || '',
       phones: Array.isArray(row.phones) ? row.phones : [],
       advisor: row.advisor || '',
+      advisorPhone: row.advisor_phone || '',
       products,
     }
     const phone = getPrimaryPhone(customer) || customer.phone
@@ -878,7 +884,7 @@ export async function processDueSmsSchedulesManually() {
     if (sch.customer_id && tenantId) {
       const { data: row } = await supabase
         .from('customers')
-        .select('id, name, phone, phones, advisor, next_followup_date, products')
+        .select('id, name, phone, phones, advisor, advisor_phone, next_followup_date, products')
         .eq('tenant_id', tenantId)
         .eq('id', sch.customer_id)
         .maybeSingle()
@@ -890,6 +896,7 @@ export async function processDueSmsSchedulesManually() {
           phone: row.phone || '',
           phones: Array.isArray(row.phones) ? row.phones : [],
           advisor: row.advisor || '',
+          advisorPhone: row.advisor_phone || '',
           nextFollowupDate: row.next_followup_date || '',
           products,
         }
@@ -949,12 +956,13 @@ export async function processDueSmsSchedulesManually() {
         phone: sendPhone,
         customer_id: sch.customer_id,
         vars: {
-          customer_name: customer?.name || '',
-          advisor: customer?.advisor || '',
           followup_date: customer?.nextFollowupDate || String(meta.followup_date || ''),
           org_name: String(meta.org_name || 'آکادمی کارنو'),
           ...((meta.vars && typeof meta.vars === 'object') ? meta.vars : {}),
           ...settlementVars,
+          customer_name: customer?.name || '',
+          advisor: customer?.advisor || '',
+          advisor_phone: customer?.advisorPhone || '',
         },
         meta: { schedule_id: sch.id, ...meta },
       }],

@@ -144,12 +144,13 @@ serve(async (req) => {
       let phone = ''
       let customerName = ''
       let advisor = ''
+      let advisorPhone = ''
       let followupDate = ''
       let products: unknown[] = []
       if (sch.customer_id) {
         const { data: cust } = await admin
           .from('customers')
-          .select('id, name, phone, phones, advisor, next_followup_date, products')
+          .select('id, name, phone, phones, advisor, advisor_phone, next_followup_date, products')
           .eq('tenant_id', tenantId)
           .eq('id', sch.customer_id)
           .maybeSingle()
@@ -160,6 +161,7 @@ serve(async (req) => {
           }
           customerName = String(cust.name || '')
           advisor = String(cust.advisor || '')
+          advisorPhone = String(cust.advisor_phone || '')
           followupDate = String(cust.next_followup_date || '')
           products = Array.isArray(cust.products) ? cust.products : []
         }
@@ -245,12 +247,13 @@ serve(async (req) => {
           phone,
           customer_id: sch.customer_id,
           vars: {
-            customer_name: customerName,
-            advisor,
             followup_date: followupDate || String(meta.followup_date || ''),
             org_name: String(meta.org_name || 'آکادمی کارنو'),
             ...((meta.vars && typeof meta.vars === 'object') ? meta.vars as Record<string, string> : {}),
             ...settlementVars,
+            customer_name: customerName || String((meta.vars as Record<string, string> | undefined)?.customer_name || ''),
+            advisor,
+            advisor_phone: advisorPhone,
           },
           meta: { schedule_id: sch.id, ...meta },
         }],
