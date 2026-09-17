@@ -2812,6 +2812,31 @@ function parseSalesTargetValueInput(raw) {
   return Number.isFinite(n) ? n : NaN
 }
 
+/** Normalize Jalali date from datepicker / typed input → YYYY/MM/DD */
+function normalizeSalesTargetDateInput(raw) {
+  let s = toEnDigits(String(raw || '')).trim().split(/\s+/)[0] || ''
+  if (!s) return ''
+  s = s.replace(/[-.]/g, '/')
+  const parts = s.split('/')
+  if (parts.length !== 3) return s
+  const y = parseInt(parts[0], 10)
+  const m = parseInt(parts[1], 10)
+  const d = parseInt(parts[2], 10)
+  if (!y || !m || !d) return s
+  return `${y}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}`
+}
+
+function ensureSalesTargetDatepicker() {
+  if (!window.jalaliDatepicker?.startWatch) return
+  try {
+    window.jalaliDatepicker.startWatch({
+      selector: '#salesTargetStart,#salesTargetEnd',
+      time: false,
+      zIndex: 12000
+    })
+  } catch (_) { /* ignore */ }
+}
+
 function getSelectedSalesTargetProducts() {
   const box = document.getElementById('salesTargetProducts')
   if (!box) return []
@@ -3810,12 +3835,22 @@ function renderSalesTargetDraftBars() {
 
 function readSalesTargetBarFromForm() {
   const metric = document.getElementById('salesTargetMetric')?.value === 'count' ? 'count' : 'amount'
-  const value = parseSalesTargetValueInput(document.getElementById('salesTargetValue')?.value)
-  const startDate = toEnDigits((document.getElementById('salesTargetStart')?.value || '').trim())
-  const endDate = toEnDigits((document.getElementById('salesTargetEnd')?.value || '').trim())
+  const valueRaw = String(document.getElementById('salesTargetValue')?.value || '').trim()
+  let value = parseSalesTargetValueInput(valueRaw)
+  const startDate = normalizeSalesTargetDateInput(document.getElementById('salesTargetStart')?.value)
+  const endDate = normalizeSalesTargetDateInput(document.getElementById('salesTargetEnd')?.value)
   const productNames = getSelectedSalesTargetProducts()
-  const hasValueInput = String(document.getElementById('salesTargetValue')?.value || '').trim() !== ''
+  let hasValueInput = valueRaw !== ''
   syncFormStagesFromDom()
+
+  // While editing a bar, keep existing value if the field was cleared — so date-only edits still apply.
+  if (!hasValueInput && _editingDraftBarIndex != null) {
+    const existing = _draftTargetBars[_editingDraftBarIndex]
+    if (existing && Number.isFinite(Number(existing.value)) && Number(existing.value) > 0) {
+      value = Number(existing.value)
+      hasValueInput = true
+    }
+  }
 
   if (!hasValueInput) return { empty: true }
   if (!Number.isFinite(value) || value <= 0) return { error: 'مقدار هدف باید عدد مثبت باشد' }
@@ -3840,6 +3875,41 @@ function readSalesTargetBarFromForm() {
       createdAt: new Date().toISOString()
     }
   }
+}
+
+/**
+ * If a bar is mid-edit in the form, apply form fields (incl. deadline) into the draft.
+ * Returns { ok:true } | { empty:true } | { error:string }.
+ */
+function commitEditingBarFromFormIfNeeded() {
+  if (_editingDraftBarIndex == null) return { ok: true }
+  const parsed = readSalesTargetBarFromForm()
+  if (parsed.error) return parsed
+  if (parsed.empty) {
+    // Still allow date-only patch from the form onto the existing bar.
+    const bar = _draftTargetBars[_editingDraftBarIndex]
+    if (!bar) {
+      _editingDraftBarIndex = null
+      return { ok: true }
+    }
+    const startDate = normalizeSalesTargetDateInput(document.getElementById('salesTargetStart')?.value)
+    const endDate = normalizeSalesTargetDateInput(document.getElementById('salesTargetEnd')?.value)
+    if (startDate && endDate && jalaliToNum(startDate) > jalaliToNum(endDate)) {
+      return { error: 'تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد' }
+    }
+    bar.startDate = startDate
+    bar.endDate = endDate
+    _editingDraftBarIndex = null
+    clearSalesTargetBarFields()
+    syncSalesTargetAddBarButton()
+    renderSalesTargetDraftBars()
+    return { ok: true }
+  }
+  commitParsedBarToDraft(parsed.bar)
+  clearSalesTargetBarFields()
+  syncSalesTargetAddBarButton()
+  renderSalesTargetDraftBars()
+  return { ok: true }
 }
 
 function commitParsedBarToDraft(parsedBar) {
@@ -3892,6 +3962,7 @@ export function startSalesTargetBarEdit(index) {
   syncSalesTargetAddBarButton()
   updateSalesTargetSectionSummaries()
   renderSalesTargetDraftBars()
+  ensureSalesTargetDatepicker()
   valueEl?.focus()
 }
 
@@ -3959,6 +4030,7 @@ export function renderSalesTargetsSettings() {
   initSalesTargetUrgencySection()
   updateSalesTargetSectionSummaries()
   applySalesTargetsLimitedUi()
+  ensureSalesTargetDatepicker()
 
   const list = document.getElementById('settingsSalesTargetsList')
   if (!list) return
@@ -4049,30 +4121,29 @@ export async function saveSalesTargetForm() {
   const title = (document.getElementById('salesTargetTitle')?.value || '').trim()
   if (!title) { showToast('عنوان گروه را وارد کنید'); return }
 
+  // Mid-edit bar (e.g. deadline change): apply into draft before persist — never discard.
+  if (_editingDraftBarIndex != null) {
+    const applied = commitEditingBarFromFormIfNeeded()
+    if (applied.error) { showToast(applied.error); return }
+    await persistSalesTargetGroup(title)
+    return
+  }
+
   const pending = readSalesTargetBarFromForm()
   if (pending.error) { showToast(pending.error); return }
 
   if (pending.bar) {
-    const editingBar = _editingDraftBarIndex != null
     openSettingsConfirm(
-      editingBar
-        ? 'تغییرات نوار در حال ویرایش هنوز اعمال نشده. اعمال شود و گروه ذخیره شود؟'
-        : 'فیلدهای نوار پر است ولی به گروه اضافه نشده. به گروه اضافه و ذخیره شود؟',
+      'فیلدهای نوار پر است ولی به گروه اضافه نشده. به گروه اضافه و ذخیره شود؟',
       () => {
         commitParsedBarToDraft(pending.bar)
         clearSalesTargetBarFields()
         syncSalesTargetAddBarButton()
         persistSalesTargetGroup(title)
       },
-      editingBar ? 'اعمال و ذخیره' : 'افزودن و ذخیره'
+      'افزودن و ذخیره'
     )
     return
-  }
-
-  if (_editingDraftBarIndex != null) {
-    _editingDraftBarIndex = null
-    clearSalesTargetBarFields()
-    syncSalesTargetAddBarButton()
   }
 
   await persistSalesTargetGroup(title)

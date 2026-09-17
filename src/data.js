@@ -2432,14 +2432,16 @@ function normalizeSalesTargetBar(item) {
     : []
   const stages = normalizeSalesTargetStages(item.stages, value)
   if (stages.length) value = stages[stages.length - 1].value
+  const startDate = normalizeStoredJalaliDate(item.startDate)
+  const endDate = normalizeStoredJalaliDate(item.endDate)
   return {
     id: String(item.id || '').trim() || `tgt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     metric,
     value,
     stages,
     productNames,
-    startDate: String(item.startDate || '').trim(),
-    endDate: String(item.endDate || '').trim(),
+    startDate,
+    endDate,
     createdAt: String(item.createdAt || '').trim() || new Date().toISOString()
   }
 }
