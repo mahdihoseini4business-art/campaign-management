@@ -399,13 +399,14 @@ export async function openDebtorsGroupSms(productNameFilter = '') {
     if (bal <= 0) continue
     let entry = byCustomer.get(customer.id)
     if (!entry) {
-      entry = { customer, total: 0, parts: [], seen: new Set(), earliestSettlement: '', earliestNum: 99999999 }
+      entry = { customer, total: 0, names: [], seen: new Set(), earliestSettlement: '', earliestNum: 99999999 }
       byCustomer.set(customer.id, entry)
     }
     if (entry.seen.has(productIndex)) continue
     entry.seen.add(productIndex)
     entry.total += bal
-    entry.parts.push(`${product.name || s.productName || 'محصول'}: ${formatBalanceFa(bal)}`)
+    const name = String(product.name || s.productName || 'محصول').trim() || 'محصول'
+    entry.names.push(name)
     const settle = String(product.settlementDate || s.settlementDate || '').trim()
     if (settle) {
       const n = jalaliToNum(settle)
@@ -417,11 +418,11 @@ export async function openDebtorsGroupSms(productNameFilter = '') {
   }
 
   const recipients = []
-  for (const { customer, total, parts, earliestSettlement } of byCustomer.values()) {
+  for (const { customer, total, names, earliestSettlement } of byCustomer.values()) {
     const phone = getPrimaryPhone(customer) || customer.phone
     if (!phone) continue
     recipients.push(buildRecipientFromCustomer(customer, {
-      product_name: parts.join('، ') || 'محصولات',
+      product_name: names.join('، ') || 'محصولات',
       balance: formatBalanceFa(total),
       total_balance: formatBalanceFa(total),
       ...buildSettlementSmsVars(earliestSettlement),
