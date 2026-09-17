@@ -1087,12 +1087,21 @@ export async function syncDataIncremental() {
   bumpWatermark('acksAt', maxUpdatedAtFromRows(acksRes.data, 'updated_at', 'seen_at'))
   syncMeta.supportsUpdatedAt = true
 
-  if ((customersRes.data || []).length || (followupsRes.data || []).length) {
-    try {
-      const { scheduleCustomerLevelResync } = await import('./customer-level-sync.js')
-      scheduleCustomerLevelResync()
-    } catch (e) {
-      console.error('customer level resync after incremental:', e)
+  {
+    const touched = []
+    for (const row of customersRes.data || []) {
+      if (row?.id) touched.push(row.id)
+    }
+    for (const row of followupsRes.data || []) {
+      if (row?.customer_id) touched.push(row.customer_id)
+    }
+    if (touched.length) {
+      try {
+        const { scheduleCustomerLevelResyncForIds } = await import('./customer-level-sync.js')
+        scheduleCustomerLevelResyncForIds(touched)
+      } catch (e) {
+        console.error('customer level resync after incremental:', e)
+      }
     }
   }
 
@@ -2714,6 +2723,27 @@ export async function saveCustomerToDB(customer, options = {}) {
   if (error) throw new Error('خطا در ذخیره مشتری: ' + error.message)
   bumpLocalWrite()
   invalidateProductSalesCountCache()
+}
+
+/**
+ * Persist only loyalty level columns (avoids full-row upsert + product payload).
+ * Used by background customer-level sync so live UI stays responsive.
+ */
+export async function saveCustomerLevelFieldsToDB(customer) {
+  if (!customer?.id) return
+  bumpLocalWrite()
+  const tenantId = getStoredTenantId()
+  let q = supabase
+    .from('customers')
+    .update({
+      customer_level: customer.customerLevel || '',
+      customer_level_locked: !!customer.customerLevelLocked
+    })
+    .eq('id', customer.id)
+  if (tenantId) q = q.eq('tenant_id', tenantId)
+  const { error } = await q
+  if (error) throw new Error('خطا در ذخیره سطح مشتری: ' + error.message)
+  bumpLocalWrite()
 }
 
 // ============================================
