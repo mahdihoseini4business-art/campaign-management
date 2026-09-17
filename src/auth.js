@@ -2709,18 +2709,41 @@ export async function saveProductBundleForm() {
     showToast(result.error)
     return
   }
-  const bundles = getProductBundles()
+  const bundles = getProductBundles().map((b) => ({ ...b, productNames: [...(b.productNames || [])] }))
   const idx = excludeId ? bundles.findIndex(b => b.id === excludeId) : -1
+  const oldName = idx >= 0 ? String(bundles[idx].name || '').trim() : ''
+  if (idx >= 0 && oldName && oldName.toLowerCase() !== name.toLowerCase()) {
+    const saleCount = countSalesByProductName(oldName)
+    if (saleCount > 0) {
+      const ok = window.confirm(
+        `نام باندل «${oldName}» روی ${formatNumber(saleCount)} فروش ثبت شده است.\n` +
+        `با تأیید، همه فروش‌ها، فالوآپ‌ها، عودت‌ها و فیلتر تارگت‌ها هم به «${name}» تغییر می‌کنند.\n` +
+        `ادامه می‌دهید؟`
+      )
+      if (!ok) return
+    }
+  }
   if (idx >= 0) bundles[idx] = result.bundle
   else bundles.push(result.bundle)
   try {
     await saveProductBundles(bundles)
+    if (idx >= 0 && oldName && oldName.toLowerCase() !== name.toLowerCase()) {
+      const renamed = await renameProductAcrossApp(oldName, name)
+      clearBundleForm()
+      renderProductsSettingsPane()
+      showToast(
+        renamed.updatedSales > 0
+          ? `باندل ذخیره شد · ${formatNumber(renamed.updatedSales)} فروش به‌روز شد`
+          : 'باندل ذخیره شد'
+      )
+      return
+    }
     clearBundleForm()
     renderProductsSettingsPane()
     showToast(idx >= 0 ? 'باندل ذخیره شد' : 'باندل اضافه شد')
   } catch (e) {
     console.error('saveProductBundleForm error:', e)
-    showToast('خطا در ذخیره باندل')
+    showToast(e.message || 'خطا در ذخیره باندل')
   }
 }
 
@@ -2757,19 +2780,25 @@ export function renderOrphanProductRemapForm() {
     ? '<option value="">— انتخاب کنید —</option>' + orphans.map(({ name, count }) =>
       `<option value="${escapeAttr(name)}">${escapeHtml(name)} (${formatNumber(count)} فروش)</option>`
     ).join('')
-    : '<option value="">نام قدیمی خارج از کاتالوگ نیست</option>'
+    : '<option value="">نام قدیمی خارج از کاتالوگ/باندل نیست</option>'
   fromSel.disabled = orphans.length === 0
   if (prevFrom && orphans.some((o) => o.name === prevFrom)) fromSel.value = prevFrom
   if (emptyHint) emptyHint.style.display = orphans.length ? 'none' : 'block'
 
-  const catalog = getProductCatalogNames()
+  const destinations = getSellableNames()
+  const bundleKeys = new Set(
+    getProductBundles().map((b) => String(b.name || '').trim().toLowerCase()).filter(Boolean)
+  )
   const prevTo = toSel.value
-  toSel.innerHTML = '<option value="">— انتخاب کنید —</option>' + catalog.map((name) => {
+  toSel.innerHTML = '<option value="">— انتخاب کنید —</option>' + destinations.map((name) => {
     const count = countSalesByProductName(name)
-    const label = count > 0 ? `${name} (${formatNumber(count)} فروش)` : name
+    const kind = bundleKeys.has(name.toLowerCase()) ? 'باندل' : 'محصول'
+    const label = count > 0
+      ? `${name} — ${kind} (${formatNumber(count)} فروش)`
+      : `${name} — ${kind}`
     return `<option value="${escapeAttr(name)}">${escapeHtml(label)}</option>`
   }).join('')
-  if (prevTo && catalog.includes(prevTo)) toSel.value = prevTo
+  if (prevTo && destinations.some((n) => n.toLowerCase() === prevTo.toLowerCase())) toSel.value = prevTo
 }
 
 export async function runOrphanProductRemap() {
@@ -2777,7 +2806,7 @@ export async function runOrphanProductRemap() {
   const fromName = (document.getElementById('remapOrphanFromSelect')?.value || '').trim()
   const toName = (document.getElementById('remapOrphanToSelect')?.value || '').trim()
   if (!fromName) { showToast('نام قدیمی فروش را انتخاب کنید'); return }
-  if (!toName) { showToast('نام کاتالوگ مقصد را انتخاب کنید'); return }
+  if (!toName) { showToast('نام مقصد (محصول یا باندل) را انتخاب کنید'); return }
   if (fromName.toLowerCase() === toName.toLowerCase()) {
     showToast('نام مبدأ و مقصد یکسان است')
     return

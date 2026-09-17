@@ -202,19 +202,19 @@
 
           <div class="settings-subsection" id="orphanProductRemapSection">
             <h4 class="settings-subsection-title">همگام‌سازی نام قدیمی فروش</h4>
-            <p class="settings-pane-desc">اگر فقط نام کاتالوگ عوض شده و فروش‌ها هنوز نام قبلی را دارند، ترتیب دراپ‌داون (بر اساس تعداد فروش) به هم می‌ریزد. نام قدیمی را به نام فعلی کاتالوگ منتقل کنید تا تعداد فروش به نام جدید برگردد.</p>
+            <p class="settings-pane-desc">اگر فقط نام کاتالوگ یا باندل عوض شده و فروش‌ها هنوز نام قبلی را دارند، نام قدیمی را به نام فعلی (محصول یا باندل) منتقل کنید تا تعداد فروش و ترتیب دراپ‌داون درست شود.</p>
             <div class="form-row settings-add-row" style="flex-wrap:wrap;align-items:flex-end;">
               <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0;">
                 <label for="remapOrphanFromSelect">نام در فروش‌ها (قدیمی)</label>
                 <select class="form-select" id="remapOrphanFromSelect"></select>
               </div>
               <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0;">
-                <label for="remapOrphanToSelect">نام کاتالوگ (جدید)</label>
+                <label for="remapOrphanToSelect">مقصد (محصول یا باندل)</label>
                 <select class="form-select" id="remapOrphanToSelect"></select>
               </div>
               <button type="button" class="btn btn-primary" onclick="app.runOrphanProductRemap()">انتقال تعداد فروش</button>
             </div>
-            <div id="remapOrphanEmptyHint" class="settings-pane-desc" style="margin-top:8px;display:none;">نام فروشی خارج از کاتالوگ پیدا نشد — همه فروش‌ها با کاتالوگ هم‌نام هستند.</div>
+            <div id="remapOrphanEmptyHint" class="settings-pane-desc" style="margin-top:8px;display:none;">نام فروشی خارج از کاتالوگ/باندل پیدا نشد — همه فروش‌ها با تعریف‌ها هم‌نام هستند.</div>
           </div>
 
           <div class="settings-subsection">
