@@ -4180,13 +4180,13 @@
     z-index: 1100;
   }
 
-  /* Above modal stack; overlay must stay below container (library uses zIndex / zIndex-1).
+  /* Above modal stack and settings shell; overlay must stay below container.
      Equal z-index lets the later DOM sibling (overlay) paint on top and blur the picker on mobile. */
   jdp-container {
-    z-index: 11000 !important;
+    z-index: 13000 !important;
   }
   jdp-overlay {
-    z-index: 10999 !important;
+    z-index: 12999 !important;
   }
 
   .modal {
