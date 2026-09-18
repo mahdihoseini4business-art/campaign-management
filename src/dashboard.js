@@ -1,4 +1,4 @@
-import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages, getActiveInPersonSessions, getInPersonSessionById, formatInPersonSessionLabel, saleNeedsInPersonSession, saleHasInPersonSessionId } from './data.js'
+import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages, getActiveInPersonSessions, getInPersonSessionById, formatInPersonSessionLabel, saleNeedsInPersonSession, saleHasInPersonSessionId, countSmsLogsByDashCategory } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
 import {
@@ -11,7 +11,7 @@ import {
   getSaleRegistrantPhone, gregorianToJalaliStr, normalizeViewUserPhones, isMainAdmin,
   jalaliEndOfDayMs, getCompletedSaleEconomics, resolveProductCostConfig, isDealCancelled,
   getCurrentJalaliMonthInfo, isInJalaliMonth, getPrimaryPhone,
-  computeCustomerLrfm, countCustomerPurchases
+  computeCustomerLrfm, countCustomerPurchases, jalaliDateTimeToIso
 } from './utils.js'
 import { sumCompletedRefundsForDash, countPendingRefundsForDash } from './refunds.js'
 import { toggleSortField, sortRecords, syncSortHeaders } from './table-sort.js'
@@ -1708,6 +1708,58 @@ export function toggleDashSection(section) {
   toggle?.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
 }
 
+/**
+ * SMS report card: default = today (Tehran); with date filter = that Jalali range.
+ * Counts only status=sent from sms_logs.
+ */
+async function renderDashSmsReportCard(hasDateFilter, dateFrom, dateTo) {
+  const periodEl = document.getElementById('dash-sms-period')
+  const setSms = (id, n) => {
+    const el = document.getElementById(id)
+    if (el) el.textContent = formatNumber(n)
+  }
+
+  let fromIso
+  let toIso
+  let periodLabel = 'امروز'
+
+  if (hasDateFilter) {
+    const fromJ = dateFrom || dateTo
+    const toJ = dateTo || dateFrom
+    fromIso = jalaliDateTimeToIso(fromJ, '00:00')
+    toIso = jalaliDateTimeToIso(toJ, '23:59')
+    if (toIso) {
+      // include full last second of day
+      toIso = new Date(new Date(toIso).getTime() + 59 * 1000).toISOString()
+    }
+    if (dateFrom && dateTo && dateFrom !== dateTo) periodLabel = `${dateFrom} تا ${dateTo}`
+    else periodLabel = dateFrom || dateTo || 'بازه فیلتر'
+  } else {
+    const today = getTodayJalaliStr()
+    fromIso = jalaliDateTimeToIso(today, '00:00')
+    toIso = jalaliDateTimeToIso(today, '23:59')
+    if (toIso) toIso = new Date(new Date(toIso).getTime() + 59 * 1000).toISOString()
+  }
+
+  if (periodEl) periodEl.textContent = periodLabel
+
+  if (!fromIso || !toIso) {
+    setSms('dash-sms-settlement', 0)
+    setSms('dash-sms-followup', 0)
+    setSms('dash-sms-shipment', 0)
+    setSms('dash-sms-other', 0)
+    setSms('dash-sms-total', 0)
+    return
+  }
+
+  const counts = await countSmsLogsByDashCategory({ fromIso, toIso })
+  setSms('dash-sms-settlement', counts.settlement)
+  setSms('dash-sms-followup', counts.followup)
+  setSms('dash-sms-shipment', counts.shipment)
+  setSms('dash-sms-other', counts.other)
+  setSms('dash-sms-total', counts.total)
+}
+
 export async function renderDashboard() {
   const dateFrom = document.getElementById('dashDateFrom')?.value.trim() || ''
   const dateTo = document.getElementById('dashDateTo')?.value.trim() || ''
@@ -1833,6 +1885,10 @@ function paintDashboardLiveStats() {
   if (elFuDone) elFuDone.textContent = completedFollowups
   const elFuUp = document.getElementById('dash-followups-upcoming')
   if (elFuUp) elFuUp.textContent = upcomingFollowups
+
+  void renderDashSmsReportCard(hasDateFilter, dateFrom, dateTo).catch((e) => {
+    console.error('renderDashSmsReportCard error:', e)
+  })
 
   let overdueList = []
   let soonList = []
