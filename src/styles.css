@@ -1874,6 +1874,90 @@
     border-radius: 10px;
   }
 
+  .sms-bubbles {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .sms-bubble {
+    max-width: 92%;
+    align-self: flex-end;
+    padding: 8px 10px;
+    border-radius: 12px 12px 4px 12px;
+    background: var(--accent-light);
+    border: 1px solid #b8e8d6;
+    box-shadow: var(--shadow-subtle);
+  }
+
+  .sms-bubble.is-failed {
+    background: #fef2f2;
+    border-color: #fecaca;
+  }
+
+  .sms-bubble.is-skipped {
+    background: var(--surface);
+    border-color: var(--border);
+  }
+
+  .sms-bubble-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+
+  .sms-bubble-kind {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .sms-badge {
+    font-size: 10px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: white;
+  }
+
+  .sms-badge.is-failed {
+    background: #dc2626;
+  }
+
+  .sms-badge.is-skipped {
+    background: var(--text-muted);
+  }
+
+  .sms-badge.is-test {
+    background: var(--warning);
+    color: #111;
+  }
+
+  .sms-bubble-text {
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.6;
+  }
+
+  .sms-bubble-error {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #dc2626;
+  }
+
+  .sms-bubble-meta {
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
   .timeline {
     position: relative;
     padding-right: 24px;

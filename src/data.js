@@ -4289,6 +4289,20 @@ export async function listCustomerSmsLogs(customerId, { limit = 20 } = {}) {
   return rows || []
 }
 
+/** Exact count of SMS logs for one customer (for the tab badge). */
+export async function countCustomerSmsLogs(customerId) {
+  const tenantId = getStoredTenantId()
+  const cid = String(customerId || '').trim()
+  if (!tenantId || !cid) return 0
+  const { count, error } = await supabase
+    .from('sms_logs')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .eq('customer_id', cid)
+  if (error) return 0
+  return Number(count || 0)
+}
+
 /** SMS kinds grouped for dashboard report card. */
 export const SMS_DASH_CATEGORIES = Object.freeze({
   settlement: ['sale_settlement_due'],

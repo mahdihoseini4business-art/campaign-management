@@ -1,8 +1,9 @@
-import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, invalidateProductSalesCountCache, isEventProductName, getActiveInPersonSessions, formatInPersonSessionLabel, getInPersonSessionById, mapInPersonSessionSelectOptions, assertSaleCanUseInPersonSession, getEventCourseNamesForSellable, saleNeedsInPersonSession, getSaleInPersonSessionMap, applySaleInPersonSessionMap } from './data.js'
+import { getData, getRefunds, saveCustomerToDB, deleteCustomerFromDB, deleteCustomerRowOnly, saveFollowupToDB, deleteFollowupFromDB, updateFollowupsCustomerId, saveSetting, generateId, peekNextId, getDestinationBanks, getSellableNames, getBundleByName, coerceProductName, getPlatforms, getStatuses, getCustomerCodes, saveOwnershipTransferToDB, generateTransferBatchId, isRecentTransferredIn, isRecentTransferredOut, isUnreadTransferredIn, isProductGiftAllowed, cloneCustomerRecord, rekeyCustomerId, putCustomerInCache, getDataLoadState, getRequireFollowupOnCreate, saveRequireFollowupOnCreate, ensureCustomerDetailsLoaded, invalidateProductSalesCountCache, isEventProductName, getActiveInPersonSessions, formatInPersonSessionLabel, getInPersonSessionById, mapInPersonSessionSelectOptions, assertSaleCanUseInPersonSession, getEventCourseNamesForSellable, saleNeedsInPersonSession, getSaleInPersonSessionMap, applySaleInPersonSessionMap, listCustomerSmsLogs, countCustomerSmsLogs } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { openAppConfirm } from './app-confirm.js'
 import { loadGroupsData, buildGroupedAdvisorSelectHtml, phonesMatchingAdvisorFilter } from './groups.js'
 import { updateTransferInboxBadge } from './transfers.js'
+import { canViewCustomerSmsHistory, SMS_KIND_LABELS, SMS_STATUS_LABELS } from './sms-business.js'
 import { broadcastSaleToast, buildSaleToastPayload, broadcastAppSetting } from './sale-toasts.js'
 import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
@@ -11,7 +12,7 @@ import {
   canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canEditFollowup, canScheduleFollowupOnCustomer, canDeleteFollowupOnCustomer, canDeleteSalePayment, matchesTabSearch, getCustomerSearchExtras,
   canClaimUnassignedCustomer, canRevealUnassignedByPhoneSearch, isHistoricalImportSale,
   resolveAdvisor, normalizePhone, userDisplayName, getPlatformLabels, getPlatformClass,
-  getPlatformUrl, getLastActivity, findCustomerByPhone,
+  getPlatformUrl, getLastActivity, gregorianToJalaliDateTimeStr, findCustomerByPhone,
   findCustomerByPlatformId, findCustomersByPhonePrefix,
   getCustomerPhones, normalizeCustomerPhones, getPrimaryPhone, formatPhonesDisplay,
   MAX_CUSTOMER_PHONES, MAX_CUSTOMER_ADDRESSES,
@@ -49,6 +50,7 @@ export { buildFollowupsByCustomerMap } from './derived-cache.js'
 
 const LEVEL_ORDER = Object.keys(CUSTOMER_LEVELS)
 const DETAIL_FOLLOWUPS_LIMIT = 20
+const DETAIL_SMS_LIMIT = 20
 const DETAIL_QUICK_PRODUCTS_SEP = '، '
 /** @type {string[]} */
 let detailQuickSelectedProducts = []
@@ -1607,13 +1609,15 @@ async function mergeLdIntoPhoneOwner({ sourceId, survivorId, fields }) {
 // Customer Detail Panel
 // ============================================
 
-const DETAIL_TABS = ['info', 'sales', 'followups']
-const DETAIL_TAB_LABELS = { info: 'اطلاعات', sales: 'فروش‌ها', followups: 'پیگیری‌ها' }
+const DETAIL_TABS = ['info', 'sales', 'followups', 'sms']
+const DETAIL_TAB_LABELS = { info: 'اطلاعات', sales: 'فروش‌ها', followups: 'پیگیری‌ها', sms: 'پیامک‌ها' }
 
-/** @type {{ customerId: string|null, tab: 'info'|'sales'|'followups', canEdit?: boolean, canDelete?: boolean, canClaim?: boolean }} */
+/** @type {{ customerId: string|null, tab: 'info'|'sales'|'followups'|'sms', canEdit?: boolean, canDelete?: boolean, canClaim?: boolean }} */
 let detailPanelState = { customerId: null, tab: 'info', canEdit: false, canDelete: false, canClaim: false }
 /** Per-customer: show full followups timeline in detail panel */
 const detailFollowupsShowAll = new Set()
+/** Per-customer: show full SMS history in detail panel */
+const detailSmsShowAll = new Set()
 
 function isDetailFormEditing() {
   const root = document.getElementById('detailBody')
@@ -1840,6 +1844,13 @@ export function showMoreDetailFollowups(customerId) {
   if (customerId) detailFollowupsShowAll.add(customerId)
   if (detailPanelState.customerId === customerId) {
     openCustomerDetail(customerId, { tab: 'followups', refreshTabOnly: true })
+  }
+}
+
+export function showMoreDetailSms(customerId) {
+  if (customerId) detailSmsShowAll.add(customerId)
+  if (detailPanelState.customerId === customerId) {
+    openCustomerDetail(customerId, { tab: 'sms', refreshTabOnly: true })
   }
 }
 
@@ -2445,7 +2456,9 @@ export async function openCustomerDetail(id, options = {}) {
     }
   }
 
-  const activeTab = isNew ? 'info' : resolveDetailTab(isNew ? null : id, options)
+  let activeTab = isNew ? 'info' : resolveDetailTab(isNew ? null : id, options)
+  if (activeTab === 'sms' && (isNew || !canViewCustomerSmsHistory())) activeTab = 'info'
+  const canViewCustomerSms = !isNew && canViewCustomerSmsHistory()
 
   const c = isNew
     ? {
@@ -2481,6 +2494,22 @@ export async function openCustomerDetail(id, options = {}) {
   const customerFollowups = isNew
     ? []
     : sortFollowupsNewestFirst(data.followups.filter(f => f.customerId === id))
+
+  let smsTotal = 0
+  let customerSmsLogs = []
+  let smsLoadError = ''
+  if (canViewCustomerSms) {
+    try {
+      smsTotal = await countCustomerSmsLogs(id)
+      if (activeTab === 'sms') {
+        const showAllSms = detailSmsShowAll.has(id)
+        customerSmsLogs = await listCustomerSmsLogs(id, { limit: showAllSms ? 500 : DETAIL_SMS_LIMIT })
+      }
+    } catch (e) {
+      smsLoadError = e?.message || 'خطا'
+      console.warn('customerSmsLogs:', smsLoadError)
+    }
+  }
   const idClass = !isNew && c.id.startsWith('CS') ? 'id-cs' : 'id-ld'
   const platformLabel = getPlatformLabels()[c.platform] || c.platform
   const statusClass = getStatusClass(c.status)
@@ -2920,6 +2949,48 @@ export async function openCustomerDetail(id, options = {}) {
     `
   }
 
+  let smsPanelHtml = ''
+  if (!isNew && canViewCustomerSms) {
+    if (smsLoadError) {
+      smsPanelHtml = `<div class="detail-tab-empty">خطا در خواندن پیامک‌ها</div>`
+    } else if (smsTotal === 0) {
+      smsPanelHtml = `<div class="detail-tab-empty">پیامکی برای این مشتری ثبت نشده</div>`
+    } else {
+      const bubbles = customerSmsLogs.map((r) => {
+        const status = String(r.status || '')
+        const statusClass = status === 'sent' ? 'is-sent' : status === 'failed' ? 'is-failed' : 'is-skipped'
+        const isTest = !!(r.meta && r.meta.test)
+        return `<div class="sms-bubble ${statusClass}">
+          <div class="sms-bubble-head">
+            <span class="sms-bubble-kind">${escapeHtml(SMS_KIND_LABELS[r.kind] || r.kind || '')}</span>
+            ${isTest ? '<span class="sms-badge is-test">تست</span>' : ''}
+            <span class="sms-badge ${statusClass}">${escapeHtml(SMS_STATUS_LABELS[status] || status)}</span>
+          </div>
+          <div class="sms-bubble-text">${escapeHtml(r.body || '')}</div>
+          ${status === 'failed' && r.error ? `<div class="sms-bubble-error">${escapeHtml(r.error)}</div>` : ''}
+          <div class="sms-bubble-meta">
+            <span dir="ltr">${escapeHtml(r.to_phone || '')}</span>
+            <span>${escapeHtml(gregorianToJalaliDateTimeStr(r.created_at) || '')}</span>
+          </div>
+        </div>`
+      }).join('')
+      const moreHtml = (!detailSmsShowAll.has(c.id) && smsTotal > customerSmsLogs.length)
+        ? `<div style="text-align:center;margin-top:12px;">
+          <button type="button" class="btn btn-sm" onclick="app.showMoreDetailSms('${escapeAttr(c.id)}')">
+            نمایش ${formatNumber(smsTotal - customerSmsLogs.length)} پیامک دیگر
+          </button>
+        </div>`
+        : ''
+      smsPanelHtml = `
+        <div class="detail-timeline-title">
+          پیامک‌ها <span class="count">${smsTotal}</span>
+        </div>
+        <div class="sms-bubbles">${bubbles}</div>
+        ${moreHtml}
+      `
+    }
+  }
+
   let html
   if (isNew) {
     html = `
@@ -2950,6 +3021,7 @@ export async function openCustomerDetail(id, options = {}) {
         ${tabBtn('info')}
         ${tabBtn('sales', salesCount)}
         ${tabBtn('followups', customerFollowups.length)}
+        ${canViewCustomerSms ? tabBtn('sms', smsTotal) : ''}
       </div>
       <div class="detail-tab-panel${activeTab === 'info' ? ' is-active' : ''}" role="tabpanel" id="detailTab-info" aria-labelledby="detailTabBtn-info" ${activeTab === 'info' ? '' : 'hidden'}>
         ${activeTab === 'info' ? infoPanelHtml : ''}
@@ -2960,6 +3032,10 @@ export async function openCustomerDetail(id, options = {}) {
       <div class="detail-tab-panel${activeTab === 'followups' ? ' is-active' : ''}" role="tabpanel" id="detailTab-followups" aria-labelledby="detailTabBtn-followups" ${activeTab === 'followups' ? '' : 'hidden'}>
         ${activeTab === 'followups' ? followupsPanelHtml : ''}
       </div>
+      ${canViewCustomerSms ? `
+      <div class="detail-tab-panel${activeTab === 'sms' ? ' is-active' : ''}" role="tabpanel" id="detailTab-sms" aria-labelledby="detailTabBtn-sms" ${activeTab === 'sms' ? '' : 'hidden'}>
+        ${activeTab === 'sms' ? smsPanelHtml : ''}
+      </div>` : ''}
     `
   }
 
@@ -2973,13 +3049,14 @@ export async function openCustomerDetail(id, options = {}) {
   }
 
   const tabOnlyRefresh = !!options.refreshTabOnly && !isNew && prevPanelState.customerId === id
-  const panelHtmlByTab = { info: infoPanelHtml, sales: salesPanelHtml, followups: followupsPanelHtml }
+  const panelHtmlByTab = { info: infoPanelHtml, sales: salesPanelHtml, followups: followupsPanelHtml, sms: smsPanelHtml }
 
   if (tabOnlyRefresh) {
     const panel = document.getElementById(`detailTab-${activeTab}`)
     if (panel) panel.innerHTML = panelHtmlByTab[activeTab] || ''
     setDetailTabCount('sales', salesCount)
     setDetailTabCount('followups', customerFollowups.length)
+    if (canViewCustomerSms) setDetailTabCount('sms', smsTotal)
     applyDetailTab(activeTab)
     renderDetailFooter({ isNew, canEdit, canDelete, canClaim, customerId: c.id, tab: activeTab })
   } else {

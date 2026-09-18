@@ -130,4 +130,26 @@ export function buildRecipientFromCustomer(customer, vars = {}, meta = {}) {
   }
 }
 
+/** kind (API) → Persian label for history UI. */
+export const SMS_KIND_LABELS = Object.freeze({
+  shipment_queued: 'صف ارسال',
+  shipment_shipped: 'تأیید ارسال',
+  sale_single: 'مانده حساب',
+  sale_group: 'بدهکاران گروهی',
+  sale_settlement_due: 'موعد تسویه',
+  customer_single: 'تکی',
+  customer_campaign: 'کمپین',
+  followup_schedule: 'موعد پیگیری',
+  followup_bulk: 'دسته‌ای پیگیری',
+  event_single: 'رویداد',
+})
+
+/** sms_logs status → Persian label for history UI. */
+export const SMS_STATUS_LABELS = Object.freeze({
+  queued: 'در صف',
+  sent: 'ارسال شد',
+  failed: 'ناموفق',
+  skipped: 'رد شد',
+})
+
 export { getFollowupSmsDefaultHour, getSmsFeatures }

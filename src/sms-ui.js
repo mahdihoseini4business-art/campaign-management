@@ -458,6 +458,16 @@ export async function openCustomerSingleSms(customerId) {
     title: 'پیامک به مشتری',
     templateKey: 'customer_campaign',
     recipients: [buildRecipientFromCustomer(customer)],
+    onSent: () => {
+      import('./customers.js').then((m) => {
+        try {
+          const smsPanel = document.getElementById('detailTab-sms')
+          if (m.getOpenDetailCustomerId() === customerId && smsPanel && !smsPanel.hidden) {
+            m.switchDetailTab('sms')
+          }
+        } catch (_) { /* ignore */ }
+      }).catch(() => {})
+    },
   })
 }
 
