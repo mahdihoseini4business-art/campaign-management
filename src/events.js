@@ -45,7 +45,7 @@ import { toggleSortField, sortRecords, syncSortHeaders } from './table-sort.js'
 import { runWithSearchOverlay, SEARCH_HOST } from './search-overlay.js'
 import { debouncedSearchInput } from './search-debounce.js'
 import { shouldSkipTabRender, markTabRendered, tabPageKey } from './tab-cache.js'
-import { canUseSmsKind, buildRecipientFromCustomer } from './sms-business.js'
+import { canUseSmsKind, buildRecipientFromCustomer, invokeSendSms } from './sms-business.js'
 import { openSmsComposeModal } from './sms-ui.js'
 
 let eventsSortState = { field: 'sessionDate', asc: false }
@@ -738,6 +738,78 @@ function findMatchingEventSaleIndex(customer, courseNorm) {
   return -1
 }
 
+function getSelectedWalkInSession() {
+  const sessionId = document.getElementById('eventsWalkInSessionSelect')?.value || ''
+  const sessions = getTodayWalkInSessions()
+  return sessions.find(s => s.id === sessionId) || (sessions.length === 1 ? sessions[0] : null)
+}
+
+function walkInPreviewRow() {
+  const session = getSelectedWalkInSession()
+  const name = String(document.getElementById('eventsWalkInName')?.value || '').trim()
+  const phone = normalizePhone(document.getElementById('eventsWalkInPhone')?.value || '')
+  return {
+    name: name || '—',
+    nameEn: 'همراه',
+    phone: phone || '—',
+    productName: session?.courseName || '',
+    courseName: session?.courseName || '',
+    sessionDate: session?.sessionDate || '',
+    advisor: userDisplayName(getCurrentUser()).trim() || '',
+    sessionLabel: session ? formatInPersonSessionLabel(session) : ''
+  }
+}
+
+function populateWalkInMessageTypes() {
+  const types = getEventMessageTypes()
+  const sel = document.getElementById('eventsWalkInMessageTypeSelect')
+  if (!sel) return
+  sel.innerHTML = types.map(t =>
+    `<option value="${escapeAttr(t.id)}">${escapeHtml(t.name)}</option>`
+  ).join('') || '<option value="">نوع پیامی تعریف نشده</option>'
+}
+
+export function updateEventsWalkInMessagePreview() {
+  const types = getEventMessageTypes()
+  const id = document.getElementById('eventsWalkInMessageTypeSelect')?.value || ''
+  const type = types.find(t => t.id === id) || types[0]
+  const preview = document.getElementById('eventsWalkInMessagePreview')
+  if (preview) {
+    preview.textContent = type
+      ? renderEventTemplatePreview(type.body, walkInPreviewRow())
+      : 'نوع پیامی در تنظیمات رویدادها تعریف نشده است.'
+  }
+}
+
+async function sendWalkInEventSms({ customer, session, productIndex, type }) {
+  if (!canUseSmsKind('event_single')) {
+    return { ok: false, error: 'ارسال پیام رویداد فعال نیست یا دسترسی ندارید' }
+  }
+  if (!type?.body?.trim()) {
+    return { ok: false, error: 'متن نوع پیام خالی است' }
+  }
+  const recipient = buildRecipientFromCustomer(customer, {
+    name_en: customer.nameEn || 'همراه',
+    product_name: session.courseName || '',
+    event_name: session.courseName || '',
+    event_date: session.sessionDate || ''
+  }, { productIndex, sessionId: session.id, event_message_type: type.id })
+  if (!recipient.phone) {
+    return { ok: false, error: 'شماره برای ارسال پیامک نیست' }
+  }
+  const result = await invokeSendSms({
+    mode: 'single',
+    kind: 'event_single',
+    template_key: null,
+    body_override: type.body || '',
+    recipients: [recipient]
+  })
+  if (result?.success || Number(result?.sent || 0) > 0) {
+    return { ok: true }
+  }
+  return { ok: false, error: result?.error || 'ارسال پیامک ناموفق بود' }
+}
+
 export function openEventsWalkInModal() {
   if (!hasPermission('events_view')) {
     showToast('دسترسی مشاهده رویدادها ندارید')
@@ -770,12 +842,15 @@ export function openEventsWalkInModal() {
       sel.innerHTML = sessions.map(s =>
         `<option value="${escapeAttr(s.id)}">${escapeHtml(formatInPersonSessionLabel(s))}</option>`
       ).join('')
+      sel.onchange = () => updateEventsWalkInMessagePreview()
     }
     if (meta) meta.textContent = `${formatNumber(sessions.length)} سانس امروز — یکی را انتخاب کنید`
   }
 
+  populateWalkInMessageTypes()
   if (nameEl) nameEl.value = ''
   if (phoneEl) phoneEl.value = ''
+  updateEventsWalkInMessagePreview()
   document.getElementById('eventsWalkInModal')?.classList.add('active')
   setTimeout(() => nameEl?.focus(), 50)
 }
@@ -793,9 +868,10 @@ export async function submitEventsWalkIn() {
   const name = String(document.getElementById('eventsWalkInName')?.value || '').trim()
   const phoneRaw = document.getElementById('eventsWalkInPhone')?.value || ''
   const phone = normalizePhone(phoneRaw)
-  const sessionId = document.getElementById('eventsWalkInSessionSelect')?.value || ''
-  const sessions = getTodayWalkInSessions()
-  const session = sessions.find(s => s.id === sessionId) || (sessions.length === 1 ? sessions[0] : null)
+  const session = getSelectedWalkInSession()
+  const types = getEventMessageTypes()
+  const typeId = document.getElementById('eventsWalkInMessageTypeSelect')?.value || ''
+  const messageType = types.find(t => t.id === typeId) || types[0]
 
   if (!name) {
     showToast('نام را وارد کنید')
@@ -809,6 +885,10 @@ export async function submitEventsWalkIn() {
   }
   if (!session) {
     showToast('سانس امروز را انتخاب کنید')
+    return
+  }
+  if (!messageType) {
+    showToast('یک نوع پیام انتخاب کنید. در تنظیمات رویدادها الگوها را تعریف کنید.')
     return
   }
 
@@ -825,6 +905,8 @@ export async function submitEventsWalkIn() {
     const courseNorm = normalizeEventLabel(session.courseName)
     let customer = findCustomerByPhone(phone, data.customers || [])
     let created = false
+    let productIndex = -1
+    let toastBase = ''
 
     if (!customer) {
       if (!hasPermission('customers_add')) {
@@ -861,7 +943,6 @@ export async function submitEventsWalkIn() {
 
     if (!Array.isArray(customer.products)) customer.products = []
 
-    // Already on this session?
     for (const p of customer.products) {
       if (p?.historicalImport) continue
       if (saleHasInPersonSessionId(p, session.id)) {
@@ -878,32 +959,45 @@ export async function submitEventsWalkIn() {
       }
       if (!created) {
         await assignInPersonSessionToSale(customer.id, matchIdx, session.id)
-        showToast('به سانس امروز وصل شد')
-        afterWalkInSuccess()
-        return
+        productIndex = matchIdx
+        toastBase = 'به سانس امروز وصل شد'
       }
     }
 
-    // New gift sale line + session (bypass catalog allowGift)
-    const productIndex = customer.products.length
-    assertSaleCanUseInPersonSession(session.id, customer.id, productIndex)
-    const product = buildWalkInGiftProduct(session, user)
-    customer.products.push(product)
-    customer._productsLoaded = true
-    customer.productCount = customer.products.length
-    invalidateProductSalesCountCache()
+    if (productIndex < 0) {
+      productIndex = customer.products.length
+      assertSaleCanUseInPersonSession(session.id, customer.id, productIndex)
+      const product = buildWalkInGiftProduct(session, user)
+      customer.products.push(product)
+      customer._productsLoaded = true
+      customer.productCount = customer.products.length
+      invalidateProductSalesCountCache()
 
-    if (created) {
-      putCustomerInCache(customer)
-      await saveCustomerToDB(customer)
-      showToast('مشتری همراه ثبت و به سانس وصل شد')
-    } else {
-      const idx = data.customers.findIndex(c => c.id === customer.id)
-      if (idx >= 0) data.customers[idx] = customer
-      await saveCustomerToDB(customer)
-      showToast('فروش رویداد ثبت و به سانس وصل شد')
+      if (created) {
+        putCustomerInCache(customer)
+        await saveCustomerToDB(customer)
+        toastBase = 'مشتری همراه ثبت و به سانس وصل شد'
+      } else {
+        const idx = data.customers.findIndex(c => c.id === customer.id)
+        if (idx >= 0) data.customers[idx] = customer
+        await saveCustomerToDB(customer)
+        toastBase = 'فروش رویداد ثبت و به سانس وصل شد'
+      }
     }
 
+    // Fresh customer reference after save
+    const saved = getData().customers.find(c => c.id === customer.id) || customer
+    const sms = await sendWalkInEventSms({
+      customer: saved,
+      session,
+      productIndex,
+      type: messageType
+    })
+    if (sms.ok) {
+      showToast(`${toastBase} — پیامک ارسال شد`)
+    } else {
+      showToast(`${toastBase} — پیامک ارسال نشد: ${sms.error || 'خطا'}`)
+    }
     afterWalkInSuccess()
   } catch (e) {
     console.error('submitEventsWalkIn error:', e)
@@ -921,6 +1015,7 @@ function afterWalkInSuccess() {
   const phoneEl = document.getElementById('eventsWalkInPhone')
   if (nameEl) nameEl.value = ''
   if (phoneEl) phoneEl.value = ''
+  updateEventsWalkInMessagePreview()
   try { renderEvents() } catch (_) {}
   setTimeout(() => nameEl?.focus(), 50)
 }
