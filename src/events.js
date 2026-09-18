@@ -8,7 +8,14 @@ import {
   coerceProductName,
   formatInPersonSessionLabel,
   getEventMessageTypes,
-  saveCustomerToDB
+  saveCustomerToDB,
+  generateId,
+  putCustomerInCache,
+  assignInPersonSessionToSale,
+  applySaleInPersonSessionMap,
+  assertSaleCanUseInPersonSession,
+  getEventCourseNamesForSellable,
+  invalidateProductSalesCountCache
 } from './data.js'
 import {
   toEnDigits,
@@ -23,7 +30,15 @@ import {
   getPrimaryPhone,
   getCustomerPhones,
   normalizePhone,
-  showToast
+  showToast,
+  findCustomerByPhone,
+  normalizeCustomerPhones,
+  getCurrentUser,
+  userDisplayName,
+  getNowJalaliDateTime,
+  canAddSaleOnCustomer,
+  PAYMENT_STATUS,
+  syncProductStatus
 } from './utils.js'
 import { paginateList, renderPaginationBar, getPage, setPage } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders } from './table-sort.js'
@@ -665,4 +680,247 @@ export async function applyEventRosterImport(rows, { dryRun = false } = {}) {
   }
 
   return { updated, assigned, skipped, errors }
+}
+
+// ============================================
+// Walk-in / ثبت دستی (today's session)
+// ============================================
+
+/** Active sessions whose date is today; respects product multi-filter when set. */
+export function getTodayWalkInSessions() {
+  const todayNum = getTodayJalaliNum()
+  let sessions = getActiveInPersonSessions().filter(s => jalaliToNum(s.sessionDate) === todayNum)
+  if (selectedEventProductNames.size > 0) {
+    sessions = sessions.filter(s => {
+      const course = String(s.courseName || '').trim()
+      return selectedEventProductNames.has(course)
+    })
+  }
+  return sessions
+}
+
+function buildWalkInGiftProduct(session, user) {
+  const { dateTime } = getNowJalaliDateTime()
+  const courseName = coerceProductName(session.courseName) || session.courseName
+  const product = {
+    name: courseName,
+    saleType: 'gift',
+    price: '0',
+    priceLocked: true,
+    status: 'هدیه',
+    payments: [],
+    deposit: '',
+    settlementDate: '',
+    giftAccountingStatus: PAYMENT_STATUS.pending,
+    giftRejectReason: '',
+    giftReviewedAt: '',
+    giftReviewedBy: '',
+    soldByPhone: normalizePhone(user?.phone || ''),
+    soldAt: dateTime,
+    depositorName: ''
+  }
+  applySaleInPersonSessionMap(product, { [courseName]: session.id })
+  syncProductStatus(product)
+  return product
+}
+
+function findMatchingEventSaleIndex(customer, courseNorm) {
+  const products = Array.isArray(customer.products) ? customer.products : []
+  for (let pi = 0; pi < products.length; pi++) {
+    const p = products[pi]
+    if (p?.historicalImport) continue
+    const pname = coerceProductName(p.name) || p.name || ''
+    const eventCourses = getEventCourseNamesForSellable(pname)
+    const isEventSale = eventCourses.some(c => normalizeEventLabel(c) === courseNorm)
+      || normalizeEventLabel(pname) === courseNorm
+    if (isEventSale) return pi
+  }
+  return -1
+}
+
+export function openEventsWalkInModal() {
+  if (!hasPermission('events_view')) {
+    showToast('دسترسی مشاهده رویدادها ندارید')
+    return
+  }
+  const sessions = getTodayWalkInSessions()
+  if (!sessions.length) {
+    showToast(selectedEventProductNames.size
+      ? 'سانس فعالی برای امروز با فیلتر محصول فعلی نیست'
+      : 'سانس فعالی برای امروز تعریف نشده است')
+    return
+  }
+
+  const meta = document.getElementById('eventsWalkInSessionMeta')
+  const group = document.getElementById('eventsWalkInSessionGroup')
+  const sel = document.getElementById('eventsWalkInSessionSelect')
+  const nameEl = document.getElementById('eventsWalkInName')
+  const phoneEl = document.getElementById('eventsWalkInPhone')
+
+  if (sessions.length === 1) {
+    if (group) group.hidden = true
+    if (sel) {
+      sel.innerHTML = `<option value="${escapeAttr(sessions[0].id)}">${escapeHtml(formatInPersonSessionLabel(sessions[0]))}</option>`
+      sel.value = sessions[0].id
+    }
+    if (meta) meta.textContent = formatInPersonSessionLabel(sessions[0])
+  } else {
+    if (group) group.hidden = false
+    if (sel) {
+      sel.innerHTML = sessions.map(s =>
+        `<option value="${escapeAttr(s.id)}">${escapeHtml(formatInPersonSessionLabel(s))}</option>`
+      ).join('')
+    }
+    if (meta) meta.textContent = `${formatNumber(sessions.length)} سانس امروز — یکی را انتخاب کنید`
+  }
+
+  if (nameEl) nameEl.value = ''
+  if (phoneEl) phoneEl.value = ''
+  document.getElementById('eventsWalkInModal')?.classList.add('active')
+  setTimeout(() => nameEl?.focus(), 50)
+}
+
+export function closeEventsWalkInModal() {
+  document.getElementById('eventsWalkInModal')?.classList.remove('active')
+}
+
+export async function submitEventsWalkIn() {
+  if (!hasPermission('events_view')) {
+    showToast('دسترسی مشاهده رویدادها ندارید')
+    return
+  }
+
+  const name = String(document.getElementById('eventsWalkInName')?.value || '').trim()
+  const phoneRaw = document.getElementById('eventsWalkInPhone')?.value || ''
+  const phone = normalizePhone(phoneRaw)
+  const sessionId = document.getElementById('eventsWalkInSessionSelect')?.value || ''
+  const sessions = getTodayWalkInSessions()
+  const session = sessions.find(s => s.id === sessionId) || (sessions.length === 1 ? sessions[0] : null)
+
+  if (!name) {
+    showToast('نام را وارد کنید')
+    document.getElementById('eventsWalkInName')?.focus()
+    return
+  }
+  if (!phone) {
+    showToast('شماره تماس معتبر وارد کنید')
+    document.getElementById('eventsWalkInPhone')?.focus()
+    return
+  }
+  if (!session) {
+    showToast('سانس امروز را انتخاب کنید')
+    return
+  }
+
+  const btn = document.getElementById('eventsWalkInSubmitBtn')
+  const prevLabel = btn?.textContent
+  if (btn) {
+    btn.disabled = true
+    btn.textContent = 'در حال ثبت…'
+  }
+
+  try {
+    const data = getData()
+    const user = getCurrentUser()
+    const courseNorm = normalizeEventLabel(session.courseName)
+    let customer = findCustomerByPhone(phone, data.customers || [])
+    let created = false
+
+    if (!customer) {
+      if (!hasPermission('customers_add')) {
+        showToast('دسترسی افزودن مشتری ندارید')
+        return
+      }
+      const id = await generateId('CS')
+      const phones = normalizeCustomerPhones([phone])
+      const advisor = userDisplayName(user).trim() || ''
+      const advisorPhone = normalizePhone(user?.phone || '')
+      customer = {
+        id,
+        platformId: '',
+        platform: 'instagram',
+        name,
+        nameEn: 'همراه',
+        phone: phones[0] || phone,
+        phones,
+        status: 'purchased',
+        notes: 'ثبت دستی از تب رویدادها',
+        advisor,
+        advisorPhone,
+        nextFollowupDate: '',
+        products: [],
+        createdAt: new Date().toISOString(),
+        customerLevel: '',
+        customerLevelLocked: false
+      }
+      created = true
+    } else if (!canAddSaleOnCustomer(customer)) {
+      showToast('دسترسی ثبت فروش برای این مشتری را ندارید')
+      return
+    }
+
+    if (!Array.isArray(customer.products)) customer.products = []
+
+    // Already on this session?
+    for (const p of customer.products) {
+      if (p?.historicalImport) continue
+      if (saleHasInPersonSessionId(p, session.id)) {
+        showToast('این شماره قبلاً برای این سانس ثبت شده است')
+        return
+      }
+    }
+
+    const matchIdx = findMatchingEventSaleIndex(customer, courseNorm)
+    if (matchIdx >= 0) {
+      if (saleHasInPersonSessionId(customer.products[matchIdx], session.id)) {
+        showToast('این شماره قبلاً برای این سانس ثبت شده است')
+        return
+      }
+      if (!created) {
+        await assignInPersonSessionToSale(customer.id, matchIdx, session.id)
+        showToast('به سانس امروز وصل شد')
+        afterWalkInSuccess()
+        return
+      }
+    }
+
+    // New gift sale line + session (bypass catalog allowGift)
+    const productIndex = customer.products.length
+    assertSaleCanUseInPersonSession(session.id, customer.id, productIndex)
+    const product = buildWalkInGiftProduct(session, user)
+    customer.products.push(product)
+    customer._productsLoaded = true
+    customer.productCount = customer.products.length
+    invalidateProductSalesCountCache()
+
+    if (created) {
+      putCustomerInCache(customer)
+      await saveCustomerToDB(customer)
+      showToast('مشتری همراه ثبت و به سانس وصل شد')
+    } else {
+      const idx = data.customers.findIndex(c => c.id === customer.id)
+      if (idx >= 0) data.customers[idx] = customer
+      await saveCustomerToDB(customer)
+      showToast('فروش رویداد ثبت و به سانس وصل شد')
+    }
+
+    afterWalkInSuccess()
+  } catch (e) {
+    console.error('submitEventsWalkIn error:', e)
+    showToast(e.message || 'خطا در ثبت دستی')
+  } finally {
+    if (btn) {
+      btn.disabled = false
+      if (prevLabel) btn.textContent = prevLabel
+    }
+  }
+}
+
+function afterWalkInSuccess() {
+  const nameEl = document.getElementById('eventsWalkInName')
+  const phoneEl = document.getElementById('eventsWalkInPhone')
+  if (nameEl) nameEl.value = ''
+  if (phoneEl) phoneEl.value = ''
+  try { renderEvents() } catch (_) {}
+  setTimeout(() => nameEl?.focus(), 50)
 }

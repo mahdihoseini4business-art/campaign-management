@@ -1538,6 +1538,7 @@
           </div>
         </div>
         <button type="button" class="btn" id="eventsBulkSmsBtn" data-perm="sms_events" onclick="app.openEventsBulkSendMessage()" title="ارسال پیام به لیست فیلترشده">پیام گروهی</button>
+        <button type="button" class="btn btn-primary" id="eventsWalkInBtn" data-perm="events_view" onclick="app.openEventsWalkInModal()" title="ثبت فوری شرکت‌کننده برای سانس امروز">ثبت دستی</button>
       </div>
       <span class="ips-count" id="eventsResultCount" style="margin-inline-start:auto;"></span>
     </div>
@@ -2106,6 +2107,36 @@
     <div class="modal-footer">
       <button class="btn" onclick="app.closeEventMessageTypeModal()">انصراف</button>
       <button class="btn btn-primary" onclick="app.confirmEventMessageTypeAndCompose()">ادامه و ارسال</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال ثبت دستی شرکت‌کننده رویداد -->
+<div class="modal-overlay" id="eventsWalkInModal">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-header">
+      <h2>ثبت دستی شرکت‌کننده</h2>
+      <button class="modal-close" onclick="app.closeEventsWalkInModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="settings-pane-desc" id="eventsWalkInSessionMeta"></p>
+      <div class="form-group" id="eventsWalkInSessionGroup" hidden>
+        <label for="eventsWalkInSessionSelect">سانس امروز</label>
+        <select class="form-input" id="eventsWalkInSessionSelect"></select>
+      </div>
+      <div class="form-group">
+        <label for="eventsWalkInName">نام <span class="required">*</span></label>
+        <input type="text" class="form-input" id="eventsWalkInName" autocomplete="name" placeholder="نام شرکت‌کننده" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('eventsWalkInPhone')?.focus()}">
+      </div>
+      <div class="form-group">
+        <label for="eventsWalkInPhone">شماره تماس <span class="required">*</span></label>
+        <input type="tel" class="form-input" id="eventsWalkInPhone" autocomplete="tel" placeholder="09xxxxxxxxx" inputmode="numeric" style="direction:ltr;text-align:left;font-family:'Vazirmatn',sans-serif;" onkeydown="if(event.key==='Enter'){event.preventDefault();app.submitEventsWalkIn()}">
+      </div>
+      <p class="settings-pane-desc">مشتری جدید با نام انگلیسی «همراه» و فروش قیمت ۰ برای سانس امروز ثبت می‌شود. اگر شماره از قبل باشد فقط به سانس وصل می‌شود.</p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn" onclick="app.closeEventsWalkInModal()">انصراف</button>
+      <button type="button" class="btn btn-primary" id="eventsWalkInSubmitBtn" onclick="app.submitEventsWalkIn()">ثبت</button>
     </div>
   </div>
 </div>

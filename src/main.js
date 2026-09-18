@@ -11,7 +11,8 @@ import {
   renderEvents, onEventsSearchInput, onEventsDateFilterChange, sortEventsHeader, clearEventsFilters,
   toggleEventsProductDropdown, toggleEventsProductFilter, clearEventsProductFilter, onEventsProductFilterSearch,
   openEventSendMessage, closeEventMessageTypeModal, updateEventMessageTypePreview,
-  confirmEventMessageTypeAndCompose, openEventsBulkSendMessage
+  confirmEventMessageTypeAndCompose, openEventsBulkSendMessage,
+  openEventsWalkInModal, closeEventsWalkInModal, submitEventsWalkIn
 } from './events.js'
 import { renderProductMatrix, cycleProductMatrixFilter, clearProductMatrixFilters, toggleProductMatrixAdvisorDropdown, toggleProductMatrixAdvisor, toggleProductMatrixAdvisorsAll, onProductMatrixSearchInput, sortProductMatrix } from './product-matrix.js'
 import { renderAccounting, setAccountingFilter, toggleAccountingBankBalances, approvePayment, approveGiftSale, requestUnapprovePayment, requestUnapproveGiftSale, openRejectPaymentModal, openEditRejectReasonModal, closeRejectPaymentModal, confirmRejectPayment, onRejectReasonPresetClick, onRejectReasonInput, onAccountingSearchInput, sortAccounting } from './accounting.js'
@@ -641,6 +642,9 @@ const app = {
   updateEventMessageTypePreview,
   confirmEventMessageTypeAndCompose,
   openEventsBulkSendMessage,
+  openEventsWalkInModal,
+  closeEventsWalkInModal,
+  submitEventsWalkIn,
   openEventsImportModal,
   closeEventsImportModal,
   dryRunEventsImport,
