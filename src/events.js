@@ -17,6 +17,7 @@ import {
   escapeAttr,
   hasPermission,
   jalaliToNum,
+  getTodayJalaliNum,
   matchesTabSearch,
   canViewScopedCustomer,
   getPrimaryPhone,
@@ -107,12 +108,22 @@ function eventSortValue(row, field) {
   return { value: row.name || '', type: 'string' }
 }
 
+/** True when the user set از/تا تاریخ (not the default «today only» view). */
+export function hasEventsDateFilter() {
+  return !!(
+    document.getElementById('filterEventsDateFrom')?.value?.trim()
+    || document.getElementById('filterEventsDateTo')?.value?.trim()
+  )
+}
+
 export function getFilteredEventRows() {
   const search = toEnDigits(document.getElementById('searchEvents')?.value || '').trim()
   const dateFrom = toEnDigits(document.getElementById('filterEventsDateFrom')?.value || '').trim()
   const dateTo = toEnDigits(document.getElementById('filterEventsDateTo')?.value || '').trim()
   const fromNum = dateFrom ? jalaliToNum(dateFrom) : 0
   const toNum = dateTo ? jalaliToNum(dateTo) : 0
+  const hasUserDateFilter = !!(fromNum || toNum)
+  const todayNum = getTodayJalaliNum()
 
   let rows = collectEventAttendeeRows()
 
@@ -124,15 +135,17 @@ export function getFilteredEventRows() {
     })
   }
 
-  if (fromNum || toNum) {
-    rows = rows.filter(r => {
-      const n = jalaliToNum(r.sessionDate)
-      if (!n) return false
+  rows = rows.filter(r => {
+    const n = jalaliToNum(r.sessionDate)
+    if (!n) return false
+    if (hasUserDateFilter) {
       if (fromNum && n < fromNum) return false
       if (toNum && n > toNum) return false
       return true
-    })
-  }
+    }
+    // Default: only attendees whose session is today
+    return n === todayNum
+  })
 
   if (search) {
     rows = rows.filter(r => matchesTabSearch(search, [
@@ -149,7 +162,8 @@ function eventsFilterSig() {
   const dateFrom = toEnDigits(document.getElementById('filterEventsDateFrom')?.value || '').trim()
   const dateTo = toEnDigits(document.getElementById('filterEventsDateTo')?.value || '').trim()
   const products = [...selectedEventProductNames].sort().join('|')
-  return `${search}::${dateFrom}::${dateTo}::${products}::${eventsSortState.field}:${eventsSortState.asc ? 1 : 0}`
+  // Include today so the default «today only» view refreshes across midnight
+  return `${search}::${dateFrom}::${dateTo}::${products}::${eventsSortState.field}:${eventsSortState.asc ? 1 : 0}::${getTodayJalaliNum()}`
 }
 
 export function renderEvents() {
@@ -177,22 +191,32 @@ export function renderEvents() {
         : 'شرکت‌کننده‌ای نیست'
     }
 
+    const allowSms = !hasEventsDateFilter()
+    const bulkBtn = document.getElementById('eventsBulkSmsBtn')
+    if (bulkBtn) bulkBtn.hidden = !allowSms
+
     if (!all.length) {
-      body.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">شرکت‌کننده‌ای برای رویدادهای تعریف‌شده یافت نشد. سانس حضوری را در تنظیمات تعریف و به فروش‌ها تخصیص دهید.</td></tr>`
+      const emptyMsg = hasEventsDateFilter()
+        ? 'شرکت‌کننده‌ای در بازه تاریخ انتخاب‌شده یافت نشد.'
+        : 'شرکت‌کننده‌ای برای رویدادهای امروز یافت نشد. سانس حضوری را در تنظیمات تعریف و به فروش‌ها تخصیص دهید.'
+      body.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">${emptyMsg}</td></tr>`
       renderPaginationBar('eventsPagination', 'events', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
     } else {
-      const canSms = canUseSmsKind('event_single')
+      const canSms = allowSms && canUseSmsKind('event_single')
       body.innerHTML = page.items.map(r => {
-        const smsBtn = canSms
-          ? `<button type="button" class="btn btn-sm btn-primary" data-perm="sms_events" onclick="event.stopPropagation();app.openEventSendMessage('${escapeAttr(r.rowKey)}')">ارسال پیام</button>`
-          : `<button type="button" class="btn btn-sm" disabled title="دسترسی پیامک رویداد فعال نیست">ارسال پیام</button>`
+        let smsCell = '—'
+        if (allowSms) {
+          smsCell = canSms
+            ? `<button type="button" class="btn btn-sm btn-primary" data-perm="sms_events" onclick="event.stopPropagation();app.openEventSendMessage('${escapeAttr(r.rowKey)}')">ارسال پیام</button>`
+            : `<button type="button" class="btn btn-sm" disabled title="دسترسی پیامک رویداد فعال نیست">ارسال پیام</button>`
+        }
         return `<tr class="clickable-row" onclick="app.onCustomerRowClick(event, '${escapeAttr(r.customerId)}')">
           <td>${escapeHtml(r.name || '—')}</td>
           <td style="direction:ltr;text-align:left;font-family:'Vazirmatn',sans-serif;">${escapeHtml(r.nameEn || '—')}</td>
           <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${escapeHtml(r.phone || '—')}</td>
           <td>${escapeHtml(r.courseName || '—')}</td>
           <td style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${escapeHtml(r.sessionDate || '—')}</td>
-          <td onclick="event.stopPropagation()">${smsBtn}</td>
+          <td onclick="event.stopPropagation()">${smsCell}</td>
         </tr>`
       }).join('')
       renderPaginationBar('eventsPagination', 'events', page)
@@ -200,6 +224,11 @@ export function renderEvents() {
 
     markTabRendered('events', `${filterSig}|${tabPageKey('events', page.page)}`)
   })
+}
+
+export function onEventsDateFilterChange() {
+  setPage('events', 1)
+  renderEvents()
 }
 
 export function onEventsSearchInput() {
@@ -332,6 +361,10 @@ function findEventRowByKey(rowKey) {
 }
 
 export function openEventSendMessage(rowKey) {
+  if (hasEventsDateFilter()) {
+    showToast('ارسال پیام فقط برای شرکت‌کنندگان امروز (بدون فیلتر تاریخ) امکان‌پذیر است')
+    return
+  }
   if (!canUseSmsKind('event_single')) {
     showToast('ارسال پیام رویداد فعال نیست یا دسترسی ندارید')
     return
@@ -463,6 +496,10 @@ export async function confirmEventMessageTypeAndCompose() {
 
 /** Bulk: send same message type to all filtered attendees with phones. */
 export async function openEventsBulkSendMessage() {
+  if (hasEventsDateFilter()) {
+    showToast('ارسال پیام فقط برای شرکت‌کنندگان امروز (بدون فیلتر تاریخ) امکان‌پذیر است')
+    return
+  }
   if (!canUseSmsKind('event_single')) {
     showToast('ارسال پیام رویداد فعال نیست یا دسترسی ندارید')
     return

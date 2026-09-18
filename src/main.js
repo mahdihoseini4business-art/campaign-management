@@ -8,7 +8,7 @@ import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, sa
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, clearFollowupSearch, onFollowupSearchInput, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, openFollowupDonePicker, closeFollowupDonePicker, filterFollowupDonePick, confirmFollowupDonePick, setFollowupDoneNextShortcut, isFollowupDoneNoteDirty, updateFollowupBadge, updateFollowupAdvisorDropdown, sortFollowups, openFollowupBulkSmsForCurrentFilter, onFollowupProductPick, removeFollowupProduct } from './followups.js'
 import { renderSales, sortSales, onSalesSearchInput, toggleSalesProductDropdown, toggleSalesProductFilter, clearSalesProductFilter, onSalesProductFilterSearch } from './sales.js'
 import {
-  renderEvents, onEventsSearchInput, sortEventsHeader, clearEventsFilters,
+  renderEvents, onEventsSearchInput, onEventsDateFilterChange, sortEventsHeader, clearEventsFilters,
   toggleEventsProductDropdown, toggleEventsProductFilter, clearEventsProductFilter, onEventsProductFilterSearch,
   openEventSendMessage, closeEventMessageTypeModal, updateEventMessageTypePreview,
   confirmEventMessageTypeAndCompose, openEventsBulkSendMessage
@@ -629,6 +629,7 @@ const app = {
   onSalesProductFilterSearch,
   renderEvents,
   onEventsSearchInput,
+  onEventsDateFilterChange,
   sortEventsHeader,
   clearEventsFilters,
   toggleEventsProductDropdown,

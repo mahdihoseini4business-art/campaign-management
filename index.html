@@ -1520,8 +1520,8 @@
     <div class="toolbar" style="gap:10px;flex-wrap:wrap;">
       <input type="text" class="search-box" placeholder="جستجو (نام، نام انگلیسی، شماره)..." id="searchEvents" oninput="app.onEventsSearchInput()">
       <div class="toolbar-filter-grid">
-        <input type="text" class="form-input" id="filterEventsDateFrom" placeholder="از تاریخ رویداد" data-jdp style="width:140px;" onchange="app.renderEvents()">
-        <input type="text" class="form-input" id="filterEventsDateTo" placeholder="تا تاریخ رویداد" data-jdp style="width:140px;" onchange="app.renderEvents()">
+        <input type="text" class="form-input" id="filterEventsDateFrom" placeholder="از تاریخ رویداد" data-jdp style="width:140px;" onchange="app.onEventsDateFilterChange()">
+        <input type="text" class="form-input" id="filterEventsDateTo" placeholder="تا تاریخ رویداد" data-jdp style="width:140px;" onchange="app.onEventsDateFilterChange()">
         <div class="sales-product-filter product-matrix-advisor-filter" id="eventsProductFilter">
           <button type="button" class="btn product-matrix-advisor-btn" id="eventsProductFilterBtn" onclick="app.toggleEventsProductDropdown(event)" aria-label="فیلتر محصول" title="فیلتر محصول رویداد">
             محصول <span class="product-matrix-advisor-count" id="eventsProductFilterCount"></span>
@@ -1537,7 +1537,7 @@
             <button type="button" class="toolbar-actions-item" data-perm="events_import" onclick="app.openEventsImportModal();app.closeAllToolbarActions()">ایمپورت از اکسل</button>
           </div>
         </div>
-        <button type="button" class="btn" data-perm="sms_events" onclick="app.openEventsBulkSendMessage()" title="ارسال پیام به لیست فیلترشده">پیام گروهی</button>
+        <button type="button" class="btn" id="eventsBulkSmsBtn" data-perm="sms_events" onclick="app.openEventsBulkSendMessage()" title="ارسال پیام به لیست فیلترشده">پیام گروهی</button>
       </div>
       <span class="ips-count" id="eventsResultCount" style="margin-inline-start:auto;"></span>
     </div>
