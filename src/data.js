@@ -117,6 +117,7 @@ function emptyCoreData() {
     productBundles: [],
     inPersonSessions: [],
     eventMessageTypes: [],
+    eventRosters: [],
     platforms: [],
     statuses: [],
     customerCodes: [],
@@ -777,6 +778,7 @@ function applySettingsRows(rows) {
   data.productBundles = normalizeProductBundles(settings.product_bundles)
   data.inPersonSessions = normalizeInPersonSessions(settings.in_person_sessions)
   data.eventMessageTypes = normalizeEventMessageTypes(settings.event_message_types)
+  data.eventRosters = normalizeEventRosters(settings.event_rosters)
   // Missing keys stay empty/off — do not seed DEFAULT_* for new tenants.
   data.platforms = Array.isArray(settings.platforms) ? settings.platforms : []
   data.statuses = Array.isArray(settings.statuses)
@@ -1898,8 +1900,45 @@ export const DEFAULT_EVENT_MESSAGE_TYPES = Object.freeze([
     id: 'notification',
     name: 'پیام اطلاع‌رسانی',
     body: 'سلام {customer_name} عزیز، اطلاع‌رسانی رویداد «{event_name}» مورخ {event_date}.\n{org_name}'
+  },
+  {
+    id: 'club_register',
+    name: 'ثبت‌نام باشگاه مشتریان',
+    body: 'سلام {customer_name} عزیز، ثبت‌نام شما در باشگاه مشتریان انجام شد.\n{org_name}'
   }
 ])
+
+/** CRM status for customers auto-created from event Excel import */
+export const EVENT_NEW_STATUS = Object.freeze({
+  key: 'event_new',
+  label: 'جدید از رویداد',
+  bgColor: '#ffedd5',
+  textColor: '#c2410c'
+})
+
+/**
+ * Ensure orange «جدید از رویداد» status exists in tenant statuses.
+ * Idempotent; persists only when missing.
+ */
+export async function ensureEventNewStatus() {
+  const list = [...(getStatuses() || [])]
+  const exists = list.some(s => s.key === EVENT_NEW_STATUS.key)
+  if (exists) {
+    // Refresh orange colors if key exists but colors drifted
+    const idx = list.findIndex(s => s.key === EVENT_NEW_STATUS.key)
+    if (idx >= 0) {
+      const cur = list[idx]
+      if (cur.bgColor !== EVENT_NEW_STATUS.bgColor || cur.textColor !== EVENT_NEW_STATUS.textColor || cur.label !== EVENT_NEW_STATUS.label) {
+        list[idx] = { ...cur, ...EVENT_NEW_STATUS, order: cur.order ?? idx }
+        await saveStatuses(list)
+      }
+    }
+    return EVENT_NEW_STATUS.key
+  }
+  list.push({ ...EVENT_NEW_STATUS, order: list.length })
+  await saveStatuses(list)
+  return EVENT_NEW_STATUS.key
+}
 
 function makeEventMessageTypeId() {
   return `emt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -1918,9 +1957,8 @@ export function normalizeEventMessageType(raw) {
 }
 
 export function normalizeEventMessageTypes(raw) {
-  if (!Array.isArray(raw) || !raw.length) {
-    return DEFAULT_EVENT_MESSAGE_TYPES.map(t => ({ ...t }))
-  }
+  const defaults = DEFAULT_EVENT_MESSAGE_TYPES.map(t => ({ ...t }))
+  if (!Array.isArray(raw) || !raw.length) return defaults
   const seen = new Set()
   const out = []
   for (const item of raw) {
@@ -1930,7 +1968,14 @@ export function normalizeEventMessageTypes(raw) {
     seen.add(t.id)
     out.push(t)
   }
-  return out.length ? out : DEFAULT_EVENT_MESSAGE_TYPES.map(t => ({ ...t }))
+  // Seed any newly added default types without wiping customs
+  for (const d of defaults) {
+    if (!seen.has(d.id)) {
+      out.push({ ...d })
+      seen.add(d.id)
+    }
+  }
+  return out.length ? out : defaults
 }
 
 export function getEventMessageTypes() {
@@ -1970,6 +2015,182 @@ export async function removeEventMessageType(id) {
   if (!list.length) throw new Error('حداقل یک نوع پیام باید باقی بماند')
   await saveEventMessageTypes(list)
   return list
+}
+
+// ============================================
+// Event rosters (لیست شرکت‌کنندگان رویداد — ایمپورت / دستی / بایگانی)
+// ============================================
+
+function makeEventRosterId() {
+  return `er_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+function makeEventAttendeeId() {
+  return `ea_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+export function normalizeEventAttendee(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const phone = String(raw.phone || '').replace(/\D/g, '')
+  // keep soft — empty phone allowed for draft, but import requires phone
+  const name = String(raw.name || '').trim()
+  const nameEn = String(raw.nameEn || '').trim()
+  return {
+    id: String(raw.id || '').trim() || makeEventAttendeeId(),
+    name,
+    nameEn,
+    phone: phone || String(raw.phone || '').trim(),
+    customerId: String(raw.customerId || '').trim() || null,
+    isNewCustomer: raw.isNewCustomer === true,
+    source: ['import', 'manual', 'sale'].includes(raw.source) ? raw.source : 'import',
+    addedAt: String(raw.addedAt || '').trim() || new Date().toISOString()
+  }
+}
+
+export function normalizeEventRoster(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const name = String(raw.name || raw.eventName || raw.courseName || '').trim()
+  const eventDate = String(raw.eventDate || raw.sessionDate || raw.date || '').trim()
+  if (!name || !eventDate) return null
+  const attendees = []
+  const seenIds = new Set()
+  for (const a of raw.attendees || []) {
+    const row = normalizeEventAttendee(a)
+    if (!row) continue
+    if (seenIds.has(row.id)) continue
+    seenIds.add(row.id)
+    attendees.push(row)
+  }
+  return {
+    id: String(raw.id || '').trim() || makeEventRosterId(),
+    name,
+    eventDate,
+    productName: String(raw.productName || raw.courseName || name).trim(),
+    status: raw.status === 'archived' ? 'archived' : 'active',
+    createdAt: String(raw.createdAt || '').trim() || new Date().toISOString(),
+    archivedAt: raw.archivedAt ? String(raw.archivedAt) : null,
+    attendees
+  }
+}
+
+export function normalizeEventRosters(raw) {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set()
+  const out = []
+  for (const item of raw) {
+    const r = normalizeEventRoster(item)
+    if (!r) continue
+    if (seen.has(r.id)) continue
+    seen.add(r.id)
+    out.push(r)
+  }
+  return out
+}
+
+export function getEventRosters() {
+  const list = normalizeEventRosters(data.eventRosters)
+  data.eventRosters = list
+  return list.map(r => ({
+    ...r,
+    attendees: (r.attendees || []).map(a => ({ ...a }))
+  }))
+}
+
+export function getEventRosterById(id) {
+  const key = String(id || '').trim()
+  if (!key) return null
+  return getEventRosters().find(r => r.id === key) || null
+}
+
+export async function saveEventRosters(rosters) {
+  const cleaned = normalizeEventRosters(rosters)
+  data.eventRosters = cleaned
+  await saveSetting('event_rosters', cleaned)
+  return getEventRosters()
+}
+
+export async function upsertEventRoster(input) {
+  const next = normalizeEventRoster({
+    ...input,
+    id: input?.id || makeEventRosterId()
+  })
+  if (!next) throw new Error('نام و تاریخ رویداد الزامی است')
+  const list = getEventRosters()
+  const idx = list.findIndex(r => r.id === next.id)
+  if (idx >= 0) list[idx] = next
+  else list.unshift(next)
+  await saveEventRosters(list)
+  return next
+}
+
+export async function archiveEventRoster(id) {
+  const roster = getEventRosterById(id)
+  if (!roster) throw new Error('رویداد یافت نشد')
+  roster.status = 'archived'
+  roster.archivedAt = new Date().toISOString()
+  return upsertEventRoster(roster)
+}
+
+export async function unarchiveEventRoster(id) {
+  const roster = getEventRosterById(id)
+  if (!roster) throw new Error('رویداد یافت نشد')
+  roster.status = 'active'
+  roster.archivedAt = null
+  return upsertEventRoster(roster)
+}
+
+export async function deleteEventRoster(id) {
+  const key = String(id || '').trim()
+  const list = getEventRosters().filter(r => r.id !== key)
+  await saveEventRosters(list)
+  return list
+}
+
+export async function addAttendeeToEventRoster(rosterId, attendeeInput) {
+  const roster = getEventRosterById(rosterId)
+  if (!roster) throw new Error('رویداد یافت نشد')
+  const row = normalizeEventAttendee({
+    ...attendeeInput,
+    id: attendeeInput?.id || makeEventAttendeeId(),
+    source: attendeeInput?.source || 'manual',
+    addedAt: new Date().toISOString()
+  })
+  if (!row) throw new Error('اطلاعات شرکت‌کننده نامعتبر است')
+  if (!row.phone) throw new Error('شماره تماس الزامی است')
+  const dup = roster.attendees.some(a =>
+    String(a.phone || '').replace(/\D/g, '') === String(row.phone).replace(/\D/g, '')
+  )
+  if (dup) throw new Error('این شماره قبلاً در لیست رویداد هست')
+  roster.attendees.push(row)
+  await upsertEventRoster(roster)
+  return row
+}
+
+export async function removeAttendeeFromEventRoster(rosterId, attendeeId) {
+  const roster = getEventRosterById(rosterId)
+  if (!roster) throw new Error('رویداد یافت نشد')
+  roster.attendees = roster.attendees.filter(a => a.id !== attendeeId)
+  await upsertEventRoster(roster)
+  return roster
+}
+
+/** Distinct event dates (active or all), newest first. */
+export function listEventRosterDates({ includeArchived = true } = {}) {
+  const list = getEventRosters().filter(r => includeArchived || r.status === 'active')
+  const dates = [...new Set(list.map(r => r.eventDate).filter(Boolean))]
+  return dates.sort((a, b) => {
+    const nb = Number(String(b).replace(/\D/g, '')) || 0
+    const na = Number(String(a).replace(/\D/g, '')) || 0
+    return nb - na
+  })
+}
+
+/** Rosters for a given Jalali date. */
+export function listEventRostersForDate(eventDate, { includeArchived = true } = {}) {
+  const date = String(eventDate || '').trim()
+  return getEventRosters()
+    .filter(r => r.eventDate === date && (includeArchived || r.status === 'active'))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'fa'))
 }
 
 /** Remove session assignment from a sale line. */

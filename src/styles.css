@@ -1475,6 +1475,18 @@
 
   .status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
   /* Status badge colors injected dynamically from settings */
+  .event-source-badge {
+    display: inline-block;
+    margin-inline-start: 6px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+    background: #e8eef5;
+    color: #334155;
+    vertical-align: middle;
+  }
+  #sheet-events .status-badge { margin-inline-start: 6px; vertical-align: middle; }
 
   .notes-cell {
     max-width: 180px;

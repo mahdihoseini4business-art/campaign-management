@@ -14,7 +14,7 @@ import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
 import { getFollowupsForExport, hasActiveFollowupExportFilter, renderFollowups } from './followups.js'
 import { renderSales, getFilteredSales, getSalesDateFilter, hasActiveSalesProductFilter } from './sales.js'
-import { getFilteredEventRows, renderEvents, applyEventRosterImport } from './events.js'
+import { getFilteredEventRows, renderEvents, importEventRosterFromRows, selectEventRoster } from './events.js'
 import { getProductMatrixExportAoa, hasActiveProductMatrixFilter, renderProductMatrix } from './product-matrix.js'
 import { assertImportExport } from './entitlements.js'
 
@@ -135,9 +135,7 @@ function hasActiveExportScopeFilter(tab) {
   if (tab === 'events') {
     return !!(
       document.getElementById('searchEvents')?.value?.trim()
-      || document.getElementById('filterEventsDateFrom')?.value?.trim()
-      || document.getElementById('filterEventsDateTo')?.value?.trim()
-      || document.getElementById('eventsProductFilterCount')?.textContent?.trim()
+      || document.getElementById('eventsRosterSelect')?.value
     )
   }
   return false
@@ -3169,6 +3167,10 @@ export function openEventsImportModal() {
   if (file) file.value = ''
   const preview = document.getElementById('eventsImportPreview')
   if (preview) preview.textContent = ''
+  const nameEl = document.getElementById('eventsImportEventName')
+  const dateEl = document.getElementById('eventsImportEventDate')
+  if (nameEl) nameEl.value = ''
+  if (dateEl) dateEl.value = ''
   document.getElementById('eventsImportModal')?.classList.add('active')
 }
 
@@ -3195,13 +3197,27 @@ export async function dryRunEventsImport() {
   const preview = document.getElementById('eventsImportPreview')
   try {
     eventsImportRows = await readEventsImportFile()
-    const result = await applyEventRosterImport(eventsImportRows, { dryRun: true })
+    const data = getData()
+    let willCreate = 0
+    let willMatch = 0
+    let badPhone = 0
+    for (const r of eventsImportRows) {
+      const phone = normalizePhone(r.phone)
+      if (!phone) { badPhone++; continue }
+      const found = (data.customers || []).some(c => getCustomerPhones(c).some(p => normalizePhone(p) === phone))
+      if (found) willMatch++
+      else willCreate++
+    }
+    const sample = eventsImportRows.slice(0, 5).map(r =>
+      `${r.name || '—'} | ${r.nameEn || '—'} | ${r.phone || '—'}`
+    ).join('\n')
     if (preview) {
       preview.innerHTML = escapeHtml(
-        `${eventsImportRows.length} ردیف · به‌روزرسانی نام: ${result.updated} · تخصیص سانس: ${result.assigned} · ردشده: ${result.skipped}`
-        + (result.errors.slice(0, 8).length
-          ? '\n' + result.errors.slice(0, 8).join('\n')
-          : '')
+        `${eventsImportRows.length} ردیف در اکسل\n`
+        + `مشتری جدید (ثبت خودکار): ${willCreate}\n`
+        + `مشتری موجود: ${willMatch}\n`
+        + `شماره نامعتبر: ${badPhone}\n`
+        + (sample ? `\nنمونه:\n${sample}` : '')
       ).replace(/\n/g, '<br>')
     }
     showToast('پیش‌نمایش آماده است')
@@ -3217,10 +3233,19 @@ export async function doEventsImport() {
     if (!eventsImportRows.length) {
       eventsImportRows = await readEventsImportFile()
     }
-    const result = await applyEventRosterImport(eventsImportRows, { dryRun: false })
-    showToast(`ایمپورت: ${result.updated} به‌روزرسانی، ${result.assigned} تخصیص، ${result.skipped} ردشده`)
+    const eventName = document.getElementById('eventsImportEventName')?.value?.trim() || ''
+    const eventDate = toEnDigits(document.getElementById('eventsImportEventDate')?.value || '').trim()
+    const result = await importEventRosterFromRows(eventsImportRows, { eventName, eventDate })
+    if (result.roster?.id) selectEventRoster(result.roster.id)
+    const parts = [
+      `${result.roster?.attendees?.length || 0} نفر در جدول`,
+      result.createdCustomers ? `${result.createdCustomers} مشتری جدید` : '',
+      result.updatedCustomers ? `${result.updatedCustomers} به‌روزرسانی` : '',
+      result.skipped ? `${result.skipped} ردشده` : ''
+    ].filter(Boolean)
+    showToast(parts.join(' — '))
     closeEventsImportModal()
-    try { await renderEvents() } catch (_) {}
+    try { renderEvents() } catch (_) {}
   } catch (e) {
     showToast(e.message || 'خطا در ایمپورت')
   }

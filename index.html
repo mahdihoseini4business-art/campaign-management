@@ -1510,30 +1510,33 @@
 
   <!-- شیت رویدادها -->
   <div class="sheet" id="sheet-events" role="tabpanel" aria-labelledby="tab-events" hidden>
-    <div class="toolbar" style="gap:10px;flex-wrap:wrap;">
-      <input type="text" class="search-box" placeholder="جستجو (نام، نام انگلیسی، شماره)..." id="searchEvents" oninput="app.onEventsSearchInput()">
-      <div class="toolbar-filter-grid">
-        <input type="text" class="form-input" id="filterEventsDateFrom" placeholder="از تاریخ رویداد" data-jdp style="width:140px;" onchange="app.renderEvents()">
-        <input type="text" class="form-input" id="filterEventsDateTo" placeholder="تا تاریخ رویداد" data-jdp style="width:140px;" onchange="app.renderEvents()">
-        <div class="sales-product-filter product-matrix-advisor-filter" id="eventsProductFilter">
-          <button type="button" class="btn product-matrix-advisor-btn" id="eventsProductFilterBtn" onclick="app.toggleEventsProductDropdown(event)" aria-label="فیلتر محصول" title="فیلتر محصول رویداد">
-            محصول <span class="product-matrix-advisor-count" id="eventsProductFilterCount"></span>
-          </button>
-          <div class="product-matrix-advisor-dropdown" id="eventsProductFilterDropdown" hidden onclick="event.stopPropagation()"></div>
+    <div class="toolbar" style="gap:10px;flex-wrap:wrap;align-items:center;">
+      <select class="form-select" id="eventsArchiveFilter" style="width:130px;" onchange="app.onEventsArchiveFilterChange()" aria-label="وضعیت بایگانی">
+        <option value="active">فعال</option>
+        <option value="archived">بایگانی</option>
+        <option value="all">همه</option>
+      </select>
+      <select class="form-select" id="eventsDateSelect" style="width:150px;" onchange="app.onEventsDateSelectChange()" aria-label="تاریخ رویداد"></select>
+      <select class="form-select" id="eventsRosterSelect" style="min-width:180px;max-width:280px;" onchange="app.onEventsRosterSelectChange()" aria-label="انتخاب رویداد"></select>
+      <input type="text" class="search-box" placeholder="جستجو در لیست رویداد..." id="searchEvents" oninput="app.onEventsSearchInput()">
+      <button type="button" class="btn" id="clearEventsFiltersBtn" hidden onclick="app.clearEventsFilters()">پاک کردن جستجو</button>
+      <div class="toolbar-actions" id="eventsActionsMenu">
+        <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
+        <div class="toolbar-actions-dropdown" hidden>
+          <button type="button" class="toolbar-actions-item" data-perm="events_export" onclick="app.exportTabCSV('events');app.closeAllToolbarActions()">خروجی CSV</button>
+          <button type="button" class="toolbar-actions-item" data-perm="events_export" onclick="app.exportTabXLSX('events');app.closeAllToolbarActions()">خروجی Excel</button>
+          <button type="button" class="toolbar-actions-item" data-perm="events_import" onclick="app.openEventsImportModal();app.closeAllToolbarActions()">ایمپورت اکسل رویداد</button>
         </div>
-        <button type="button" class="btn" id="clearEventsFiltersBtn" hidden onclick="app.clearEventsFilters()">پاک کردن فیلترها</button>
-        <div class="toolbar-actions" id="eventsActionsMenu">
-          <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
-          <div class="toolbar-actions-dropdown" hidden>
-            <button type="button" class="toolbar-actions-item" data-perm="events_export" onclick="app.exportTabCSV('events');app.closeAllToolbarActions()">خروجی CSV</button>
-            <button type="button" class="toolbar-actions-item" data-perm="events_export" onclick="app.exportTabXLSX('events');app.closeAllToolbarActions()">خروجی Excel</button>
-            <button type="button" class="toolbar-actions-item" data-perm="events_import" onclick="app.openEventsImportModal();app.closeAllToolbarActions()">ایمپورت از اکسل</button>
-          </div>
-        </div>
-        <button type="button" class="btn" data-perm="sms_events" onclick="app.openEventsBulkSendMessage()" title="ارسال پیام به لیست فیلترشده">پیام گروهی</button>
       </div>
+      <button type="button" class="btn btn-primary" data-perm="events_import" onclick="app.openEventsImportModal()">ایمپورت اکسل</button>
+      <button type="button" class="btn" onclick="app.openNewEventRosterModal()">+ رویداد جدید</button>
+      <button type="button" class="btn" onclick="app.openAddEventAttendeeModal()">+ افزودن نفر</button>
+      <button type="button" class="btn" data-perm="sms_events" onclick="app.openEventsBulkSendMessage()" title="ارسال به همه ردیف‌های لیست">پیام همگانی</button>
+      <button type="button" class="btn" id="eventsArchiveBtn" hidden onclick="app.archiveSelectedEventRoster()">بایگانی</button>
+      <button type="button" class="btn" id="eventsUnarchiveBtn" hidden onclick="app.unarchiveSelectedEventRoster()">خروج از بایگانی</button>
       <span class="ips-count" id="eventsResultCount" style="margin-inline-start:auto;"></span>
     </div>
+    <p class="settings-pane-desc" id="eventsRosterMeta" style="margin:4px 0 10px;"></p>
 
     <div class="list-search-host" id="eventsSearchHost">
       <div class="table-wrapper">
@@ -1543,9 +1546,9 @@
               <th class="sort-th" data-sort-field="name" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortEventsHeader('name')">نام</button></th>
               <th class="sort-th" data-sort-field="nameEn" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortEventsHeader('nameEn')">نام انگلیسی</button></th>
               <th class="sort-th" data-sort-field="phone" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortEventsHeader('phone')">شماره تماس</button></th>
-              <th class="sort-th" data-sort-field="courseName" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortEventsHeader('courseName')">محصول / دوره</button></th>
-              <th class="sort-th" data-sort-field="sessionDate" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortEventsHeader('sessionDate')">تاریخ رویداد</button></th>
-              <th style="width:120px;">پیام</th>
+              <th>رویداد</th>
+              <th>تاریخ</th>
+              <th style="width:130px;">پیام</th>
             </tr>
           </thead>
           <tbody id="eventsBody"></tbody>
@@ -2107,21 +2110,85 @@
 <div class="modal-overlay" id="eventsImportModal">
   <div class="modal" style="max-width:560px;">
     <div class="modal-header">
-      <h2>ایمپورت رویدادها از اکسل</h2>
+      <h2>ایمپورت اکسل رویداد</h2>
       <button class="modal-close" onclick="app.closeEventsImportModal()">&times;</button>
     </div>
     <div class="modal-body">
-      <p class="settings-pane-desc">ستون‌های پیشنهادی: نام، نام انگلیسی، شماره، نام دوره، تاریخ برگزاری. مشتریان با شماره تطبیق داده می‌شوند؛ نام انگلیسی به‌روز می‌شود و در صورت وجود سانس، فروش رویداد تخصیص می‌یابد.</p>
+      <p class="settings-pane-desc">کل ردیف‌های اکسل به‌صورت جدول رویداد نمایش داده می‌شوند. مشتریان جدید خودکار در CRM ثبت می‌شوند (وضعیت نارنجی «جدید از رویداد»).</p>
+      <div class="form-row" style="flex-wrap:wrap;gap:12px;">
+        <div class="form-group" style="flex:1;min-width:160px;">
+          <label for="eventsImportEventName">نام رویداد</label>
+          <input type="text" class="form-input" id="eventsImportEventName" placeholder="مثلاً حضوری چینی — اگر خالی باشد از ستون دوره">
+        </div>
+        <div class="form-group" style="width:160px;">
+          <label for="eventsImportEventDate">تاریخ رویداد</label>
+          <input type="text" class="form-input" id="eventsImportEventDate" placeholder="1405/01/15" data-jdp>
+        </div>
+      </div>
       <div class="form-group">
         <label for="eventsImportFile">فایل Excel</label>
         <input type="file" id="eventsImportFile" accept=".xlsx,.xls,.csv" class="form-input">
       </div>
+      <p class="settings-pane-desc">ستون‌های پیشنهادی: نام، نام انگلیسی، شماره، نام دوره، تاریخ برگزاری</p>
       <div id="eventsImportPreview" class="settings-pane-desc" style="max-height:160px;overflow:auto;"></div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="app.closeEventsImportModal()">انصراف</button>
       <button class="btn" onclick="app.dryRunEventsImport()">پیش‌نمایش</button>
-      <button class="btn btn-primary" onclick="app.doEventsImport()">ایمپورت</button>
+      <button class="btn btn-primary" onclick="app.doEventsImport()">ایمپورت و نمایش جدول</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال افزودن نفر به رویداد -->
+<div class="modal-overlay" id="addEventAttendeeModal">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-header">
+      <h2>افزودن نفر به رویداد</h2>
+      <button class="modal-close" onclick="app.closeAddEventAttendeeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="settings-pane-desc">برای کسی که در لیست نبود ولی در رویداد حاضر شد.</p>
+      <div class="form-group">
+        <label for="addEventAttendeeName">نام</label>
+        <input type="text" class="form-input" id="addEventAttendeeName">
+      </div>
+      <div class="form-group">
+        <label for="addEventAttendeeNameEn">نام انگلیسی</label>
+        <input type="text" class="form-input" id="addEventAttendeeNameEn" dir="ltr">
+      </div>
+      <div class="form-group">
+        <label for="addEventAttendeePhone">شماره تماس</label>
+        <input type="tel" class="form-input" id="addEventAttendeePhone" dir="ltr" placeholder="09xxxxxxxxx" inputmode="numeric">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeAddEventAttendeeModal()">انصراف</button>
+      <button class="btn btn-primary" onclick="app.submitAddEventAttendee()">افزودن</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال رویداد جدید -->
+<div class="modal-overlay" id="newEventRosterModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header">
+      <h2>رویداد جدید</h2>
+      <button class="modal-close" onclick="app.closeNewEventRosterModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="newEventRosterName">نام رویداد</label>
+        <input type="text" class="form-input" id="newEventRosterName" placeholder="مثلاً حضوری فرمان">
+      </div>
+      <div class="form-group">
+        <label for="newEventRosterDate">تاریخ</label>
+        <input type="text" class="form-input" id="newEventRosterDate" placeholder="1405/01/15" data-jdp>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeNewEventRosterModal()">انصراف</button>
+      <button class="btn btn-primary" onclick="app.submitNewEventRoster()">ایجاد</button>
     </div>
   </div>
 </div>
