@@ -466,7 +466,7 @@ const SETTINGS_SECTIONS = [
   { id: 'shipping-sender', label: 'فرستنده پستی', group: 'سیستم', keywords: 'پست لیبل فرستنده آدرس کد پستی لوگو shipping label sender' },
   { id: 'backup', label: 'بکاپ و بازیابی', group: 'سیستم', keywords: 'بکاپ backup restore بازیابی پشتیبان آفلاین carno' },
   { id: 'notif-compose', label: 'ارسال اعلان', group: 'اعلان‌ها', keywords: 'اعلان notification ارسال' },
-  { id: 'notif-prefs', label: 'ترجیحات اعلان', group: 'اعلان‌ها', keywords: 'toast فروش زنده ترجیح نوتیفیکیشن مرورگر browser notification' },
+  { id: 'notif-prefs', label: 'ترجیحات اعلان', group: 'اعلان‌ها', keywords: 'toast فروش زنده ترجیح نوتیفیکیشن مرورگر browser notification گزارش روزانه خلاصه صبح عصر مدیر مشاور digest' },
   { id: 'notif-history', label: 'تاریخچه اعلان‌ها', group: 'اعلان‌ها', keywords: 'تاریخچه ارسال‌شده' },
   { id: 'chat-prefs', label: 'ترجیحات چت', group: 'چت', keywords: 'چت chat فعال غیرفعال dm پیام' },
   { id: 'chat-oversight', label: 'نظارت چت', group: 'چت', keywords: 'چت chat dm گروه پین آمار آرشیو نظارت' }

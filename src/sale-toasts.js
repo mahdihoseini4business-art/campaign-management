@@ -6,7 +6,7 @@
 import { supabase } from './supabase.js'
 import {
   getSaleToastEnabled, setSaleToastEnabledLocal, saveSaleToastEnabled, coerceProductName,
-  setRequireFollowupOnCreateLocal, setDmChatEnabledLocal
+  setRequireFollowupOnCreateLocal, setDmChatEnabledLocal, setOpsDigestEnabledLocal
 } from './data.js'
 import { escapeHtml, formatNumber, requireSettingsSection, userDisplayName, getCurrentUser, normalizePhone } from './utils.js'
 import { showBrowserNotificationFromHtml } from './browser-notifications.js'
@@ -246,6 +246,11 @@ async function ensureChannel() {
           m.syncDmChatToggleUi()
           m.applyDmChatEnabledState().catch(e => console.error('dm chat apply setting:', e))
         }).catch(() => {})
+        return
+      }
+      if (payload.key === 'ops_digest_enabled') {
+        setOpsDigestEnabledLocal(payload.enabled)
+        import('./ops-digest.js').then(m => m.syncOpsDigestToggleUi()).catch(() => {})
         return
       }
       // sale_toast_enabled (legacy payloads without key still apply here)

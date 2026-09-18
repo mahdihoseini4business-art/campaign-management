@@ -3,9 +3,10 @@
  * notifications inbox even when the external ops-digest-cron has not run.
  */
 import { supabase } from './supabase.js'
-import { getData, getSalesTargets } from './data.js'
-import { getCurrentUser, normalizePhone, normalizeViewUserPhones, userDisplayName } from './utils.js'
+import { getData, getSalesTargets, getOpsDigestEnabled, saveOpsDigestEnabled, setOpsDigestEnabledLocal } from './data.js'
+import { getCurrentUser, normalizePhone, normalizeViewUserPhones, userDisplayName, requireSettingsSection, showToast } from './utils.js'
 import { getMembersCache } from './groups.js'
+import { broadcastAppSetting } from './sale-toasts.js'
 import {
   DIGEST_KIND_EVENING,
   DIGEST_KIND_MORNING,
@@ -169,6 +170,29 @@ async function insertDigestRow(row) {
   if (error) throw error
 }
 
+export function syncOpsDigestToggleUi() {
+  const el = document.getElementById('opsDigestEnabled')
+  if (el) el.checked = getOpsDigestEnabled()
+}
+
+export async function toggleOpsDigestSetting(enabled) {
+  if (!requireSettingsSection('notif-prefs')) {
+    syncOpsDigestToggleUi()
+    return
+  }
+  const next = !!enabled
+  try {
+    await saveOpsDigestEnabled(next)
+    syncOpsDigestToggleUi()
+    await broadcastAppSetting('ops_digest_enabled', next)
+    showToast(next ? 'گزارش روزانه فعال شد' : 'گزارش روزانه غیرفعال شد')
+  } catch (e) {
+    console.error('toggleOpsDigestSetting error:', e)
+    syncOpsDigestToggleUi()
+    showToast('خطا در ذخیره تنظیم گزارش روزانه')
+  }
+}
+
 /**
  * Ensure today's digests exist for the signed-in user.
  * Morning: first open of the day when advisor has actionable metrics.
@@ -176,6 +200,8 @@ async function insertDigestRow(row) {
  * @param {{ force?: boolean }} [opts]
  */
 export async function ensureOpsDigestsForCurrentUser(opts = {}) {
+  if (!getOpsDigestEnabled()) return { skipped: true, reason: 'disabled' }
+
   const user = getCurrentUser()
   const phone = normalizePhone(user?.phone)
   if (!phone) return { skipped: true, reason: 'no_phone' }

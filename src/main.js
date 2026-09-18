@@ -242,6 +242,7 @@ async function openSettingsModal(sectionId) {
   syncDmChatToggleUi()
   syncRequireFollowupOnCreateUi()
   syncBrowserNotifUi()
+  import('./ops-digest.js').then(m => m.syncOpsDigestToggleUi()).catch(() => {})
 }
 
 function switchSettingsSection(sectionId) {
@@ -744,6 +745,9 @@ const app = {
   setNotifMessageMode,
   updateNotifMessagePreview,
   toggleSaleToastSetting,
+  toggleOpsDigestSetting: (...args) => import('./ops-digest.js').then(m => m.toggleOpsDigestSetting(...args)),
+  syncOpsDigestToggleUi: () => import('./ops-digest.js').then(m => m.syncOpsDigestToggleUi()),
+  syncSaleToastToggleUi,
   toggleRequireFollowupOnCreate,
   enableBrowserNotifications,
   dismissBrowserNotifBanner,

@@ -199,6 +199,27 @@ serve(async (req) => {
         continue
       }
 
+      // Org setting: ops_digest_enabled (default ON when key missing)
+      {
+        const { data: digestSetting, error: digestSetErr } = await admin
+          .from('app_settings')
+          .select('value')
+          .eq('tenant_id', tenantId)
+          .eq('key', 'ops_digest_enabled')
+          .maybeSingle()
+        if (digestSetErr) {
+          console.error('ops-digest-cron digest setting', tenantId, digestSetErr)
+        } else if (digestSetting != null) {
+          const raw = digestSetting.value
+          const disabled = raw === false || raw === 0 || raw === '0' ||
+            (typeof raw === 'string' && ['false', 'no', 'off'].includes(String(raw).trim().toLowerCase()))
+          if (disabled) {
+            tenantsSkipped++
+            continue
+          }
+        }
+      }
+
       tenantsProcessed++
 
       const { data: members, error: memErr } = await admin

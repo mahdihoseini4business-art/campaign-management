@@ -785,6 +785,13 @@
               <span class="settings-pane-desc">نمایش toast فروش در پایین سمت راست صفحه برای همه کاربران (همراه صدا)، هر بار که کارشناس یک واریز را کامل ثبت کند.</span>
             </span>
           </label>
+          <label class="settings-pref-row">
+            <input type="checkbox" id="opsDigestEnabled" onchange="app.toggleOpsDigestSetting(this.checked)">
+            <span>
+              <strong>گزارش روزانه صبح مشاور / عصر مدیر</strong>
+              <span class="settings-pane-desc">ارسال خلاصه کارهای باز به زنگوله: صبح برای مشاوران و عصر برای مدیران گروه. با خاموش کردن، نه از طریق اپ و نه از طریق cron اعلان ساخته نمی‌شود.</span>
+            </span>
+          </label>
           <div class="settings-pref-row settings-pref-row-static">
             <span>
               <strong>اعلان مرورگر</strong>

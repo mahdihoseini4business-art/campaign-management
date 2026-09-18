@@ -126,6 +126,7 @@ function emptyCoreData() {
     saleToastEnabled: false,
     dmChatEnabled: false,
     requireFollowupOnCreate: false,
+    opsDigestEnabled: true,
     smsPanel: null,
     smsFeatures: null,
     smsFollowupDefaultHour: '10:00',
@@ -789,6 +790,7 @@ function applySettingsRows(rows) {
   data.saleToastEnabled = coerceAppSettingBool(settings.sale_toast_enabled, false)
   data.dmChatEnabled = coerceAppSettingBool(settings.dm_chat_enabled, false)
   data.requireFollowupOnCreate = coerceAppSettingBool(settings.require_followup_on_create, false)
+  data.opsDigestEnabled = coerceAppSettingBool(settings.ops_digest_enabled, true)
   try {
     data.smsPanel = normalizeSmsPanel(settings.sms_panel)
   } catch (e) {
@@ -4093,6 +4095,20 @@ export function setRequireFollowupOnCreateLocal(enabled) {
 export async function saveRequireFollowupOnCreate(enabled) {
   data.requireFollowupOnCreate = !!enabled
   await saveSetting('require_followup_on_create', !!enabled)
+}
+
+/** Daily morning/evening digests — default ON when unset. */
+export function getOpsDigestEnabled() {
+  return data.opsDigestEnabled !== false
+}
+
+export function setOpsDigestEnabledLocal(enabled) {
+  data.opsDigestEnabled = !!enabled
+}
+
+export async function saveOpsDigestEnabled(enabled) {
+  data.opsDigestEnabled = !!enabled
+  await saveSetting('ops_digest_enabled', !!enabled)
 }
 
 export function getSmsPanel() {
