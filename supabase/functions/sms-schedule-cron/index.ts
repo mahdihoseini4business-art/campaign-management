@@ -252,6 +252,7 @@ serve(async (req) => {
             ...((meta.vars && typeof meta.vars === 'object') ? meta.vars as Record<string, string> : {}),
             ...settlementVars,
             customer_name: customerName || String((meta.vars as Record<string, string> | undefined)?.customer_name || ''),
+            customer_code: sch.customer_id ? String(sch.customer_id) : '',
             advisor,
             advisor_phone: advisorPhone,
           },

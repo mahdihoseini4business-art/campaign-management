@@ -112,6 +112,7 @@ export function buildRecipientFromCustomer(customer, vars = {}, meta = {}) {
     customer_id: customer?.id,
     vars: {
       customer_name: customer?.name || '',
+      customer_code: customer?.id || '',
       phone: phone || '',
       advisor: customer?.advisor || '',
       advisor_phone: customer?.advisorPhone || '',

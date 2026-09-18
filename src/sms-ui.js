@@ -39,6 +39,7 @@ function buildTestRecipient(phone, sample) {
     customer_id: sample?.customer_id || null,
     vars: {
       customer_name: 'تست',
+      customer_code: String(sample?.vars?.customer_code || sample?.customer_id || ''),
       advisor: '',
       advisor_phone: '',
       followup_date: '',
@@ -510,6 +511,7 @@ export async function scheduleFollowupSms(customer, followupDate, { bodyOverride
       followup_date: followupDate,
       vars: {
         customer_name: customer.name || '',
+        customer_code: customer.id || '',
         advisor: customer.advisor || '',
         advisor_phone: customer.advisorPhone || '',
         followup_date: followupDate,
@@ -570,6 +572,7 @@ export async function syncSettlementDueSmsForCustomer(customer, opts = {}) {
           product_name: product.name || '',
           vars: {
             customer_name: customer.name || '',
+            customer_code: customer.id || '',
             advisor: customer.advisor || '',
             advisor_phone: customer.advisorPhone || '',
             product_name: product.name || '',
@@ -643,6 +646,7 @@ export async function rebuildAllAutoSmsSchedules() {
               followup_date: followupDate,
               vars: {
                 customer_name: customer.name || '',
+                customer_code: customer.id || '',
                 advisor: customer.advisor || '',
                 advisor_phone: customer.advisorPhone || '',
                 followup_date: followupDate,
@@ -965,6 +969,7 @@ export async function processDueSmsSchedulesManually() {
           ...((meta.vars && typeof meta.vars === 'object') ? meta.vars : {}),
           ...settlementVars,
           customer_name: customer?.name || '',
+          customer_code: customer?.id || sch.customer_id || '',
           advisor: customer?.advisor || '',
           advisor_phone: customer?.advisorPhone || '',
         },

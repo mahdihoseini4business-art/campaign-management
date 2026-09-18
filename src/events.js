@@ -630,6 +630,7 @@ export function closeEventMessageTypeModal() {
 function renderEventTemplatePreview(body, row) {
   const vars = {
     customer_name: row?.name || '',
+    customer_code: row?.customerId || row?.customer_id || '',
     name_en: row?.nameEn || '',
     phone: row?.phone || '',
     product_name: row?.productName || '',
