@@ -10,6 +10,7 @@ import { renderSales, sortSales, onSalesSearchInput, toggleSalesProductDropdown,
 import {
   renderEvents, onEventsSearchInput, onEventsDateFilterChange, sortEventsHeader, clearEventsFilters,
   toggleEventsProductDropdown, toggleEventsProductFilter, clearEventsProductFilter, onEventsProductFilterSearch,
+  toggleEventsSmsTypeDropdown, toggleEventsSmsTypeFilter, clearEventsSmsTypeFilter,
   openEventSendMessage, closeEventMessageTypeModal, updateEventMessageTypePreview,
   confirmEventMessageTypeAndCompose, openEventsBulkSendMessage,
   openEventsWalkInModal, closeEventsWalkInModal, submitEventsWalkIn, updateEventsWalkInMessagePreview
@@ -637,6 +638,9 @@ const app = {
   toggleEventsProductFilter,
   clearEventsProductFilter,
   onEventsProductFilterSearch,
+  toggleEventsSmsTypeDropdown,
+  toggleEventsSmsTypeFilter,
+  clearEventsSmsTypeFilter,
   openEventSendMessage,
   closeEventMessageTypeModal,
   updateEventMessageTypePreview,
