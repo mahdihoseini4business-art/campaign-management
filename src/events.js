@@ -161,15 +161,12 @@ export function renderEvents() {
   if (!body) return
 
   const filterSig = eventsFilterSig()
-  const pageKey = tabPageKey('events')
-  const page = getPage(pageKey)
-
-  if (shouldSkipTabRender('events', { filterSig, page })) return
+  const cacheKey = `${filterSig}|${tabPageKey('events', getPage('events'))}`
+  if (shouldSkipTabRender('events', cacheKey)) return
 
   runWithSearchOverlay(SEARCH_HOST.events, () => {
     const all = getFilteredEventRows()
-    const { items, totalPages, page: safePage } = paginateList(all, pageKey)
-    if (safePage !== page) setPage(pageKey, safePage)
+    const page = paginateList('events', all, filterSig)
 
     syncSortHeaders('#sheet-events', eventsSortState)
 
@@ -182,9 +179,10 @@ export function renderEvents() {
 
     if (!all.length) {
       body.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">شرکت‌کننده‌ای برای رویدادهای تعریف‌شده یافت نشد. سانس حضوری را در تنظیمات تعریف و به فروش‌ها تخصیص دهید.</td></tr>`
+      renderPaginationBar('eventsPagination', 'events', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
     } else {
       const canSms = canUseSmsKind('event_single')
-      body.innerHTML = items.map(r => {
+      body.innerHTML = page.items.map(r => {
         const smsBtn = canSms
           ? `<button type="button" class="btn btn-sm btn-primary" data-perm="sms_events" onclick="event.stopPropagation();app.openEventSendMessage('${escapeAttr(r.rowKey)}')">ارسال پیام</button>`
           : `<button type="button" class="btn btn-sm" disabled title="دسترسی پیامک رویداد فعال نیست">ارسال پیام</button>`
@@ -197,23 +195,23 @@ export function renderEvents() {
           <td onclick="event.stopPropagation()">${smsBtn}</td>
         </tr>`
       }).join('')
+      renderPaginationBar('eventsPagination', 'events', page)
     }
 
-    renderPaginationBar('eventsPagination', pageKey, all.length, () => renderEvents())
-    markTabRendered('events', { filterSig, page: safePage })
+    markTabRendered('events', `${filterSig}|${tabPageKey('events', page.page)}`)
   })
 }
 
 export function onEventsSearchInput() {
   debouncedSearchInput('events', () => {
-    setPage(tabPageKey('events'), 1)
+    setPage('events', 1)
     renderEvents()
   }, SEARCH_HOST.events)
 }
 
 export function sortEventsHeader(field) {
   toggleSortField(eventsSortState, field)
-  setPage(tabPageKey('events'), 1)
+  setPage('events', 1)
   renderEvents()
 }
 
@@ -226,7 +224,7 @@ export function clearEventsFilters() {
   if (to) to.value = ''
   selectedEventProductNames = new Set()
   syncEventProductFilterUi()
-  setPage(tabPageKey('events'), 1)
+  setPage('events', 1)
   renderEvents()
 }
 
@@ -309,14 +307,14 @@ export function toggleEventsProductFilter(name) {
   if (selectedEventProductNames.has(key)) selectedEventProductNames.delete(key)
   else selectedEventProductNames.add(key)
   syncEventProductFilterUi()
-  setPage(tabPageKey('events'), 1)
+  setPage('events', 1)
   renderEvents()
 }
 
 export function clearEventsProductFilter() {
   selectedEventProductNames = new Set()
   syncEventProductFilterUi()
-  setPage(tabPageKey('events'), 1)
+  setPage('events', 1)
   renderEvents()
 }
 
