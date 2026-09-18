@@ -3200,7 +3200,7 @@ function readEventsImportSalePrice() {
 }
 
 function formatEventsImportResult(rowsLen, result) {
-  return `${rowsLen} ردیف · به‌روزرسانی نام: ${result.updated} · فروش جدید: ${result.created || 0} · تخصیص سانس: ${result.assigned} · ردشده: ${result.skipped}`
+  return `${rowsLen} ردیف · مشتری جدید: ${result.customersCreated || 0} · به‌روزرسانی نام: ${result.updated} · فروش جدید: ${result.created || 0} · تخصیص سانس: ${result.assigned} · ردشده: ${result.skipped}`
     + (result.errors.slice(0, 8).length
       ? '\n' + result.errors.slice(0, 8).join('\n')
       : '')
@@ -3237,7 +3237,7 @@ export async function doEventsImport() {
       eventsImportRows = await readEventsImportFile()
     }
     const result = await applyEventRosterImport(eventsImportRows, { dryRun: false, salePrice })
-    showToast(`ایمپورت: ${result.updated} نام، ${result.created || 0} فروش جدید، ${result.assigned} تخصیص، ${result.skipped} ردشده`)
+    showToast(`ایمپورت: ${result.customersCreated || 0} مشتری جدید، ${result.updated} نام، ${result.created || 0} فروش جدید، ${result.assigned} تخصیص، ${result.skipped} ردشده`)
     closeEventsImportModal()
     try { await renderEvents() } catch (_) {}
   } catch (e) {

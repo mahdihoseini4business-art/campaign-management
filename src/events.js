@@ -569,7 +569,7 @@ function eventDatesEqual(a, b) {
  * - no matching sale → create sale at salePrice (0 = auto-approved gift; >0 = pending payment)
  * @param {object[]} rows
  * @param {{ dryRun?: boolean, salePrice?: number|null }} [opts]
- * @returns {{ updated: number, assigned: number, created: number, skipped: number, errors: string[] }}
+ * @returns {{ updated: number, assigned: number, created: number, customersCreated: number, skipped: number, errors: string[] }}
  */
 export async function applyEventRosterImport(rows, { dryRun = false, salePrice = null } = {}) {
   const {
@@ -596,6 +596,7 @@ export async function applyEventRosterImport(rows, { dryRun = false, salePrice =
   let updated = 0
   let assigned = 0
   let created = 0
+  let customersCreated = 0
   let skipped = 0
   const errors = []
 
@@ -608,22 +609,77 @@ export async function applyEventRosterImport(rows, { dryRun = false, salePrice =
       errors.push(`ردیف ${rowNum}: شماره نامعتبر`)
       continue
     }
-    const customer = byPhone.get(phone)
+
+    let customer = byPhone.get(phone)
+    let isNewCustomer = false
+    const rowName = String(r.name || '').trim()
+    const rowNameEn = String(r.nameEn || '').trim()
+
     if (!customer) {
-      skipped++
-      errors.push(`ردیف ${rowNum}: مشتری با شماره ${phone} یافت نشد`)
-      continue
+      if (!hasPermission('customers_add')) {
+        skipped++
+        errors.push(`ردیف ${rowNum}: مشتری با شماره ${phone} یافت نشد و دسترسی افزودن مشتری ندارید`)
+        continue
+      }
+      const phones = normalizeCustomerPhones([phone])
+      const advisor = userDisplayName(user).trim() || ''
+      const advisorPhone = normalizePhone(user?.phone || '')
+      if (dryRun) {
+        customer = {
+          id: `__dry_${phone}`,
+          platformId: '',
+          platform: 'instagram',
+          name: rowName || phone,
+          nameEn: rowNameEn,
+          phone: phones[0] || phone,
+          phones,
+          status: 'purchased',
+          notes: 'ایجاد شده از ایمپورت رویدادها',
+          advisor,
+          advisorPhone,
+          nextFollowupDate: '',
+          products: [],
+          createdAt: new Date().toISOString(),
+          customerLevel: '',
+          customerLevelLocked: false
+        }
+      } else {
+        const id = await generateId('CS')
+        customer = {
+          id,
+          platformId: '',
+          platform: 'instagram',
+          name: rowName || phone,
+          nameEn: rowNameEn,
+          phone: phones[0] || phone,
+          phones,
+          status: 'purchased',
+          notes: 'ایجاد شده از ایمپورت رویدادها',
+          advisor,
+          advisorPhone,
+          nextFollowupDate: '',
+          products: [],
+          createdAt: new Date().toISOString(),
+          customerLevel: '',
+          customerLevelLocked: false
+        }
+        putCustomerInCache(customer)
+      }
+      byPhone.set(phone, customer)
+      isNewCustomer = true
+      customersCreated++
     }
-    let dirty = false
-    const name = String(r.name || '').trim()
-    const nameEn = String(r.nameEn || '').trim()
-    if (name && name !== customer.name) {
-      customer.name = name
-      dirty = true
-    }
-    if (nameEn && nameEn !== (customer.nameEn || '')) {
-      customer.nameEn = nameEn
-      dirty = true
+
+    let dirty = isNewCustomer
+    if (!isNewCustomer) {
+      if (rowName && rowName !== customer.name) {
+        customer.name = rowName
+        dirty = true
+      }
+      if (rowNameEn && rowNameEn !== (customer.nameEn || '')) {
+        customer.nameEn = rowNameEn
+        dirty = true
+      }
     }
 
     const course = String(r.courseName || '').trim()
@@ -707,7 +763,7 @@ export async function applyEventRosterImport(rows, { dryRun = false, salePrice =
     }
 
     if (dirty) {
-      updated++
+      if (!isNewCustomer) updated++
       if (!dryRun) {
         try {
           await saveCustomerToDB(customer)
@@ -720,7 +776,7 @@ export async function applyEventRosterImport(rows, { dryRun = false, salePrice =
     }
   }
 
-  return { updated, assigned, created, skipped, errors }
+  return { updated, assigned, created, customersCreated, skipped, errors }
 }
 
 /** Build event sale for import: price 0 → auto-approved gift; else pending payment for accounting. */
