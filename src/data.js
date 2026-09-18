@@ -1614,15 +1614,15 @@ function saleIsOnInPersonSession(customerId, productIndex, sessionId) {
   return saleHasInPersonSessionId(product, sessionId)
 }
 
-/** Seats left; null = unlimited. */
-export function getInPersonSessionRemaining(sessionOrId, { ignoreSale } = {}) {
+/** Seats left; null = unlimited. Pass occupancyMap to avoid rescanning customers. */
+export function getInPersonSessionRemaining(sessionOrId, { ignoreSale, occupancyMap } = {}) {
   const session = typeof sessionOrId === 'object' && sessionOrId
     ? sessionOrId
     : getInPersonSessionById(sessionOrId)
   if (!session) return 0
   const cap = getInPersonSessionCapacity(session)
   if (cap == null) return null
-  let used = countSalesLinkedToInPersonSession(session.id)
+  let used = countSalesLinkedToInPersonSession(session.id, occupancyMap)
   if (ignoreSale && saleIsOnInPersonSession(ignoreSale.customerId, ignoreSale.productIndex, session.id)) {
     used = Math.max(0, used - 1)
   }
@@ -1636,27 +1636,28 @@ export function isInPersonSessionFull(sessionOrId, opts = {}) {
 }
 
 /** Label for selects: base + (ظرفیت باقیمانده N) | (ظرفیت تکمیل). */
-export function formatInPersonSessionOptionLabel(session) {
+export function formatInPersonSessionOptionLabel(session, occupancyMap) {
   const base = formatInPersonSessionLabel(session)
   const cap = getInPersonSessionCapacity(session)
   if (cap == null) return base
-  const remaining = getInPersonSessionRemaining(session)
+  const remaining = getInPersonSessionRemaining(session, { occupancyMap })
   if (remaining != null && remaining <= 0) return `${base} (ظرفیت تکمیل)`
   return `${base} (ظرفیت باقیمانده ${remaining})`
 }
 
 /**
  * Options for session <select>. Full sessions are disabled unless currently selected.
+ * @param {Map<string, number>|Record<string, number>} [occupancyMap] precomputed seat usage
  * @returns {Array<{id:string,label:string,selected:boolean,disabled:boolean}>}
  */
-export function mapInPersonSessionSelectOptions(sessions, selectedId = '') {
+export function mapInPersonSessionSelectOptions(sessions, selectedId = '', occupancyMap) {
   const selected = String(selectedId || '')
   return (sessions || []).map(s => {
-    const full = isInPersonSessionFull(s)
+    const full = isInPersonSessionFull(s, { occupancyMap })
     const isSelected = s.id === selected
     return {
       id: s.id,
-      label: formatInPersonSessionOptionLabel(s),
+      label: formatInPersonSessionOptionLabel(s, occupancyMap),
       selected: isSelected,
       disabled: full && !isSelected
     }
@@ -1720,10 +1721,14 @@ export function normalizeInPersonSessions(raw) {
   return out
 }
 
-export function getInPersonSessions() {
+function ensureInPersonSessionsNormalized() {
   const list = normalizeInPersonSessions(data.inPersonSessions)
   data.inPersonSessions = list
-  return list.map(s => ({ ...s }))
+  return list
+}
+
+export function getInPersonSessions() {
+  return ensureInPersonSessionsNormalized().map(s => ({ ...s }))
 }
 
 export function getActiveInPersonSessions() {
@@ -1739,7 +1744,8 @@ export function getActiveInPersonSessions() {
 export function getInPersonSessionById(id) {
   const key = String(id || '').trim()
   if (!key) return null
-  return getInPersonSessions().find(s => s.id === key) || null
+  const found = ensureInPersonSessionsNormalized().find(s => s.id === key)
+  return found ? { ...found } : null
 }
 
 /** Catalog product names marked as رویداد (event). */
@@ -1785,10 +1791,72 @@ export async function upsertInPersonSession(input) {
   return next
 }
 
-/** Count sale lines linked to a session id. */
-export function countSalesLinkedToInPersonSession(sessionId) {
+/**
+ * One customer pass → occupancy + unassigned + assigned rows.
+ * Prefer this over calling list/count helpers separately when rendering settings.
+ */
+export function buildInPersonAssignmentSnapshots() {
+  const occupancy = new Map()
+  const unassigned = []
+  const assigned = []
+  const sessionsById = new Map(ensureInPersonSessionsNormalized().map(s => [s.id, s]))
+
+  for (const c of data.customers || []) {
+    const products = Array.isArray(c.products) ? c.products : []
+    const phones = Array.isArray(c.phones) ? c.phones.join(' ') : String(c.phone || '')
+    products.forEach((p, productIndex) => {
+      if (p?.historicalImport) return
+      const sessionMap = getSaleInPersonSessionMap(p)
+      const ids = [...new Set(Object.values(sessionMap).filter(Boolean))]
+      for (const sid of ids) {
+        occupancy.set(sid, (occupancy.get(sid) || 0) + 1)
+      }
+
+      const courses = getEventCourseNamesForSellable(p?.name)
+      const missing = courses.filter(course => !String(sessionMap[course] || '').trim())
+      const base = {
+        customerId: c.id,
+        customerName: c.name || c.id,
+        phone: phones,
+        platformId: c.platformId || '',
+        productIndex,
+        productName: coerceProductName(p.name) || p.name || '—',
+        price: parseFloat(p.price) || 0,
+        status: p.status || '—'
+      }
+      if (missing.length) {
+        unassigned.push({ ...base, missingCourses: missing })
+      }
+      if (!ids.length) return
+      const sid = ids[0]
+      const session = sessionsById.get(sid)
+      assigned.push({
+        ...base,
+        sessionId: sid,
+        sessionLabel: session ? formatInPersonSessionLabel(session) : sid,
+        sessionIds: ids
+      })
+    })
+  }
+  return { occupancy, unassigned, assigned }
+}
+
+/**
+ * One customer pass → sessionId → linked sale-line count.
+ * Use this when rendering many capacity labels/options.
+ */
+export function buildInPersonSessionOccupancyMap() {
+  return buildInPersonAssignmentSnapshots().occupancy
+}
+
+/** Count sale lines linked to a session id. Pass occupancyMap to skip rescanning. */
+export function countSalesLinkedToInPersonSession(sessionId, occupancyMap) {
   const key = String(sessionId || '').trim()
   if (!key) return 0
+  if (occupancyMap) {
+    if (occupancyMap instanceof Map) return occupancyMap.get(key) || 0
+    return Number(occupancyMap[key]) || 0
+  }
   let n = 0
   for (const c of data.customers || []) {
     for (const p of c.products || []) {
@@ -1804,28 +1872,7 @@ export function countSalesLinkedToInPersonSession(sessionId) {
  * @returns {Array<{customerId, customerName, phone, productIndex, productName, price, status, missingCourses}>}
  */
 export function listUnassignedInPersonSales() {
-  const rows = []
-  for (const c of data.customers || []) {
-    const products = Array.isArray(c.products) ? c.products : []
-    const phones = Array.isArray(c.phones) ? c.phones.join(' ') : String(c.phone || '')
-    products.forEach((p, productIndex) => {
-      if (p?.historicalImport) return
-      const missing = getMissingEventCoursesForSale(p)
-      if (!missing.length) return
-      rows.push({
-        customerId: c.id,
-        customerName: c.name || c.id,
-        phone: phones,
-        platformId: c.platformId || '',
-        productIndex,
-        productName: coerceProductName(p.name) || p.name || '—',
-        price: parseFloat(p.price) || 0,
-        status: p.status || '—',
-        missingCourses: missing
-      })
-    })
-  }
-  return rows
+  return buildInPersonAssignmentSnapshots().unassigned
 }
 
 /**
@@ -1834,29 +1881,27 @@ export function listUnassignedInPersonSales() {
  */
 export function listAssignedInPersonSales(sessionId = '') {
   const want = String(sessionId || '').trim()
+  const { assigned } = buildInPersonAssignmentSnapshots()
+  if (!want) {
+    return assigned.map(({ sessionIds, ...row }) => row)
+  }
+  const sessionsById = new Map(ensureInPersonSessionsNormalized().map(s => [s.id, s]))
   const rows = []
-  for (const c of data.customers || []) {
-    const products = Array.isArray(c.products) ? c.products : []
-    const phones = Array.isArray(c.phones) ? c.phones.join(' ') : String(c.phone || '')
-    products.forEach((p, productIndex) => {
-      if (p?.historicalImport) return
-      const ids = getSaleInPersonSessionIds(p)
-      if (!ids.length) return
-      if (want && !ids.includes(want)) return
-      const sid = want || ids[0]
-      const session = getInPersonSessionById(sid)
-      rows.push({
-        customerId: c.id,
-        customerName: c.name || c.id,
-        phone: phones,
-        platformId: c.platformId || '',
-        productIndex,
-        productName: coerceProductName(p.name) || p.name || '—',
-        price: parseFloat(p.price) || 0,
-        status: p.status || '—',
-        sessionId: sid,
-        sessionLabel: session ? formatInPersonSessionLabel(session) : sid
-      })
+  for (const row of assigned) {
+    const ids = row.sessionIds || [row.sessionId]
+    if (!ids.includes(want)) continue
+    const session = sessionsById.get(want)
+    rows.push({
+      customerId: row.customerId,
+      customerName: row.customerName,
+      phone: row.phone,
+      platformId: row.platformId,
+      productIndex: row.productIndex,
+      productName: row.productName,
+      price: row.price,
+      status: row.status,
+      sessionId: want,
+      sessionLabel: session ? formatInPersonSessionLabel(session) : want
     })
   }
   return rows

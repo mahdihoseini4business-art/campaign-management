@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali, gregorianToJalaliStr, gregorianToJalaliDateTimeStr, jalaliDateTimeToIso, canOpenSettings, canAccessSettingsSection, listAccessibleSettingsSectionIds, requireSettingsAccess, requireSettingsSection, SETTINGS_SECTION_ACCESS, settingsSectionSupportsScope, readSettingsAccessEntry, normalizeSettingsAccess, canManageSettingsUserRecord, requireManageSettingsUser, isSettingsSectionGroupScoped, getSettingsSectionScopeHint, canGrantPermissionKey } from './utils.js'
 import { openAppConfirm } from './app-confirm.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, renameProductAcrossApp, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions, getEventMessageTypes, upsertEventMessageType, removeEventMessageType } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, renameProductAcrossApp, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, buildInPersonAssignmentSnapshots, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions, getEventMessageTypes, upsertEventMessageType, removeEventMessageType } from './data.js'
 import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS } from './sms-features.js'
 import {
   getCustomerProfileFieldCatalog,
@@ -1945,15 +1945,34 @@ export function renderProductsSettingsPane() {
 }
 
 let _editingInPersonSessionId = null
-/** @type {Array<{customerId:string,customerName:string,phone?:string,platformId?:string,productIndex:number,productName:string,price:number,status:string}>} */
+/** @type {Array<{customerId:string,customerName:string,phone?:string,platformId?:string,productIndex:number,productName:string,price:number,status:string,missingCourses?:string[]}>} */
 let _unassignedInPersonSalesCache = []
+/** @type {Array<{customerId:string,customerName:string,phone?:string,platformId?:string,productIndex:number,productName:string,price:number,status:string,sessionId:string,sessionLabel:string,sessionIds?:string[]}>|null} */
+let _assignedInPersonSalesCache = null
+let _inPersonOccupancyCache = null
+
+function refreshInPersonSalesSnapshots() {
+  const snap = buildInPersonAssignmentSnapshots()
+  _unassignedInPersonSalesCache = snap.unassigned
+  _assignedInPersonSalesCache = snap.assigned
+  _inPersonOccupancyCache = snap.occupancy
+  return snap
+}
+
+function getCachedInPersonOccupancy() {
+  if (!_inPersonOccupancyCache) {
+    refreshInPersonSalesSnapshots()
+  }
+  return _inPersonOccupancyCache
+}
 
 export function renderInPersonSessionsSettings() {
+  refreshInPersonSalesSnapshots()
   fillInPersonCourseNameSelect()
   fillUnassignedCourseFilter()
   fillAssignedSessionFilter()
   renderInPersonSessionsList()
-  renderUnassignedInPersonSales()
+  renderUnassignedInPersonSales({ refreshCache: false })
   renderAssignedInPersonSales()
   if (window.jalaliDatepicker) {
     try { window.jalaliDatepicker.startWatch?.({ time: false, zIndex: 12000 }) } catch (_) { /* ignore */ }
@@ -1980,7 +1999,7 @@ function fillUnassignedCourseFilter() {
   const sel = document.getElementById('settingsUnassignedCourseFilter')
   if (!sel) return
   const names = getInPersonCourseNames()
-  const fromSales = [...new Set(listUnassignedInPersonSales().map(r => r.productName).filter(Boolean))]
+  const fromSales = [...new Set(_unassignedInPersonSalesCache.map(r => r.productName).filter(Boolean))]
   const all = [...new Set([...names, ...fromSales])].sort((a, b) => a.localeCompare(b, 'fa'))
   const prev = sel.value
   sel.innerHTML = `<option value="">همه محصولات رویداد</option>` +
@@ -1991,8 +2010,10 @@ function renderInPersonSessionsList() {
   const list = document.getElementById('settingsInPersonSessionsList')
   const countEl = document.getElementById('settingsInPersonSessionsCount')
   if (!list) return
+  const occupancy = getCachedInPersonOccupancy()
   const q = toEnDigits(document.getElementById('settingsInPersonSessionsSearch')?.value || '').trim().toLowerCase()
-  let sessions = getInPersonSessions().slice().sort((a, b) => {
+  const allSessions = getInPersonSessions()
+  let sessions = allSessions.slice().sort((a, b) => {
     const nb = jalaliToNum(b.sessionDate)
     const na = jalaliToNum(a.sessionDate)
     return nb - na
@@ -2004,7 +2025,7 @@ function renderInPersonSessionsList() {
     })
   }
   if (countEl) {
-    const total = getInPersonSessions().length
+    const total = allSessions.length
     countEl.textContent = q && sessions.length !== total
       ? `${formatNumber(sessions.length)} از ${formatNumber(total)}`
       : `${formatNumber(total)} سانس`
@@ -2014,9 +2035,9 @@ function renderInPersonSessionsList() {
     return
   }
   list.innerHTML = sessions.map(s => {
-    const linked = countSalesLinkedToInPersonSession(s.id)
+    const linked = countSalesLinkedToInPersonSession(s.id, occupancy)
     const cap = getInPersonSessionCapacity(s)
-    const remaining = getInPersonSessionRemaining(s)
+    const remaining = getInPersonSessionRemaining(s, { occupancyMap: occupancy })
     if (_editingInPersonSessionId === s.id) {
       const names = getInPersonCourseNames()
       const nameOpts = names.map(n =>
@@ -2066,12 +2087,13 @@ export function filterInPersonSessionsList() {
   renderInPersonSessionsList()
 }
 
-function renderUnassignedInPersonSales() {
+function renderUnassignedInPersonSales({ refreshCache = true } = {}) {
   const list = document.getElementById('settingsUnassignedInPersonSales')
   const countEl = document.getElementById('settingsUnassignedSalesCount')
   if (!list) return
 
-  _unassignedInPersonSalesCache = listUnassignedInPersonSales()
+  if (refreshCache) refreshInPersonSalesSnapshots()
+  const occupancy = getCachedInPersonOccupancy()
   const sessions = getActiveInPersonSessions()
   const courseFilter = document.getElementById('settingsUnassignedCourseFilter')?.value || ''
   const q = toEnDigits(document.getElementById('settingsUnassignedSalesSearch')?.value || '').trim().toLowerCase()
@@ -2113,6 +2135,20 @@ function renderUnassignedInPersonSales() {
     return
   }
 
+  // Build option HTML once per course bucket — not once per sale row.
+  const optionsHtmlByKey = new Map()
+  const optionsHtmlFor = (optsSource) => {
+    const key = optsSource.map(s => s.id).join('|')
+    let html = optionsHtmlByKey.get(key)
+    if (html == null) {
+      html = mapInPersonSessionSelectOptions(optsSource, '', occupancy).map(o =>
+        `<option value="${escapeAttr(o.id)}"${o.disabled ? ' disabled' : ''}>${escapeHtml(o.label)}</option>`
+      ).join('')
+      optionsHtmlByKey.set(key, html)
+    }
+    return html
+  }
+
   list.innerHTML = rows.map((r) => {
     const missing = r.missingCourses || []
     const matching = sessions.filter(s =>
@@ -2121,9 +2157,7 @@ function renderUnassignedInPersonSales() {
         : s.courseName.toLowerCase() === String(r.productName).toLowerCase()
     )
     const optsSource = matching.length ? matching : sessions
-    const opts = mapInPersonSessionSelectOptions(optsSource).map(o =>
-      `<option value="${escapeAttr(o.id)}"${o.disabled ? ' disabled' : ''}>${escapeHtml(o.label)}</option>`
-    ).join('')
+    const opts = optionsHtmlFor(optsSource)
     const rowKey = `${escapeAttr(r.customerId)}_${r.productIndex}`
     const phoneHint = r.phone
       ? `<span class="ips-row-phone" style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${escapeHtml(String(r.phone).trim().split(/\s+/)[0] || '')}</span>`
@@ -2149,7 +2183,7 @@ function renderUnassignedInPersonSales() {
 }
 
 export function filterUnassignedInPersonSales() {
-  renderUnassignedInPersonSales()
+  renderUnassignedInPersonSales({ refreshCache: false })
 }
 
 function fillAssignedSessionFilter() {
@@ -2163,14 +2197,32 @@ function fillAssignedSessionFilter() {
     ).join('')
 }
 
-function renderAssignedInPersonSales() {
+function renderAssignedInPersonSales({ refreshCache = false } = {}) {
   const list = document.getElementById('settingsAssignedInPersonSales')
   const countEl = document.getElementById('settingsAssignedSalesCount')
   if (!list) return
 
+  if (refreshCache || _assignedInPersonSalesCache == null) {
+    refreshInPersonSalesSnapshots()
+  }
+
   const sessionFilter = document.getElementById('settingsAssignedSessionFilter')?.value || ''
   const q = toEnDigits(document.getElementById('settingsAssignedSalesSearch')?.value || '').trim().toLowerCase()
-  let rows = listAssignedInPersonSales(sessionFilter)
+  let rows = _assignedInPersonSalesCache || []
+  if (sessionFilter) {
+    const sessionsById = new Map(getInPersonSessions().map(s => [s.id, s]))
+    rows = []
+    for (const row of _assignedInPersonSalesCache) {
+      const ids = row.sessionIds || [row.sessionId]
+      if (!ids.includes(sessionFilter)) continue
+      const session = sessionsById.get(sessionFilter)
+      rows.push({
+        ...row,
+        sessionId: sessionFilter,
+        sessionLabel: session ? formatInPersonSessionLabel(session) : sessionFilter
+      })
+    }
+  }
   const totalForFilter = rows.length
   if (q) {
     rows = rows.filter(r => {
@@ -2187,12 +2239,10 @@ function renderAssignedInPersonSales() {
       : `${formatNumber(totalForFilter)} تخصیص`
   }
 
-  if (!listAssignedInPersonSales().length) {
-    list.innerHTML = '<div class="settings-empty-detail">هنوز تخصیصی ثبت نشده</div>'
-    return
-  }
   if (!rows.length) {
-    list.innerHTML = `<div class="settings-empty-detail">${sessionFilter || q ? 'با این فیلتر/جستجو موردی نیست' : 'موردی نیست'}</div>`
+    list.innerHTML = `<div class="settings-empty-detail">${
+      sessionFilter || q ? 'با این فیلتر/جستجو موردی نیست' : 'هنوز تخصیصی ثبت نشده'
+    }</div>`
     return
   }
 
@@ -2214,7 +2264,7 @@ function renderAssignedInPersonSales() {
 }
 
 export function filterAssignedInPersonSales() {
-  renderAssignedInPersonSales()
+  renderAssignedInPersonSales({ refreshCache: false })
 }
 
 /** When picking a course to add a session, also filter the assignment list to that course. */
@@ -2338,11 +2388,8 @@ export async function assignUnassignedInPersonSale(customerId, productIndex, row
     showToast('تخصیص انجام شد')
     const saved = restoreInPersonListFilters()
     if (!saved.assignedSession) saved.assignedSession = sessionId
-    renderInPersonSessionsSettings()
     applyInPersonListFilters(saved)
-    renderUnassignedInPersonSales()
-    renderAssignedInPersonSales()
-    renderInPersonSessionsList()
+    renderInPersonSessionsSettings()
   } catch (e) {
     showToast(e.message || 'خطا در تخصیص')
   }
@@ -2354,11 +2401,8 @@ export async function unassignInPersonSale(customerId, productIndex) {
     await unassignInPersonSessionFromSale(customerId, productIndex)
     showToast('تخصیص برداشته شد')
     const saved = restoreInPersonListFilters()
-    renderInPersonSessionsSettings()
     applyInPersonListFilters(saved)
-    renderUnassignedInPersonSales()
-    renderAssignedInPersonSales()
-    renderInPersonSessionsList()
+    renderInPersonSessionsSettings()
   } catch (e) {
     showToast(e.message || 'خطا در برداشتن تخصیص')
   }
