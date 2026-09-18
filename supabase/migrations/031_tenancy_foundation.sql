@@ -90,9 +90,9 @@ CREATE TABLE IF NOT EXISTS public.platform_settings (
 INSERT INTO public.platform_settings (key, value) VALUES
   ('grace_days', '3'::jsonb),
   ('trial_days', '7'::jsonb),
-  ('sms_daily_limit_trial', '20'::jsonb),
-  ('sms_daily_limit_gold', '50'::jsonb),
-  ('sms_daily_limit_diamond', '200'::jsonb)
+  ('sms_daily_limit_trial', '0'::jsonb),
+  ('sms_daily_limit_gold', '0'::jsonb),
+  ('sms_daily_limit_diamond', '0'::jsonb)
 ON CONFLICT (key) DO NOTHING;
 
 -- Current tenant for JWT subject (set via RPC after login / switch)

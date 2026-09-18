@@ -8,9 +8,9 @@ export const PLATFORM_SETTING_DEFAULTS = Object.freeze({
   /** روزهای مهلت بعد از انقضای اشتراک پولی، قبل از فقط‌خواندنی */
   grace_days: 3,
   /** سقف ارسال OTP SMS در روز به ازای هر پلن */
-  sms_daily_limit_trial: 20,
-  sms_daily_limit_gold: 50,
-  sms_daily_limit_diamond: 200,
+  sms_daily_limit_trial: 0,
+  sms_daily_limit_gold: 0,
+  sms_daily_limit_diamond: 0,
   root_domain: 'carno.ir',
   subdomain_min_length: 3
 })

@@ -172,9 +172,7 @@ serve(async (req) => {
         .eq('key', limitKey)
         .maybeSingle()
       const dayLimit = Number(limitRow?.value)
-      const effectiveLimit = Number.isFinite(dayLimit) && dayLimit > 0
-        ? dayLimit
-        : (planId === 'diamond' ? 200 : planId === 'gold' ? 50 : 20)
+      const effectiveLimit = dayLimit > 0 ? dayLimit : Number.MAX_SAFE_INTEGER
       const day = todayUtcDate()
       const { data: usage } = await admin
         .from('sms_usage_daily')
@@ -283,9 +281,7 @@ serve(async (req) => {
       .eq('key', limitKey)
       .maybeSingle()
     const dayLimit = Number(limitRow?.value)
-    const effectiveLimit = Number.isFinite(dayLimit) && dayLimit > 0
-      ? dayLimit
-      : (planId === 'diamond' ? 200 : planId === 'gold' ? 50 : 20)
+    const effectiveLimit = dayLimit > 0 ? dayLimit : Number.MAX_SAFE_INTEGER
 
     const day = todayUtcDate()
     const { data: usage } = await admin
