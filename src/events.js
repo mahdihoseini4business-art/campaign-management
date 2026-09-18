@@ -528,6 +528,22 @@ export async function openEventsBulkSendMessage() {
 // Import helpers (called from import-export)
 // ============================================
 
+/** Compare event labels (course names) ignoring ZWNJ / extra spaces / case. */
+function normalizeEventLabel(value) {
+  return toEnDigits(String(value || ''))
+    .replace(/\u200c/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+/** True when both values are valid Jalali dates with the same Y/M/D (padding-insensitive). */
+function eventDatesEqual(a, b) {
+  const na = jalaliToNum(a)
+  const nb = jalaliToNum(b)
+  return na !== 99999999 && nb !== 99999999 && na === nb
+}
+
 /**
  * Apply imported event roster rows: match by phone, update name/nameEn.
  * If course+date match a session and customer has that event sale without that session, assign.
@@ -555,17 +571,18 @@ export async function applyEventRosterImport(rows, { dryRun = false } = {}) {
   const errors = []
 
   for (let i = 0; i < (rows || []).length; i++) {
+    const rowNum = i + 2
     const r = rows[i]
     const phone = normalizePhone(r.phone)
     if (!phone) {
       skipped++
-      errors.push(`ردیف ${i + 2}: شماره نامعتبر`)
+      errors.push(`ردیف ${rowNum}: شماره نامعتبر`)
       continue
     }
     const customer = byPhone.get(phone)
     if (!customer) {
       skipped++
-      errors.push(`ردیف ${i + 2}: مشتری با شماره ${phone} یافت نشد`)
+      errors.push(`ردیف ${rowNum}: مشتری با شماره ${phone} یافت نشد`)
       continue
     }
     let dirty = false
@@ -582,22 +599,33 @@ export async function applyEventRosterImport(rows, { dryRun = false } = {}) {
 
     const course = String(r.courseName || '').trim()
     const sessionDate = toEnDigits(String(r.sessionDate || '').trim())
+    const courseNorm = normalizeEventLabel(course)
     let didAssign = false
     if (course && sessionDate) {
       const session = sessions.find(s =>
-        s.courseName.toLowerCase() === course.toLowerCase() &&
-        s.sessionDate === sessionDate
+        normalizeEventLabel(s.courseName) === courseNorm &&
+        eventDatesEqual(s.sessionDate, sessionDate)
       )
-      if (session) {
+      if (!session) {
+        const sameCourse = sessions.filter(s => normalizeEventLabel(s.courseName) === courseNorm)
+        if (!sameCourse.length) {
+          errors.push(`ردیف ${rowNum}: سانس فعالی با نام دوره «${course}» یافت نشد`)
+        } else {
+          const dates = sameCourse.map(s => s.sessionDate).join('، ')
+          errors.push(`ردیف ${rowNum}: تاریخ «${sessionDate}» با سانس‌های «${course}» یکی نیست (موجود: ${dates})`)
+        }
+      } else {
         const products = Array.isArray(customer.products) ? customer.products : []
+        let foundEventSale = false
         for (let pi = 0; pi < products.length; pi++) {
           const p = products[pi]
           if (p?.historicalImport) continue
           const pname = coerceProductName(p.name) || p.name || ''
           const eventCourses = getEventCourseNamesForSellable(pname)
-          const isEventSale = eventCourses.some(c => c.toLowerCase() === course.toLowerCase())
-            || pname.toLowerCase() === course.toLowerCase()
+          const isEventSale = eventCourses.some(c => normalizeEventLabel(c) === courseNorm)
+            || normalizeEventLabel(pname) === courseNorm
           if (!isEventSale) continue
+          foundEventSale = true
           if (saleHasInPersonSessionId(p, session.id)) {
             didAssign = true
             break
@@ -608,13 +636,16 @@ export async function applyEventRosterImport(rows, { dryRun = false } = {}) {
               didAssign = true
               assigned++
             } catch (e) {
-              errors.push(`ردیف ${i + 2}: ${e.message || 'خطا در تخصیص سانس'}`)
+              errors.push(`ردیف ${rowNum}: ${e.message || 'خطا در تخصیص سانس'}`)
             }
           } else {
             didAssign = true
             assigned++
           }
           break
+        }
+        if (!didAssign && !foundEventSale) {
+          errors.push(`ردیف ${rowNum}: مشتری هست ولی فروش رویداد هم‌خوان برای «${course}» ندارد`)
         }
       }
     }
@@ -625,7 +656,7 @@ export async function applyEventRosterImport(rows, { dryRun = false } = {}) {
         try {
           await saveCustomerToDB(customer)
         } catch (e) {
-          errors.push(`ردیف ${i + 2}: ${e.message || 'خطا در ذخیره مشتری'}`)
+          errors.push(`ردیف ${rowNum}: ${e.message || 'خطا در ذخیره مشتری'}`)
         }
       }
     } else if (!didAssign) {
