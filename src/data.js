@@ -4273,6 +4273,22 @@ export async function listSmsLogs({ limit = 50, kind = '' } = {}) {
   return rows || []
 }
 
+/** SMS logs for one customer (for the customer panel SMS tab), newest first. */
+export async function listCustomerSmsLogs(customerId, { limit = 20 } = {}) {
+  const tenantId = getStoredTenantId()
+  const cid = String(customerId || '').trim()
+  if (!tenantId || !cid) return []
+  const { data: rows, error } = await supabase
+    .from('sms_logs')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('customer_id', cid)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw new Error('خطا در خواندن پیامک‌های مشتری: ' + error.message)
+  return rows || []
+}
+
 /** SMS kinds grouped for dashboard report card. */
 export const SMS_DASH_CATEGORIES = Object.freeze({
   settlement: ['sale_settlement_due'],

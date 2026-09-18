@@ -32,6 +32,12 @@ export function canViewSmsHistory() {
   return isMainAdmin() || hasPermission('sms_history') || hasPermission('sms_manage')
 }
 
+/** Who may see the per-customer SMS tab in the customer panel. */
+export function canViewCustomerSmsHistory() {
+  if (isMainAdmin()) return true
+  return hasPermission('sms_customer_history') || hasPermission('sms_manage')
+}
+
 export function canEditSmsTemplates() {
   const features = getSmsFeatures()
   if (features.templates_edit !== true) return false

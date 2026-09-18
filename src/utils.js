@@ -1269,6 +1269,7 @@ export const ALL_PERMISSIONS = {
   refunds_manage: 'مدیریت عودت وجه',
   sms_manage: 'مدیریت تنظیمات و قالب‌های پیامک',
   sms_history: 'مشاهده تاریخچه پیامک',
+  sms_customer_history: 'مشاهده پیامک‌های مشتری',
   sms_shipment_queued: 'پیامک صف ارسالی (دستی / ارسال مجدد)',
   sms_shipment_shipped: 'پیامک تأیید ارسال و رهگیری',
   sms_sales_single: 'پیامک فروش تکی (الگو / دستی)',
@@ -1298,6 +1299,7 @@ export const PERMISSION_GROUPS = [
     keys: [
       'sms_manage',
       'sms_history',
+      'sms_customer_history',
       'sms_shipment_queued',
       'sms_shipment_shipped',
       'sms_sales_single',
@@ -1920,6 +1922,7 @@ export function getDefaultPermissions() {
   p.in_person_sessions = false
   p.sms_manage = false
   p.sms_history = false
+  p.sms_customer_history = false
   p.sms_shipment_queued = false
   p.sms_shipment_shipped = false
   p.sms_sales_single = false
