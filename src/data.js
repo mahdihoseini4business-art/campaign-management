@@ -4316,6 +4316,29 @@ export async function listSettlementSmsSentTodayKeys() {
   return keys
 }
 
+/**
+ * Sent event SMS logs for attendee badges (kind = event_single).
+ * Returns newest-first rows with customer_id + meta (sessionId, productIndex, event_message_type).
+ */
+export async function listEventSmsSentLogs({ limit = 5000 } = {}) {
+  const tenantId = getStoredTenantId()
+  if (!tenantId) return []
+
+  const { data: rows, error } = await supabase
+    .from('sms_logs')
+    .select('customer_id, meta, created_at, status')
+    .eq('tenant_id', tenantId)
+    .eq('kind', 'event_single')
+    .eq('status', 'sent')
+    .order('created_at', { ascending: false })
+    .limit(Math.max(1, Math.min(10000, Number(limit) || 5000)))
+  if (error) {
+    console.warn('listEventSmsSentLogs', error)
+    return []
+  }
+  return rows || []
+}
+
 export async function createSmsCampaign(campaign) {
   const tenantId = getStoredTenantId()
   if (!tenantId) throw new Error('سازمان انتخاب نشده')

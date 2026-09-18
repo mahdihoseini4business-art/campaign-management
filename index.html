@@ -1528,6 +1528,12 @@
           </button>
           <div class="product-matrix-advisor-dropdown" id="eventsProductFilterDropdown" hidden onclick="event.stopPropagation()"></div>
         </div>
+        <div class="sales-product-filter product-matrix-advisor-filter" id="eventsSmsTypeFilter">
+          <button type="button" class="btn product-matrix-advisor-btn" id="eventsSmsTypeFilterBtn" onclick="app.toggleEventsSmsTypeDropdown(event)" aria-label="فیلتر نوع پیامک" title="فیلتر بر اساس پیامک ارسال‌شده">
+            پیامک <span class="product-matrix-advisor-count" id="eventsSmsTypeFilterCount"></span>
+          </button>
+          <div class="product-matrix-advisor-dropdown" id="eventsSmsTypeFilterDropdown" hidden onclick="event.stopPropagation()"></div>
+        </div>
         <button type="button" class="btn" id="clearEventsFiltersBtn" hidden onclick="app.clearEventsFilters()">پاک کردن فیلترها</button>
         <div class="toolbar-actions" id="eventsActionsMenu">
           <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
@@ -1553,6 +1559,7 @@
               <th class="sort-th" data-sort-field="phone" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortEventsHeader('phone')">شماره تماس</button></th>
               <th class="sort-th" data-sort-field="courseName" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortEventsHeader('courseName')">محصول / دوره</button></th>
               <th class="sort-th" data-sort-field="sessionDate" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortEventsHeader('sessionDate')">تاریخ رویداد</button></th>
+              <th class="sort-th" data-sort-field="smsCount" aria-sort="none" style="width:72px;"><button type="button" class="sort-th-btn" aria-label="مرتب‌سازی بر اساس تعداد پیامک" onclick="app.sortEventsHeader('smsCount')">پیامک</button></th>
               <th style="width:120px;">پیام</th>
             </tr>
           </thead>

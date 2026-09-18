@@ -138,6 +138,7 @@ function hasActiveExportScopeFilter(tab) {
       || document.getElementById('filterEventsDateFrom')?.value?.trim()
       || document.getElementById('filterEventsDateTo')?.value?.trim()
       || document.getElementById('eventsProductFilterCount')?.textContent?.trim()
+      || document.getElementById('eventsSmsTypeFilterCount')?.textContent?.trim()
     )
   }
   return false
@@ -524,10 +525,11 @@ const EXPORT_CONFIG = {
   events: {
     label: 'رویدادها',
     headers: [
-      'نام', 'نام انگلیسی', 'شماره', 'نام دوره', 'تاریخ برگزاری',
-      'محصول فروش', 'وضعیت', 'کارشناس', 'شناسه مشتری'
+      'شناسه مشتری', 'نام', 'نام انگلیسی', 'شماره', 'نام دوره', 'تاریخ برگزاری',
+      'محصول فروش', 'وضعیت', 'کارشناس'
     ],
     getRows: () => getFilteredEventRows().map(r => [
+      r.customerId || '',
       r.name || '',
       r.nameEn || '',
       r.phone || '',
@@ -535,8 +537,7 @@ const EXPORT_CONFIG = {
       r.sessionDate || '',
       r.productName || '',
       r.status || '',
-      r.advisor || '',
-      r.customerId || ''
+      r.advisor || ''
     ])
   }
 }
@@ -758,7 +759,7 @@ export async function exportTabXLSX(tab) {
   } else if (tab === 'products') {
     forceSheetTextColumns(XLSX, ws, rows.length, [1]) // شماره
   } else if (tab === 'events') {
-    forceSheetTextColumns(XLSX, ws, rows.length, [1, 2, 4, 8]) // نام انگلیسی، شماره، تاریخ، شناسه
+    forceSheetTextColumns(XLSX, ws, rows.length, [0, 2, 3, 5]) // شناسه مشتری، نام انگلیسی، شماره، تاریخ
   }
 
   const wb = XLSX.utils.book_new()

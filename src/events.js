@@ -15,7 +15,8 @@ import {
   applySaleInPersonSessionMap,
   assertSaleCanUseInPersonSession,
   getEventCourseNamesForSellable,
-  invalidateProductSalesCountCache
+  invalidateProductSalesCountCache,
+  listEventSmsSentLogs
 } from './data.js'
 import {
   toEnDigits,
@@ -61,10 +62,119 @@ let eventProductDropdownOpen = false
 let eventProductOutsideClickBound = false
 let eventProductSearchQuery = ''
 
+/** @type {Set<string>} selected event message type ids for SMS filter; empty = all */
+let selectedEventSmsTypeIds = new Set()
+let eventSmsTypeDropdownOpen = false
+let eventSmsTypeOutsideClickBound = false
+
+/**
+ * Map of attendee rowKey → sent SMS entries `{ typeId, typeName, createdAt }`.
+ * null = not loaded yet.
+ * @type {Map<string, { typeId: string, typeName: string, createdAt: string }[]> | null}
+ */
+let eventSmsLogsByRowKey = null
+let eventSmsLogsVersion = 0
+let eventSmsLogsLoading = false
+
 /** @type {null | object} row pending message send */
 let pendingEventMessageRow = null
 /** @type {null | object[]} bulk rows when opened via openEventsBulkSendMessage */
 let pendingEventBulkRows = null
+
+// ============================================
+// Event SMS send history (badge / filter / sort)
+// ============================================
+
+function eventSmsRowKey(customerId, productIndex, sessionId) {
+  return `${customerId}::${productIndex}::${sessionId}`
+}
+
+function buildEventSmsLogsMap(logs) {
+  const map = new Map()
+  const typeNames = new Map(getEventMessageTypes().map(t => [t.id, t.name]))
+  for (const row of logs || []) {
+    const customerId = String(row.customer_id || '').trim()
+    if (!customerId) continue
+    const meta = row.meta && typeof row.meta === 'object' ? row.meta : {}
+    const sessionId = String(meta.sessionId || '').trim()
+    const idx = Number(meta.productIndex)
+    if (!sessionId || !Number.isFinite(idx) || idx < 0) continue
+    const typeId = String(meta.event_message_type || '').trim()
+    const typeName = typeNames.get(typeId) || typeId || 'پیام رویداد'
+    const key = eventSmsRowKey(customerId, idx, sessionId)
+    const entry = {
+      typeId: typeId || '',
+      typeName,
+      createdAt: row.created_at || ''
+    }
+    const list = map.get(key)
+    if (list) list.push(entry)
+    else map.set(key, [entry])
+  }
+  return map
+}
+
+function getEventSmsEntriesForRow(row) {
+  if (!eventSmsLogsByRowKey || !row) return []
+  return eventSmsLogsByRowKey.get(row.rowKey) || []
+}
+
+function smsCountClass(count) {
+  if (count >= 5) return 'followup-high'
+  if (count >= 3) return 'followup-mid'
+  if (count >= 1) return 'followup-low'
+  return 'followup-none'
+}
+
+function smsCountBadgeHtml(entries) {
+  const count = entries.length
+  const titles = []
+  const seen = new Set()
+  for (const e of entries) {
+    const label = String(e.typeName || '').trim()
+    if (!label || seen.has(label)) continue
+    seen.add(label)
+    titles.push(label)
+  }
+  const titleAttr = titles.length
+    ? ` title="${escapeAttr(titles.join('\n'))}"`
+    : count
+      ? ' title="پیامک ارسال‌شده"'
+      : ''
+  return `<span class="followup-count ${smsCountClass(count)}"${titleAttr}>${count}</span>`
+}
+
+export function invalidateEventSmsLogsCache() {
+  eventSmsLogsByRowKey = null
+  eventSmsLogsVersion += 1
+}
+
+/** Refresh badge data after a successful event SMS send. */
+export function refreshEventSmsBadgesAfterSend() {
+  invalidateEventSmsLogsCache()
+  void ensureEventSmsLogsLoaded().then(() => {
+    try { renderEvents() } catch (_) {}
+  })
+}
+
+async function ensureEventSmsLogsLoaded() {
+  if (eventSmsLogsByRowKey) return eventSmsLogsByRowKey
+  if (eventSmsLogsLoading) return null
+  eventSmsLogsLoading = true
+  try {
+    const logs = await listEventSmsSentLogs()
+    eventSmsLogsByRowKey = buildEventSmsLogsMap(logs)
+    eventSmsLogsVersion += 1
+    return eventSmsLogsByRowKey
+  } catch (err) {
+    console.warn('ensureEventSmsLogsLoaded', err)
+    eventSmsLogsByRowKey = new Map()
+    eventSmsLogsVersion += 1
+    return eventSmsLogsByRowKey
+  } finally {
+    eventSmsLogsLoading = false
+  }
+}
 
 // ============================================
 // Data: attendees of in-person / event sessions
@@ -123,6 +233,7 @@ function eventSortValue(row, field) {
   if (field === 'courseName') return { value: row.courseName || '', type: 'string' }
   if (field === 'sessionDate') return { value: row.sessionDate || '', type: 'date' }
   if (field === 'productName') return { value: row.productName || '', type: 'string' }
+  if (field === 'smsCount') return { value: getEventSmsEntriesForRow(row).length, type: 'number' }
   return { value: row.name || '', type: 'string' }
 }
 
@@ -153,6 +264,14 @@ export function getFilteredEventRows() {
     })
   }
 
+  if (selectedEventSmsTypeIds.size > 0) {
+    rows = rows.filter(r => {
+      const entries = getEventSmsEntriesForRow(r)
+      if (!entries.length) return false
+      return entries.some(e => e.typeId && selectedEventSmsTypeIds.has(e.typeId))
+    })
+  }
+
   rows = rows.filter(r => {
     const n = jalaliToNum(r.sessionDate)
     if (!n) return false
@@ -168,7 +287,8 @@ export function getFilteredEventRows() {
   if (search) {
     rows = rows.filter(r => matchesTabSearch(search, [
       r.name, r.nameEn, r.phone, ...(r.phones || []),
-      r.courseName, r.productName, r.sessionDate, r.advisor, r.sessionLabel
+      r.courseName, r.productName, r.sessionDate, r.advisor, r.sessionLabel,
+      r.customerId
     ]))
   }
 
@@ -180,14 +300,22 @@ function eventsFilterSig() {
   const dateFrom = toEnDigits(document.getElementById('filterEventsDateFrom')?.value || '').trim()
   const dateTo = toEnDigits(document.getElementById('filterEventsDateTo')?.value || '').trim()
   const products = [...selectedEventProductNames].sort().join('|')
+  const smsTypes = [...selectedEventSmsTypeIds].sort().join('|')
   // Include today so the default «today only» view refreshes across midnight
-  return `${search}::${dateFrom}::${dateTo}::${products}::${eventsSortState.field}:${eventsSortState.asc ? 1 : 0}::${getTodayJalaliNum()}`
+  return `${search}::${dateFrom}::${dateTo}::${products}::${smsTypes}::${eventsSortState.field}:${eventsSortState.asc ? 1 : 0}::${getTodayJalaliNum()}::sms${eventSmsLogsVersion}`
 }
 
 export function renderEvents() {
   if (!hasPermission('events_view')) return
 
   populateEventProductFilterOptions()
+  syncEventSmsTypeFilterUi()
+
+  if (!eventSmsLogsByRowKey && !eventSmsLogsLoading) {
+    void ensureEventSmsLogsLoaded().then(() => {
+      try { renderEvents() } catch (_) {}
+    })
+  }
 
   const body = document.getElementById('eventsBody')
   if (!body) return
@@ -217,7 +345,7 @@ export function renderEvents() {
       const emptyMsg = hasEventsDateFilter()
         ? 'شرکت‌کننده‌ای در بازه تاریخ انتخاب‌شده یافت نشد.'
         : 'شرکت‌کننده‌ای برای رویدادهای امروز یافت نشد. سانس حضوری را در تنظیمات تعریف و به فروش‌ها تخصیص دهید.'
-      body.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">${emptyMsg}</td></tr>`
+      body.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">${emptyMsg}</td></tr>`
       renderPaginationBar('eventsPagination', 'events', { total: 0, from: 0, to: 0, page: 1, totalPages: 1 })
     } else {
       const canSms = allowSms && canUseSmsKind('event_single')
@@ -228,12 +356,14 @@ export function renderEvents() {
             ? `<button type="button" class="btn btn-sm btn-primary" data-perm="sms_events" onclick="event.stopPropagation();app.openEventSendMessage('${escapeAttr(r.rowKey)}')">ارسال پیام</button>`
             : `<button type="button" class="btn btn-sm" disabled title="دسترسی پیامک رویداد فعال نیست">ارسال پیام</button>`
         }
+        const smsEntries = getEventSmsEntriesForRow(r)
         return `<tr class="clickable-row" onclick="app.onCustomerRowClick(event, '${escapeAttr(r.customerId)}')">
           <td>${escapeHtml(r.name || '—')}</td>
           <td style="direction:ltr;text-align:left;font-family:'Vazirmatn',sans-serif;">${escapeHtml(r.nameEn || '—')}</td>
           <td style="direction:ltr;text-align:right;font-family:'Vazirmatn',sans-serif;">${escapeHtml(r.phone || '—')}</td>
           <td>${escapeHtml(r.courseName || '—')}</td>
           <td style="font-family:'Vazirmatn',sans-serif;direction:ltr;">${escapeHtml(r.sessionDate || '—')}</td>
+          <td class="customer-followup-count-cell" style="text-align:center;">${smsCountBadgeHtml(smsEntries)}</td>
           <td onclick="event.stopPropagation()">${smsCell}</td>
         </tr>`
       }).join('')
@@ -270,7 +400,9 @@ export function clearEventsFilters() {
   if (from) from.value = ''
   if (to) to.value = ''
   selectedEventProductNames = new Set()
+  selectedEventSmsTypeIds = new Set()
   syncEventProductFilterUi()
+  syncEventSmsTypeFilterUi()
   setPage('events', 1)
   renderEvents()
 }
@@ -291,13 +423,18 @@ function syncEventProductFilterUi() {
   const countEl = document.getElementById('eventsProductFilterCount')
   const n = selectedEventProductNames.size
   if (countEl) countEl.textContent = n ? `(${formatNumber(n)})` : ''
+  updateEventsClearFiltersVisibility()
+  renderEventProductDropdown()
+}
+
+function updateEventsClearFiltersVisibility() {
   const clearBtn = document.getElementById('clearEventsFiltersBtn')
-  const hasFilter = n > 0
+  const hasFilter = selectedEventProductNames.size > 0
+    || selectedEventSmsTypeIds.size > 0
     || !!document.getElementById('searchEvents')?.value?.trim()
     || !!document.getElementById('filterEventsDateFrom')?.value?.trim()
     || !!document.getElementById('filterEventsDateTo')?.value?.trim()
   if (clearBtn) clearBtn.hidden = !hasFilter
-  renderEventProductDropdown()
 }
 
 function renderEventProductDropdown() {
@@ -368,6 +505,75 @@ export function clearEventsProductFilter() {
 export function onEventsProductFilterSearch(value) {
   eventProductSearchQuery = String(value || '')
   renderEventProductDropdown()
+}
+
+// ============================================
+// SMS message-type multi-select filter
+// ============================================
+
+function syncEventSmsTypeFilterUi() {
+  const countEl = document.getElementById('eventsSmsTypeFilterCount')
+  const n = selectedEventSmsTypeIds.size
+  if (countEl) countEl.textContent = n ? `(${formatNumber(n)})` : ''
+  updateEventsClearFiltersVisibility()
+  renderEventSmsTypeDropdown()
+}
+
+function renderEventSmsTypeDropdown() {
+  const dropdown = document.getElementById('eventsSmsTypeFilterDropdown')
+  if (!dropdown) return
+  const types = getEventMessageTypes()
+  dropdown.innerHTML = `
+    <label class="product-matrix-advisor-option">
+      <input type="checkbox" ${selectedEventSmsTypeIds.size === 0 ? 'checked' : ''} onchange="app.clearEventsSmsTypeFilter();event.stopPropagation()">
+      <span>همه انواع پیامک</span>
+    </label>
+    ${types.map(t => {
+      const checked = selectedEventSmsTypeIds.has(t.id)
+      return `<label class="product-matrix-advisor-option">
+        <input type="checkbox" ${checked ? 'checked' : ''} onchange="app.toggleEventsSmsTypeFilter('${escapeAttr(t.id)}');event.stopPropagation()">
+        <span>${escapeHtml(t.name)}</span>
+      </label>`
+    }).join('') || '<div class="settings-pane-desc" style="padding:8px;">نوع پیامی تعریف نشده</div>'}
+  `
+}
+
+export function toggleEventsSmsTypeDropdown(event) {
+  event?.stopPropagation?.()
+  const dropdown = document.getElementById('eventsSmsTypeFilterDropdown')
+  if (!dropdown) return
+  eventSmsTypeDropdownOpen = !eventSmsTypeDropdownOpen
+  dropdown.hidden = !eventSmsTypeDropdownOpen
+  if (eventSmsTypeDropdownOpen) {
+    renderEventSmsTypeDropdown()
+    if (!eventSmsTypeOutsideClickBound) {
+      eventSmsTypeOutsideClickBound = true
+      document.addEventListener('click', (e) => {
+        const host = document.getElementById('eventsSmsTypeFilter')
+        if (host && !host.contains(e.target)) {
+          eventSmsTypeDropdownOpen = false
+          dropdown.hidden = true
+        }
+      })
+    }
+  }
+}
+
+export function toggleEventsSmsTypeFilter(typeId) {
+  const key = String(typeId || '').trim()
+  if (!key) return
+  if (selectedEventSmsTypeIds.has(key)) selectedEventSmsTypeIds.delete(key)
+  else selectedEventSmsTypeIds.add(key)
+  syncEventSmsTypeFilterUi()
+  setPage('events', 1)
+  renderEvents()
+}
+
+export function clearEventsSmsTypeFilter() {
+  selectedEventSmsTypeIds = new Set()
+  syncEventSmsTypeFilterUi()
+  setPage('events', 1)
+  renderEvents()
 }
 
 // ============================================
@@ -483,7 +689,10 @@ export async function confirmEventMessageTypeAndCompose() {
       title: `پیام گروهی رویداد — ${type.name}`,
       templateKey: '',
       body: type.body || '',
-      recipients
+      recipients,
+      onSent: ({ sent }) => {
+        if (Number(sent || 0) > 0) refreshEventSmsBadgesAfterSend()
+      }
     })
     return
   }
@@ -508,7 +717,10 @@ export async function confirmEventMessageTypeAndCompose() {
     title: `ارسال پیام رویداد — ${type.name}`,
     templateKey: '',
     body: type.body || '',
-    recipients: [recipient]
+    recipients: [recipient],
+    onSent: ({ sent }) => {
+      if (Number(sent || 0) > 0) refreshEventSmsBadgesAfterSend()
+    }
   })
 }
 
@@ -957,6 +1169,7 @@ async function sendWalkInEventSms({ customer, session, productIndex, type }) {
     recipients: [recipient]
   })
   if (result?.success || Number(result?.sent || 0) > 0) {
+    refreshEventSmsBadgesAfterSend()
     return { ok: true }
   }
   return { ok: false, error: result?.error || 'ارسال پیامک ناموفق بود' }
