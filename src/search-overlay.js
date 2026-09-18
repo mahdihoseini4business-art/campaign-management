@@ -8,6 +8,7 @@ export const SEARCH_HOST = {
   accounting: '#accountingSearchHost',
   shipments: '#shipmentsSearchHost',
   refunds: '#refundsSearchHost',
+  events: '#eventsSearchHost',
 }
 
 const OVERLAY_CLASS = 'table-search-overlay'

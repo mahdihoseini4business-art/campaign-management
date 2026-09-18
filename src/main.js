@@ -3,10 +3,16 @@ import { toEnDigits, initDigitConversion, hasPermission, hasAnyRefundPermission,
 import { loadData, backfillAdvisorPhones, cleanupConversionOrphans, purgeExpiredCustomerCodes, tryHydrateFromCoreCache, syncCoreData } from './data.js'
 import { getStoredTenantId } from './tenant.js'
 import { buildPermSig } from './data-cache.js'
-import { doLogin, doLogout, checkSession, applyPermissions, openSettingsModal as openSettingsModalBase, closeSettingsModal, addUser, deleteUser, startEditUserInfo, cancelEditUserInfo, saveEditUserInfo, saveUserPermissions, togglePermCheckbox, togglePermGroup, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, selectSettingsUser, filterSettingsUsers, backToUsersList, markPermissionsDirty, switchSettingsSection as switchSettingsSectionBase, filterSettingsNav, addDestinationBank, removeDestinationBank, startDestinationBankEdit, cancelDestinationBankEdit, saveDestinationBankEdit, addProductCatalogItem, removeProductCatalogItem, startProductCatalogEdit, cancelProductCatalogEdit, saveProductCatalogEdit, onNewProductKindChange, onEditProductKindChange, onNewProductProfitModeChange, onEditProductProfitModeChange, startProductBundleEdit, cancelProductBundleEdit, saveProductBundleForm, removeProductBundle, runCatalogToBundleMigration, filterViewUserOptions, changeUserGroupAssignment, createSettingsGroup, renameSettingsGroup, deleteSettingsGroup, selectSettingsGroup, backToGroupsList, addSettingsGroupMember, removeSettingsGroupMember, makeGroupManager, saveSettingsGroupAccess, onGroupSettingsAccessToggle, addPlatform, loadDefaultPlatforms, removePlatform, updatePlatformField, editPlatform, cancelPlatformEdit, savePlatformEdit, addStatus, loadDefaultStatuses, removeStatus, updateStatusField, editStatus, cancelStatusEdit, saveStatusEdit, onStatusDragStart, onStatusDragOver, onStatusDrop, addCustomerCode, removeCustomerCode, editCustomerCode, cancelCustomerCodeEdit, saveCustomerCodeEdit, saveCustomerCodeExpiryMonthsFromUi, onCustomerCodeDragStart, onCustomerCodeDragOver, onCustomerCodeDrop, onSalesTargetMetricChange, onSalesTargetAllocationChange, onSalesTargetDeadlineChange, onDeadlineUrgencyFieldChange, addSalesTargetFormStage, removeSalesTargetFormStage, onSalesTargetFormStageChange, addDeadlineUrgencyStage, removeDeadlineUrgencyStage, saveDeadlineUrgencySettings, startSalesTargetEdit, cancelSalesTargetEdit, saveSalesTargetForm, removeSalesTarget, renderSalesTargetsSettings, addSalesTargetBarToDraft, removeSalesTargetBarFromDraft, startSalesTargetBarEdit, cancelSalesTargetBarEdit, saveSmsPanelSettings, resetSmsMessageTemplate, saveSmsFeaturesSettings, saveSmsTemplatesSettings, refreshSmsHistory, refreshSmsCampaigns, saveShippingSenderSettings, onShippingSenderLogoChange, removeShippingSenderLogo, addInPersonSession, startInPersonSessionEdit, cancelInPersonSessionEdit, saveInPersonSessionEdit, removeInPersonSession, assignUnassignedInPersonSale, unassignInPersonSale, filterInPersonSessionsList, filterUnassignedInPersonSales, filterAssignedInPersonSales, onInPersonAssignCourseFilterFromAdd } from './auth.js'
+import { doLogin, doLogout, checkSession, applyPermissions, openSettingsModal as openSettingsModalBase, closeSettingsModal, addUser, deleteUser, startEditUserInfo, cancelEditUserInfo, saveEditUserInfo, saveUserPermissions, togglePermCheckbox, togglePermGroup, toggleProfileMenu, initProfileMenu, getUsers, getUsersSafe, debugListUsers, debugCreateTestUser, toggleSettingsUserRow, selectSettingsUser, filterSettingsUsers, backToUsersList, markPermissionsDirty, switchSettingsSection as switchSettingsSectionBase, filterSettingsNav, addDestinationBank, removeDestinationBank, startDestinationBankEdit, cancelDestinationBankEdit, saveDestinationBankEdit, addProductCatalogItem, removeProductCatalogItem, startProductCatalogEdit, cancelProductCatalogEdit, saveProductCatalogEdit, onNewProductKindChange, onEditProductKindChange, onNewProductProfitModeChange, onEditProductProfitModeChange, startProductBundleEdit, cancelProductBundleEdit, saveProductBundleForm, removeProductBundle, runCatalogToBundleMigration, filterViewUserOptions, changeUserGroupAssignment, createSettingsGroup, renameSettingsGroup, deleteSettingsGroup, selectSettingsGroup, backToGroupsList, addSettingsGroupMember, removeSettingsGroupMember, makeGroupManager, saveSettingsGroupAccess, onGroupSettingsAccessToggle, addPlatform, loadDefaultPlatforms, removePlatform, updatePlatformField, editPlatform, cancelPlatformEdit, savePlatformEdit, addStatus, loadDefaultStatuses, removeStatus, updateStatusField, editStatus, cancelStatusEdit, saveStatusEdit, onStatusDragStart, onStatusDragOver, onStatusDrop, addCustomerCode, removeCustomerCode, editCustomerCode, cancelCustomerCodeEdit, saveCustomerCodeEdit, saveCustomerCodeExpiryMonthsFromUi, onCustomerCodeDragStart, onCustomerCodeDragOver, onCustomerCodeDrop, onSalesTargetMetricChange, onSalesTargetAllocationChange, onSalesTargetDeadlineChange, onDeadlineUrgencyFieldChange, addSalesTargetFormStage, removeSalesTargetFormStage, onSalesTargetFormStageChange, addDeadlineUrgencyStage, removeDeadlineUrgencyStage, saveDeadlineUrgencySettings, startSalesTargetEdit, cancelSalesTargetEdit, saveSalesTargetForm, removeSalesTarget, renderSalesTargetsSettings, addSalesTargetBarToDraft, removeSalesTargetBarFromDraft, startSalesTargetBarEdit, cancelSalesTargetBarEdit, saveSmsPanelSettings, resetSmsMessageTemplate, saveSmsFeaturesSettings, saveSmsTemplatesSettings, refreshSmsHistory, refreshSmsCampaigns, saveShippingSenderSettings, onShippingSenderLogoChange, removeShippingSenderLogo, addInPersonSession, startInPersonSessionEdit, cancelInPersonSessionEdit, saveInPersonSessionEdit, removeInPersonSession, assignUnassignedInPersonSale, unassignInPersonSale, filterInPersonSessionsList, filterUnassignedInPersonSales, filterAssignedInPersonSales, onInPersonAssignCourseFilterFromAdd, renderEventMessageTypesSettings, addEventMessageType, startEventMessageTypeEdit, cancelEventMessageTypeEdit, saveEventMessageTypeEdit, deleteEventMessageType } from './auth.js'
 import { renderCustomers, updateStats, openCustomerModal, closeCustomerModal, saveCustomer, saveCustomerDetail, editCustomer, deleteCustomer, closeDeleteModal, openCustomerDetail, onCustomerRowClick, closeDetailModal, switchDetailTab, showMoreDetailFollowups, setNextFollowup, clearNextFollowup, addQuickNote, onDetailQuickProductPick, removeDetailQuickProduct, updateCustomerAdvisor, claimUnassignedCustomer, updateCustomerLevel, addProductRow, removeProduct, onCustomerPhoneInput, onCustomerPlatformIdInput, selectCustomerPhoneSuggest, onCustomerPhoneSuggestBlur, onCustomerPhoneKeydown, addCustomerPhoneSlot, removeCustomerPhoneSlot, onCustomerAddressInput, onCustomerAddressPriorityChange, addCustomerAddressSlot, removeCustomerAddressSlot, addProductPayment, removeProductPayment, onDestinationBankSelect, commitSalePayment, commitSaleProductDetails, commitInPersonSession, updateSaleTotalPrice, commitGiftSale, onSaleProductNameChange, onSalePriceInput, markSalePaymentTouched, toggleClosedProductBlock, openStartSaleModal, closeStartSaleModal, confirmStartSale, filterStartSaleCustomers, closeMergeCustomerModal, confirmMergeCustomers, clearCustomerSearch, clearCustomerFilters, onCustomerSearchInput, applyCustomerStatFilter, toggleRequireFollowupOnCreate, syncRequireFollowupOnCreateUi, cancelPendingCustomerCreate, sortCustomers } from './customers.js'
 import { renderFollowups, openFollowupModal, closeFollowupModal, saveFollowup, editFollowup, deleteFollowup, setFollowupFilter, clearFollowupSearch, onFollowupSearchInput, openFollowupDoneModal, closeFollowupDoneModal, confirmFollowupDone, openFollowupDonePicker, closeFollowupDonePicker, filterFollowupDonePick, confirmFollowupDonePick, setFollowupDoneNextShortcut, isFollowupDoneNoteDirty, updateFollowupBadge, updateFollowupAdvisorDropdown, sortFollowups, openFollowupBulkSmsForCurrentFilter, onFollowupProductPick, removeFollowupProduct } from './followups.js'
 import { renderSales, sortSales, onSalesSearchInput, toggleSalesProductDropdown, toggleSalesProductFilter, clearSalesProductFilter, onSalesProductFilterSearch } from './sales.js'
+import {
+  renderEvents, onEventsSearchInput, sortEventsHeader, clearEventsFilters,
+  toggleEventsProductDropdown, toggleEventsProductFilter, clearEventsProductFilter, onEventsProductFilterSearch,
+  openEventSendMessage, closeEventMessageTypeModal, updateEventMessageTypePreview,
+  confirmEventMessageTypeAndCompose, openEventsBulkSendMessage
+} from './events.js'
 import { renderProductMatrix, cycleProductMatrixFilter, clearProductMatrixFilters, toggleProductMatrixAdvisorDropdown, toggleProductMatrixAdvisor, toggleProductMatrixAdvisorsAll, onProductMatrixSearchInput, sortProductMatrix } from './product-matrix.js'
 import { renderAccounting, setAccountingFilter, toggleAccountingBankBalances, approvePayment, approveGiftSale, requestUnapprovePayment, requestUnapproveGiftSale, openRejectPaymentModal, openEditRejectReasonModal, closeRejectPaymentModal, confirmRejectPayment, onRejectReasonPresetClick, onRejectReasonInput, onAccountingSearchInput, sortAccounting } from './accounting.js'
 import { renderShipments, setShipmentsFilter, openConfirmShipmentModal, closeConfirmShipmentModal, confirmShipment, confirmShipmentAndPrint, onShipmentsSearchInput, sortShipments, toggleShipmentSelect, toggleSelectAllShipments, printShipmentLabel, printSelectedShipmentLabels } from './shipments.js'
@@ -22,7 +28,7 @@ import {
   showMoreRefundColumn, showMoreRefundsRejected, showMoreRefundsArchived
 } from './refunds.js'
 import { renderDashboard, toggleDashSection, applyDashFilter, clearDashFilter, toggleDashUserDropdown, toggleDashUser, toggleDashGroup, toggleDashUsersAll, onSalesChartControlsChange, applySalesChart, onAdvisorCompareMetricChange, onProductChartMetricChange, onDashTargetsScopeChange, renderSalesTargetBand, onAovMaControlsChange, exportDashboardForAi, copyDashboardExport, sortDashOverdue, sortDashSoon, sortDashTransfer, showMoreDashFollowups, onDashInPersonSessionChange, sortDashInPersonHeader, exportDashInPersonSession } from './dashboard.js'
-import { exportTabCSV, exportTabXLSX, exportCustomersVcf, openImportModal, closeImportModal, doImport, dryRunCustomerImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners, openMatrixImportModal, closeMatrixImportModal, doMatrixImport, dryRunMatrixImport, setMatrixImportMapping, setMatrixProductValueMap, setMatrixProductPriceMap, downloadMatrixImportProblems, initMatrixImportListeners } from './import-export.js'
+import { exportTabCSV, exportTabXLSX, exportCustomersVcf, openImportModal, closeImportModal, doImport, dryRunCustomerImport, setImportMapping, setFollowupImportMapping, initImportListeners, openSalesImportModal, closeSalesImportModal, doSalesImport, setSalesImportMapping, setSalesAmountUnit, setSalesProductValueMap, setSalesDestinationValueMap, setSalesStatusValueMap, setSalesAdvisorValueMap, downloadSalesImportProblems, initSalesImportListeners, openMatrixImportModal, closeMatrixImportModal, doMatrixImport, dryRunMatrixImport, setMatrixImportMapping, setMatrixProductValueMap, setMatrixProductPriceMap, downloadMatrixImportProblems, initMatrixImportListeners, openEventsImportModal, closeEventsImportModal, dryRunEventsImport, doEventsImport } from './import-export.js'
 import { toggleSelectAll, toggleRowSelect, executeBulkAction, clearSelection, openBulkTransferModal, closeBulkTransferModal, confirmBulkTransfer, refreshCustomerBulkOptions, updateBulkTransferPreview, filterBulkTransferOptions } from './bulk.js'
 import {
   openBulkCustomerMerge, closeBulkMergeConflictModal, closeBulkMergePreviewModal,
@@ -147,7 +153,7 @@ import {
 // ============================================
 
 function switchTab(tab, el) {
-  const permMap = { dashboard: 'dashboard', customers: 'customers_view', followups: 'followups_view', sales: 'sales_view', products: 'products_matrix', accounting: 'accounting' }
+  const permMap = { dashboard: 'dashboard', customers: 'customers_view', followups: 'followups_view', sales: 'sales_view', events: 'events_view', products: 'products_matrix', accounting: 'accounting' }
   const featureMap = { products: 'products_matrix', refunds: 'refunds', shipments: 'shipments' }
   if (featureMap[tab] && !assertFeature(featureMap[tab])) return
   if (tab === 'refunds') {
@@ -190,6 +196,7 @@ function switchTab(tab, el) {
   if (tab === 'customers') renderCustomers()
   if (tab === 'followups') renderFollowups()
   if (tab === 'sales') renderSales()
+  if (tab === 'events') renderEvents()
   if (tab === 'products') renderProductMatrix()
   if (tab === 'accounting') renderAccounting()
   if (tab === 'shipments') renderShipments()
@@ -215,6 +222,7 @@ function goToPage(key, page) {
     customers: renderCustomers,
     followups: renderFollowups,
     sales: renderSales,
+    events: renderEvents,
     productMatrix: renderProductMatrix,
     accounting: renderAccounting,
     shipments: renderShipments
@@ -618,6 +626,29 @@ const app = {
   toggleSalesProductFilter,
   clearSalesProductFilter,
   onSalesProductFilterSearch,
+  renderEvents,
+  onEventsSearchInput,
+  sortEventsHeader,
+  clearEventsFilters,
+  toggleEventsProductDropdown,
+  toggleEventsProductFilter,
+  clearEventsProductFilter,
+  onEventsProductFilterSearch,
+  openEventSendMessage,
+  closeEventMessageTypeModal,
+  updateEventMessageTypePreview,
+  confirmEventMessageTypeAndCompose,
+  openEventsBulkSendMessage,
+  openEventsImportModal,
+  closeEventsImportModal,
+  dryRunEventsImport,
+  doEventsImport,
+  addEventMessageType,
+  startEventMessageTypeEdit,
+  cancelEventMessageTypeEdit,
+  saveEventMessageTypeEdit,
+  deleteEventMessageType,
+  renderEventMessageTypesSettings,
   renderAccounting,
   onAccountingSearchInput,
   setAccountingFilter,

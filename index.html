@@ -296,6 +296,30 @@
           </div>
         </section>
 
+        <!-- تنظیمات پیام‌های رویداد -->
+        <section class="settings-pane" data-settings-pane="event-messages" hidden>
+          <div class="settings-pane-header">
+            <h3>تنظیمات رویدادها</h3>
+            <p class="settings-pane-desc">انواع پیام رویداد (خوش‌آمدگویی، اطلاع‌رسانی و …) را با متن الگو تعریف کنید. از تب رویدادها هنگام ارسال پیام انتخاب می‌شوند.</p>
+          </div>
+          <div class="settings-subsection">
+            <h4 class="settings-subsection-title">انواع پیام</h4>
+            <p class="settings-pane-desc" style="margin-bottom:10px;">Placeholderها: {customer_name} {name_en} {phone} {event_name} {event_date} {product_name} {advisor} {org_name}</p>
+            <div class="ips-add-form" style="align-items:flex-start;">
+              <div class="form-group" style="margin-bottom:0;min-width:160px;flex:0.8;">
+                <label for="newEventMessageName">نام نوع پیام</label>
+                <input type="text" class="form-input" id="newEventMessageName" placeholder="مثلاً پیام خوش‌آمدگویی">
+              </div>
+              <div class="form-group" style="margin-bottom:0;flex:1.5;min-width:220px;">
+                <label for="newEventMessageBody">متن الگو</label>
+                <textarea class="form-input" id="newEventMessageBody" rows="3" placeholder="سلام {customer_name} عزیز…"></textarea>
+              </div>
+              <button type="button" class="btn btn-primary" style="margin-top:22px;" onclick="app.addEventMessageType()">افزودن</button>
+            </div>
+            <div id="settingsEventMessageTypesList" class="settings-config-list" style="margin-top:14px;"></div>
+          </div>
+        </section>
+
         <!-- تارگت‌های فروش -->
         <section class="settings-pane" data-settings-pane="sales-targets" hidden>
           <div class="settings-pane-header">
@@ -877,6 +901,7 @@
     <button class="tab" role="tab" id="tab-customers" aria-controls="sheet-customers" aria-selected="false" tabindex="-1" onclick="app.switchTab('customers', this)">لیست مشتریان</button>
     <button class="tab" role="tab" id="tab-followups" aria-controls="sheet-followups" aria-selected="false" tabindex="-1" onclick="app.switchTab('followups', this)">فالوآپ‌ها <span class="followup-tab-badge" id="followupTabBadge" style="display:none;">0</span></button>
     <button class="tab" role="tab" id="tab-sales" aria-controls="sheet-sales" aria-selected="false" tabindex="-1" onclick="app.switchTab('sales', this)">فروش‌ها</button>
+    <button class="tab" role="tab" id="tab-events" aria-controls="sheet-events" aria-selected="false" tabindex="-1" data-perm="events_view" onclick="app.switchTab('events', this)">رویدادها</button>
     <button class="tab" role="tab" id="tab-products" aria-controls="sheet-products" aria-selected="false" tabindex="-1" data-perm="products_matrix" onclick="app.switchTab('products', this)">محصولات</button>
     <button class="tab" role="tab" id="tab-accounting" aria-controls="sheet-accounting" aria-selected="false" tabindex="-1" data-perm="accounting" onclick="app.switchTab('accounting', this)">حسابداری</button>
     <button class="tab" role="tab" id="tab-shipments" aria-controls="sheet-shipments" aria-selected="false" tabindex="-1" onclick="app.switchTab('shipments', this)">ارسالی‌ها</button>
@@ -1483,6 +1508,53 @@
     <div class="pagination" id="salesPagination"></div>
   </div>
 
+  <!-- شیت رویدادها -->
+  <div class="sheet" id="sheet-events" role="tabpanel" aria-labelledby="tab-events" hidden>
+    <div class="toolbar" style="gap:10px;flex-wrap:wrap;">
+      <input type="text" class="search-box" placeholder="جستجو (نام، نام انگلیسی، شماره)..." id="searchEvents" oninput="app.onEventsSearchInput()">
+      <div class="toolbar-filter-grid">
+        <input type="text" class="form-input" id="filterEventsDateFrom" placeholder="از تاریخ رویداد" data-jdp style="width:140px;" onchange="app.renderEvents()">
+        <input type="text" class="form-input" id="filterEventsDateTo" placeholder="تا تاریخ رویداد" data-jdp style="width:140px;" onchange="app.renderEvents()">
+        <div class="sales-product-filter product-matrix-advisor-filter" id="eventsProductFilter">
+          <button type="button" class="btn product-matrix-advisor-btn" id="eventsProductFilterBtn" onclick="app.toggleEventsProductDropdown(event)" aria-label="فیلتر محصول" title="فیلتر محصول رویداد">
+            محصول <span class="product-matrix-advisor-count" id="eventsProductFilterCount"></span>
+          </button>
+          <div class="product-matrix-advisor-dropdown" id="eventsProductFilterDropdown" hidden onclick="event.stopPropagation()"></div>
+        </div>
+        <button type="button" class="btn" id="clearEventsFiltersBtn" hidden onclick="app.clearEventsFilters()">پاک کردن فیلترها</button>
+        <div class="toolbar-actions" id="eventsActionsMenu">
+          <button type="button" class="btn" onclick="app.toggleToolbarActions(this, event)">خروجی / ایمپورت ▾</button>
+          <div class="toolbar-actions-dropdown" hidden>
+            <button type="button" class="toolbar-actions-item" data-perm="events_export" onclick="app.exportTabCSV('events');app.closeAllToolbarActions()">خروجی CSV</button>
+            <button type="button" class="toolbar-actions-item" data-perm="events_export" onclick="app.exportTabXLSX('events');app.closeAllToolbarActions()">خروجی Excel</button>
+            <button type="button" class="toolbar-actions-item" data-perm="events_import" onclick="app.openEventsImportModal();app.closeAllToolbarActions()">ایمپورت از اکسل</button>
+          </div>
+        </div>
+        <button type="button" class="btn" data-perm="sms_events" onclick="app.openEventsBulkSendMessage()" title="ارسال پیام به لیست فیلترشده">پیام گروهی</button>
+      </div>
+      <span class="ips-count" id="eventsResultCount" style="margin-inline-start:auto;"></span>
+    </div>
+
+    <div class="list-search-host" id="eventsSearchHost">
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th class="sort-th" data-sort-field="name" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortEventsHeader('name')">نام</button></th>
+              <th class="sort-th" data-sort-field="nameEn" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortEventsHeader('nameEn')">نام انگلیسی</button></th>
+              <th class="sort-th" data-sort-field="phone" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortEventsHeader('phone')">شماره تماس</button></th>
+              <th class="sort-th" data-sort-field="courseName" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortEventsHeader('courseName')">محصول / دوره</button></th>
+              <th class="sort-th" data-sort-field="sessionDate" aria-sort="none"><button type="button" class="sort-th-btn" onclick="app.sortEventsHeader('sessionDate')">تاریخ رویداد</button></th>
+              <th style="width:120px;">پیام</th>
+            </tr>
+          </thead>
+          <tbody id="eventsBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="pagination" id="eventsPagination"></div>
+  </div>
+
   <!-- شیت ماتریس محصولات -->
   <div class="sheet" id="sheet-products" role="tabpanel" aria-labelledby="tab-products" hidden>
     <div class="toolbar">
@@ -2005,6 +2077,55 @@
   </div>
 </div>
 
+<!-- مودال انتخاب نوع پیام رویداد -->
+<div class="modal-overlay" id="eventMessageTypeModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <h2>ارسال پیام رویداد</h2>
+      <button class="modal-close" onclick="app.closeEventMessageTypeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="settings-pane-desc" id="eventMessageMeta"></p>
+      <div class="form-group">
+        <label for="eventMessageTypeSelect">نوع پیام</label>
+        <select class="form-input" id="eventMessageTypeSelect" onchange="app.updateEventMessageTypePreview()"></select>
+        <p class="settings-pane-desc" style="margin-top:6px;">انواع پیام را در تنظیمات → تنظیمات رویدادها تعریف کنید.</p>
+      </div>
+      <div class="form-group">
+        <label>پیش‌نمایش</label>
+        <div id="eventMessageTypePreview" class="settings-pane-desc" style="min-height:3em;white-space:pre-wrap;border:1px solid var(--border);padding:10px;border-radius:8px;"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeEventMessageTypeModal()">انصراف</button>
+      <button class="btn btn-primary" onclick="app.confirmEventMessageTypeAndCompose()">ادامه و ارسال</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال ایمپورت رویدادها -->
+<div class="modal-overlay" id="eventsImportModal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header">
+      <h2>ایمپورت رویدادها از اکسل</h2>
+      <button class="modal-close" onclick="app.closeEventsImportModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="settings-pane-desc">ستون‌های پیشنهادی: نام، نام انگلیسی، شماره، نام دوره، تاریخ برگزاری. مشتریان با شماره تطبیق داده می‌شوند؛ نام انگلیسی به‌روز می‌شود و در صورت وجود سانس، فروش رویداد تخصیص می‌یابد.</p>
+      <div class="form-group">
+        <label for="eventsImportFile">فایل Excel</label>
+        <input type="file" id="eventsImportFile" accept=".xlsx,.xls,.csv" class="form-input">
+      </div>
+      <div id="eventsImportPreview" class="settings-pane-desc" style="max-height:160px;overflow:auto;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="app.closeEventsImportModal()">انصراف</button>
+      <button class="btn" onclick="app.dryRunEventsImport()">پیش‌نمایش</button>
+      <button class="btn btn-primary" onclick="app.doEventsImport()">ایمپورت</button>
+    </div>
+  </div>
+</div>
+
 <!-- مودال ارسال پیامک (فروش / مشتری / فالوآپ) -->
 <div class="modal-overlay" id="smsComposeModal">
   <div class="modal" style="max-width:560px;">
@@ -2023,7 +2144,7 @@
       <div class="form-group">
         <label for="smsComposeBody">متن پیام (الگو یا دستی)</label>
         <textarea class="form-input" id="smsComposeBody" rows="5" dir="rtl" oninput="app.onSmsComposeBodyInput()"></textarea>
-        <p class="settings-pane-desc" style="margin-top:6px;">Placeholderها: {customer_name} {phone} {product_name} {balance} {total_balance} {settlement_date} {days_to_settlement} {days_to_settlement_text} {tracking_code} {followup_date} {advisor} {advisor_phone} {org_name}</p>
+        <p class="settings-pane-desc" style="margin-top:6px;">Placeholderها: {customer_name} {phone} {product_name} {balance} {total_balance} {settlement_date} {days_to_settlement} {days_to_settlement_text} {tracking_code} {followup_date} {advisor} {advisor_phone} {org_name} {event_name} {event_date} {name_en}</p>
       </div>
       <div class="form-group">
         <label>پیش‌نمایش (نمونه اولین گیرنده)</label>

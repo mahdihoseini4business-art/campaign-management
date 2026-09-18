@@ -116,6 +116,7 @@ function emptyCoreData() {
     productCatalog: [],
     productBundles: [],
     inPersonSessions: [],
+    eventMessageTypes: [],
     platforms: [],
     statuses: [],
     customerCodes: [],
@@ -775,6 +776,7 @@ function applySettingsRows(rows) {
   data.productCatalog = normalizeProductCatalog(settings.product_catalog)
   data.productBundles = normalizeProductBundles(settings.product_bundles)
   data.inPersonSessions = normalizeInPersonSessions(settings.in_person_sessions)
+  data.eventMessageTypes = normalizeEventMessageTypes(settings.event_message_types)
   // Missing keys stay empty/off — do not seed DEFAULT_* for new tenants.
   data.platforms = Array.isArray(settings.platforms) ? settings.platforms : []
   data.statuses = Array.isArray(settings.statuses)
@@ -1880,6 +1882,94 @@ export async function assignInPersonSessionToSale(customerId, productIndex, sess
   applySaleInPersonSessionMap(product, map)
   await saveCustomerToDB(customer)
   return product
+}
+
+// ============================================
+// Event message types (تنظیمات رویدادها)
+// ============================================
+
+export const DEFAULT_EVENT_MESSAGE_TYPES = Object.freeze([
+  {
+    id: 'welcome',
+    name: 'پیام خوش‌آمدگویی',
+    body: 'سلام {customer_name} عزیز، به رویداد «{event_name}» خوش آمدید. از حضور شما سپاسگزاریم.\n{org_name}'
+  },
+  {
+    id: 'notification',
+    name: 'پیام اطلاع‌رسانی',
+    body: 'سلام {customer_name} عزیز، اطلاع‌رسانی رویداد «{event_name}» مورخ {event_date}.\n{org_name}'
+  }
+])
+
+function makeEventMessageTypeId() {
+  return `emt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+export function normalizeEventMessageType(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const name = String(raw.name || '').trim()
+  if (!name) return null
+  const id = String(raw.id || '').trim() || makeEventMessageTypeId()
+  return {
+    id,
+    name,
+    body: String(raw.body || '')
+  }
+}
+
+export function normalizeEventMessageTypes(raw) {
+  if (!Array.isArray(raw) || !raw.length) {
+    return DEFAULT_EVENT_MESSAGE_TYPES.map(t => ({ ...t }))
+  }
+  const seen = new Set()
+  const out = []
+  for (const item of raw) {
+    const t = normalizeEventMessageType(item)
+    if (!t) continue
+    if (seen.has(t.id)) continue
+    seen.add(t.id)
+    out.push(t)
+  }
+  return out.length ? out : DEFAULT_EVENT_MESSAGE_TYPES.map(t => ({ ...t }))
+}
+
+export function getEventMessageTypes() {
+  const list = normalizeEventMessageTypes(data.eventMessageTypes)
+  data.eventMessageTypes = list
+  return list.map(t => ({ ...t }))
+}
+
+export async function saveEventMessageTypes(types) {
+  const cleaned = normalizeEventMessageTypes(types)
+  data.eventMessageTypes = cleaned
+  await saveSetting('event_message_types', cleaned)
+  return getEventMessageTypes()
+}
+
+export async function upsertEventMessageType(input) {
+  const next = normalizeEventMessageType({
+    ...input,
+    id: input?.id || makeEventMessageTypeId()
+  })
+  if (!next) throw new Error('نام نوع پیام الزامی است')
+  const list = getEventMessageTypes()
+  const idx = list.findIndex(t => t.id === next.id)
+  const dupName = list.some(t =>
+    t.id !== next.id && t.name.toLowerCase() === next.name.toLowerCase()
+  )
+  if (dupName) throw new Error('نوع پیام با این نام قبلاً ثبت شده')
+  if (idx >= 0) list[idx] = next
+  else list.push(next)
+  await saveEventMessageTypes(list)
+  return next
+}
+
+export async function removeEventMessageType(id) {
+  const key = String(id || '').trim()
+  const list = getEventMessageTypes().filter(t => t.id !== key)
+  if (!list.length) throw new Error('حداقل یک نوع پیام باید باقی بماند')
+  await saveEventMessageTypes(list)
+  return list
 }
 
 /** Remove session assignment from a sale line. */

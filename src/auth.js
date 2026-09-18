@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali, gregorianToJalaliStr, gregorianToJalaliDateTimeStr, jalaliDateTimeToIso, canOpenSettings, canAccessSettingsSection, listAccessibleSettingsSectionIds, requireSettingsAccess, requireSettingsSection, SETTINGS_SECTION_ACCESS, settingsSectionSupportsScope, readSettingsAccessEntry, normalizeSettingsAccess, canManageSettingsUserRecord, requireManageSettingsUser, isSettingsSectionGroupScoped, getSettingsSectionScopeHint, canGrantPermissionKey } from './utils.js'
 import { openAppConfirm } from './app-confirm.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, renameProductAcrossApp, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, renameProductAcrossApp, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, listUnassignedInPersonSales, listAssignedInPersonSales, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions, getEventMessageTypes, upsertEventMessageType, removeEventMessageType } from './data.js'
 import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS } from './sms-features.js'
 import {
   getCustomerProfileFieldCatalog,
@@ -456,6 +456,7 @@ const SETTINGS_SECTIONS = [
   { id: 'banks', label: 'بانک‌های مقصد', group: 'داده‌های پایه', keywords: 'بانک واریز bank destination' },
   { id: 'products', label: 'کاتالوگ محصولات', group: 'داده‌های پایه', keywords: 'محصول باندل رویداد product catalog bundle event' },
   { id: 'in-person-sessions', label: 'سانس‌های حضوری', group: 'داده‌های پایه', keywords: 'حضوری سانس دوره برگزاری in person session workshop' },
+  { id: 'event-messages', label: 'تنظیمات رویدادها', group: 'داده‌های پایه', keywords: 'رویداد پیام خوش آمد اطلاع رسانی event welcome notification template' },
   { id: 'sales-targets', label: 'تارگت‌های فروش', group: 'داده‌های پایه', keywords: 'تارگت هدف فروش target goal quota' },
   { id: 'platforms', label: 'پلتفرم‌ها', group: 'داده‌های پایه', keywords: 'پلتفرم platform' },
   { id: 'statuses', label: 'وضعیت‌های مشتری', group: 'داده‌های پایه', keywords: 'وضعیت status' },
@@ -605,6 +606,7 @@ function applySettingsSection(sectionId) {
   else if (sectionId === 'banks') renderDestinationBanksSettings()
   else if (sectionId === 'products') renderProductsSettingsPane()
   else if (sectionId === 'in-person-sessions') renderInPersonSessionsSettings()
+  else if (sectionId === 'event-messages') renderEventMessageTypesSettings()
   else if (sectionId === 'sales-targets') renderSalesTargetsSettings()
   else if (sectionId === 'platforms') renderPlatformsSettings()
   else if (sectionId === 'statuses') renderStatusesSettings()
@@ -2360,6 +2362,104 @@ export async function unassignInPersonSale(customerId, productIndex) {
   } catch (e) {
     showToast(e.message || 'خطا در برداشتن تخصیص')
   }
+}
+
+let _editingEventMessageTypeId = null
+
+export function renderEventMessageTypesSettings() {
+  if (!requireSettingsSection('event-messages')) return
+  const list = document.getElementById('settingsEventMessageTypesList')
+  if (!list) return
+  const types = getEventMessageTypes()
+  if (!types.length) {
+    list.innerHTML = '<div class="settings-empty-detail">نوع پیامی تعریف نشده</div>'
+    return
+  }
+  list.innerHTML = types.map(t => {
+    if (_editingEventMessageTypeId === t.id) {
+      return `
+        <div class="settings-config-row is-editing" style="flex-wrap:wrap;align-items:flex-end;gap:8px;">
+          <div class="form-group" style="margin:0;min-width:160px;flex:0.8;">
+            <label>نام</label>
+            <input type="text" class="form-input" id="editEventMessageName" value="${escapeAttr(t.name)}">
+          </div>
+          <div class="form-group" style="margin:0;flex:1.5;min-width:220px;">
+            <label>متن الگو</label>
+            <textarea class="form-input" id="editEventMessageBody" rows="3">${escapeHtml(t.body)}</textarea>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="app.saveEventMessageTypeEdit('${escapeAttr(t.id)}')">ذخیره</button>
+          <button type="button" class="btn btn-sm" onclick="app.cancelEventMessageTypeEdit()">انصراف</button>
+        </div>`
+    }
+    return `
+      <div class="settings-config-row">
+        <span class="settings-config-label" style="flex:1;min-width:160px;">
+          <span class="ips-row-title">${escapeHtml(t.name)}</span>
+          <span class="settings-config-meta" style="display:block;margin-top:4px;white-space:pre-wrap;font-size:12px;">${escapeHtml(t.body || '—')}</span>
+        </span>
+        <button type="button" class="btn btn-sm" onclick="app.startEventMessageTypeEdit('${escapeAttr(t.id)}')">ویرایش</button>
+        <button type="button" class="btn btn-sm" onclick="app.deleteEventMessageType('${escapeAttr(t.id)}')">حذف</button>
+      </div>`
+  }).join('')
+}
+
+export async function addEventMessageType() {
+  if (!requireSettingsSection('event-messages')) return
+  const name = document.getElementById('newEventMessageName')?.value || ''
+  const body = document.getElementById('newEventMessageBody')?.value || ''
+  try {
+    await upsertEventMessageType({ name, body })
+    const nameEl = document.getElementById('newEventMessageName')
+    const bodyEl = document.getElementById('newEventMessageBody')
+    if (nameEl) nameEl.value = ''
+    if (bodyEl) bodyEl.value = ''
+    showToast('نوع پیام اضافه شد')
+    renderEventMessageTypesSettings()
+  } catch (e) {
+    showToast(e.message || 'خطا در افزودن نوع پیام')
+  }
+}
+
+export function startEventMessageTypeEdit(id) {
+  if (!requireSettingsSection('event-messages')) return
+  _editingEventMessageTypeId = id
+  renderEventMessageTypesSettings()
+}
+
+export function cancelEventMessageTypeEdit() {
+  _editingEventMessageTypeId = null
+  renderEventMessageTypesSettings()
+}
+
+export async function saveEventMessageTypeEdit(id) {
+  if (!requireSettingsSection('event-messages')) return
+  const name = document.getElementById('editEventMessageName')?.value || ''
+  const body = document.getElementById('editEventMessageBody')?.value || ''
+  try {
+    await upsertEventMessageType({ id, name, body })
+    _editingEventMessageTypeId = null
+    showToast('ذخیره شد')
+    renderEventMessageTypesSettings()
+  } catch (e) {
+    showToast(e.message || 'خطا در ذخیره')
+  }
+}
+
+export async function deleteEventMessageType(id) {
+  if (!requireSettingsSection('event-messages')) return
+  const types = getEventMessageTypes()
+  const t = types.find(x => x.id === id)
+  if (!t) return
+  openSettingsConfirm(`نوع پیام «${t.name}» حذف شود؟`, async () => {
+    try {
+      await removeEventMessageType(id)
+      if (_editingEventMessageTypeId === id) _editingEventMessageTypeId = null
+      showToast('حذف شد')
+      renderEventMessageTypesSettings()
+    } catch (e) {
+      showToast(e.message || 'خطا در حذف')
+    }
+  })
 }
 
 export function renderProductCatalogSettings() {
@@ -4985,6 +5085,7 @@ export function applyPermissions() {
     else if (t.id === 'tab-customers' || text === 'لیست مشتریان') permKey = 'customers_view'
     else if (t.id === 'tab-followups' || text.startsWith('فالوآپ') || text === 'تاریخچه پیگیری') permKey = 'followups_view'
     else if (t.id === 'tab-sales' || text === 'فروش‌ها') permKey = 'sales_view'
+    else if (t.id === 'tab-events' || text === 'رویدادها') permKey = 'events_view'
     else if (t.id === 'tab-products' || text === 'محصولات' || text === 'ماتریس محصولات') permKey = 'products_matrix'
     else if (t.id === 'tab-accounting' || text === 'حسابداری') permKey = 'accounting'
     else if (t.id === 'tab-refunds' || text === 'عودت وجه') {

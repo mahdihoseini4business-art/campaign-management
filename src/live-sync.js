@@ -28,6 +28,7 @@ import {
 } from './customers.js'
 import { renderFollowups, updateFollowupBadge } from './followups.js'
 import { renderSales } from './sales.js'
+import { renderEvents } from './events.js'
 import { renderProductMatrix } from './product-matrix.js'
 import { renderAccounting } from './accounting.js'
 import { renderShipments } from './shipments.js'
@@ -204,6 +205,8 @@ export async function refreshActiveViews() {
       renderFollowups()
     } else if (tab === 'sales') {
       await renderSales()
+    } else if (tab === 'events') {
+      renderEvents()
     } else if (tab === 'products') {
       renderProductMatrix()
     } else if (tab === 'accounting') {

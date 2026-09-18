@@ -14,6 +14,7 @@ import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
 import { getFollowupsForExport, hasActiveFollowupExportFilter, renderFollowups } from './followups.js'
 import { renderSales, getFilteredSales, getSalesDateFilter, hasActiveSalesProductFilter } from './sales.js'
+import { getFilteredEventRows, renderEvents, applyEventRosterImport } from './events.js'
 import { getProductMatrixExportAoa, hasActiveProductMatrixFilter, renderProductMatrix } from './product-matrix.js'
 import { assertImportExport } from './entitlements.js'
 
@@ -130,6 +131,14 @@ function hasActiveExportScopeFilter(tab) {
   }
   if (tab === 'products') {
     return hasActiveProductMatrixFilter()
+  }
+  if (tab === 'events') {
+    return !!(
+      document.getElementById('searchEvents')?.value?.trim()
+      || document.getElementById('filterEventsDateFrom')?.value?.trim()
+      || document.getElementById('filterEventsDateTo')?.value?.trim()
+      || document.getElementById('eventsProductFilterCount')?.textContent?.trim()
+    )
   }
   return false
 }
@@ -511,12 +520,30 @@ const EXPORT_CONFIG = {
     getRows() {
       return getProductMatrixExportAoa().rows
     }
+  },
+  events: {
+    label: 'رویدادها',
+    headers: [
+      'نام', 'نام انگلیسی', 'شماره', 'نام دوره', 'تاریخ برگزاری',
+      'محصول فروش', 'وضعیت', 'کارشناس', 'شناسه مشتری'
+    ],
+    getRows: () => getFilteredEventRows().map(r => [
+      r.name || '',
+      r.nameEn || '',
+      r.phone || '',
+      r.courseName || '',
+      r.sessionDate || '',
+      r.productName || '',
+      r.status || '',
+      r.advisor || '',
+      r.customerId || ''
+    ])
   }
 }
 
 export async function exportTabCSV(tab) {
   if (!assertImportExport()) return
-  const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'products_matrix' }[tab]
+  const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'products_matrix', events: 'events_export' }[tab]
   if (exportPerm && !requirePermission(exportPerm)) return
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
@@ -712,7 +739,7 @@ export async function exportInPersonSessionXlsx(session, rows) {
 
 export async function exportTabXLSX(tab) {
   if (!assertImportExport()) return
-  const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'products_matrix' }[tab]
+  const exportPerm = { customers: 'customers_export', followups: 'followups_export', sales: 'sales_export', products: 'products_matrix', events: 'events_export' }[tab]
   if (exportPerm && !requirePermission(exportPerm)) return
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
@@ -730,6 +757,8 @@ export async function exportTabXLSX(tab) {
     forceSheetTextColumns(XLSX, ws, rows.length, [0, 2]) // شناسه مشتری، شماره موبایل
   } else if (tab === 'products') {
     forceSheetTextColumns(XLSX, ws, rows.length, [1]) // شماره
+  } else if (tab === 'events') {
+    forceSheetTextColumns(XLSX, ws, rows.length, [1, 2, 4, 8]) // نام انگلیسی، شماره، تاریخ، شناسه
   }
 
   const wb = XLSX.utils.book_new()
@@ -3092,3 +3121,107 @@ export async function doMatrixImport() {
   }
 }
 
+
+// ============================================
+// Events roster import
+// ============================================
+
+let eventsImportRows = []
+
+function parseEventsImportSheet(aoa) {
+  if (!aoa?.length) return []
+  const headers = (aoa[0] || []).map(h => normalizeHeaderLabel(h))
+  const findCol = (...aliases) => {
+    for (const a of aliases) {
+      const i = headers.indexOf(normalizeHeaderLabel(a))
+      if (i >= 0) return i
+    }
+    return -1
+  }
+  const iName = findCol('نام', 'نام مشتری')
+  const iNameEn = findCol('نام انگلیسی', 'english name', 'name en')
+  const iPhone = findCol('شماره', 'شماره تماس', 'شماره موبایل', 'phone')
+  const iCourse = findCol('نام دوره', 'محصول', 'محصول / دوره', 'دوره')
+  const iDate = findCol('تاریخ برگزاری', 'تاریخ رویداد', 'تاریخ')
+  if (iPhone < 0) throw new Error('ستون شماره الزامی است')
+
+  const rows = []
+  for (let r = 1; r < aoa.length; r++) {
+    const line = aoa[r] || []
+    const phone = toEnDigits(String(line[iPhone] ?? '').trim())
+    if (!phone) continue
+    rows.push({
+      name: iName >= 0 ? String(line[iName] ?? '').trim() : '',
+      nameEn: iNameEn >= 0 ? String(line[iNameEn] ?? '').trim() : '',
+      phone,
+      courseName: iCourse >= 0 ? String(line[iCourse] ?? '').trim() : '',
+      sessionDate: iDate >= 0 ? toEnDigits(String(line[iDate] ?? '').trim()) : ''
+    })
+  }
+  return rows
+}
+
+export function openEventsImportModal() {
+  if (!assertImportExport()) return
+  if (!requirePermission('events_import')) return
+  eventsImportRows = []
+  const file = document.getElementById('eventsImportFile')
+  if (file) file.value = ''
+  const preview = document.getElementById('eventsImportPreview')
+  if (preview) preview.textContent = ''
+  document.getElementById('eventsImportModal')?.classList.add('active')
+}
+
+export function closeEventsImportModal() {
+  eventsImportRows = []
+  document.getElementById('eventsImportModal')?.classList.remove('active')
+}
+
+async function readEventsImportFile() {
+  const input = document.getElementById('eventsImportFile')
+  const file = input?.files?.[0]
+  if (!file) throw new Error('فایل را انتخاب کنید')
+  const XLSX = await ensureXLSX()
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type: 'array' })
+  const sheet = wb.Sheets[wb.SheetNames[0]]
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+  return parseEventsImportSheet(aoa)
+}
+
+export async function dryRunEventsImport() {
+  if (!assertImportExport()) return
+  if (!requirePermission('events_import')) return
+  const preview = document.getElementById('eventsImportPreview')
+  try {
+    eventsImportRows = await readEventsImportFile()
+    const result = await applyEventRosterImport(eventsImportRows, { dryRun: true })
+    if (preview) {
+      preview.innerHTML = escapeHtml(
+        `${eventsImportRows.length} ردیف · به‌روزرسانی نام: ${result.updated} · تخصیص سانس: ${result.assigned} · ردشده: ${result.skipped}`
+        + (result.errors.slice(0, 8).length
+          ? '\n' + result.errors.slice(0, 8).join('\n')
+          : '')
+      ).replace(/\n/g, '<br>')
+    }
+    showToast('پیش‌نمایش آماده است')
+  } catch (e) {
+    showToast(e.message || 'خطا در خواندن فایل')
+  }
+}
+
+export async function doEventsImport() {
+  if (!assertImportExport()) return
+  if (!requirePermission('events_import')) return
+  try {
+    if (!eventsImportRows.length) {
+      eventsImportRows = await readEventsImportFile()
+    }
+    const result = await applyEventRosterImport(eventsImportRows, { dryRun: false })
+    showToast(`ایمپورت: ${result.updated} به‌روزرسانی، ${result.assigned} تخصیص، ${result.skipped} ردشده`)
+    closeEventsImportModal()
+    try { await renderEvents() } catch (_) {}
+  } catch (e) {
+    showToast(e.message || 'خطا در ایمپورت')
+  }
+}
