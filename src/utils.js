@@ -2295,7 +2295,8 @@ export function resolveAdvisor(advisorPhoneOrName, users = []) {
 // ============================================
 
 const SESSION_KEY = 'campaign_manager_session'
-const SESSION_EXPIRY_HOURS = 24
+/** Local UI session has no wall-clock logout; Auth JWT + server revalidation gate access. */
+const SESSION_EXPIRY_HOURS = null
 const SESSION_SECRET = import.meta.env.VITE_HASH_SECRET || 'c4mp_m4n4g3r_s3cr3t_k3y_2024'
 
 let cachedUser = null
@@ -2338,10 +2339,8 @@ export async function restoreSession() {
       return null
     }
 
-    if (Date.now() > envelope.expiresAt) {
-      localStorage.removeItem(SESSION_KEY)
-      return null
-    }
+    // Time-based expiry intentionally not enforced (was 24h and forced frequent re-login).
+    // Validity is decided by Supabase Auth + refreshSessionFromServer on boot.
 
     const payload = { data: envelope.data, expiresAt: envelope.expiresAt }
     const expectedSig = await signSessionPayload(payload)
@@ -2377,7 +2376,9 @@ export async function setCurrentUser(user) {
     tenantId: user.tenantId || null,
     tenantName: user.tenantName || null
   }
-  const expiresAt = Date.now() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
+  const expiresAt = SESSION_EXPIRY_HOURS == null
+    ? Number.MAX_SAFE_INTEGER
+    : Date.now() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
   const payload = { data, expiresAt }
   const sig = await signSessionPayload(payload)
   const envelope = { ...payload, sig }

@@ -1,5 +1,6 @@
 const SESSION_KEY = 'campaign_manager_session'
-const SESSION_EXPIRY_HOURS = 24 * 7
+/** Match web app: no wall-clock logout; local Auth/session gates access. */
+const SESSION_EXPIRY_HOURS = null
 const SESSION_SECRET = import.meta.env.VITE_HASH_SECRET || 'c4mp_m4n4g3r_s3cr3t_k3y_2024'
 
 /** @type {object | null} */
@@ -31,10 +32,7 @@ export async function restoreSession() {
       localStorage.removeItem(SESSION_KEY)
       return null
     }
-    if (Date.now() > envelope.expiresAt) {
-      localStorage.removeItem(SESSION_KEY)
-      return null
-    }
+    // No time-based logout (aligned with web app).
     const expected = await signPayload(envelope.payload)
     if (expected !== envelope.sig) {
       localStorage.removeItem(SESSION_KEY)
@@ -62,7 +60,9 @@ export async function setCurrentUser(user) {
     groupName: user.groupName || null,
     isGroupManager: !!user.isGroupManager
   }
-  const expiresAt = Date.now() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
+  const expiresAt = SESSION_EXPIRY_HOURS == null
+    ? Number.MAX_SAFE_INTEGER
+    : Date.now() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
   const sig = await signPayload(payload)
   localStorage.setItem(SESSION_KEY, JSON.stringify({ payload, sig, expiresAt }))
   cachedUser = payload
