@@ -38,7 +38,10 @@ import {
   getNowJalaliDateTime,
   canAddSaleOnCustomer,
   PAYMENT_STATUS,
-  syncProductStatus
+  syncProductStatus,
+  createPayment,
+  applyProfitSnapshotToProduct,
+  ensureProductPayments
 } from './utils.js'
 import { paginateList, renderPaginationBar, getPage, setPage } from './pagination.js'
 import { toggleSortField, sortRecords, syncSortHeaders } from './table-sort.js'
@@ -561,10 +564,14 @@ function eventDatesEqual(a, b) {
 
 /**
  * Apply imported event roster rows: match by phone, update name/nameEn.
- * If course+date match a session and customer has that event sale without that session, assign.
- * @returns {{ updated: number, assigned: number, skipped: number, errors: string[] }}
+ * If course+date match a session:
+ * - existing matching event sale → assign session
+ * - no matching sale → create sale at salePrice (0 = auto-approved gift; >0 = pending payment)
+ * @param {object[]} rows
+ * @param {{ dryRun?: boolean, salePrice?: number|null }} [opts]
+ * @returns {{ updated: number, assigned: number, created: number, skipped: number, errors: string[] }}
  */
-export async function applyEventRosterImport(rows, { dryRun = false } = {}) {
+export async function applyEventRosterImport(rows, { dryRun = false, salePrice = null } = {}) {
   const {
     assignInPersonSessionToSale,
     getActiveInPersonSessions: getSessions,
@@ -580,8 +587,15 @@ export async function applyEventRosterImport(rows, { dryRun = false } = {}) {
     }
   }
 
+  const user = getCurrentUser()
+  const priceRaw = salePrice
+  const hasPrice = priceRaw !== null && priceRaw !== undefined && priceRaw !== ''
+  const priceNum = hasPrice ? Number(priceRaw) : NaN
+  const priceOk = Number.isFinite(priceNum) && priceNum >= 0
+
   let updated = 0
   let assigned = 0
+  let created = 0
   let skipped = 0
   const errors = []
 
@@ -630,7 +644,8 @@ export async function applyEventRosterImport(rows, { dryRun = false } = {}) {
           errors.push(`ردیف ${rowNum}: تاریخ «${sessionDate}» با سانس‌های «${course}» یکی نیست (موجود: ${dates})`)
         }
       } else {
-        const products = Array.isArray(customer.products) ? customer.products : []
+        if (!Array.isArray(customer.products)) customer.products = []
+        const products = customer.products
         let foundEventSale = false
         for (let pi = 0; pi < products.length; pi++) {
           const p = products[pi]
@@ -660,7 +675,33 @@ export async function applyEventRosterImport(rows, { dryRun = false } = {}) {
           break
         }
         if (!didAssign && !foundEventSale) {
-          errors.push(`ردیف ${rowNum}: مشتری هست ولی فروش رویداد هم‌خوان برای «${course}» ندارد`)
+          if (!priceOk) {
+            errors.push(`ردیف ${rowNum}: فروش رویداد ندارد — قیمت فروش را در مودال وارد کنید (۰ مجاز است)`)
+          } else {
+            try {
+              const productIndex = products.length
+              assertSaleCanUseInPersonSession(session.id, customer.id, productIndex)
+              const product = buildEventImportSaleProduct({
+                courseName: session.courseName || course,
+                price: priceNum,
+                session,
+                user,
+                customer
+              })
+              if (!dryRun) {
+                products.push(product)
+                customer._productsLoaded = true
+                customer.productCount = products.length
+                invalidateProductSalesCountCache()
+                dirty = true
+              }
+              didAssign = true
+              created++
+              assigned++
+            } catch (e) {
+              errors.push(`ردیف ${rowNum}: ${e.message || 'خطا در ثبت فروش رویداد'}`)
+            }
+          }
         }
       }
     }
@@ -679,7 +720,62 @@ export async function applyEventRosterImport(rows, { dryRun = false } = {}) {
     }
   }
 
-  return { updated, assigned, skipped, errors }
+  return { updated, assigned, created, skipped, errors }
+}
+
+/** Build event sale for import: price 0 → auto-approved gift; else pending payment for accounting. */
+function buildEventImportSaleProduct({ courseName, price, session, user, customer }) {
+  const { dateTime } = getNowJalaliDateTime()
+  const course = coerceProductName(courseName) || courseName
+  const soldBy = normalizePhone(user?.phone || '')
+  const priceNum = Math.max(0, Number(price) || 0)
+
+  let product
+  if (priceNum === 0) {
+    product = {
+      name: course,
+      saleType: 'gift',
+      price: '0',
+      priceLocked: true,
+      status: 'هدیه',
+      payments: [],
+      deposit: '',
+      settlementDate: '',
+      giftAccountingStatus: PAYMENT_STATUS.approved,
+      giftRejectReason: '',
+      giftReviewedAt: dateTime,
+      giftReviewedBy: soldBy || 'events_import',
+      soldByPhone: soldBy,
+      soldAt: dateTime,
+      depositorName: ''
+    }
+  } else {
+    const payment = createPayment({
+      amount: String(priceNum),
+      soldAt: dateTime,
+      depositorName: customer?.name || '',
+      destinationBank: 'رویداد / ایمپورت',
+      paymentStatus: PAYMENT_STATUS.pending,
+      soldByPhone: soldBy
+    })
+    product = {
+      name: course,
+      price: String(priceNum),
+      priceLocked: true,
+      deposit: '',
+      settlementDate: '',
+      payments: [payment],
+      soldByPhone: soldBy,
+      soldAt: dateTime,
+      depositorName: customer?.name || ''
+    }
+    ensureProductPayments(product)
+    applyProfitSnapshotToProduct(product)
+  }
+
+  applySaleInPersonSessionMap(product, { [course]: session.id })
+  syncProductStatus(product)
+  return product
 }
 
 // ============================================

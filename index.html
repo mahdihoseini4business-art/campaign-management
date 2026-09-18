@@ -2158,10 +2158,15 @@
       <button class="modal-close" onclick="app.closeEventsImportModal()">&times;</button>
     </div>
     <div class="modal-body">
-      <p class="settings-pane-desc">ستون‌های پیشنهادی: نام، نام انگلیسی، شماره، نام دوره، تاریخ برگزاری. مشتریان با شماره تطبیق داده می‌شوند؛ نام انگلیسی به‌روز می‌شود و در صورت وجود سانس، فروش رویداد تخصیص می‌یابد.</p>
+      <p class="settings-pane-desc">ستون‌های پیشنهادی: نام، نام انگلیسی، شماره، نام دوره، تاریخ برگزاری. مشتریان با شماره تطبیق داده می‌شوند. اگر فروش رویداد نداشته باشند، با قیمت زیر فروش جدید ساخته و به سانس وصل می‌شود.</p>
       <div class="form-group">
         <label for="eventsImportFile">فایل Excel</label>
         <input type="file" id="eventsImportFile" accept=".xlsx,.xls,.csv" class="form-input">
+      </div>
+      <div class="form-group">
+        <label for="eventsImportSalePrice">قیمت فروش <span class="required">*</span></label>
+        <input type="number" class="form-input" id="eventsImportSalePrice" min="0" step="1" inputmode="numeric" placeholder="مثلاً 0 یا 5000000" style="direction:ltr;text-align:left;font-family:'Vazirmatn',sans-serif;">
+        <p class="settings-pane-desc" style="margin-top:6px;">برای ردیف‌هایی که فروش رویداد ندارند. قیمت ۰ = هدیه و تأیید خودکار حسابداری. قیمت بیشتر از ۰ = واریز در صف تأیید حسابداری.</p>
       </div>
       <div id="eventsImportPreview" class="settings-pane-desc" style="max-height:160px;overflow:auto;"></div>
     </div>

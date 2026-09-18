@@ -3167,6 +3167,8 @@ export function openEventsImportModal() {
   eventsImportRows = []
   const file = document.getElementById('eventsImportFile')
   if (file) file.value = ''
+  const priceEl = document.getElementById('eventsImportSalePrice')
+  if (priceEl) priceEl.value = ''
   const preview = document.getElementById('eventsImportPreview')
   if (preview) preview.textContent = ''
   document.getElementById('eventsImportModal')?.classList.add('active')
@@ -3189,20 +3191,31 @@ async function readEventsImportFile() {
   return parseEventsImportSheet(aoa)
 }
 
+function readEventsImportSalePrice() {
+  const raw = document.getElementById('eventsImportSalePrice')?.value
+  if (raw === '' || raw == null) return null
+  const n = Number(toEnDigits(String(raw)).replace(/,/g, ''))
+  if (!Number.isFinite(n) || n < 0) throw new Error('قیمت فروش نامعتبر است (۰ یا بیشتر)')
+  return n
+}
+
+function formatEventsImportResult(rowsLen, result) {
+  return `${rowsLen} ردیف · به‌روزرسانی نام: ${result.updated} · فروش جدید: ${result.created || 0} · تخصیص سانس: ${result.assigned} · ردشده: ${result.skipped}`
+    + (result.errors.slice(0, 8).length
+      ? '\n' + result.errors.slice(0, 8).join('\n')
+      : '')
+}
+
 export async function dryRunEventsImport() {
   if (!assertImportExport()) return
   if (!requirePermission('events_import')) return
   const preview = document.getElementById('eventsImportPreview')
   try {
+    const salePrice = readEventsImportSalePrice()
     eventsImportRows = await readEventsImportFile()
-    const result = await applyEventRosterImport(eventsImportRows, { dryRun: true })
+    const result = await applyEventRosterImport(eventsImportRows, { dryRun: true, salePrice })
     if (preview) {
-      preview.innerHTML = escapeHtml(
-        `${eventsImportRows.length} ردیف · به‌روزرسانی نام: ${result.updated} · تخصیص سانس: ${result.assigned} · ردشده: ${result.skipped}`
-        + (result.errors.slice(0, 8).length
-          ? '\n' + result.errors.slice(0, 8).join('\n')
-          : '')
-      ).replace(/\n/g, '<br>')
+      preview.innerHTML = escapeHtml(formatEventsImportResult(eventsImportRows.length, result)).replace(/\n/g, '<br>')
     }
     showToast('پیش‌نمایش آماده است')
   } catch (e) {
@@ -3214,11 +3227,17 @@ export async function doEventsImport() {
   if (!assertImportExport()) return
   if (!requirePermission('events_import')) return
   try {
+    const salePrice = readEventsImportSalePrice()
+    if (salePrice === null) {
+      showToast('قیمت فروش را وارد کنید (۰ مجاز است)')
+      document.getElementById('eventsImportSalePrice')?.focus()
+      return
+    }
     if (!eventsImportRows.length) {
       eventsImportRows = await readEventsImportFile()
     }
-    const result = await applyEventRosterImport(eventsImportRows, { dryRun: false })
-    showToast(`ایمپورت: ${result.updated} به‌روزرسانی، ${result.assigned} تخصیص، ${result.skipped} ردشده`)
+    const result = await applyEventRosterImport(eventsImportRows, { dryRun: false, salePrice })
+    showToast(`ایمپورت: ${result.updated} نام، ${result.created || 0} فروش جدید، ${result.assigned} تخصیص، ${result.skipped} ردشده`)
     closeEventsImportModal()
     try { await renderEvents() } catch (_) {}
   } catch (e) {
