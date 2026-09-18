@@ -10,6 +10,7 @@ export const SMS_FEATURE_KEYS = [
   'customer_campaign',
   'followup_on_schedule',
   'followup_bulk',
+  'events',
   'templates_edit',
   'history_view',
 ]
@@ -30,6 +31,7 @@ export const SMS_FEATURE_LABELS = Object.freeze({
   customer_campaign: 'کمپین پیامکی مشتریان',
   followup_on_schedule: 'پیامک زمان‌بندی‌شده روی موعد فالوآپ',
   followup_bulk: 'پیامک دسته‌ای به فالوآپ‌دارها',
+  events: 'پیامک رویدادها (خوش‌آمد / اطلاع‌رسانی)',
   templates_edit: 'ویرایش قالب‌های پیامک',
   history_view: 'مشاهده تاریخچه پیامک',
 })
@@ -45,6 +47,7 @@ export const SMS_KIND_FEATURE = Object.freeze({
   customer_campaign: 'customer_campaign',
   followup_schedule: 'followup_on_schedule',
   followup_bulk: 'followup_bulk',
+  event_single: 'events',
 })
 
 /** kind (API) → user permission (null = auto-only gate via feature) */
@@ -58,6 +61,7 @@ export const SMS_KIND_PERMISSION = Object.freeze({
   customer_campaign: 'sms_customer_campaign',
   followup_schedule: 'sms_followup_schedule',
   followup_bulk: 'sms_followup_bulk',
+  event_single: 'sms_events',
 })
 
 export const DEFAULT_SMS_TEMPLATES = Object.freeze([

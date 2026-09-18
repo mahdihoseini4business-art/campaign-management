@@ -74,6 +74,7 @@ const KIND_TEMPLATE_KEYS = Object.freeze({
   followup_schedule: ['followup_due'],
   shipment_queued: ['shipment_queued'],
   shipment_shipped: ['shipment_shipped'],
+  event_single: [],
 })
 
 function renderPreviewText(body, vars) {
@@ -97,6 +98,8 @@ function smsSegmentInfo(text) {
 
 function templatesForKind(templates, kind, preferredKey) {
   const keys = KIND_TEMPLATE_KEYS[kind]
+  // Explicit empty list = manual text only (no SMS template dropdown options)
+  if (Array.isArray(keys) && keys.length === 0) return []
   if (!keys || !keys.length) return templates || []
   const set = new Set(keys)
   const filtered = (templates || []).filter((t) => set.has(t.key))

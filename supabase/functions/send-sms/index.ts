@@ -22,6 +22,7 @@ const KIND_FEATURE: Record<string, string> = {
   customer_campaign: 'customer_campaign',
   followup_schedule: 'followup_on_schedule',
   followup_bulk: 'followup_bulk',
+  event_single: 'events',
 }
 
 const KIND_PERM: Record<string, string | null> = {
@@ -34,6 +35,7 @@ const KIND_PERM: Record<string, string | null> = {
   customer_campaign: 'sms_customer_campaign',
   followup_schedule: 'sms_followup_schedule',
   followup_bulk: 'sms_followup_bulk',
+  event_single: 'sms_events',
 }
 
 const DEFAULT_FEATURES: Record<string, boolean> = {
@@ -46,6 +48,7 @@ const DEFAULT_FEATURES: Record<string, boolean> = {
   customer_campaign: true,
   followup_on_schedule: true,
   followup_bulk: true,
+  events: true,
   templates_edit: true,
   history_view: true,
 }

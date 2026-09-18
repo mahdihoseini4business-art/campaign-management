@@ -1254,6 +1254,9 @@ export const ALL_PERMISSIONS = {
   sales_import: 'ایمپورت فروش',
   sales_add_others: 'ثبت فروش فقط برای مشتریان دیگران',
   sales_export: 'خروجی فروش‌ها',
+  events_view: 'مشاهده رویدادها',
+  events_import: 'ایمپورت اکسل رویدادها',
+  events_export: 'خروجی رویدادها',
   products_matrix: 'ماتریس محصولات',
   matrix_historical_import: 'ایمپورت تاریخی ماتریس محصول',
   accounting: 'تأیید واریزی‌ها (حسابداری)',
@@ -1274,7 +1277,8 @@ export const ALL_PERMISSIONS = {
   sms_customer_single: 'پیامک تکی به مشتری',
   sms_customer_campaign: 'کمپین پیامکی مشتریان',
   sms_followup_schedule: 'زمان‌بندی پیامک روی موعد فالوآپ',
-  sms_followup_bulk: 'پیامک دسته‌ای به فالوآپ‌دارها'
+  sms_followup_bulk: 'پیامک دسته‌ای به فالوآپ‌دارها',
+  sms_events: 'پیامک رویدادها'
 }
 
 export const REFUND_PERMISSION_KEYS = ['refunds_view', 'refunds_request', 'refunds_manage']
@@ -1284,6 +1288,7 @@ export const PERMISSION_GROUPS = [
   { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_edit_others', 'customers_delete', 'customers_transfer', 'customers_merge', 'customers_import', 'customers_export'] },
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_add_others', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_add_others', 'sales_import', 'sales_export'] },
+  { label: 'رویدادها', keys: ['events_view', 'events_import', 'events_export'] },
   { label: 'محصولات', keys: ['products_matrix', 'matrix_historical_import'] },
   { label: 'حسابداری', keys: ['accounting', 'accounting_org_wide_dashboard', 'accounting_org_wide_customers', 'accounting_org_wide_sales'] },
   { label: 'ارسالی‌ها', keys: ['shipments_manage'] },
@@ -1301,7 +1306,8 @@ export const PERMISSION_GROUPS = [
       'sms_customer_single',
       'sms_customer_campaign',
       'sms_followup_schedule',
-      'sms_followup_bulk'
+      'sms_followup_bulk',
+      'sms_events'
     ]
   }
 ]
@@ -1923,6 +1929,7 @@ export function getDefaultPermissions() {
   p.sms_customer_campaign = false
   p.sms_followup_schedule = false
   p.sms_followup_bulk = false
+  p.sms_events = false
   return p
 }
 
@@ -2431,6 +2438,7 @@ export const SETTINGS_SECTION_ACCESS = {
   banks: { delegable: true, supportsScope: false },
   products: { delegable: true, supportsScope: false },
   'in-person-sessions': { delegable: true, supportsScope: false },
+  'event-messages': { delegable: true, supportsScope: false },
   'sales-targets': { delegable: true, supportsScope: true },
   platforms: { delegable: true, supportsScope: false },
   statuses: { delegable: true, supportsScope: false },
