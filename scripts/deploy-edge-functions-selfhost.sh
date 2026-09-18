@@ -121,11 +121,12 @@ if [[ "${SKIP_MIGRATE:-0}" != "1" ]]; then
   }
 
   # Tenants archive/subdomain (035), digests kind/meta (040), SMS business (044),
-  # unlimited SMS daily limits (049)
+  # unlimited SMS daily limits (049), per-customer SMS log index (050)
   apply_mig "$WORKDIR/supabase/migrations/035_subdomain_audit.sql"
   apply_mig "$WORKDIR/supabase/migrations/040_notification_digest_meta.sql"
   apply_mig "$WORKDIR/supabase/migrations/044_sms_business.sql"
   apply_mig "$WORKDIR/supabase/migrations/049_sms_unlimited_daily_limits.sql"
+  apply_mig "$WORKDIR/supabase/migrations/050_sms_logs_customer_idx.sql"
 fi
 
 if [[ "${SKIP_RESTART:-0}" != "1" ]]; then
