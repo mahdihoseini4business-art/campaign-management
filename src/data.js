@@ -4273,6 +4273,53 @@ export async function listSmsLogs({ limit = 50, kind = '' } = {}) {
   return rows || []
 }
 
+/** SMS kinds grouped for dashboard report card. */
+export const SMS_DASH_CATEGORIES = Object.freeze({
+  settlement: ['sale_settlement_due'],
+  followup: ['followup_schedule', 'followup_bulk'],
+  shipment: ['shipment_queued', 'shipment_shipped'],
+})
+
+/**
+ * Count sent SMS logs by dashboard category for an ISO range (inclusive).
+ * @param {{ fromIso: string, toIso: string }} range
+ * @returns {Promise<{ settlement: number, followup: number, shipment: number, other: number, total: number }>}
+ */
+export async function countSmsLogsByDashCategory({ fromIso, toIso }) {
+  const empty = { settlement: 0, followup: 0, shipment: 0, other: 0, total: 0 }
+  const tenantId = getStoredTenantId()
+  if (!tenantId || !fromIso || !toIso) return empty
+
+  const { data: rows, error } = await supabase
+    .from('sms_logs')
+    .select('kind')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'sent')
+    .gte('created_at', fromIso)
+    .lte('created_at', toIso)
+    .limit(20000)
+
+  if (error) {
+    console.warn('countSmsLogsByDashCategory', error)
+    return empty
+  }
+
+  const settlementSet = new Set(SMS_DASH_CATEGORIES.settlement)
+  const followupSet = new Set(SMS_DASH_CATEGORIES.followup)
+  const shipmentSet = new Set(SMS_DASH_CATEGORIES.shipment)
+  const out = { ...empty }
+
+  for (const r of rows || []) {
+    const kind = String(r?.kind || '')
+    out.total += 1
+    if (settlementSet.has(kind)) out.settlement += 1
+    else if (followupSet.has(kind)) out.followup += 1
+    else if (shipmentSet.has(kind)) out.shipment += 1
+    else out.other += 1
+  }
+  return out
+}
+
 /**
  * Keys already sent today (Tehran) for settlement-due SMS: `${customerId}::${productIndex}`
  * Used to enforce at most one settlement SMS per product per customer per day.
