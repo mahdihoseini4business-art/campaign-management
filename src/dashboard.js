@@ -1536,6 +1536,147 @@ export function onAovMaControlsChange() {
   }
 }
 
+const OVERDUE_TREND_DAYS = 30
+
+/**
+ * Intervals where a customer was overdue: dueNum < day <= endNum (Jalali YYYYMMDD nums).
+ * Open backlog uses current nextFollowupDate; closed cycles use completed overdue notes.
+ */
+function collectOverdueIntervals() {
+  const data = getData()
+  const customersById = getCustomersById()
+  const todayNum = getTodayJalaliNum()
+  const intervals = []
+
+  const scopedOk = (customer) => {
+    if (!customer) return false
+    if (customer.id.startsWith('LD') && !hasPermission('customers_ld')) return false
+    if (customer.id.startsWith('CS') && !hasPermission('customers_cs')) return false
+    return matchesFollowupMonitorScope(customer)
+  }
+
+  data.customers.forEach(c => {
+    if (!scopedOk(c) || !c.nextFollowupDate) return
+    const dueNum = jalaliToNum(jalaliDatePart(c.nextFollowupDate))
+    if (dueNum === 99999999 || dueNum >= todayNum) return
+    intervals.push({ customerId: c.id, dueNum, endNum: todayNum })
+  })
+
+  ;(data.followups || []).forEach(f => {
+    const wasOverdue = !!f.wasOverdue || f.type === 'پیگیری معوقه انجام‌شده'
+    if (!wasOverdue) return
+    const customer = customersById.get(f.customerId)
+    if (!scopedOk(customer)) return
+    const dueNum = jalaliToNum(jalaliDatePart(f.nextDate))
+    const doneNum = jalaliToNum(jalaliDatePart(f.doneAt || f.date))
+    if (dueNum === 99999999 || doneNum === 99999999) return
+    if (dueNum >= doneNum) return
+    // Exclude completion day so today's point aligns with open-overdue KPI.
+    const endNum = jalaliToNum(jalaliAddDaysStr(jalaliNumToStr(doneNum), -1))
+    if (endNum === 99999999 || endNum <= dueNum) return
+    intervals.push({ customerId: f.customerId, dueNum, endNum })
+  })
+
+  return intervals
+}
+
+function buildOverdueTrendSeries() {
+  const todayStr = getTodayJalaliStr()
+  const fromStr = jalaliAddDaysStr(todayStr, -(OVERDUE_TREND_DAYS - 1))
+  const buckets = buildSalesBuckets(fromStr, todayStr, 'day')
+  const intervals = collectOverdueIntervals()
+  const values = buckets.map(b => {
+    const dayNum = b.fromNum
+    const seen = new Set()
+    for (const iv of intervals) {
+      if (iv.dueNum < dayNum && dayNum <= iv.endNum) seen.add(iv.customerId)
+    }
+    return seen.size
+  })
+  return {
+    from: fromStr,
+    to: todayStr,
+    labels: buckets.map(b => b.label),
+    values
+  }
+}
+
+function renderOverdueTrendChart() {
+  const canvas = document.getElementById('chartOverdueTrend')
+  if (!canvas) return
+  destroyDashChart('overdueTrend')
+  destroyDashChart(canvas)
+
+  const { labels, values } = buildOverdueTrendSeries()
+  const lineColor = '#dc3545'
+
+  dashCharts.overdueTrend = new ChartLib(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'پیگیری معوقه',
+        data: values,
+        borderColor: lineColor,
+        backgroundColor: 'rgba(220, 53, 69, 0.12)',
+        borderWidth: 2.5,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        pointBackgroundColor: lineColor,
+        pointBorderColor: lineColor,
+        tension: 0.25,
+        fill: true,
+        spanGaps: true
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              if (ctx.raw == null) return 'پیگیری معوقه: —'
+              return `پیگیری معوقه: ${formatNumber(ctx.raw)}`
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: {
+            font: { family: 'Vazirmatn', size: 10 },
+            maxRotation: 45,
+            minRotation: 0
+          }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: {
+            font: { family: 'Vazirmatn', size: 11 },
+            precision: 0,
+            callback: v => Number.isInteger(v) ? formatNumber(v) : undefined
+          }
+        }
+      }
+    }
+  })
+  scheduleDashChartsResize()
+}
+
+function collectOverdueTrendForExport() {
+  const series = buildOverdueTrendSeries()
+  return {
+    from: series.from,
+    to: series.to,
+    days: OVERDUE_TREND_DAYS,
+    labels: series.labels,
+    values: series.values
+  }
+}
+
 // ============================================
 // Ownership transfer metrics
 // ============================================
@@ -2031,7 +2172,7 @@ function destroyDashChart(keyOrCanvas) {
 function destroyAllDashCharts() {
   Object.keys(dashCharts).forEach(key => destroyDashChart(key))
   dashCharts = {}
-  ;['chartCustomers', 'chartSalesStatus', 'chartFollowupConversion', 'chartPlatforms', 'chartPresentToPurchase', 'chartProducts', 'chartAdvisorCompare', 'chartSalesTimeline', 'chartAovMa']
+  ;['chartCustomers', 'chartSalesStatus', 'chartFollowupConversion', 'chartPlatforms', 'chartPresentToPurchase', 'chartProducts', 'chartAdvisorCompare', 'chartSalesTimeline', 'chartAovMa', 'chartOverdueTrend']
     .forEach(id => {
       const canvas = document.getElementById(id)
       if (canvas) destroyDashChart(canvas)
@@ -2387,6 +2528,12 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     renderAovMaChart(dateFromNum, dateToNum)
   } catch (e) {
     console.error('aovMa chart error:', e)
+  }
+
+  try {
+    renderOverdueTrendChart()
+  } catch (e) {
+    console.error('overdueTrend chart error:', e)
   }
 
   try {
@@ -3755,7 +3902,7 @@ function updateDashClearFilterBtn() {
 // ============================================
 
 const DASHBOARD_AI_HINT =
-  'این snapshot داشبورد کمپین است؛ فیلترها و کارت‌ها و سری نمودارها را تحلیل کن و روندها/ریسک‌ها را بگو. presentToPurchaseAvgDays = میانگین روز از پیگیری محصول‌دار (پرزنت) تا اولین پرداخت؛ خرید بدون پیگیری محصول در این میانگین نیست. avgItemsPerBuyer و multiBuyRatePct = اندازه سبد تعدادی. avgBuyerLrfm = میانگین L/F/M خریداران؛ R آخرین تاریخ خرید ثبت‌شده توسط کارشناسان انتخاب‌شده است.'
+  'این snapshot داشبورد کمپین است؛ فیلترها و کارت‌ها و سری نمودارها را تحلیل کن و روندها/ریسک‌ها را بگو. presentToPurchaseAvgDays = میانگین روز از پیگیری محصول‌دار (پرزنت) تا اولین پرداخت؛ خرید بدون پیگیری محصول در این میانگین نیست. avgItemsPerBuyer و multiBuyRatePct = اندازه سبد تعدادی. avgBuyerLrfm = میانگین L/F/M خریداران؛ R آخرین تاریخ خرید ثبت‌شده توسط کارشناسان انتخاب‌شده است. overdueTrend = تعداد پیگیری معوقهٔ باز در هر روز از ۳۰ روز اخیر (بازسازی از موعد فعلی و پیگیری‌های معوقه انجام‌شده).'
 
 function mapFollowupTableRows(list) {
   return (list || []).map(c => {
@@ -4327,6 +4474,7 @@ export async function buildDashboardExportPayload() {
       advisorCompare,
       salesTimeline: collectSalesTimelineForExport(),
       aovMa: collectAovMaForExport(dateFromNum, dateToNum),
+      overdueTrend: collectOverdueTrendForExport(),
       salesTargets: collectSalesTargetsForExport(dateFromNum, dateToNum)
     },
     tables: {
