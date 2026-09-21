@@ -2239,7 +2239,7 @@ export function isOtherAdvisorsCustomer(customer, user = getCurrentUser()) {
  * Edit customer profile fields (name, phones, status, …) — never advisor/ownership.
  * Complementary to canTransferCustomer:
  * - customers_add → own customers' profile
- * - customers_edit_others → another advisor's customers in customers/team scope
+ * - customers_edit_others → another advisor's customers (same pattern as sales_add_others)
  * Advisor stays locked; ownership changes only via customers_transfer.
  */
 export function canEditCustomerInfo(customer, user = getCurrentUser()) {
@@ -2247,8 +2247,7 @@ export function canEditCustomerInfo(customer, user = getCurrentUser()) {
   if (user?.role === 'admin') return true
   if (hasPermissionForUser(user, 'customers_add') && canManageCustomer(customer, user)) return true
   if (!hasPermissionForUser(user, 'customers_edit_others')) return false
-  if (!isOtherAdvisorsCustomer(customer, user)) return false
-  return canViewScopedCustomer(customer, user, 'customers') || canViewScopedCustomer(customer, user)
+  return isOtherAdvisorsCustomer(customer, user)
 }
 
 /**
