@@ -94,6 +94,31 @@ function buildSettlementDayVars(settlementDate: string): Record<string, string> 
   }
 }
 
+function userDisplayName(u: Record<string, unknown> | null | undefined): string {
+  if (!u) return ''
+  const display = String(u.display_name || '').trim()
+  if (display) return display
+  return `${String(u.first_name || '').trim()} ${String(u.last_name || '').trim()}`.trim()
+}
+
+function buildAdvisorVars(
+  advisor: string,
+  advisorPhone: string,
+  usersByPhone: Map<string, Record<string, unknown>>,
+): Record<string, string> {
+  const phone = normalizePhone(advisorPhone)
+  let name = String(advisor || '').trim()
+  if (phone && usersByPhone.has(phone)) {
+    const resolved = userDisplayName(usersByPhone.get(phone))
+    if (resolved) name = resolved
+  }
+  return {
+    advisor: name || phone || '',
+    advisor_name: name || '',
+    advisor_phone: phone || '',
+  }
+}
+
 /** Recompute operational balance for a product line (approved + pending, not rejected). */
 function operationalBalance(product: Record<string, unknown> | null | undefined): number {
   if (!product) return 0
@@ -130,6 +155,18 @@ serve(async (req) => {
     const nowIso = new Date().toISOString()
     let schedulesProcessed = 0
     let campaignsProcessed = 0
+
+    const usersByPhone = new Map<string, Record<string, unknown>>()
+    try {
+      const { data: userRows } = await admin
+        .from('users')
+        .select('phone, display_name, first_name, last_name')
+        .limit(5000)
+      for (const u of userRows || []) {
+        const p = normalizePhone(u.phone)
+        if (p) usersByPhone.set(p, u as Record<string, unknown>)
+      }
+    } catch (_) { /* advisor name falls back to customer.advisor */ }
 
     const { data: dueSchedules } = await admin
       .from('sms_schedules')
@@ -168,8 +205,9 @@ serve(async (req) => {
       }
       const meta = sch.meta && typeof sch.meta === 'object' ? sch.meta as Record<string, unknown> : {}
       const kind = String(sch.kind || 'followup_schedule')
+      const advisorVars = buildAdvisorVars(advisor, advisorPhone, usersByPhone)
 
-      // Settlement-due: refresh balance; skip if already paid / completed / gift / already sent today
+      // Settlement-due: refresh balance; only send when settlement date is today
       let settlementVars: Record<string, string> = {}
       if (kind === 'sale_settlement_due') {
         const productIndex = Number(meta.productIndex)
@@ -187,9 +225,22 @@ serve(async (req) => {
           continue
         }
 
+        const today = todayJalaliInTehran()
+        const settleSerial = jalaliDaySerial(settlementDate)
+        const todaySerial = jalaliDaySerial(today)
+        if (settleSerial == null || todaySerial == null || settleSerial !== todaySerial) {
+          await admin.from('sms_schedules').update({
+            status: 'cancelled',
+            updated_at: nowIso,
+            meta: { ...meta, skip_reason: 'not_settlement_today', settlementDate, today },
+          }).eq('id', sch.id)
+          schedulesProcessed += 1
+          continue
+        }
+
         // At most one settlement SMS per customer+product per Tehran day
         if (sch.customer_id && Number.isFinite(productIndex)) {
-          const day = todayJalaliInTehran()
+          const day = today
           // Convert Jalali day bounds via Gregorian of schedule send day is hard; use ISO day in Tehran
           const dayIso = new Intl.DateTimeFormat('en-CA', {
             timeZone: 'Asia/Tehran',
@@ -253,8 +304,7 @@ serve(async (req) => {
             ...settlementVars,
             customer_name: customerName || String((meta.vars as Record<string, string> | undefined)?.customer_name || ''),
             customer_code: sch.customer_id ? String(sch.customer_id) : '',
-            advisor,
-            advisor_phone: advisorPhone,
+            ...advisorVars,
           },
           meta: { schedule_id: sch.id, ...meta },
         }],

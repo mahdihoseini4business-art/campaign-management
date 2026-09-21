@@ -2,7 +2,7 @@ import { supabase } from './supabase.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali, gregorianToJalaliStr, gregorianToJalaliDateTimeStr, jalaliDateTimeToIso, canOpenSettings, canAccessSettingsSection, listAccessibleSettingsSectionIds, requireSettingsAccess, requireSettingsSection, SETTINGS_SECTION_ACCESS, settingsSectionSupportsScope, readSettingsAccessEntry, normalizeSettingsAccess, canManageSettingsUserRecord, requireManageSettingsUser, isSettingsSectionGroupScoped, getSettingsSectionScopeHint, canGrantPermissionKey } from './utils.js'
 import { openAppConfirm } from './app-confirm.js'
 import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, renameProductAcrossApp, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, buildInPersonAssignmentSnapshots, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions, getEventMessageTypes, upsertEventMessageType, removeEventMessageType } from './data.js'
-import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS } from './sms-features.js'
+import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS, SMS_TEMPLATE_PLACEHOLDERS } from './sms-features.js'
 import {
   getCustomerProfileFieldCatalog,
   sanitizeProfileFieldKeys,
@@ -5377,7 +5377,20 @@ async function renderSmsTemplatesEditor() {
     host.innerHTML = `<p class="settings-pane-desc">${escapeHtml(e.message || 'خطا')}</p>`
     return
   }
-  host.innerHTML = _smsTemplatesCache.map((t, i) => `
+  host.innerHTML = _smsTemplatesCache.map((t, i) => {
+    const placeholders = SMS_TEMPLATE_PLACEHOLDERS[t.key] || [
+      { token: 'customer_name', label: 'نام مشتری' },
+      { token: 'advisor_name', label: 'نام کارشناس' },
+      { token: 'advisor_phone', label: 'شماره کارشناس' },
+    ]
+    const chips = placeholders.map((p) => `
+      <button type="button" class="btn btn-sm sms-tpl-var-chip" data-sms-tpl-insert="${i}" data-token="${escapeAttr(p.token)}"
+        title="درج {${escapeAttr(p.token)}}" ${canEdit ? '' : 'disabled'}
+        onclick="app.insertSmsTemplateToken(${i}, '${escapeAttr(p.token)}')">
+        {${escapeHtml(p.token)}} <span class="sms-tpl-var-label">${escapeHtml(p.label)}</span>
+      </button>
+    `).join('')
+    return `
     <div class="settings-subsection" style="border:1px solid var(--border);padding:10px;border-radius:8px;margin-bottom:8px;" data-sms-tpl-idx="${i}">
       <div class="form-row" style="justify-content:space-between;align-items:center;">
         <strong>${escapeHtml(t.name || t.key)}</strong>
@@ -5386,10 +5399,32 @@ async function renderSmsTemplatesEditor() {
           فعال
         </label>
       </div>
-      <p class="settings-pane-desc" style="margin:4px 0;">کلید: <code>${escapeHtml(t.key)}</code></p>
+      <p class="settings-pane-desc" style="margin:4px 0;">کلید: <code>${escapeHtml(t.key)}</code> — روی متغیرها کلیک کنید تا در متن درج شوند. نام و شماره کارشناس برای هر مشتری از کارشناس همان مشتری پر می‌شود.</p>
+      <div class="sms-tpl-var-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 8px;">${chips}</div>
       <textarea class="form-input" rows="3" data-sms-tpl-body="${i}" ${canEdit ? '' : 'readonly'}>${escapeHtml(t.body || '')}</textarea>
     </div>
-  `).join('') || '<p class="settings-pane-desc">قالبی نیست</p>'
+  `
+  }).join('') || '<p class="settings-pane-desc">قالبی نیست</p>'
+}
+
+/** Insert `{token}` into the template textarea at the caret. */
+export function insertSmsTemplateToken(idx, token) {
+  if (!canEditSmsTemplates()) return
+  const el = document.querySelector(`[data-sms-tpl-body="${idx}"]`)
+  if (!el || el.readOnly) return
+  const raw = String(token || '').trim()
+  if (!/^[a-z0-9_]+$/i.test(raw)) return
+  const insert = `{${raw}}`
+  const start = el.selectionStart ?? el.value.length
+  const end = el.selectionEnd ?? start
+  const before = el.value.slice(0, start)
+  const after = el.value.slice(end)
+  el.value = before + insert + after
+  const pos = start + insert.length
+  el.focus()
+  try {
+    el.setSelectionRange(pos, pos)
+  } catch (_) { /* ignore */ }
 }
 
 export async function saveSmsTemplatesSettings() {

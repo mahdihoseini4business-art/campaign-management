@@ -26,7 +26,7 @@ export const SMS_FEATURE_LABELS = Object.freeze({
   shipment_shipped: 'پیامک تأیید ارسال و کد رهگیری',
   sales_single: 'پیامک فروش / مانده تکی',
   sales_group_debtors: 'پیامک گروهی به بدهکاران',
-  sales_settlement_due: 'پیامک خودکار در موعد تسویه (بر اساس مانده)',
+  sales_settlement_due: 'پیامک خودکار فقط در روز موعد تسویه (بر اساس مانده)',
   customer_single: 'پیامک تکی به مشتری',
   customer_campaign: 'کمپین پیامکی مشتریان',
   followup_on_schedule: 'پیامک زمان‌بندی‌شده روی موعد فالوآپ',
@@ -83,7 +83,7 @@ export const DEFAULT_SMS_TEMPLATES = Object.freeze([
   {
     key: 'sale_settlement_due',
     name: 'موعد تسویه',
-    body: 'سلام {customer_name} عزیز، موعد تسویه «{product_name}» ({settlement_date}) — {days_to_settlement_text}. مانده حساب شما: {balance} ریال.',
+    body: 'سلام {customer_name} عزیز، موعد تسویه «{product_name}» ({settlement_date}) فرا رسیده است. مانده: {balance} ریال. کارشناس شما {advisor_name} — {advisor_phone}',
   },
   {
     key: 'customer_campaign',
@@ -129,3 +129,63 @@ export function normalizeFollowupDefaultHour(raw) {
   }
   return '10:00'
 }
+
+/**
+ * Placeholder chips for the SMS template editor (key → {token, label}[]).
+ * Tokens must match vars passed into send-sms renderTemplate.
+ */
+export const SMS_TEMPLATE_PLACEHOLDERS = Object.freeze({
+  shipment_queued: [
+    { token: 'customer_name', label: 'نام مشتری' },
+    { token: 'product_name', label: 'نام محصول' },
+    { token: 'advisor_name', label: 'نام کارشناس' },
+    { token: 'advisor_phone', label: 'شماره کارشناس' },
+    { token: 'org_name', label: 'نام سازمان' },
+  ],
+  shipment_shipped: [
+    { token: 'customer_name', label: 'نام مشتری' },
+    { token: 'product_name', label: 'نام محصول' },
+    { token: 'tracking_code', label: 'کد رهگیری' },
+    { token: 'advisor_name', label: 'نام کارشناس' },
+    { token: 'advisor_phone', label: 'شماره کارشناس' },
+  ],
+  sale_balance: [
+    { token: 'customer_name', label: 'نام مشتری' },
+    { token: 'product_name', label: 'نام محصول' },
+    { token: 'balance', label: 'مانده' },
+    { token: 'settlement_date', label: 'تاریخ تسویه' },
+    { token: 'advisor_name', label: 'نام کارشناس' },
+    { token: 'advisor_phone', label: 'شماره کارشناس' },
+  ],
+  sale_settlement_due: [
+    { token: 'customer_name', label: 'نام مشتری' },
+    { token: 'product_name', label: 'نام محصول' },
+    { token: 'balance', label: 'مانده' },
+    { token: 'settlement_date', label: 'تاریخ تسویه' },
+    { token: 'days_to_settlement_text', label: 'متن روز مانده/گذشته' },
+    { token: 'advisor_name', label: 'نام کارشناس' },
+    { token: 'advisor', label: 'کارشناس (نام یا شماره)' },
+    { token: 'advisor_phone', label: 'شماره کارشناس' },
+    { token: 'org_name', label: 'نام سازمان' },
+  ],
+  customer_campaign: [
+    { token: 'customer_name', label: 'نام مشتری' },
+    { token: 'advisor_name', label: 'نام کارشناس' },
+    { token: 'advisor_phone', label: 'شماره کارشناس' },
+    { token: 'org_name', label: 'نام سازمان' },
+    { token: 'followup_date', label: 'تاریخ پیگیری' },
+  ],
+  followup_due: [
+    { token: 'customer_name', label: 'نام مشتری' },
+    { token: 'followup_date', label: 'تاریخ پیگیری' },
+    { token: 'advisor_name', label: 'نام کارشناس' },
+    { token: 'advisor', label: 'کارشناس' },
+    { token: 'advisor_phone', label: 'شماره کارشناس' },
+  ],
+  followup_bulk: [
+    { token: 'customer_name', label: 'نام مشتری' },
+    { token: 'followup_date', label: 'تاریخ پیگیری' },
+    { token: 'advisor_name', label: 'نام کارشناس' },
+    { token: 'advisor_phone', label: 'شماره کارشناس' },
+  ],
+})

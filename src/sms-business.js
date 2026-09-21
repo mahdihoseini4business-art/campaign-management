@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { getStoredTenantId } from './tenant.js'
 import { readFunctionsInvokeError } from './edge-error.js'
-import { hasPermission, isMainAdmin, formatNumber, jalaliDiffDays, getTodayJalaliStr } from './utils.js'
+import { hasPermission, isMainAdmin, formatNumber, jalaliDiffDays, getTodayJalaliStr, jalaliToNum, normalizePhone, userDisplayName } from './utils.js'
 import { SMS_KIND_FEATURE, SMS_KIND_PERMISSION } from './sms-features.js'
 import { getSmsFeatures, getFollowupSmsDefaultHour } from './data.js'
 
@@ -75,6 +75,27 @@ export function formatBalanceFa(n) {
 }
 
 /**
+ * Advisor placeholders for SMS — per customer's own advisor.
+ * Resolves display name from users list when customer.advisor is empty/stale.
+ * @param {object} customer
+ * @param {object[]} [users]
+ */
+export function buildAdvisorSmsVars(customer, users = null) {
+  const phone = normalizePhone(customer?.advisorPhone || customer?.advisor_phone || '')
+  let name = String(customer?.advisor || '').trim()
+  if (phone && Array.isArray(users) && users.length) {
+    const u = users.find((x) => normalizePhone(x?.phone) === phone)
+    const resolved = userDisplayName(u).trim()
+    if (resolved) name = resolved
+  }
+  return {
+    advisor: name || phone || '',
+    advisor_name: name || '',
+    advisor_phone: phone || '',
+  }
+}
+
+/**
  * Placeholders for settlement-due personalization.
  * days_to_settlement: signed integer (positive = remaining, 0 = today, negative = overdue)
  * days_to_settlement_text: Persian phrase for remaining/overdue
@@ -106,7 +127,28 @@ export function buildSettlementSmsVars(settlementDate) {
   }
 }
 
-export function buildRecipientFromCustomer(customer, vars = {}, meta = {}) {
+/** True when Jalali settlement date is exactly today (Tehran calendar via getTodayJalaliStr). */
+export function isSettlementDateToday(settlementDate) {
+  const date = String(settlementDate || '').trim()
+  if (!date) return false
+  const n = jalaliToNum(date)
+  if (!n || n === 99999999) return false
+  return n === jalaliToNum(getTodayJalaliStr())
+}
+
+/**
+ * Auto-schedule for today or future settlement dates (never overdue backlog).
+ * At send time, isSettlementDateToday still gates delivery to the due day only.
+ */
+export function isSettlementDateSchedulable(settlementDate) {
+  const date = String(settlementDate || '').trim()
+  if (!date) return false
+  const n = jalaliToNum(date)
+  if (!n || n === 99999999) return false
+  return n >= jalaliToNum(getTodayJalaliStr())
+}
+
+export function buildRecipientFromCustomer(customer, vars = {}, meta = {}, users = null) {
   const phones = []
   if (customer?.phone) phones.push(customer.phone)
   if (Array.isArray(customer?.phones)) {
@@ -120,8 +162,7 @@ export function buildRecipientFromCustomer(customer, vars = {}, meta = {}) {
       customer_name: customer?.name || '',
       customer_code: customer?.id || '',
       phone: phone || '',
-      advisor: customer?.advisor || '',
-      advisor_phone: customer?.advisorPhone || '',
+      ...buildAdvisorSmsVars(customer, users),
       followup_date: customer?.nextFollowupDate || '',
       org_name: 'آکادمی کارنو',
       ...vars,
