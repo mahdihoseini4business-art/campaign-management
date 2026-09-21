@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { getStoredTenantId } from './tenant.js'
 import { readFunctionsInvokeError } from './edge-error.js'
-import { hasPermission, isMainAdmin, formatNumber, jalaliDiffDays, getTodayJalaliStr, jalaliToNum, normalizePhone, userDisplayName } from './utils.js'
+import { hasPermission, isMainAdmin, formatNumber, jalaliDiffDays, getTodayJalaliStr, jalaliToNum, jalaliAddDays, normalizePhone, userDisplayName } from './utils.js'
 import { SMS_KIND_FEATURE, SMS_KIND_PERMISSION } from './sms-features.js'
 import { getSmsFeatures, getFollowupSmsDefaultHour } from './data.js'
 
@@ -137,8 +137,45 @@ export function isSettlementDateToday(settlementDate) {
 }
 
 /**
- * Auto-schedule for today or future settlement dates (never overdue backlog).
- * At send time, isSettlementDateToday still gates delivery to the due day only.
+ * Auto reminders relative to settlement date.
+ * - minus3: 3 days before
+ * - due: on settlement day
+ */
+export const SETTLEMENT_REMINDER_OFFSETS = Object.freeze([
+  { kind: 'minus3', offsetDays: -3, label: '۳ روز قبل' },
+  { kind: 'due', offsetDays: 0, label: 'روز موعد' },
+])
+
+function jalaliNumToDateStr(n) {
+  if (!n || n === 99999999) return ''
+  const y = Math.floor(n / 10000)
+  const m = Math.floor((n % 10000) / 100)
+  const d = n % 100
+  return `${y}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}`
+}
+
+/** Jalali send day for a settlement reminder (settlementDate + offsetDays). */
+export function settlementReminderSendDate(settlementDate, offsetDays = 0) {
+  const date = String(settlementDate || '').trim()
+  if (!date || jalaliToNum(date) === 99999999) return ''
+  return jalaliNumToDateStr(jalaliAddDays(date, Number(offsetDays) || 0))
+}
+
+export function normalizeSettlementReminderKind(raw) {
+  const k = String(raw || '').trim()
+  if (k === 'minus3') return 'minus3'
+  return 'due'
+}
+
+/** Dedup key: one SMS per customer+product+reminderKind per day. */
+export function settlementSmsSentKey(customerId, productIndex, reminderKind = 'due') {
+  const kind = normalizeSettlementReminderKind(reminderKind)
+  return `${customerId}::${productIndex}::${kind}`
+}
+
+/**
+ * Auto-schedule when settlement is today or future (never overdue backlog).
+ * Each reminder's send day must also be today or future.
  */
 export function isSettlementDateSchedulable(settlementDate) {
   const date = String(settlementDate || '').trim()
@@ -146,6 +183,25 @@ export function isSettlementDateSchedulable(settlementDate) {
   const n = jalaliToNum(date)
   if (!n || n === 99999999) return false
   return n >= jalaliToNum(getTodayJalaliStr())
+}
+
+/** True when today is the send day for this reminder kind. */
+export function isSettlementReminderDueToday(settlementDate, reminderKind = 'due') {
+  const kind = normalizeSettlementReminderKind(reminderKind)
+  const offset = kind === 'minus3' ? -3 : 0
+  const sendDate = settlementReminderSendDate(settlementDate, offset)
+  if (!sendDate) return false
+  return jalaliToNum(sendDate) === jalaliToNum(getTodayJalaliStr())
+}
+
+/** Whether this reminder's send day is still in the future or today (ok to queue). */
+export function isSettlementReminderSchedulable(settlementDate, reminderKind = 'due') {
+  if (!isSettlementDateSchedulable(settlementDate)) return false
+  const kind = normalizeSettlementReminderKind(reminderKind)
+  const offset = kind === 'minus3' ? -3 : 0
+  const sendDate = settlementReminderSendDate(settlementDate, offset)
+  if (!sendDate) return false
+  return jalaliToNum(sendDate) >= jalaliToNum(getTodayJalaliStr())
 }
 
 export function buildRecipientFromCustomer(customer, vars = {}, meta = {}, users = null) {

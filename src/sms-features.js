@@ -26,7 +26,7 @@ export const SMS_FEATURE_LABELS = Object.freeze({
   shipment_shipped: 'پیامک تأیید ارسال و کد رهگیری',
   sales_single: 'پیامک فروش / مانده تکی',
   sales_group_debtors: 'پیامک گروهی به بدهکاران',
-  sales_settlement_due: 'پیامک خودکار فقط در روز موعد تسویه (بر اساس مانده)',
+  sales_settlement_due: 'پیامک خودکار ۳ روز قبل و روز موعد تسویه (بر اساس مانده)',
   customer_single: 'پیامک تکی به مشتری',
   customer_campaign: 'کمپین پیامکی مشتریان',
   followup_on_schedule: 'پیامک زمان‌بندی‌شده روی موعد فالوآپ',

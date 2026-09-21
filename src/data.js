@@ -4388,7 +4388,10 @@ export async function listSettlementSmsSentTodayKeys() {
     const idx = meta.productIndex
     const productIndex = Number.isFinite(Number(idx)) ? Number(idx) : null
     if (productIndex == null || productIndex < 0) continue
-    keys.add(`${cid}::${productIndex}`)
+    const reminderKind = String(meta.reminderKind || 'due').trim() === 'minus3' ? 'minus3' : 'due'
+    keys.add(`${cid}::${productIndex}::${reminderKind}`)
+    // Legacy rows without reminderKind counted as due-day send
+    if (!meta.reminderKind) keys.add(`${cid}::${productIndex}::due`)
   }
   return keys
 }

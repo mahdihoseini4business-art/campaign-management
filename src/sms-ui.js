@@ -1,6 +1,6 @@
 import { getData, listSmsTemplates, createSmsCampaign, createSmsSchedule, cancelPendingSmsSchedulesForCustomer, cancelPendingSettlementSmsForCustomer, getFollowupSmsDefaultHour, getStatuses, getProductCatalogNames, getPlatforms, listPendingAutoSmsSchedules, listDuePendingSmsSchedules, updateSmsScheduleRow, listSettlementSmsSentTodayKeys } from './data.js'
 import { showToast, escapeHtml, escapeAttr, formatNumber, getCurrentUser, normalizePhone, getOperationalBalance, getPrimaryPhone, jalaliDateTimeToIso, jalaliToNum, gregorianToJalaliStr, getTodayJalaliStr, isGiftSale, isDealCancelled, CUSTOMER_LEVELS, resolveCustomerLevel, formatTeamFilterLabel } from './utils.js'
-import { canUseSmsKind, canManageSmsSettings, invokeSendSms, buildRecipientFromCustomer, formatBalanceFa, fetchSmsQuota, buildSettlementSmsVars, buildAdvisorSmsVars, isSettlementDateToday, isSettlementDateSchedulable } from './sms-business.js'
+import { canUseSmsKind, canManageSmsSettings, invokeSendSms, buildRecipientFromCustomer, formatBalanceFa, fetchSmsQuota, buildSettlementSmsVars, buildAdvisorSmsVars, isSettlementReminderDueToday, isSettlementReminderSchedulable, SETTLEMENT_REMINDER_OFFSETS, settlementReminderSendDate, settlementSmsSentKey, normalizeSettlementReminderKind } from './sms-business.js'
 import { normalizeFollowupDefaultHour } from './sms-features.js'
 import { getStoredTenantId } from './tenant.js'
 import { openAppConfirm } from './app-confirm.js'
@@ -543,8 +543,8 @@ function isSettlementDueSmsEligible(product) {
 
 /**
  * Rebuild pending settlement-due SMS schedules for all products of a customer.
- * Only schedules settlement dates that are today or in the future (never overdue backlog).
- * Org feature must be on; runs as auto (no per-user permission required).
+ * Creates two reminders when applicable: 3 days before + settlement day.
+ * Never queues overdue (past settlement) backlog.
  * @param {object} customer
  * @param {{ sentTodayKeys?: Set<string>, users?: object[] }} [opts]
  * @returns {Promise<number>} number of schedules created
@@ -575,37 +575,43 @@ export async function syncSettlementDueSmsForCustomer(customer, opts = {}) {
       const product = products[productIndex]
       if (!isSettlementDueSmsEligible(product)) continue
       const settlementDate = String(product.settlementDate || '').trim()
-      // Never queue overdue backlog — only today/future; send path also requires === today.
-      if (!isSettlementDateSchedulable(settlementDate)) continue
-      if (sentTodayKeys.has(`${customer.id}::${productIndex}`)) continue
       const balance = getOperationalBalance(product)
-      let sendAt = jalaliDateTimeToIso(settlementDate, timeStr)
-      if (!sendAt) continue
       const settleVars = buildSettlementSmsVars(settlementDate)
-      await createSmsSchedule({
-        customer_id: customer.id,
-        kind: 'sale_settlement_due',
-        template_key: 'sale_settlement_due',
-        body_override: null,
-        send_at: sendAt,
-        created_by: createdBy,
-        meta: {
-          productIndex,
-          settlementDate,
-          product_name: product.name || '',
-          vars: {
-            customer_name: customer.name || '',
-            customer_code: customer.id || '',
-            ...advisorVars,
+
+      for (const rem of SETTLEMENT_REMINDER_OFFSETS) {
+        if (!isSettlementReminderSchedulable(settlementDate, rem.kind)) continue
+        const sentKey = settlementSmsSentKey(customer.id, productIndex, rem.kind)
+        if (sentTodayKeys.has(sentKey)) continue
+        const sendDate = settlementReminderSendDate(settlementDate, rem.offsetDays)
+        let sendAt = jalaliDateTimeToIso(sendDate, timeStr)
+        if (!sendAt) continue
+        await createSmsSchedule({
+          customer_id: customer.id,
+          kind: 'sale_settlement_due',
+          template_key: 'sale_settlement_due',
+          body_override: null,
+          send_at: sendAt,
+          created_by: createdBy,
+          meta: {
+            productIndex,
+            settlementDate,
+            reminderKind: rem.kind,
+            offsetDays: rem.offsetDays,
             product_name: product.name || '',
-            balance: formatBalanceFa(balance),
-            total_balance: formatBalanceFa(balance),
-            org_name: 'آکادمی کارنو',
-            ...settleVars,
+            vars: {
+              customer_name: customer.name || '',
+              customer_code: customer.id || '',
+              ...advisorVars,
+              product_name: product.name || '',
+              balance: formatBalanceFa(balance),
+              total_balance: formatBalanceFa(balance),
+              org_name: 'آکادمی کارنو',
+              ...settleVars,
+            },
           },
-        },
-      })
-      created += 1
+        })
+        created += 1
+      }
     }
     return created
   } catch (e) {
@@ -887,8 +893,8 @@ export async function processDueSmsSchedulesManually() {
       const settleOn = canUseSmsKind('sale_settlement_due', { auto: true })
       showToast(
         settleOn
-          ? 'زمان‌بندی واجد شرایطی پیدا نشد. فروش باید تاریخ تسویهٔ امروز یا آینده، مانده > ۰ و وضعیت غیرتکمیل داشته باشد.'
-          : 'قابلیت «پیامک خودکار فقط در روز موعد تسویه» خاموش است. آن را روشن کنید و ذخیره بزنید.'
+          ? 'زمان‌بندی واجد شرایطی پیدا نشد. فروش باید تاریخ تسویهٔ امروز/آینده، مانده > ۰ داشته باشد (یادآوری ۳روز قبل و روز موعد).'
+          : 'قابلیت «پیامک خودکار ۳ روز قبل و روز موعد تسویه» خاموش است. آن را روشن کنید و ذخیره بزنید.'
       )
     }
     return { processed: 0, sent: 0, failed: 0, cancelled: 0, rebuilt }
@@ -914,7 +920,11 @@ export async function processDueSmsSchedulesManually() {
 
     if (kind === 'sale_settlement_due') {
       const productIndex = Number(meta.productIndex)
-      if (Number.isFinite(productIndex) && sentTodayKeys.has(`${sch.customer_id}::${productIndex}`)) {
+      const reminderKind = normalizeSettlementReminderKind(meta.reminderKind)
+      if (
+        Number.isFinite(productIndex)
+        && sentTodayKeys.has(settlementSmsSentKey(sch.customer_id, productIndex, reminderKind))
+      ) {
         await updateSmsScheduleRow(sch.id, {
           status: 'cancelled',
           meta: { ...meta, skip_reason: 'already_sent_today' },
@@ -980,10 +990,10 @@ export async function processDueSmsSchedulesManually() {
         cancelled += 1
         continue
       }
-      if (!isSettlementDateToday(settlementDate)) {
+      if (!isSettlementReminderDueToday(settlementDate, meta.reminderKind)) {
         await updateSmsScheduleRow(sch.id, {
           status: 'cancelled',
-          meta: { ...meta, skip_reason: 'not_settlement_today', settlementDate },
+          meta: { ...meta, skip_reason: 'not_reminder_send_day', settlementDate },
         })
         cancelled += 1
         continue
@@ -1019,7 +1029,13 @@ export async function processDueSmsSchedulesManually() {
           customer_code: customer?.id || sch.customer_id || '',
           ...advisorVars,
         },
-        meta: { schedule_id: sch.id, ...meta },
+        meta: {
+          schedule_id: sch.id,
+          ...meta,
+          ...(kind === 'sale_settlement_due'
+            ? { reminderKind: normalizeSettlementReminderKind(meta.reminderKind) }
+            : {}),
+        },
       }],
     })
 
@@ -1032,7 +1048,9 @@ export async function processDueSmsSchedulesManually() {
       sent += 1
       if (kind === 'sale_settlement_due') {
         const productIndex = Number(meta.productIndex)
-        if (Number.isFinite(productIndex)) sentTodayKeys.add(`${sch.customer_id}::${productIndex}`)
+        if (Number.isFinite(productIndex)) {
+          sentTodayKeys.add(settlementSmsSentKey(sch.customer_id, productIndex, meta.reminderKind))
+        }
       }
     } else failed += 1
   }

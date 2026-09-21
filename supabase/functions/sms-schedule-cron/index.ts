@@ -74,6 +74,33 @@ function todayJalaliInTehran(): string {
   return `${y}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}`
 }
 
+function jalaliAddDaysStr(dateStr: string, days: number): string {
+  const p = jalaliParts(dateStr)
+  if (!p) return ''
+  let y = p.y
+  let m = p.m
+  let d = p.d + days
+  const daysInMonth = (yy: number, mm: number) => {
+    const dim = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, isJalaliLeap(yy) ? 30 : 29]
+    return dim[mm - 1]
+  }
+  while (d > daysInMonth(y, m)) {
+    d -= daysInMonth(y, m)
+    m++
+    if (m > 12) { m = 1; y++ }
+  }
+  while (d <= 0) {
+    m--
+    if (m < 1) { m = 12; y-- }
+    d += daysInMonth(y, m)
+  }
+  return `${y}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}`
+}
+
+function normalizeReminderKind(raw: unknown): 'minus3' | 'due' {
+  return String(raw || '').trim() === 'minus3' ? 'minus3' : 'due'
+}
+
 function buildSettlementDayVars(settlementDate: string): Record<string, string> {
   const date = String(settlementDate || '').trim()
   if (!date) return { settlement_date: '', days_to_settlement: '', days_to_settlement_text: '' }
@@ -207,7 +234,7 @@ serve(async (req) => {
       const kind = String(sch.kind || 'followup_schedule')
       const advisorVars = buildAdvisorVars(advisor, advisorPhone, usersByPhone)
 
-      // Settlement-due: refresh balance; only send when settlement date is today
+      // Settlement-due: refresh balance; send on due day or 3 days before
       let settlementVars: Record<string, string> = {}
       if (kind === 'sale_settlement_due') {
         const productIndex = Number(meta.productIndex)
@@ -215,6 +242,7 @@ serve(async (req) => {
         const status = String(product?.status || '')
         const balance = operationalBalance(product)
         const settlementDate = String(product?.settlementDate || meta.settlementDate || '')
+        const reminderKind = normalizeReminderKind(meta.reminderKind)
         if (!product || status === 'تکمیل' || status === 'هدیه' || balance <= 0 || !settlementDate) {
           await admin.from('sms_schedules').update({
             status: 'cancelled',
@@ -226,22 +254,21 @@ serve(async (req) => {
         }
 
         const today = todayJalaliInTehran()
-        const settleSerial = jalaliDaySerial(settlementDate)
-        const todaySerial = jalaliDaySerial(today)
-        if (settleSerial == null || todaySerial == null || settleSerial !== todaySerial) {
+        const offsetDays = reminderKind === 'minus3' ? -3 : 0
+        const expectedSend = jalaliAddDaysStr(settlementDate, offsetDays)
+        if (!expectedSend || expectedSend !== today) {
           await admin.from('sms_schedules').update({
             status: 'cancelled',
             updated_at: nowIso,
-            meta: { ...meta, skip_reason: 'not_settlement_today', settlementDate, today },
+            meta: { ...meta, skip_reason: 'not_reminder_send_day', settlementDate, today, reminderKind },
           }).eq('id', sch.id)
           schedulesProcessed += 1
           continue
         }
 
-        // At most one settlement SMS per customer+product per Tehran day
+        // At most one settlement SMS per customer+product+reminderKind per Tehran day
         if (sch.customer_id && Number.isFinite(productIndex)) {
           const day = today
-          // Convert Jalali day bounds via Gregorian of schedule send day is hard; use ISO day in Tehran
           const dayIso = new Intl.DateTimeFormat('en-CA', {
             timeZone: 'Asia/Tehran',
             year: 'numeric',
@@ -262,13 +289,14 @@ serve(async (req) => {
             .limit(50)
           const dup = (already || []).some((row) => {
             const m = row.meta && typeof row.meta === 'object' ? row.meta as Record<string, unknown> : {}
-            return Number(m.productIndex) === productIndex
+            if (Number(m.productIndex) !== productIndex) return false
+            return normalizeReminderKind(m.reminderKind) === reminderKind
           })
           if (dup) {
             await admin.from('sms_schedules').update({
               status: 'cancelled',
               updated_at: nowIso,
-              meta: { ...meta, skip_reason: 'already_sent_today', day },
+              meta: { ...meta, skip_reason: 'already_sent_today', day, reminderKind },
             }).eq('id', sch.id)
             schedulesProcessed += 1
             continue
@@ -281,6 +309,8 @@ serve(async (req) => {
           total_balance: formatBalanceFa(balance),
           ...buildSettlementDayVars(settlementDate),
         }
+        // Ensure reminderKind lands on sms_logs.meta for dedup
+        meta.reminderKind = reminderKind
       }
 
       const invokeBody = {
