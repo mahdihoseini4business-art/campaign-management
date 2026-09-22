@@ -515,6 +515,38 @@
             </div>
             <button type="button" class="btn btn-primary" onclick="app.addCustomerCode()">افزودن</button>
           </div>
+          <div class="cc-sale-filters" id="newCustomerCodeSaleFilters">
+            <div class="cc-sale-filters-toggles">
+              <label class="settings-pref-row cc-sale-filter-toggle">
+                <input type="checkbox" id="newCcFilterAdvisors" onchange="app.toggleCcSaleFilterKind('new', 'advisors', this.checked)">
+                <span>فیلتر کارشناس / تیم برای مبلغ فروش نرخ تبدیل</span>
+              </label>
+              <label class="settings-pref-row cc-sale-filter-toggle">
+                <input type="checkbox" id="newCcFilterProducts" onchange="app.toggleCcSaleFilterKind('new', 'products', this.checked)">
+                <span>فیلتر محصول برای مبلغ فروش نرخ تبدیل</span>
+              </label>
+            </div>
+            <div class="cc-sale-filters-pickers" id="newCcSaleFilterPickers" hidden>
+              <div class="cc-sale-filter-picker" id="newCcAdvisorPicker" hidden>
+                <div class="dash-user-filter product-matrix-advisor-filter cc-sale-filter-dd" id="newCcAdvisorFilter">
+                  <button type="button" class="btn product-matrix-advisor-btn" id="newCcAdvisorFilterBtn" onclick="app.toggleCcAdvisorDropdown('new', event)">
+                    کارشناسان <span class="product-matrix-advisor-count" id="newCcAdvisorFilterCount"></span>
+                  </button>
+                  <div class="dash-user-dropdown product-matrix-advisor-dropdown" id="newCcAdvisorFilterDropdown" hidden onclick="event.stopPropagation()">
+                    <div class="dash-user-options" id="newCcAdvisorCheckboxes"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="cc-sale-filter-picker" id="newCcProductPicker" hidden>
+                <div class="sales-product-filter product-matrix-advisor-filter cc-sale-filter-dd" id="newCcProductFilter">
+                  <button type="button" class="btn product-matrix-advisor-btn" id="newCcProductFilterBtn" onclick="app.toggleCcProductDropdown('new', event)">
+                    محصولات <span class="product-matrix-advisor-count" id="newCcProductFilterCount"></span>
+                  </button>
+                  <div class="product-matrix-advisor-dropdown" id="newCcProductFilterDropdown" hidden onclick="event.stopPropagation()"></div>
+                </div>
+              </div>
+            </div>
+          </div>
           <div id="settingsCustomerCodesList" class="settings-config-list"></div>
         </section>
 

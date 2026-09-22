@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali, gregorianToJalaliStr, gregorianToJalaliDateTimeStr, jalaliDateTimeToIso, canOpenSettings, canAccessSettingsSection, listAccessibleSettingsSectionIds, requireSettingsAccess, requireSettingsSection, SETTINGS_SECTION_ACCESS, settingsSectionSupportsScope, readSettingsAccessEntry, normalizeSettingsAccess, canManageSettingsUserRecord, requireManageSettingsUser, isSettingsSectionGroupScoped, getSettingsSectionScopeHint, canGrantPermissionKey } from './utils.js'
 import { openAppConfirm } from './app-confirm.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, renameProductAcrossApp, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, buildInPersonAssignmentSnapshots, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions, getEventMessageTypes, upsertEventMessageType, removeEventMessageType, getDashConversionAmountInRange, saveDashConversionAmountInRange } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, renameProductAcrossApp, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, buildInPersonAssignmentSnapshots, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions, getEventMessageTypes, upsertEventMessageType, removeEventMessageType, getDashConversionAmountInRange, saveDashConversionAmountInRange, normalizeCustomerCodeSaleFilters, validateCustomerCodeSaleFilters, coerceProductName } from './data.js'
 import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS, SMS_TEMPLATE_PLACEHOLDERS } from './sms-features.js'
 import {
   getCustomerProfileFieldCatalog,
@@ -26,7 +26,8 @@ import {
   resolveGroupSessionInfo,
   resolveViewUserPhonesForSession,
   clearUserViewPhones,
-  saveGroupSettingsAccess
+  saveGroupSettingsAccess,
+  organizeUsersByGroup
 } from './groups.js'
 import { clearAuthSession, ensureTenantContextOnBoot } from './tenant.js'
 import {
@@ -4866,7 +4867,391 @@ function watchCustomerCodeDatepickers() {
   }
 }
 
-export function renderCustomerCodesSettings() {
+function emptyCcSaleFilterDraft() {
+  return {
+    filterAdvisors: false,
+    advisorPhones: new Set(),
+    advisorGroupIds: new Set(),
+    filterProducts: false,
+    productNames: new Set(),
+    advisorOpen: false,
+    productOpen: false,
+    productSearch: ''
+  }
+}
+
+/** @type {{ new: ReturnType<typeof emptyCcSaleFilterDraft>, edit: ReturnType<typeof emptyCcSaleFilterDraft> }} */
+const _ccSaleFilterDrafts = {
+  new: emptyCcSaleFilterDraft(),
+  edit: emptyCcSaleFilterDraft()
+}
+
+let _ccSaleFilterOutsideBound = false
+
+function ccSaleFilterDraft(mode) {
+  return _ccSaleFilterDrafts[mode === 'edit' ? 'edit' : 'new']
+}
+
+function loadCcSaleFilterDraftFromEntry(mode, entry) {
+  const f = normalizeCustomerCodeSaleFilters(entry || {})
+  const d = emptyCcSaleFilterDraft()
+  d.filterAdvisors = f.filterAdvisors
+  d.advisorPhones = new Set(f.advisorPhones)
+  d.advisorGroupIds = new Set(f.advisorGroupIds)
+  d.filterProducts = f.filterProducts
+  d.productNames = new Set(f.productNames)
+  _ccSaleFilterDrafts[mode === 'edit' ? 'edit' : 'new'] = d
+}
+
+function snapshotCcSaleFilterDraft(mode) {
+  const d = ccSaleFilterDraft(mode)
+  return normalizeCustomerCodeSaleFilters({
+    filterAdvisors: d.filterAdvisors,
+    advisorPhones: [...d.advisorPhones],
+    advisorGroupIds: [...d.advisorGroupIds],
+    filterProducts: d.filterProducts,
+    productNames: [...d.productNames]
+  })
+}
+
+function formatCcSaleFilterSummary(entry) {
+  const f = normalizeCustomerCodeSaleFilters(entry || {})
+  const parts = []
+  if (f.filterAdvisors) {
+    const n = f.advisorPhones.length + f.advisorGroupIds.length
+    parts.push(n ? `${n} کارشناس/تیم` : 'فیلتر کارشناس')
+  }
+  if (f.filterProducts) {
+    parts.push(f.productNames.length ? `${f.productNames.length} محصول` : 'فیلتر محصول')
+  }
+  return parts.join(' · ')
+}
+
+function ccSaleFilterIds(mode) {
+  const prefix = mode === 'edit' ? 'edit' : 'new'
+  return {
+    advisorsCb: `${prefix}CcFilterAdvisors`,
+    productsCb: `${prefix}CcFilterProducts`,
+    pickers: `${prefix}CcSaleFilterPickers`,
+    advisorPicker: `${prefix}CcAdvisorPicker`,
+    productPicker: `${prefix}CcProductPicker`,
+    advisorWrap: `${prefix}CcAdvisorFilter`,
+    advisorBtn: `${prefix}CcAdvisorFilterBtn`,
+    advisorCount: `${prefix}CcAdvisorFilterCount`,
+    advisorDd: `${prefix}CcAdvisorFilterDropdown`,
+    advisorCbs: `${prefix}CcAdvisorCheckboxes`,
+    productWrap: `${prefix}CcProductFilter`,
+    productBtn: `${prefix}CcProductFilterBtn`,
+    productCount: `${prefix}CcProductFilterCount`,
+    productDd: `${prefix}CcProductFilterDropdown`
+  }
+}
+
+function buildCcSaleFiltersEditHtml() {
+  return `
+    <div class="cc-sale-filters" id="editCustomerCodeSaleFilters">
+      <div class="cc-sale-filters-toggles">
+        <label class="settings-pref-row cc-sale-filter-toggle">
+          <input type="checkbox" id="editCcFilterAdvisors" onchange="app.toggleCcSaleFilterKind('edit', 'advisors', this.checked)">
+          <span>فیلتر کارشناس / تیم برای مبلغ فروش نرخ تبدیل</span>
+        </label>
+        <label class="settings-pref-row cc-sale-filter-toggle">
+          <input type="checkbox" id="editCcFilterProducts" onchange="app.toggleCcSaleFilterKind('edit', 'products', this.checked)">
+          <span>فیلتر محصول برای مبلغ فروش نرخ تبدیل</span>
+        </label>
+      </div>
+      <div class="cc-sale-filters-pickers" id="editCcSaleFilterPickers" hidden>
+        <div class="cc-sale-filter-picker" id="editCcAdvisorPicker" hidden>
+          <div class="dash-user-filter product-matrix-advisor-filter cc-sale-filter-dd" id="editCcAdvisorFilter">
+            <button type="button" class="btn product-matrix-advisor-btn" id="editCcAdvisorFilterBtn" onclick="app.toggleCcAdvisorDropdown('edit', event)">
+              کارشناسان <span class="product-matrix-advisor-count" id="editCcAdvisorFilterCount"></span>
+            </button>
+            <div class="dash-user-dropdown product-matrix-advisor-dropdown" id="editCcAdvisorFilterDropdown" hidden onclick="event.stopPropagation()">
+              <div class="dash-user-options" id="editCcAdvisorCheckboxes"></div>
+            </div>
+          </div>
+        </div>
+        <div class="cc-sale-filter-picker" id="editCcProductPicker" hidden>
+          <div class="sales-product-filter product-matrix-advisor-filter cc-sale-filter-dd" id="editCcProductFilter">
+            <button type="button" class="btn product-matrix-advisor-btn" id="editCcProductFilterBtn" onclick="app.toggleCcProductDropdown('edit', event)">
+              محصولات <span class="product-matrix-advisor-count" id="editCcProductFilterCount"></span>
+            </button>
+            <div class="product-matrix-advisor-dropdown" id="editCcProductFilterDropdown" hidden onclick="event.stopPropagation()"></div>
+          </div>
+        </div>
+      </div>
+    </div>`
+}
+
+function buildCcAdvisorGroupedHtml(mode, users) {
+  const d = ccSaleFilterDraft(mode)
+  const { groups, ungrouped } = organizeUsersByGroup(users)
+  if (!groups.length && !ungrouped.length) {
+    return '<div class="dash-user-empty">کارشناسی یافت نشد</div>'
+  }
+
+  const memberRow = (m) => {
+    const phone = m.phone
+    const checked = d.advisorPhones.has(phone) ? 'checked' : ''
+    const name = userDisplayName(m.user) || phone
+    return `<label class="dash-user-option dash-user-member">
+      <input type="checkbox" class="dash-user-cb cc-advisor-cb" value="${escapeAttr(phone)}" ${checked}
+        onchange="app.toggleCcAdvisorPhone('${escapeAttr(mode)}', '${escapeAttr(phone)}', this.checked)">
+      <span>${escapeHtml(name)}${m.isManager ? ' <span class="role-badge role-admin">مدیر</span>' : ''}</span>
+    </label>`
+  }
+
+  const blocks = []
+  for (const g of groups) {
+    const allChecked = g.members.length > 0 && g.members.every(m => d.advisorPhones.has(m.phone))
+    const someChecked = g.members.some(m => d.advisorPhones.has(m.phone))
+    const groupChecked = d.advisorGroupIds.has(g.id) || allChecked
+    blocks.push(`
+      <div class="dash-group-block" data-cc-group="${escapeAttr(g.id)}">
+        <label class="dash-user-option dash-group-head">
+          <input type="checkbox" class="dash-group-cb cc-advisor-group-cb" data-group-id="${escapeAttr(g.id)}"
+            ${groupChecked ? 'checked' : ''} ${!groupChecked && someChecked ? 'data-indeterminate="1"' : ''}
+            onchange="app.toggleCcAdvisorGroup('${escapeAttr(mode)}', '${escapeAttr(g.id)}', this.checked)">
+          <span class="dash-group-title">${escapeHtml(g.name)}</span>
+          <span class="dash-group-count">${g.members.length}</span>
+        </label>
+        <div class="dash-group-members">${g.members.map(memberRow).join('')}</div>
+      </div>`)
+  }
+
+  if (ungrouped.length) {
+    const allChecked = ungrouped.every(m => d.advisorPhones.has(m.phone))
+    const someChecked = ungrouped.some(m => d.advisorPhones.has(m.phone))
+    blocks.push(`
+      <div class="dash-group-block" data-cc-group="__none__">
+        <label class="dash-user-option dash-group-head">
+          <input type="checkbox" class="dash-group-cb cc-advisor-group-cb" data-group-id="__none__"
+            ${allChecked ? 'checked' : ''} ${!allChecked && someChecked ? 'data-indeterminate="1"' : ''}
+            onchange="app.toggleCcAdvisorGroup('${escapeAttr(mode)}', '__none__', this.checked)">
+          <span class="dash-group-title">بدون گروه</span>
+          <span class="dash-group-count">${ungrouped.length}</span>
+        </label>
+        <div class="dash-group-members">${ungrouped.map(memberRow).join('')}</div>
+      </div>`)
+  }
+
+  return blocks.join('')
+}
+
+function buildCcProductDropdownHtml(mode) {
+  const d = ccSaleFilterDraft(mode)
+  const q = toEnDigits(d.productSearch || '').toLowerCase().trim()
+  const selectedLower = new Set([...d.productNames].map(n => n.toLowerCase()))
+  const catalog = getSellableNames()
+  const options = catalog
+    .filter(name => !q || toEnDigits(name).toLowerCase().includes(q))
+    .map(name => {
+      const checked = selectedLower.has(name.toLowerCase())
+      return `<label class="product-matrix-advisor-option">
+        <input type="checkbox" class="cc-product-cb" value="${escapeAttr(name)}"${checked ? ' checked' : ''}
+          onchange="app.toggleCcProductName('${escapeAttr(mode)}', '${escapeAttr(name)}', this.checked)">
+        <span>${escapeHtml(name)}</span>
+      </label>`
+    }).join('')
+
+  const header = d.productNames.size
+    ? `<button type="button" class="product-matrix-advisor-option product-matrix-advisor-option-all sales-product-filter-clear" onclick="app.clearCcProductFilter('${escapeAttr(mode)}')">
+        <span>پاک کردن انتخاب (${d.productNames.size})</span>
+      </button>`
+    : `<div class="product-matrix-advisor-option product-matrix-advisor-option-all"><span>همه محصولات</span></div>`
+
+  return `
+    <input type="search" class="form-input sales-product-filter-search" placeholder="جستجوی محصول..."
+      value="${escapeAttr(d.productSearch)}" oninput="app.onCcProductFilterSearch('${escapeAttr(mode)}', this.value)"
+      autocomplete="off" onclick="event.stopPropagation()">
+    ${header}
+    <div class="product-matrix-advisor-options">${options || '<div class="product-matrix-advisor-empty">محصولی یافت نشد</div>'}</div>`
+}
+
+async function syncCcSaleFilterUi(mode) {
+  const d = ccSaleFilterDraft(mode)
+  const ids = ccSaleFilterIds(mode)
+
+  const advCb = document.getElementById(ids.advisorsCb)
+  const prodCb = document.getElementById(ids.productsCb)
+  if (advCb) advCb.checked = !!d.filterAdvisors
+  if (prodCb) prodCb.checked = !!d.filterProducts
+
+  const pickers = document.getElementById(ids.pickers)
+  const advPicker = document.getElementById(ids.advisorPicker)
+  const prodPicker = document.getElementById(ids.productPicker)
+  const showPickers = !!(d.filterAdvisors || d.filterProducts)
+  if (pickers) pickers.hidden = !showPickers
+  if (advPicker) advPicker.hidden = !d.filterAdvisors
+  if (prodPicker) prodPicker.hidden = !d.filterProducts
+
+  if (d.filterAdvisors) {
+    try { await loadGroupsData() } catch (_) { /* optional */ }
+    const users = (await getUsersSafe()).filter(u => u.phone)
+    const container = document.getElementById(ids.advisorCbs)
+    if (container) {
+      container.innerHTML = buildCcAdvisorGroupedHtml(mode, users)
+      container.querySelectorAll('.cc-advisor-group-cb[data-indeterminate="1"]').forEach(cb => {
+        cb.indeterminate = true
+      })
+    }
+    const countEl = document.getElementById(ids.advisorCount)
+    if (countEl) {
+      const n = d.advisorPhones.size + d.advisorGroupIds.size
+      countEl.textContent = n ? `(${n})` : ''
+    }
+    const btn = document.getElementById(ids.advisorBtn)
+    if (btn) btn.classList.toggle('is-filtered', d.advisorPhones.size > 0 || d.advisorGroupIds.size > 0)
+    const dd = document.getElementById(ids.advisorDd)
+    if (dd) dd.hidden = !d.advisorOpen
+  }
+
+  if (d.filterProducts) {
+    const dd = document.getElementById(ids.productDd)
+    if (dd) {
+      dd.innerHTML = buildCcProductDropdownHtml(mode)
+      dd.hidden = !d.productOpen
+    }
+    const countEl = document.getElementById(ids.productCount)
+    if (countEl) countEl.textContent = d.productNames.size ? `(${d.productNames.size})` : ''
+    const btn = document.getElementById(ids.productBtn)
+    if (btn) btn.classList.toggle('is-filtered', d.productNames.size > 0)
+  }
+
+  bindCcSaleFilterOutsideClick()
+}
+
+function bindCcSaleFilterOutsideClick() {
+  if (_ccSaleFilterOutsideBound) return
+  _ccSaleFilterOutsideBound = true
+  document.addEventListener('click', (e) => {
+    for (const mode of ['new', 'edit']) {
+      const d = ccSaleFilterDraft(mode)
+      const ids = ccSaleFilterIds(mode)
+      const advWrap = document.getElementById(ids.advisorWrap)
+      if (d.advisorOpen && advWrap && !advWrap.contains(e.target)) {
+        d.advisorOpen = false
+        const dd = document.getElementById(ids.advisorDd)
+        if (dd) dd.hidden = true
+      }
+      const prodWrap = document.getElementById(ids.productWrap)
+      if (d.productOpen && prodWrap && !prodWrap.contains(e.target)) {
+        d.productOpen = false
+        const dd = document.getElementById(ids.productDd)
+        if (dd) dd.hidden = true
+      }
+    }
+  })
+}
+
+export function toggleCcSaleFilterKind(mode, kind, checked) {
+  const d = ccSaleFilterDraft(mode)
+  if (kind === 'advisors') {
+    d.filterAdvisors = !!checked
+    if (!d.filterAdvisors) {
+      d.advisorPhones.clear()
+      d.advisorGroupIds.clear()
+      d.advisorOpen = false
+    }
+  } else if (kind === 'products') {
+    d.filterProducts = !!checked
+    if (!d.filterProducts) {
+      d.productNames.clear()
+      d.productOpen = false
+      d.productSearch = ''
+    }
+  }
+  void syncCcSaleFilterUi(mode)
+}
+
+export function toggleCcAdvisorDropdown(mode, event) {
+  event?.stopPropagation?.()
+  const d = ccSaleFilterDraft(mode)
+  if (!d.filterAdvisors) return
+  d.advisorOpen = !d.advisorOpen
+  d.productOpen = false
+  void syncCcSaleFilterUi(mode)
+}
+
+export function toggleCcProductDropdown(mode, event) {
+  event?.stopPropagation?.()
+  const d = ccSaleFilterDraft(mode)
+  if (!d.filterProducts) return
+  d.productOpen = !d.productOpen
+  d.advisorOpen = false
+  void syncCcSaleFilterUi(mode)
+}
+
+export function toggleCcAdvisorPhone(mode, phone, checked) {
+  const d = ccSaleFilterDraft(mode)
+  const p = normalizePhone(phone)
+  if (!p) return
+  if (checked) d.advisorPhones.add(p)
+  else d.advisorPhones.delete(p)
+  // Drop group id if not all members selected
+  for (const gid of [...d.advisorGroupIds]) {
+    const members = getMembersOfGroup(gid)
+    if (!members.length || !members.every(m => d.advisorPhones.has(normalizePhone(m.user_phone)))) {
+      d.advisorGroupIds.delete(gid)
+    }
+  }
+  void syncCcSaleFilterUi(mode)
+}
+
+export async function toggleCcAdvisorGroup(mode, groupId, checked) {
+  const d = ccSaleFilterDraft(mode)
+  try { await loadGroupsData() } catch (_) { /* optional */ }
+  const users = (await getUsersSafe()).filter(u => u.phone)
+  const { groups, ungrouped } = organizeUsersByGroup(users)
+
+  if (groupId === '__none__') {
+    for (const m of ungrouped) {
+      if (checked) d.advisorPhones.add(m.phone)
+      else d.advisorPhones.delete(m.phone)
+    }
+  } else {
+    const g = groups.find(x => x.id === groupId)
+    if (checked) {
+      d.advisorGroupIds.add(groupId)
+      for (const m of (g?.members || [])) d.advisorPhones.add(m.phone)
+    } else {
+      d.advisorGroupIds.delete(groupId)
+      for (const m of (g?.members || [])) d.advisorPhones.delete(m.phone)
+    }
+  }
+  void syncCcSaleFilterUi(mode)
+}
+
+export function toggleCcProductName(mode, name, checked) {
+  const d = ccSaleFilterDraft(mode)
+  const clean = coerceProductName(name) || String(name || '').trim()
+  if (!clean) return
+  const key = clean.toLowerCase()
+  if (checked) {
+    const canonical = getSellableNames().find(n => n.toLowerCase() === key) || clean
+    d.productNames.add(canonical)
+  } else {
+    d.productNames = new Set([...d.productNames].filter(n => n.toLowerCase() !== key))
+  }
+  void syncCcSaleFilterUi(mode)
+}
+
+export function clearCcProductFilter(mode) {
+  const d = ccSaleFilterDraft(mode)
+  d.productNames.clear()
+  void syncCcSaleFilterUi(mode)
+}
+
+export function onCcProductFilterSearch(mode, query) {
+  const d = ccSaleFilterDraft(mode)
+  d.productSearch = String(query || '')
+  const ids = ccSaleFilterIds(mode)
+  const dd = document.getElementById(ids.productDd)
+  if (!dd || dd.hidden) return
+  dd.innerHTML = buildCcProductDropdownHtml(mode)
+}
+
+export async function renderCustomerCodesSettings() {
   const list = document.getElementById('settingsCustomerCodesList')
   const monthsEl = document.getElementById('customerCodeExpiryMonths')
   if (monthsEl) monthsEl.value = String(getCustomerCodeExpiryMonths())
@@ -4877,6 +5262,11 @@ export function renderCustomerCodesSettings() {
   _editingCustomerCodeIdx = (_editingCustomerCodeIdx != null && _editingCustomerCodeIdx < codes.length)
     ? _editingCustomerCodeIdx
     : null
+
+  // Hide add-form sale filters while editing a row
+  const newFilters = document.getElementById('newCustomerCodeSaleFilters')
+  if (newFilters) newFilters.hidden = _editingCustomerCodeIdx != null
+
   list.innerHTML = codes.map((c, idx) => {
     if (_editingCustomerCodeIdx === idx) {
       const expireJalali = c.expiresAt ? formatCustomerCodeExpiryLabel(c.expiresAt) : ''
@@ -4896,21 +5286,31 @@ export function renderCustomerCodesSettings() {
               <button type="button" class="btn btn-sm" onclick="app.cancelCustomerCodeEdit()">لغو</button>
             </div>
           </div>
+          ${buildCcSaleFiltersEditHtml()}
         </div>`
     }
     const expireLabel = formatCustomerCodeExpiryLabel(c.expiresAt)
+    const filterSummary = formatCcSaleFilterSummary(c)
     return `
       <div class="settings-config-row" data-idx="${idx}" draggable="true" ondragstart="app.onCustomerCodeDragStart(event,${idx})" ondragover="app.onCustomerCodeDragOver(event)" ondrop="app.onCustomerCodeDrop(event,${idx})">
         <span class="drag-handle" title="جابجایی">☰</span>
         <span class="settings-config-label">${escapeHtml(c.label)}</span>
         <span class="settings-config-meta">${escapeHtml(c.key)}</span>
         <span class="settings-config-meta" title="تاریخ انقضا">انقضا: ${escapeHtml(expireLabel)}</span>
+        ${filterSummary ? `<span class="settings-config-meta" title="فیلتر فروش نرخ تبدیل">${escapeHtml(filterSummary)}</span>` : ''}
         <span style="flex:1;"></span>
         <button type="button" class="btn-icon" title="ویرایش" onclick="app.editCustomerCode(${idx})">✏️</button>
         <button type="button" class="btn-icon" title="حذف" onclick="app.removeCustomerCode(${idx})" style="color:var(--danger);">🗑</button>
       </div>`
   }).join('') || '<div class="settings-empty-detail">هنوز کدی تعریف نشده است</div>'
   watchCustomerCodeDatepickers()
+
+  if (_editingCustomerCodeIdx != null) {
+    loadCcSaleFilterDraftFromEntry('edit', codes[_editingCustomerCodeIdx])
+    await syncCcSaleFilterUi('edit')
+  } else {
+    await syncCcSaleFilterUi('new')
+  }
 }
 
 export function syncDashConversionAmountInRangeUi() {
@@ -4997,6 +5397,9 @@ export async function addCustomerCode() {
   if (!key || !label) { showToast('کلید و نام کد الزامیست'); return }
   const parsedExpiry = parseCustomerCodeExpiryInput(expiresInput?.value)
   if (!parsedExpiry.ok) { showToast('تاریخ انقضا نامعتبر است'); return }
+  const filters = snapshotCcSaleFilterDraft('new')
+  const validated = validateCustomerCodeSaleFilters(filters)
+  if (!validated.ok) { showToast(validated.message); return }
   const codes = getCustomerCodes()
   if (codes.some(c => c.key === key)) { showToast('این کلید قبلاً وجود دارد'); return }
   try {
@@ -5004,11 +5407,13 @@ export async function addCustomerCode() {
       key,
       label,
       order: codes.length,
-      expiresAt: parsedExpiry.expiresAt
+      expiresAt: parsedExpiry.expiresAt,
+      ...validated.filters
     })
     await saveCustomerCodes([...codes, entry])
     if (keyInput) keyInput.value = ''
     if (labelInput) labelInput.value = ''
+    loadCcSaleFilterDraftFromEntry('new', {})
     syncNewCustomerCodeExpiryDefault({ force: true })
     renderCustomerCodesSettings()
     showToast(entry.expiresAt
@@ -5040,11 +5445,14 @@ export async function removeCustomerCode(index) {
 export function editCustomerCode(index) {
   if (!requireSettingsSection('customer-codes')) return
   _editingCustomerCodeIdx = index
+  const codes = getCustomerCodes()
+  loadCcSaleFilterDraftFromEntry('edit', codes[index])
   renderCustomerCodesSettings()
 }
 
 export function cancelCustomerCodeEdit() {
   _editingCustomerCodeIdx = null
+  loadCcSaleFilterDraftFromEntry('edit', {})
   renderCustomerCodesSettings()
 }
 
@@ -5057,13 +5465,17 @@ export async function saveCustomerCodeEdit(index) {
   if (!newLabel) { showToast('نام کد را وارد کنید'); return }
   const parsedExpiry = parseCustomerCodeExpiryInput(document.getElementById('editCustomerCodeExpiresAt')?.value)
   if (!parsedExpiry.ok) { showToast('تاریخ انقضا نامعتبر است'); return }
-  const next = { ...c, label: newLabel }
+  const filters = snapshotCcSaleFilterDraft('edit')
+  const validated = validateCustomerCodeSaleFilters(filters)
+  if (!validated.ok) { showToast(validated.message); return }
+  const next = { ...c, label: newLabel, ...validated.filters }
   if (parsedExpiry.expiresAt) next.expiresAt = parsedExpiry.expiresAt
   else delete next.expiresAt
   codes[index] = next
   try {
     await saveCustomerCodes(codes)
     _editingCustomerCodeIdx = null
+    loadCcSaleFilterDraftFromEntry('edit', {})
     renderCustomerCodesSettings()
     showToast('کد مشتری ویرایش شد')
   } catch (e) {

@@ -7242,6 +7242,48 @@
     user-select: none;
   }
 
+  .cc-sale-filters {
+    margin: 12px 0 16px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-soft, #fafbfc);
+  }
+
+  .cc-sale-filters-toggles {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .cc-sale-filter-toggle {
+    margin: 0;
+  }
+
+  .cc-sale-filters-pickers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .cc-sale-filter-dd {
+    position: relative;
+  }
+
+  .cc-sale-filter-dd .product-matrix-advisor-dropdown,
+  .cc-sale-filter-dd .dash-user-dropdown {
+    z-index: 40;
+    min-width: 260px;
+    max-height: 280px;
+  }
+
+  .settings-config-edit-block .cc-sale-filters {
+    width: 100%;
+    margin-top: 12px;
+    margin-bottom: 0;
+  }
+
   .settings-target-row .settings-config-label {
     display: flex;
     flex-direction: column;

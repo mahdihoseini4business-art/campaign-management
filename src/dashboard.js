@@ -1,4 +1,4 @@
-import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages, getActiveInPersonSessions, getInPersonSessionById, formatInPersonSessionLabel, saleNeedsInPersonSession, saleHasInPersonSessionId, countSmsLogsByDashCategory, getDashConversionAmountInRange } from './data.js'
+import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages, getActiveInPersonSessions, getInPersonSessionById, formatInPersonSessionLabel, saleNeedsInPersonSession, saleHasInPersonSessionId, countSmsLogsByDashCategory, getDashConversionAmountInRange, normalizeCustomerCodeSaleFilters } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
 import {
@@ -2214,6 +2214,50 @@ function customerCodeAssignedJalali(customer) {
   return iso ? gregorianToJalaliStr(iso) : ''
 }
 
+function getCustomerCodeEntryByKey(key) {
+  const k = String(key || '').trim()
+  if (!k) return null
+  return getCustomerCodes().find(c => c.key === k) || null
+}
+
+/** Code catalog entry whose sale filters apply for this customer / card selection. */
+function codeEntryForConversionCustomer(customer, codeFilter) {
+  if (codeFilter) return getCustomerCodeEntryByKey(codeFilter)
+  return getCustomerCodeEntryByKey(customer?.customerCode)
+}
+
+function resolveCodeAdvisorPhoneSet(entry) {
+  const f = normalizeCustomerCodeSaleFilters(entry || {})
+  const set = new Set(f.advisorPhones)
+  for (const gid of f.advisorGroupIds) {
+    for (const m of getMembersOfGroup(gid)) {
+      const p = normalizePhone(m.user_phone)
+      if (p) set.add(p)
+    }
+  }
+  return set
+}
+
+/** Advisor (sale registrant) + product filters stored on the customer-code entry (AND). */
+function paymentMatchesCodeSaleFilters(codeEntry, { customer, product, payment }) {
+  if (!codeEntry) return true
+  const f = normalizeCustomerCodeSaleFilters(codeEntry)
+  if (!f.filterAdvisors && !f.filterProducts) return true
+  if (f.filterAdvisors) {
+    const allowed = resolveCodeAdvisorPhoneSet(codeEntry)
+    if (!allowed.size) return false
+    const reg = normalizePhone(getSaleRegistrantPhone(product, payment, customer))
+    if (!reg || !allowed.has(reg)) return false
+  }
+  if (f.filterProducts) {
+    if (!f.productNames.length) return false
+    const name = coerceProductName(product?.name) || String(product?.name || '').trim()
+    const allowed = new Set(f.productNames.map(n => n.toLowerCase()))
+    if (!allowed.has(name.toLowerCase())) return false
+  }
+  return true
+}
+
 /**
  * Approved payment total for followup-active customers (same cohort as conversion pie),
  * from customerCode first-fill onward; optionally capped by dashboard date range.
@@ -2230,7 +2274,7 @@ function computeFollowupConversionSalesAmount(customersWithActivity, codeFilter,
   return total
 }
 
-/** Per-customer approved payment totals under conversion-card rules. */
+/** Per-customer approved payment totals under conversion-card rules (+ per-code sale filters). */
 function accumulateFollowupConversionSalesByCustomer(customersWithActivity, codeFilter, hasDateFilter, inDateRange) {
   const customersById = getCustomersById()
   const eligibleIds = new Set()
@@ -2252,7 +2296,7 @@ function accumulateFollowupConversionSalesByCustomer(customersWithActivity, code
     ({ customer }) => eligibleIds.has(customer?.id),
     false,
     () => true,
-    ({ customer, amount, date }) => {
+    ({ customer, product, payment, amount, date }) => {
       if (!date || !customer?.id) return
       const assigned = customerCodeAssignedJalali(customer)
       if (assigned) {
@@ -2261,6 +2305,8 @@ function accumulateFollowupConversionSalesByCustomer(customersWithActivity, code
         if (payNum < assignedNum) return
       }
       if (limitToRange && hasDateFilter && !inDateRange(date)) return
+      const entry = codeEntryForConversionCustomer(customer, codeFilter)
+      if (!paymentMatchesCodeSaleFilters(entry, { customer, product, payment })) return
       byCustomer.set(customer.id, (byCustomer.get(customer.id) || 0) + amount)
     }
   )
@@ -2331,6 +2377,7 @@ export async function exportDashConversionCodeCustomers() {
     showToast('ابتدا یک کد مشتری انتخاب کنید')
     return
   }
+  try { await loadGroupsData() } catch (_) { /* optional */ }
   const { rows, codeLabel } = collectDashConversionCodeExportRows(codeFilter)
   if (!rows.length) {
     showToast('مشتری‌ای با این کد در بازه تبدیل نیست')
@@ -2584,7 +2631,6 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     populateDashConversionCodeFilter()
     const codeFilter = document.getElementById('dashConversionCustomerCode')?.value || ''
     const data = getData()
-    const customersById = getCustomersById()
     const customersWithActivity = new Set()
     data.followups.forEach(f => {
       const dateStr = jalaliDatePart(f.doneAt || f.date)
@@ -2594,35 +2640,22 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     })
 
     // Org-wide for anyone with dashboard access: ignore advisor filter.
-    const customersWithSale = new Set()
-    forEachDashSalePayment(
-      null,
-      hasDateFilter,
-      inChartDateRange,
-      () => {},
-      ({ customer }) => {
-        if (customer?.id) customersWithSale.add(customer.id)
-      }
-    )
-
-    let withSale = 0
-    let withoutSale = 0
-    customersWithActivity.forEach(customerId => {
-      const c = customersById.get(customerId)
-      if (!c) return
-      if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
-      if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
-      if (codeFilter && (c.customerCode || '') !== codeFilter) return
-      if (customersWithSale.has(customerId)) withSale += 1
-      else withoutSale += 1
-    })
-
-    const salesAmount = computeFollowupConversionSalesAmount(
+    // «دارای فروش» uses the same per-code sale filters as the amount (amount > 0).
+    const amountsByCustomer = accumulateFollowupConversionSalesByCustomer(
       customersWithActivity,
       codeFilter,
       hasDateFilter,
       inChartDateRange
     )
+
+    let withSale = 0
+    let withoutSale = 0
+    let salesAmount = 0
+    for (const amount of amountsByCustomer.values()) {
+      salesAmount += amount
+      if (amount > 0) withSale += 1
+      else withoutSale += 1
+    }
     paintDashConversionSalesAmount(salesAmount)
 
     const convCanvas = document.getElementById('chartFollowupConversion')

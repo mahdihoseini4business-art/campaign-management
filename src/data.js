@@ -1296,14 +1296,48 @@ export async function saveCustomerCodeExpiryMonths(months) {
 }
 
 function serializeCustomerCodeEntry(c, order) {
+  const filters = normalizeCustomerCodeSaleFilters(c)
   const entry = {
     key: String(c?.key || '').trim(),
     label: String(c?.label || '').trim(),
-    order
+    order,
+    filterAdvisors: filters.filterAdvisors,
+    advisorPhones: filters.advisorPhones,
+    advisorGroupIds: filters.advisorGroupIds,
+    filterProducts: filters.filterProducts,
+    productNames: filters.productNames
   }
   if (c?.createdAt) entry.createdAt = c.createdAt
   if (c?.expiresAt) entry.expiresAt = c.expiresAt
   return entry
+}
+
+/** Normalize optional conversion-sale filters on a customer-code catalog entry. */
+export function normalizeCustomerCodeSaleFilters(raw = {}) {
+  const filterAdvisors = !!raw.filterAdvisors
+  const filterProducts = !!raw.filterProducts
+  const advisorPhones = filterAdvisors
+    ? [...new Set((raw.advisorPhones || []).map(p => normalizePhoneLocal(p)).filter(Boolean))]
+    : []
+  const advisorGroupIds = filterAdvisors
+    ? [...new Set((raw.advisorGroupIds || []).map(id => String(id || '').trim()).filter(Boolean))]
+    : []
+  const productNames = filterProducts
+    ? [...new Set((raw.productNames || []).map(n => String(n || '').trim()).filter(Boolean))]
+    : []
+  return { filterAdvisors, advisorPhones, advisorGroupIds, filterProducts, productNames }
+}
+
+/** Validate filter flags: when enabled, at least one selection required. */
+export function validateCustomerCodeSaleFilters(raw = {}) {
+  const f = normalizeCustomerCodeSaleFilters(raw)
+  if (f.filterAdvisors && !f.advisorPhones.length && !f.advisorGroupIds.length) {
+    return { ok: false, message: 'حداقل یک کارشناس یا تیم را برای فیلتر کارشناس انتخاب کنید' }
+  }
+  if (f.filterProducts && !f.productNames.length) {
+    return { ok: false, message: 'حداقل یک محصول را برای فیلتر محصول انتخاب کنید' }
+  }
+  return { ok: true, filters: f }
 }
 
 export async function saveCustomerCodes(codes) {
@@ -1317,8 +1351,32 @@ export async function saveCustomerCodes(codes) {
  * - expiresAt null → no expiry
  * - expiresAt undefined → default from customer_code_expiry_months (0 → none)
  */
-export function buildCustomerCodeEntry({ key, label, order = 0, expiresAt, nowIso = new Date().toISOString() } = {}) {
-  const entry = { key, label, order, createdAt: nowIso }
+export function buildCustomerCodeEntry({
+  key,
+  label,
+  order = 0,
+  expiresAt,
+  nowIso = new Date().toISOString(),
+  filterAdvisors,
+  advisorPhones,
+  advisorGroupIds,
+  filterProducts,
+  productNames
+} = {}) {
+  const filters = normalizeCustomerCodeSaleFilters({
+    filterAdvisors,
+    advisorPhones,
+    advisorGroupIds,
+    filterProducts,
+    productNames
+  })
+  const entry = {
+    key,
+    label,
+    order,
+    createdAt: nowIso,
+    ...filters
+  }
   if (expiresAt === null) return entry
   if (typeof expiresAt === 'string' && expiresAt) {
     entry.expiresAt = expiresAt
