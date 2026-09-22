@@ -126,6 +126,8 @@ function emptyCoreData() {
     saleToastEnabled: false,
     dmChatEnabled: false,
     requireFollowupOnCreate: false,
+    /** When true, conversion-card sales amount also respects dashboard date range. */
+    dashConversionAmountInRange: true,
     opsDigestEnabled: true,
     smsPanel: null,
     smsFeatures: null,
@@ -790,6 +792,7 @@ function applySettingsRows(rows) {
   data.saleToastEnabled = coerceAppSettingBool(settings.sale_toast_enabled, false)
   data.dmChatEnabled = coerceAppSettingBool(settings.dm_chat_enabled, false)
   data.requireFollowupOnCreate = coerceAppSettingBool(settings.require_followup_on_create, false)
+  data.dashConversionAmountInRange = coerceAppSettingBool(settings.dash_conversion_amount_in_range, true)
   data.opsDigestEnabled = coerceAppSettingBool(settings.ops_digest_enabled, true)
   try {
     data.smsPanel = normalizeSmsPanel(settings.sms_panel)
@@ -4140,6 +4143,23 @@ export function setRequireFollowupOnCreateLocal(enabled) {
 export async function saveRequireFollowupOnCreate(enabled) {
   data.requireFollowupOnCreate = !!enabled
   await saveSetting('require_followup_on_create', !!enabled)
+}
+
+/**
+ * Conversion-card sales amount: when true, approved payments must also fall in the
+ * dashboard date range; when false, all payments since customerCode first-fill.
+ */
+export function getDashConversionAmountInRange() {
+  return data.dashConversionAmountInRange !== false
+}
+
+export function setDashConversionAmountInRangeLocal(enabled) {
+  data.dashConversionAmountInRange = !!enabled
+}
+
+export async function saveDashConversionAmountInRange(enabled) {
+  data.dashConversionAmountInRange = !!enabled
+  await saveSetting('dash_conversion_amount_in_range', !!enabled)
 }
 
 /** Daily morning/evening digests — default ON when unset. */

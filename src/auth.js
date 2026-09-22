@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali, gregorianToJalaliStr, gregorianToJalaliDateTimeStr, jalaliDateTimeToIso, canOpenSettings, canAccessSettingsSection, listAccessibleSettingsSectionIds, requireSettingsAccess, requireSettingsSection, SETTINGS_SECTION_ACCESS, settingsSectionSupportsScope, readSettingsAccessEntry, normalizeSettingsAccess, canManageSettingsUserRecord, requireManageSettingsUser, isSettingsSectionGroupScoped, getSettingsSectionScopeHint, canGrantPermissionKey } from './utils.js'
 import { openAppConfirm } from './app-confirm.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, renameProductAcrossApp, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, buildInPersonAssignmentSnapshots, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions, getEventMessageTypes, upsertEventMessageType, removeEventMessageType } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, renameProductAcrossApp, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, buildInPersonAssignmentSnapshots, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions, getEventMessageTypes, upsertEventMessageType, removeEventMessageType, getDashConversionAmountInRange, saveDashConversionAmountInRange } from './data.js'
 import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS, SMS_TEMPLATE_PLACEHOLDERS } from './sms-features.js'
 import {
   getCustomerProfileFieldCatalog,
@@ -460,7 +460,7 @@ const SETTINGS_SECTIONS = [
   { id: 'sales-targets', label: 'تارگت‌های فروش', group: 'داده‌های پایه', keywords: 'تارگت هدف فروش target goal quota' },
   { id: 'platforms', label: 'پلتفرم‌ها', group: 'داده‌های پایه', keywords: 'پلتفرم platform' },
   { id: 'statuses', label: 'وضعیت‌های مشتری', group: 'داده‌های پایه', keywords: 'وضعیت status' },
-  { id: 'customer-codes', label: 'کدهای مشتری', group: 'داده‌های پایه', keywords: 'کد مشتری customer code' },
+  { id: 'customer-codes', label: 'کدهای مشتری', group: 'داده‌های پایه', keywords: 'کد مشتری customer code نرخ تبدیل مبلغ فروش بازه داشبورد' },
   { id: 'customer-prefs', label: 'ترجیحات مشتری', group: 'داده‌های پایه', keywords: 'پیگیری اجبار فروش followup مشتری ثبت' },
   { id: 'sms', label: 'پنل پیامک', group: 'ارتباطات', keywords: 'پیامک sms otp ملی پیامک melipayamak فرستنده api قالب کمپین تاریخچه قابلیت' },
   { id: 'shipping-sender', label: 'فرستنده پستی', group: 'سیستم', keywords: 'پست لیبل فرستنده آدرس کد پستی لوگو shipping label sender' },
@@ -4870,6 +4870,7 @@ export function renderCustomerCodesSettings() {
   const list = document.getElementById('settingsCustomerCodesList')
   const monthsEl = document.getElementById('customerCodeExpiryMonths')
   if (monthsEl) monthsEl.value = String(getCustomerCodeExpiryMonths())
+  syncDashConversionAmountInRangeUi()
   syncNewCustomerCodeExpiryDefault()
   if (!list) return
   const codes = getCustomerCodes()
@@ -4910,6 +4911,38 @@ export function renderCustomerCodesSettings() {
       </div>`
   }).join('') || '<div class="settings-empty-detail">هنوز کدی تعریف نشده است</div>'
   watchCustomerCodeDatepickers()
+}
+
+export function syncDashConversionAmountInRangeUi() {
+  const el = document.getElementById('dashConversionAmountInRange')
+  if (el) el.checked = !!getDashConversionAmountInRange()
+}
+
+export async function toggleDashConversionAmountInRange(enabled) {
+  if (!requireSettingsSection('customer-codes')) {
+    syncDashConversionAmountInRangeUi()
+    return
+  }
+  const next = !!enabled
+  try {
+    await saveDashConversionAmountInRange(next)
+    syncDashConversionAmountInRangeUi()
+    const { broadcastAppSetting } = await import('./sale-toasts.js')
+    await broadcastAppSetting('dash_conversion_amount_in_range', next)
+    showToast(next
+      ? 'مبلغ فروش کارت نرخ تبدیل محدود به بازه داشبورد شد'
+      : 'مبلغ فروش کارت نرخ تبدیل بدون سقف بازه (از اختصاص کد) تنظیم شد')
+    try {
+      const { renderDashboard } = await import('./dashboard.js')
+      if (document.getElementById('sheet-dashboard')?.classList.contains('active')) {
+        renderDashboard()
+      }
+    } catch (_) { /* ignore */ }
+  } catch (e) {
+    console.error('toggleDashConversionAmountInRange error:', e)
+    syncDashConversionAmountInRangeUi()
+    showToast('خطا در ذخیره تنظیمات')
+  }
 }
 
 export async function saveCustomerCodeExpiryMonthsFromUi() {

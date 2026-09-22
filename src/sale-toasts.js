@@ -6,7 +6,8 @@
 import { supabase } from './supabase.js'
 import {
   getSaleToastEnabled, setSaleToastEnabledLocal, saveSaleToastEnabled, coerceProductName,
-  setRequireFollowupOnCreateLocal, setDmChatEnabledLocal, setOpsDigestEnabledLocal
+  setRequireFollowupOnCreateLocal, setDmChatEnabledLocal, setOpsDigestEnabledLocal,
+  setDashConversionAmountInRangeLocal
 } from './data.js'
 import { escapeHtml, formatNumber, requireSettingsSection, userDisplayName, getCurrentUser, normalizePhone } from './utils.js'
 import { showBrowserNotificationFromHtml } from './browser-notifications.js'
@@ -238,6 +239,17 @@ async function ensureChannel() {
         setRequireFollowupOnCreateLocal(payload.enabled)
         const el = document.getElementById('requireFollowupOnCreate')
         if (el) el.checked = payload.enabled
+        return
+      }
+      if (payload.key === 'dash_conversion_amount_in_range') {
+        setDashConversionAmountInRangeLocal(payload.enabled)
+        const el = document.getElementById('dashConversionAmountInRange')
+        if (el) el.checked = payload.enabled
+        import('./dashboard.js').then(m => {
+          if (document.getElementById('sheet-dashboard')?.classList.contains('active')) {
+            m.renderDashboard()
+          }
+        }).catch(() => {})
         return
       }
       if (payload.key === 'dm_chat_enabled') {

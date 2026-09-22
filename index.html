@@ -486,6 +486,13 @@
             <h3>کدهای مشتری</h3>
             <p class="settings-pane-desc">این کدها در پنل مشتری به‌صورت دراپ‌داون قابل انتخاب‌اند و در فیلتر فروش و داشبورد استفاده می‌شوند. تاریخ انقضای هر کد جداگانه تنظیم می‌شود و پس از آن تاریخ، کد به‌صورت خودکار از لیست و از مشتریان حذف می‌شود.</p>
           </div>
+          <label class="settings-pref-row">
+            <input type="checkbox" id="dashConversionAmountInRange" onchange="app.toggleDashConversionAmountInRange(this.checked)">
+            <span>
+              <strong>اعمال بازه داشبورد روی مبلغ فروش کارت نرخ تبدیل</strong>
+              <span class="settings-pane-desc">اگر روشن باشد، فقط واریزهای تأییدشدهٔ داخل بازه تاریخ داشبورد (و بعد از اختصاص کد) شمرده می‌شوند. اگر خاموش باشد، همهٔ واریزهای بعد از اختصاص کد تا کنون جمع می‌شوند (بازه فقط کوهرورت پیگیری را مشخص می‌کند).</span>
+            </span>
+          </label>
           <div class="form-row settings-add-row" style="align-items:flex-end;">
             <div class="form-group" style="flex:0 0 160px;margin-bottom:0;">
               <label for="customerCodeExpiryMonths">پیش‌فرض انقضا (ماه)</label>
@@ -1046,13 +1053,14 @@
           <canvas id="chartSalesStatus"></canvas>
         </div>
       </div>
-      <div class="chart-card" title="نرخ تبدیل پیگیری به فروش برای همه مشتریان؛ قابل فیلتر بر اساس کد مشتری (مستقل از فیلتر کارشناسان)">
+      <div class="chart-card" title="نرخ تبدیل پیگیری به فروش برای همه مشتریان؛ قابل فیلتر بر اساس کد مشتری (مستقل از فیلتر کارشناسان). مبلغ = واریزهای تأییدشده از زمان اختصاص کد (سقف بازه در تنظیمات کدهای مشتری).">
         <div class="chart-title-row">
           <div class="chart-title">نرخ تبدیل پیگیری</div>
           <select class="form-select" id="dashConversionCustomerCode" onchange="app.renderDashboard()">
             <option value="">همه کدها</option>
           </select>
         </div>
+        <div class="sales-chart-hint" id="dashConversionSalesAmount" style="margin:0 0 8px;">مبلغ فروش: —</div>
         <div class="chart-container chart-container-sm">
           <canvas id="chartFollowupConversion"></canvas>
         </div>

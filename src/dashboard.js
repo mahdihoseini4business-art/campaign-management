@@ -1,4 +1,4 @@
-import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages, getActiveInPersonSessions, getInPersonSessionById, formatInPersonSessionLabel, saleNeedsInPersonSession, saleHasInPersonSessionId, countSmsLogsByDashCategory } from './data.js'
+import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages, getActiveInPersonSessions, getInPersonSessionById, formatInPersonSessionLabel, saleNeedsInPersonSession, saleHasInPersonSessionId, countSmsLogsByDashCategory, getDashConversionAmountInRange } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
 import {
@@ -20,7 +20,9 @@ import { shouldSkipTabRender, markTabRendered } from './tab-cache.js'
 import {
   customerMeetsProfileFields,
   completionMomentIso,
-  profileFieldLabels
+  profileFieldLabels,
+  backfillFieldFilledAtInMemory,
+  normalizeFieldFilledAt
 } from './customer-profile-fields.js'
 
 let ChartLib = null
@@ -2191,6 +2193,59 @@ function populateDashConversionCodeFilter() {
   sel.value = val
 }
 
+/** Jalali YYYY/MM/DD of sticky first-fill for customerCode (legacy → createdAt). */
+function customerCodeAssignedJalali(customer) {
+  if (!customer || !(customer.customerCode || '').trim()) return ''
+  backfillFieldFilledAtInMemory(customer)
+  const iso = normalizeFieldFilledAt(customer.fieldFilledAt).customerCode
+  return iso ? gregorianToJalaliStr(iso) : ''
+}
+
+/**
+ * Approved payment total for followup-active customers (same cohort as conversion pie),
+ * from customerCode first-fill onward; optionally capped by dashboard date range.
+ */
+function computeFollowupConversionSalesAmount(customersWithActivity, codeFilter, hasDateFilter, inDateRange) {
+  const customersById = getCustomersById()
+  const eligibleIds = new Set()
+  customersWithActivity.forEach(customerId => {
+    const c = customersById.get(customerId)
+    if (!c) return
+    if (c.id.startsWith('LD') && !hasPermission('customers_ld')) return
+    if (c.id.startsWith('CS') && !hasPermission('customers_cs')) return
+    if (codeFilter && (c.customerCode || '') !== codeFilter) return
+    eligibleIds.add(customerId)
+  })
+
+  const limitToRange = getDashConversionAmountInRange()
+  let total = 0
+  forEachDashSalePayment(
+    ({ customer }) => eligibleIds.has(customer?.id),
+    false,
+    () => true,
+    ({ customer, amount, date }) => {
+      if (!date) return
+      const assigned = customerCodeAssignedJalali(customer)
+      if (assigned) {
+        const payNum = jalaliToNum(date)
+        const assignedNum = jalaliToNum(assigned)
+        if (payNum < assignedNum) return
+      }
+      if (limitToRange && hasDateFilter && !inDateRange(date)) return
+      total += amount
+    }
+  )
+  return total
+}
+
+function paintDashConversionSalesAmount(amount) {
+  const el = document.getElementById('dashConversionSalesAmount')
+  if (!el) return
+  const limitToRange = getDashConversionAmountInRange()
+  const scopeHint = limitToRange ? 'در بازه داشبورد' : 'از اختصاص کد'
+  el.textContent = `مبلغ فروش (${scopeHint}): ${formatNumber(amount)} ریال`
+}
+
 function renderDashCharts(dateFromNum, dateToNum, currentUser) {
   destroyAllDashCharts()
 
@@ -2454,6 +2509,14 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
       else withoutSale += 1
     })
 
+    const salesAmount = computeFollowupConversionSalesAmount(
+      customersWithActivity,
+      codeFilter,
+      hasDateFilter,
+      inChartDateRange
+    )
+    paintDashConversionSalesAmount(salesAmount)
+
     const convCanvas = document.getElementById('chartFollowupConversion')
     if (convCanvas) {
       const total = withSale + withoutSale
@@ -2504,6 +2567,7 @@ function renderDashCharts(dateFromNum, dateToNum, currentUser) {
     }
   } catch (e) {
     console.error('followupConversion chart error:', e)
+    paintDashConversionSalesAmount(0)
   }
 
   try {
@@ -4374,8 +4438,16 @@ export async function buildDashboardExportPayload() {
     else convWithoutSale += 1
   })
   const convTotal = convWithSale + convWithoutSale
+  const convSalesAmount = computeFollowupConversionSalesAmount(
+    customersWithActivity,
+    codeFilter,
+    hasDateFilter,
+    inDateRange
+  )
   const followupConversionChart = {
     customerCodeFilter: codeFilter || null,
+    salesAmount: convSalesAmount,
+    amountLimitedToDashRange: getDashConversionAmountInRange(),
     rows: [
       {
         label: 'دارای فروش',
