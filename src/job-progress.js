@@ -11,6 +11,9 @@ let activeJob = null
 const THROTTLE_MS = 100
 const ETA_MIN_SAMPLES = 3
 
+/** Default stride for tight row loops — update UI via set only (no paint). */
+export const JOB_PROGRESS_EVERY_N = 25
+
 /**
  * @typedef {{
  *   host?: string | Element | 'float',
@@ -328,6 +331,50 @@ export async function runWithJobProgress(opts, fn) {
     job.fail(err)
     throw err
   }
+}
+
+/**
+ * Report row-loop progress without awaiting paint (use in tight import loops).
+ * Calls job.set on first/last and every N rows; job-progress already throttles DOM.
+ *
+ * @param {JobHandle | null | undefined} job
+ * @param {{
+ *   done: number,
+ *   total?: number | null,
+ *   label?: string,
+ *   every?: number,
+ * }} state
+ */
+export function reportJobRowProgress(job, { done, total, label, every = JOB_PROGRESS_EVERY_N } = {}) {
+  if (!job) return
+  const d = Math.max(0, Number(done) || 0)
+  const t = total === undefined ? undefined : (total == null ? null : Math.max(0, Number(total) || 0))
+  const step = Math.max(1, Math.floor(Number(every) || JOB_PROGRESS_EVERY_N))
+  const isFirst = d <= 0
+  const isLast = t != null && d >= t
+  if (!isFirst && !isLast && d % step !== 0) return
+  /** @type {{ label?: string, done: number, total?: number | null }} */
+  const payload = { done: d }
+  if (label != null) payload.label = label
+  if (t !== undefined) payload.total = t
+  job.set(payload)
+}
+
+/**
+ * Phase boundary update — optional paint so the browser can flush once.
+ * @param {JobHandle | null | undefined} job
+ * @param {string} label
+ * @param {{ paint?: boolean, done?: number, total?: number | null }} [opts]
+ */
+export async function reportJobPhase(job, label, opts = {}) {
+  if (!job) return
+  const payload = { label }
+  if (opts.done != null) payload.done = Math.max(0, Number(opts.done) || 0)
+  if (opts.total !== undefined) {
+    payload.total = opts.total == null ? null : Math.max(0, Number(opts.total) || 0)
+  }
+  job.set(payload)
+  if (opts.paint !== false) await job.paint()
 }
 
 export { paintFrame as jobPaintFrame }

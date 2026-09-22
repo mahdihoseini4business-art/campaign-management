@@ -170,11 +170,11 @@
 
 ## نقشهٔ پیاده‌سازی پیشنهادی (وقتی تأیید شد)
 
-### فاز A — زیرساخت مشترک (بدون تغییر UX ظاهری)
+### فاز A — زیرساخت مشترک (بدون تغییر UX ظاهری) ✅ پیاده‌سازی‌شده
 
-1. `saveCustomersToDBBatch` (+ گزینهٔ skip/defer cache invalidate)  
-2. هلپر `buildCustomerMatchIndexes(customers)` → `{ byId, byPhone, byPlatformId }`  
-3. استاندارد کردن «پیشرفت»: `set` هر N ردیف، بدون `paint` در حلقهٔ تنگ  
+1. `saveCustomersToDBBatch` (+ `CUSTOMER_UPSERT_CHUNK` / `deferInvalidate` / `skipInvalidate`) در `src/data.js`
+2. هلپر `buildCustomerMatchIndexes` (+ `registerCustomerInMatchIndexes` / `matchCustomerFromIndexes`) در `src/utils.js`
+3. استاندارد پیشرفت: `reportJobRowProgress` / `reportJobPhase` / `JOB_PROGRESS_EVERY_N` در `src/job-progress.js` (بدون paint در حلقهٔ تنگ)
 
 ### فاز B — اتصال به جریان‌های کند
 

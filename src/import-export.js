@@ -5,7 +5,7 @@ import {
   getProductBalance, getProductPayments, getPaymentEntryStatus,
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, createPayment, formatSoldAt24h, normalizePhone,
   formatCustomerLevel, parseCustomerLevel, syncCustomerLevel, resolveCustomerLevel,
-  normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone,
+  normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone, buildCustomerMatchIndexes,
   jalaliDatePart, jalaliToNum, escapeHtml, escapeAttr, normalizeTimeTo24h,
   userDisplayName, applyProfitSnapshotToProduct, jalaliDateTimeToIso, jalaliAddDays, getTodayJalaliStr,
   formatNumber, getSaleRegistrantPhone, canSetCustomerCode
@@ -2887,14 +2887,7 @@ function customerHasProductLine(customer, productName) {
 }
 
 function buildPhoneIndex(customers) {
-  const map = new Map()
-  for (const c of customers || []) {
-    for (const p of getCustomerPhones(c)) {
-      const n = normalizePhone(p)
-      if (n && !map.has(n)) map.set(n, c)
-    }
-  }
-  return map
+  return buildCustomerMatchIndexes(customers).byPhone
 }
 
 function resolveMatrixPlatform(raw) {

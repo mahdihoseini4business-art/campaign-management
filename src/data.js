@@ -3040,12 +3040,19 @@ export function getDataLoadState() {
 // Save customer to Supabase
 // ============================================
 
-export async function saveCustomerToDB(customer, options = {}) {
-  bumpLocalWrite()
-  const prev = customer?.id
-    ? (data.customers || []).find(c => c.id === customer.id) || null
+/** Chunk size for multi-row customer upserts (mirrors backup restore). */
+export const CUSTOMER_UPSERT_CHUNK = 150
+
+/**
+ * Snapshot previous cache row for fieldFilledAt stamping.
+ * @param {object} customer
+ * @param {Map<string, object> | null} [prevById]
+ */
+function resolveCustomerPrevForStamp(customer, prevById = null) {
+  const id = customer?.id
+  const prev = id
+    ? (prevById ? (prevById.get(id) || null) : ((data.customers || []).find(c => c.id === id) || null))
     : null
-  // Snapshot prev before caller mutations share the same object reference
   const prevSnap = prev && prev !== customer
     ? {
         ...prev,
@@ -3055,8 +3062,19 @@ export async function saveCustomerToDB(customer, options = {}) {
       }
     : (prev ? { ...prev, fieldFilledAt: normalizeFieldFilledAt(prev.fieldFilledAt) } : null)
   // When same reference was mutated in place, treat as no reliable prev field values
-  const prevForStamp = prev === customer ? { fieldFilledAt: normalizeFieldFilledAt(customer.fieldFilledAt) } : prevSnap
-  applyFieldFilledAtOnSave(prevForStamp, customer)
+  return prev === customer
+    ? { fieldFilledAt: normalizeFieldFilledAt(customer.fieldFilledAt) }
+    : prevSnap
+}
+
+/**
+ * Build a customers-table upsert row (mutates customer.fieldFilledAt via stamp).
+ * @param {object} customer
+ * @param {{ createdAt?: string, allowEmptyPlatform?: boolean }} [options]
+ * @param {Map<string, object> | null} [prevById]
+ */
+function buildCustomerUpsertRow(customer, options = {}, prevById = null) {
+  applyFieldFilledAtOnSave(resolveCustomerPrevForStamp(customer, prevById), customer)
 
   const phones = normalizeCustomerPhonesLocal(customer)
   const addresses = normalizeCustomerAddressesLocal(customer)
@@ -3087,34 +3105,116 @@ export async function saveCustomerToDB(customer, options = {}) {
   if (options.createdAt) row.created_at = options.createdAt
   // Historical matrix import may persist empty platform (no instagram fallback).
   if (options.allowEmptyPlatform) row.platform = customer.platform || ''
+  return row
+}
 
-  let { error } = await supabase.from('customers').upsert(row, { onConflict: 'id' })
+/**
+ * Upsert one or more customer rows with the same schema fallbacks as single save.
+ * @param {Record<string, unknown>[]} rows
+ */
+async function upsertCustomerRows(rows) {
+  if (!rows.length) return
+  let payload = rows
+  let { error } = await supabase.from('customers').upsert(payload, { onConflict: 'id' })
   // Graceful fallback before migration 048 (field_filled_at)
   if (error && /field_filled_at/i.test(error.message || '')) {
-    const { field_filled_at: _omitFfa, ...withoutFfa } = row
-    ;({ error } = await supabase.from('customers').upsert(withoutFfa, { onConflict: 'id' }))
+    payload = rows.map(({ field_filled_at: _omitFfa, ...rest }) => rest)
+    ;({ error } = await supabase.from('customers').upsert(payload, { onConflict: 'id' }))
   }
   // Graceful fallback before migration 047 (profile fields)
   if (error && /name_en|national_id|birth_date/i.test(error.message || '')) {
-    const { name_en: _omitEn, national_id: _omitNid, birth_date: _omitBd, field_filled_at: _omitFfa2, ...withoutProfile } = row
-    ;({ error } = await supabase.from('customers').upsert(withoutProfile, { onConflict: 'id' }))
+    payload = payload.map(({
+      name_en: _omitEn,
+      national_id: _omitNid,
+      birth_date: _omitBd,
+      field_filled_at: _omitFfa2,
+      ...rest
+    }) => rest)
+    ;({ error } = await supabase.from('customers').upsert(payload, { onConflict: 'id' }))
   }
   // Graceful fallback before migration 007 / 015 / 024 is applied
   if (error && /customer_code/i.test(error.message || '')) {
-    const { customer_code: _omitCode, ...withoutCode } = row
-    ;({ error } = await supabase.from('customers').upsert(withoutCode, { onConflict: 'id' }))
+    payload = payload.map(({ customer_code: _omitCode, ...rest }) => rest)
+    ;({ error } = await supabase.from('customers').upsert(payload, { onConflict: 'id' }))
   }
   if (error && /addresses/i.test(error.message || '')) {
-    const { addresses: _omitAddr, ...withoutAddresses } = row
-    ;({ error } = await supabase.from('customers').upsert(withoutAddresses, { onConflict: 'id' }))
+    payload = payload.map(({ addresses: _omitAddr, ...rest }) => rest)
+    ;({ error } = await supabase.from('customers').upsert(payload, { onConflict: 'id' }))
   }
   if (error && /phones/i.test(error.message || '')) {
-    const { phones: _omit, addresses: _omitAddr2, ...legacy } = row
-    ;({ error } = await supabase.from('customers').upsert(legacy, { onConflict: 'id' }))
+    payload = payload.map(({ phones: _omit, addresses: _omitAddr2, ...legacy }) => legacy)
+    ;({ error } = await supabase.from('customers').upsert(payload, { onConflict: 'id' }))
   }
   if (error) throw new Error('خطا در ذخیره مشتری: ' + error.message)
+}
+
+export async function saveCustomerToDB(customer, options = {}) {
+  bumpLocalWrite()
+  const row = buildCustomerUpsertRow(customer, options)
+  await upsertCustomerRows([row])
   bumpLocalWrite()
   invalidateProductSalesCountCache()
+}
+
+/**
+ * Persist many customers in chunked Supabase upserts (one RTT per chunk).
+ * Prefer this for imports; single-row {@link saveCustomerToDB} stays for UI edits.
+ *
+ * @param {Array<object | { customer: object, options?: { createdAt?: string, allowEmptyPlatform?: boolean } }>} items
+ * @param {{
+ *   chunkSize?: number,
+ *   deferInvalidate?: boolean,
+ *   skipInvalidate?: boolean,
+ *   onChunk?: (info: { done: number, total: number, chunkIndex: number, chunkCount: number }) => void,
+ *   signal?: AbortSignal,
+ * }} [batchOpts]
+ * @returns {Promise<{ saved: number }>}
+ */
+export async function saveCustomersToDBBatch(items, batchOpts = {}) {
+  const list = Array.isArray(items) ? items : []
+  if (!list.length) return { saved: 0 }
+
+  const chunkSize = Math.max(1, Math.floor(Number(batchOpts.chunkSize) || CUSTOMER_UPSERT_CHUNK))
+  /** When true (default), invalidate product-sales cache once after all chunks. */
+  const deferInvalidate = batchOpts.deferInvalidate !== false
+  const skipInvalidate = !!batchOpts.skipInvalidate
+  const signal = batchOpts.signal || null
+  const onChunk = typeof batchOpts.onChunk === 'function' ? batchOpts.onChunk : null
+
+  const prevById = new Map()
+  for (const c of data.customers || []) {
+    if (c?.id) prevById.set(c.id, c)
+  }
+
+  /** @type {Record<string, unknown>[]} */
+  const rows = []
+  for (const item of list) {
+    const customer = item?.customer != null ? item.customer : item
+    if (!customer?.id) continue
+    const options = item?.customer != null ? (item.options || {}) : {}
+    rows.push(buildCustomerUpsertRow(customer, options, prevById))
+  }
+  if (!rows.length) return { saved: 0 }
+
+  bumpLocalWrite()
+  const total = rows.length
+  const chunkCount = Math.ceil(total / chunkSize)
+  let done = 0
+  for (let i = 0, chunkIndex = 0; i < total; i += chunkSize, chunkIndex++) {
+    if (signal?.aborted) {
+      const err = new Error('CANCELLED')
+      err.code = 'CANCELLED'
+      throw err
+    }
+    const chunk = rows.slice(i, i + chunkSize)
+    await upsertCustomerRows(chunk)
+    done += chunk.length
+    if (!skipInvalidate && !deferInvalidate) invalidateProductSalesCountCache()
+    onChunk?.({ done, total, chunkIndex, chunkCount })
+  }
+  bumpLocalWrite()
+  if (!skipInvalidate && deferInvalidate) invalidateProductSalesCountCache()
+  return { saved: done }
 }
 
 /**

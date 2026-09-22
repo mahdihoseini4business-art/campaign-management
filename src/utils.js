@@ -1007,6 +1007,80 @@ export function findCustomerByPhone(phone, customers, excludeId = null) {
   ) || null
 }
 
+/**
+ * @typedef {{
+ *   byId: Map<string, object>,
+ *   byPhone: Map<string, object>,
+ *   byPlatformId: Map<string, object>,
+ * }} CustomerMatchIndexes
+ */
+
+/**
+ * Build O(1) lookup maps for import match (id → phone → platformId).
+ * First customer wins for duplicate phones / platformIds.
+ * @param {object[] | null | undefined} customers
+ * @returns {CustomerMatchIndexes}
+ */
+export function buildCustomerMatchIndexes(customers) {
+  /** @type {CustomerMatchIndexes} */
+  const indexes = {
+    byId: new Map(),
+    byPhone: new Map(),
+    byPlatformId: new Map()
+  }
+  for (const c of customers || []) registerCustomerInMatchIndexes(indexes, c)
+  return indexes
+}
+
+/**
+ * Register / refresh a customer in match indexes (first-wins for phone & platformId).
+ * @param {CustomerMatchIndexes} indexes
+ * @param {object | null | undefined} customer
+ */
+export function registerCustomerInMatchIndexes(indexes, customer) {
+  if (!indexes || !customer) return
+  const id = String(customer.id || '').trim()
+  if (id) indexes.byId.set(id, customer)
+
+  for (const p of getCustomerPhones(customer)) {
+    const n = normalizePhone(p)
+    if (!n || !/^09\d{9}$/.test(n)) continue
+    if (!indexes.byPhone.has(n)) indexes.byPhone.set(n, customer)
+  }
+
+  const platformKey = String(customer.platformId || '').trim().toLowerCase()
+  if (platformKey && !indexes.byPlatformId.has(platformKey)) {
+    indexes.byPlatformId.set(platformKey, customer)
+  }
+}
+
+/**
+ * Match like customer import: id → any phone → platformId (case-insensitive).
+ * @param {CustomerMatchIndexes | null | undefined} indexes
+ * @param {{ id?: string, phones?: string[], platformId?: string }} query
+ * @returns {object | null}
+ */
+export function matchCustomerFromIndexes(indexes, { id = '', phones = [], platformId = '' } = {}) {
+  if (!indexes) return null
+  const importId = String(id || '').trim()
+  if (importId) {
+    const byId = indexes.byId.get(importId)
+    if (byId) return byId
+  }
+  for (const raw of phones || []) {
+    const n = normalizePhone(raw)
+    if (!n || !/^09\d{9}$/.test(n)) continue
+    const hit = indexes.byPhone.get(n)
+    if (hit) return hit
+  }
+  const platformKey = String(platformId || '').trim().toLowerCase()
+  if (platformKey) {
+    const hit = indexes.byPlatformId.get(platformKey)
+    if (hit) return hit
+  }
+  return null
+}
+
 /** Find customer by platform ID (case-insensitive). */
 export function findCustomerByPlatformId(platformId, customers, excludeId = null) {
   const key = String(platformId || '').trim().toLowerCase()

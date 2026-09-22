@@ -33,6 +33,7 @@ import {
   normalizePhone,
   showToast,
   findCustomerByPhone,
+  buildCustomerMatchIndexes,
   normalizeCustomerPhones,
   getCurrentUser,
   userDisplayName,
@@ -792,13 +793,7 @@ export async function applyEventRosterImport(rows, { dryRun = false, salePrice =
   } = await import('./data.js')
   const data = getData()
   const sessions = getSessions()
-  const byPhone = new Map()
-  for (const c of data.customers || []) {
-    for (const p of getCustomerPhones(c)) {
-      const n = normalizePhone(p)
-      if (n) byPhone.set(n, c)
-    }
-  }
+  const { byPhone } = buildCustomerMatchIndexes(data.customers)
 
   const user = getCurrentUser()
   const priceRaw = salePrice
