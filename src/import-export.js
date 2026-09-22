@@ -17,6 +17,7 @@ import { renderSales, getFilteredSales, getSalesDateFilter, hasActiveSalesProduc
 import { getFilteredEventRows, renderEvents, applyEventRosterImport } from './events.js'
 import { getProductMatrixExportAoa, hasActiveProductMatrixFilter, renderProductMatrix } from './product-matrix.js'
 import { assertImportExport } from './entitlements.js'
+import { startJobProgress, runWithJobProgress, isJobProgressActive } from './job-progress.js'
 
 let xlsxModule = null
 
@@ -549,19 +550,36 @@ export async function exportTabCSV(tab) {
   if (exportPerm && !requirePermission(exportPerm)) return
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
+  if (isJobProgressActive()) return
 
-  const rows = tab === 'sales' ? await buildSalesExportRows() : cfg.getRows()
-  const csvContent = '\uFEFF' + [cfg.headers, ...rows]
-    .map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
-    .join('\n')
+  const job = startJobProgress({
+    host: 'float',
+    title: `خروجی CSV — ${cfg.label}`
+  })
+  if (!job) return
+  try {
+    job.set({ label: 'در حال آماده‌سازی ردیف‌ها…' })
+    await job.paint()
+    const rows = tab === 'sales' ? await buildSalesExportRows() : cfg.getRows()
+    job.set({ label: 'در حال ساخت فایل…', done: rows.length, total: rows.length || 1 })
+    await job.paint()
+    const csvContent = '\uFEFF' + [cfg.headers, ...rows]
+      .map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n')
 
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
-  link.download = `${cfg.label}_${new Date().toISOString().slice(0, 10)}.csv`
-  link.click()
-  const filterHint = hasActiveExportScopeFilter(tab) ? ' — فقط ردیف‌های فیلترشده' : ''
-  showToast(`${rows.length} ردیف در CSV ذخیره شد${filterHint}`)
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `${cfg.label}_${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    const filterHint = hasActiveExportScopeFilter(tab) ? ' — فقط ردیف‌های فیلترشده' : ''
+    showToast(`${rows.length} ردیف در CSV ذخیره شد${filterHint}`)
+  } catch (e) {
+    console.error('exportTabCSV error:', e)
+    showToast(e?.message || 'خطا در خروجی CSV')
+  } finally {
+    job.end()
+  }
 }
 
 /**
@@ -663,98 +681,139 @@ function getCustomersForVcfExport() {
 }
 
 /** Download a phone-contacts .vcf (vCard 3.0) from the current customers filter. */
-export function exportCustomersVcf() {
+export async function exportCustomersVcf() {
   if (!assertImportExport()) return
   // Same permission as customers CSV/Excel export
   if (!requirePermission('customers_export')) return
+  if (isJobProgressActive()) return
 
-  const eligible = getCustomersForVcfExport()
-  if (!eligible.length) {
-    showToast('بین مشتریان خودتان (با نام و شماره) موردی برای خروجی مخاطبین پیدا نشد')
-    return
-  }
+  const job = startJobProgress({
+    host: 'float',
+    title: 'خروجی مخاطبین'
+  })
+  if (!job) return
+  try {
+    job.set({ label: 'در حال ساخت فایل مخاطبین…' })
+    await job.paint()
 
-  const testLimit = VCF_CONTACTS_TEST_LIMIT > 0 ? VCF_CONTACTS_TEST_LIMIT : null
-  const selected = testLimit ? eligible.slice(0, testLimit) : eligible
-  const cards = selected.map(buildCustomerVCard).filter(Boolean)
-  if (!cards.length) {
-    showToast('ساخت فایل مخاطبین ممکن نشد')
-    return
-  }
+    const eligible = getCustomersForVcfExport()
+    if (!eligible.length) {
+      showToast('بین مشتریان خودتان (با نام و شماره) موردی برای خروجی مخاطبین پیدا نشد')
+      return
+    }
 
-  // No UTF-8 BOM — safer for iOS/Android Contacts parsers
-  const content = `${cards.join('\r\n')}\r\n`
-  const blob = new Blob([content], { type: 'text/vcard;charset=utf-8' })
-  const day = new Date().toISOString().slice(0, 10)
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
-  link.download = testLimit
-    ? `مخاطبین_آزمایشی_${cards.length}نفر_${day}.vcf`
-    : `مخاطبین_${day}.vcf`
-  link.click()
-  URL.revokeObjectURL(link.href)
+    const testLimit = VCF_CONTACTS_TEST_LIMIT > 0 ? VCF_CONTACTS_TEST_LIMIT : null
+    const selected = testLimit ? eligible.slice(0, testLimit) : eligible
+    const cards = selected.map(buildCustomerVCard).filter(Boolean)
+    if (!cards.length) {
+      showToast('ساخت فایل مخاطبین ممکن نشد')
+      return
+    }
 
-  const filterHint = hasActiveExportScopeFilter('customers') ? ' — از لیست فیلترشده' : ''
-  if (testLimit) {
-    const names = selected
-      .map(c => String(c?.name || '').trim())
-      .filter(Boolean)
-    const namesLabel = names.join(' | ')
-    showToastWithAction(
-      `آزمایشی (${cards.length} نفر)${filterHint} — در مخاطبین گوشی بگردید: ${namesLabel}`,
-      { durationMs: 15000 }
-    )
-  } else {
-    showToast(`${cards.length} مخاطب در VCF ذخیره شد${filterHint}`)
+    job.set({ label: 'دانلود فایل…', done: cards.length, total: cards.length })
+
+    // No UTF-8 BOM — safer for iOS/Android Contacts parsers
+    const content = `${cards.join('\r\n')}\r\n`
+    const blob = new Blob([content], { type: 'text/vcard;charset=utf-8' })
+    const day = new Date().toISOString().slice(0, 10)
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = testLimit
+      ? `مخاطبین_آزمایشی_${cards.length}نفر_${day}.vcf`
+      : `مخاطبین_${day}.vcf`
+    link.click()
+    URL.revokeObjectURL(link.href)
+
+    const filterHint = hasActiveExportScopeFilter('customers') ? ' — از لیست فیلترشده' : ''
+    if (testLimit) {
+      const names = selected
+        .map(c => String(c?.name || '').trim())
+        .filter(Boolean)
+      const namesLabel = names.join(' | ')
+      showToastWithAction(
+        `آزمایشی (${cards.length} نفر)${filterHint} — در مخاطبین گوشی بگردید: ${namesLabel}`,
+        { durationMs: 15000 }
+      )
+    } else {
+      showToast(`${cards.length} مخاطب در VCF ذخیره شد${filterHint}`)
+    }
+  } finally {
+    job.end()
   }
 }
 
 /** Excel export for one in-person course session roster. */
 export async function exportInPersonSessionXlsx(session, rows) {
-  const XLSX = await ensureXLSX()
-  const headers = [
-    'نام', 'نام انگلیسی', 'شماره', 'نام دوره', 'تاریخ برگزاری',
-    'مبلغ فاکتور', 'پرداختی', 'بدهی دوره', 'بدهی سایر', 'وضعیت', 'شناسه مشتری'
-  ]
-  const aoaRows = (rows || []).map(r => [
-    r.name || '',
-    r.nameEn || '',
-    r.phone || '',
-    r.courseName || '',
-    r.sessionDate || '',
-    r.price || 0,
-    r.paid || 0,
-    r.balance || 0,
-    r.otherDebt || 0,
-    r.status || '',
-    r.customerId || ''
-  ])
-  const ws = sheetFromAoa(XLSX, headers, aoaRows)
-  forceSheetTextColumns(XLSX, ws, aoaRows.length, [1, 2, 4, 10])
-  const wb = XLSX.utils.book_new()
-  const sheetName = String(session?.courseName || 'سانس').slice(0, 28) || 'سانس'
-  XLSX.utils.book_append_sheet(wb, ws, sheetName)
-  const course = String(session?.courseName || 'حضوری').replace(/[\\/:*?"<>|]/g, '_')
-  const date = String(session?.sessionDate || '').replace(/\//g, '-')
-  XLSX.writeFile(wb, `سانس_حضوری_${course}_${date || 'export'}.xlsx`)
+  if (isJobProgressActive()) {
+    showToast('عملیات دیگری در حال اجراست')
+    return
+  }
+  const job = startJobProgress({ host: 'float', title: 'خروجی سانس حضوری' })
+  if (!job) return
+  try {
+    job.set({ label: 'در حال ساخت فایل Excel…', done: 0, total: (rows || []).length || 1 })
+    await job.paint()
+    const XLSX = await ensureXLSX()
+    const headers = [
+      'نام', 'نام انگلیسی', 'شماره', 'نام دوره', 'تاریخ برگزاری',
+      'مبلغ فاکتور', 'پرداختی', 'بدهی دوره', 'بدهی سایر', 'وضعیت', 'شناسه مشتری'
+    ]
+    const aoaRows = (rows || []).map(r => [
+      r.name || '',
+      r.nameEn || '',
+      r.phone || '',
+      r.courseName || '',
+      r.sessionDate || '',
+      r.price || 0,
+      r.paid || 0,
+      r.balance || 0,
+      r.otherDebt || 0,
+      r.status || '',
+      r.customerId || ''
+    ])
+    job.set({ label: 'دانلود فایل…', done: aoaRows.length, total: aoaRows.length || 1 })
+    const ws = sheetFromAoa(XLSX, headers, aoaRows)
+    forceSheetTextColumns(XLSX, ws, aoaRows.length, [1, 2, 4, 10])
+    const wb = XLSX.utils.book_new()
+    const sheetName = String(session?.courseName || 'سانس').slice(0, 28) || 'سانس'
+    XLSX.utils.book_append_sheet(wb, ws, sheetName)
+    const course = String(session?.courseName || 'حضوری').replace(/[\\/:*?"<>|]/g, '_')
+    const date = String(session?.sessionDate || '').replace(/\//g, '-')
+    XLSX.writeFile(wb, `سانس_حضوری_${course}_${date || 'export'}.xlsx`)
+  } finally {
+    job.end()
+  }
 }
 
 /** Excel for conversion-card customer code: name, phone, sales amount. */
 export async function exportConversionCodeCustomersXlsx({ codeKey, codeLabel, rows }) {
-  const XLSX = await ensureXLSX()
-  const headers = ['نام', 'شماره', 'مبلغ فروش']
-  const aoaRows = (rows || []).map(r => [
-    r.name || '',
-    r.phone || '',
-    r.amount || 0
-  ])
-  const ws = sheetFromAoa(XLSX, headers, aoaRows)
-  forceSheetTextColumns(XLSX, ws, aoaRows.length, [1])
-  const wb = XLSX.utils.book_new()
-  const label = String(codeLabel || codeKey || 'کد').slice(0, 28) || 'کد'
-  XLSX.utils.book_append_sheet(wb, ws, label)
-  const safe = String(codeLabel || codeKey || 'code').replace(/[\\/:*?"<>|]/g, '_')
-  XLSX.writeFile(wb, `نرخ_تبدیل_${safe}.xlsx`)
+  if (isJobProgressActive()) {
+    showToast('عملیات دیگری در حال اجراست')
+    return
+  }
+  const job = startJobProgress({ host: 'float', title: 'خروجی نرخ تبدیل' })
+  if (!job) return
+  try {
+    job.set({ label: 'در حال ساخت فایل Excel…', done: 0, total: (rows || []).length || 1 })
+    await job.paint()
+    const XLSX = await ensureXLSX()
+    const headers = ['نام', 'شماره', 'مبلغ فروش']
+    const aoaRows = (rows || []).map(r => [
+      r.name || '',
+      r.phone || '',
+      r.amount || 0
+    ])
+    job.set({ label: 'دانلود فایل…', done: aoaRows.length, total: aoaRows.length || 1 })
+    const ws = sheetFromAoa(XLSX, headers, aoaRows)
+    forceSheetTextColumns(XLSX, ws, aoaRows.length, [1])
+    const wb = XLSX.utils.book_new()
+    const label = String(codeLabel || codeKey || 'کد').slice(0, 28) || 'کد'
+    XLSX.utils.book_append_sheet(wb, ws, label)
+    const safe = String(codeLabel || codeKey || 'code').replace(/[\\/:*?"<>|]/g, '_')
+    XLSX.writeFile(wb, `نرخ_تبدیل_${safe}.xlsx`)
+  } finally {
+    job.end()
+  }
 }
 
 export async function exportTabXLSX(tab) {
@@ -763,56 +822,77 @@ export async function exportTabXLSX(tab) {
   if (exportPerm && !requirePermission(exportPerm)) return
   const cfg = EXPORT_CONFIG[tab]
   if (!cfg) return
+  if (isJobProgressActive()) return
 
-  const XLSX = await ensureXLSX()
-  const rows = tab === 'sales' ? await buildSalesExportRows() : cfg.getRows()
-  const ws = sheetFromAoa(XLSX, cfg.headers, rows)
+  const job = startJobProgress({
+    host: 'float',
+    title: `خروجی Excel — ${cfg.label}`
+  })
+  if (!job) return
+  try {
+    job.set({ label: 'در حال آماده‌سازی…' })
+    await job.paint()
+    const XLSX = await ensureXLSX()
+    job.set({ label: 'در حال جمع‌آوری ردیف‌ها…' })
+    const rows = tab === 'sales' ? await buildSalesExportRows() : cfg.getRows()
+    job.set({ label: 'در حال ساخت فایل Excel…', done: 1, total: tab === 'customers' ? 2 : 1 })
+    await job.paint()
+    const ws = sheetFromAoa(XLSX, cfg.headers, rows)
 
-  // Keep phone / id columns as text so Excel doesn't drop leading zeros
-  if (tab === 'customers') {
-    forceSheetTextColumns(XLSX, ws, rows.length, [0, 1, 4, 5, 6, 10]) // شناسه، ایدی، شماره‌ها، معرف
-  } else if (tab === 'followups') {
-    forceSheetTextColumns(XLSX, ws, rows.length, [0, 2, 9]) // شناسه مشتری، شماره مشتری، ثبت‌کننده
-  } else if (tab === 'sales') {
-    forceSheetTextColumns(XLSX, ws, rows.length, [0, 2]) // شناسه مشتری، شماره موبایل
-  } else if (tab === 'products') {
-    forceSheetTextColumns(XLSX, ws, rows.length, [1]) // شماره
-  } else if (tab === 'events') {
-    forceSheetTextColumns(XLSX, ws, rows.length, [0, 2, 3, 5]) // شناسه مشتری، نام انگلیسی، شماره، تاریخ
-  }
+    // Keep phone / id columns as text so Excel doesn't drop leading zeros
+    if (tab === 'customers') {
+      forceSheetTextColumns(XLSX, ws, rows.length, [0, 1, 4, 5, 6, 10]) // شناسه، ایدی، شماره‌ها، معرف
+    } else if (tab === 'followups') {
+      forceSheetTextColumns(XLSX, ws, rows.length, [0, 2, 9]) // شناسه مشتری، شماره مشتری، ثبت‌کننده
+    } else if (tab === 'sales') {
+      forceSheetTextColumns(XLSX, ws, rows.length, [0, 2]) // شناسه مشتری، شماره موبایل
+    } else if (tab === 'products') {
+      forceSheetTextColumns(XLSX, ws, rows.length, [1]) // شماره
+    } else if (tab === 'events') {
+      forceSheetTextColumns(XLSX, ws, rows.length, [0, 2, 3, 5]) // شناسه مشتری، نام انگلیسی، شماره، تاریخ
+    }
 
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, cfg.label)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, cfg.label)
 
-  // Customers Excel: second sheet with every followup/note for exported customers
-  let followupCount = 0
-  if (tab === 'customers') {
-    const data = getData()
-    const exportedIds = new Set(getFilteredCustomers().map(c => c.id))
-    const followups = data.followups
-      .filter(f => exportedIds.has(f.customerId))
-      .slice()
-      .sort((a, b) => {
-        const idCmp = String(a.customerId || '').localeCompare(String(b.customerId || ''))
-        if (idCmp) return idCmp
-        const dCmp = String(a.date || '').localeCompare(String(b.date || ''))
-        if (dCmp) return dCmp
-        return String(a.id || '').localeCompare(String(b.id || ''))
-      })
-    followupCount = followups.length
-    const fAoa = buildFollowupExportAoa(followups, data.customers)
-    const fuRows = fAoa.slice(1)
-    const wsFollowups = sheetFromAoa(XLSX, fAoa[0], fuRows)
-    forceSheetTextColumns(XLSX, wsFollowups, fuRows.length, [0, 2, 9]) // شناسه، شماره مشتری، ثبت‌کننده
-    XLSX.utils.book_append_sheet(wb, wsFollowups, 'پیگیری‌ها')
-  }
+    // Customers Excel: second sheet with every followup/note for exported customers
+    let followupCount = 0
+    if (tab === 'customers') {
+      job.set({ label: 'در حال ساخت شیت پیگیری‌ها…', done: 1, total: 2 })
+      await job.paint()
+      const data = getData()
+      const exportedIds = new Set(getFilteredCustomers().map(c => c.id))
+      const followups = data.followups
+        .filter(f => exportedIds.has(f.customerId))
+        .slice()
+        .sort((a, b) => {
+          const idCmp = String(a.customerId || '').localeCompare(String(b.customerId || ''))
+          if (idCmp) return idCmp
+          const dCmp = String(a.date || '').localeCompare(String(b.date || ''))
+          if (dCmp) return dCmp
+          return String(a.id || '').localeCompare(String(b.id || ''))
+        })
+      followupCount = followups.length
+      const fAoa = buildFollowupExportAoa(followups, data.customers)
+      const fuRows = fAoa.slice(1)
+      const wsFollowups = sheetFromAoa(XLSX, fAoa[0], fuRows)
+      forceSheetTextColumns(XLSX, wsFollowups, fuRows.length, [0, 2, 9]) // شناسه، شماره مشتری، ثبت‌کننده
+      XLSX.utils.book_append_sheet(wb, wsFollowups, 'پیگیری‌ها')
+      job.set({ label: 'دانلود فایل…', done: 2, total: 2 })
+    }
 
-  XLSX.writeFile(wb, `${cfg.label}_${new Date().toISOString().slice(0, 10)}.xlsx`)
-  const filterHint = hasActiveExportScopeFilter(tab) ? ' — فقط ردیف‌های فیلترشده' : ''
-  if (tab === 'customers' && followupCount > 0) {
-    showToast(`${rows.length} مشتری و ${followupCount} یادداشت/پیگیری در Excel ذخیره شد${filterHint}`)
-  } else {
-    showToast(`${rows.length} ردیف در Excel ذخیره شد${filterHint}`)
+    XLSX.writeFile(wb, `${cfg.label}_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    const filterHint = hasActiveExportScopeFilter(tab) ? ' — فقط ردیف‌های فیلترشده' : ''
+    if (tab === 'customers' && followupCount > 0) {
+      showToast(`${rows.length} مشتری و ${followupCount} یادداشت/پیگیری در Excel ذخیره شد${filterHint}`)
+    } else {
+      showToast(`${rows.length} ردیف در Excel ذخیره شد${filterHint}`)
+    }
+  } catch (e) {
+    console.error('exportTabXLSX error:', e)
+    showToast(e?.message || 'خطا در خروجی Excel')
+  } finally {
+    job.end()
   }
 }
 
@@ -936,7 +1016,7 @@ function isDoneFollowupType(type) {
  * When syncCustomerNextDate is true (خروجی تب پیگیری‌ها), also rewrites
  * customer.nextFollowupDate from column «پیگیری بعدی».
  */
-async function importFollowupRows({ headers, rows, mapping }, { syncCustomerNextDate = false } = {}) {
+async function importFollowupRows({ headers, rows, mapping }, { syncCustomerNextDate = false, onProgress = null, signal = null } = {}) {
   const data = getData()
   const map = mapping || autoMapColumns(headers, FOLLOWUP_IMPORT_FIELDS)
   if (map.customerId === undefined || map.customerId === null) {
@@ -950,8 +1030,18 @@ async function importFollowupRows({ headers, rows, mapping }, { syncCustomerNext
   }
   const currentUser = getCurrentUser()
   const nextDateMapped = map.nextDate !== undefined && map.nextDate !== null
+  const total = rows.length
 
-  for (const row of rows) {
+  for (let i = 0; i < rows.length; i++) {
+    if (signal?.aborted) {
+      const err = new Error('CANCELLED')
+      err.code = 'CANCELLED'
+      throw err
+    }
+    if (typeof onProgress === 'function') {
+      onProgress({ done: i, total, label: 'ایمپورت پیگیری‌ها…' })
+    }
+    const row = rows[i]
     const getValue = (fieldKey) => {
       const colIdx = map[fieldKey]
       if (colIdx === undefined || colIdx === null) return ''
@@ -1050,6 +1140,10 @@ async function importFollowupRows({ headers, rows, mapping }, { syncCustomerNext
     }
   }
 
+  if (typeof onProgress === 'function' && total > 0) {
+    onProgress({ done: total, total, label: 'ایمپورت پیگیری‌ها…' })
+  }
+
   return { created, updated, skipped, failed, missingCustomer, customersUpdated }
 }
 
@@ -1078,6 +1172,10 @@ export function openImportModal() {
 }
 
 export function closeImportModal() {
+  if (isJobProgressActive()) {
+    showToast('تا پایان عملیات صبر کنید یا لغو کنید')
+    return
+  }
   document.getElementById('importModal').classList.remove('active')
 }
 
@@ -1085,6 +1183,18 @@ export function initImportListeners() {
   document.getElementById('importFileInput').addEventListener('change', function (e) {
     const file = e.target.files[0]
     if (!file) return
+    if (isJobProgressActive()) {
+      showToast('عملیات دیگری در حال اجراست')
+      e.target.value = ''
+      return
+    }
+
+    const job = startJobProgress({
+      host: '#importModal .modal-body',
+      title: 'خواندن فایل',
+      lockButtons: ['#importBtn', '#importDryRunBtn']
+    })
+    if (job) job.set({ label: 'در حال خواندن فایل…' })
 
     const reader = new FileReader()
     reader.onload = async function (ev) {
@@ -1143,7 +1253,13 @@ export function initImportListeners() {
       } catch (err) {
         console.error(err)
         showToast('خطا در خواندن فایل')
+      } finally {
+        job?.end()
       }
+    }
+    reader.onerror = () => {
+      showToast('خطا در خواندن فایل')
+      job?.end()
     }
     reader.readAsArrayBuffer(file)
   })
@@ -1499,19 +1615,32 @@ function renderCustomerImportPreview(stats) {
 
 export async function dryRunCustomerImport() {
   if (!requirePermission('customers_import')) return
-  const stats = await previewCustomerImport()
-  if (!stats) {
-    showToast('حداقل یک ستون را نقشه\u200cبرداری کنید')
-    return
+  if (isJobProgressActive()) return
+  const job = startJobProgress({
+    host: '#importModal .modal-body',
+    title: 'پیش‌نمایش ایمپورت',
+    lockButtons: ['#importBtn', '#importDryRunBtn']
+  })
+  if (!job) return
+  try {
+    job.set({ label: 'در حال ساخت پیش‌نمایش…' })
+    await job.paint()
+    const stats = await previewCustomerImport()
+    if (!stats) {
+      showToast('حداقل یک ستون را نقشه\u200cبرداری کنید')
+      return
+    }
+    importData.dryRun = stats
+    renderCustomerImportPreview(stats)
+    showToast('پیش‌نمایش آماده است — در دیتابیس تغییری ذخیره نشد')
+  } finally {
+    job.end()
   }
-  importData.dryRun = stats
-  renderCustomerImportPreview(stats)
-  showToast('پیش‌نمایش آماده است — در دیتابیس تغییری ذخیره نشد')
 }
 
 export async function doImport() {
   if (!requirePermission('customers_import')) return
-  const data = getData()
+  if (isJobProgressActive()) return
 
   // ---------- Followups-only file (خروجی تب پیگیری‌ها) ----------
   if (importData.mode === 'followups') {
@@ -1519,7 +1648,19 @@ export async function doImport() {
       showToast('ردیفی برای ایمپورت پیگیری یافت نشد')
       return
     }
-    const fu = await importFollowupRows(importData.followups, { syncCustomerNextDate: true })
+    const fu = await runWithJobProgress({
+      host: '#importModal .modal-body',
+      title: 'ایمپورت پیگیری‌ها',
+      lockButtons: ['#importBtn', '#importDryRunBtn'],
+      cancellable: true
+    }, async (job) => {
+      return importFollowupRows(importData.followups, {
+        syncCustomerNextDate: true,
+        signal: job.signal,
+        onProgress: ({ done, total, label }) => job.set({ done, total, label })
+      })
+    })
+    if (!fu) return
     closeImportModal()
     await renderCustomers()
     try { await renderFollowups() } catch (_) {}
@@ -1540,129 +1681,156 @@ export async function doImport() {
     return
   }
 
-  let created = 0, updated = 0, skipped = 0, failed = 0
-  const users = await getUsersSafe()
-  const statusMap = buildStatusImportMap()
+  const importResult = await runWithJobProgress({
+    host: '#importModal .modal-body',
+    title: 'ایمپورت مشتریان',
+    lockButtons: ['#importBtn', '#importDryRunBtn'],
+    cancellable: true
+  }, async (job) => {
+    const data = getData()
+    let created = 0, updated = 0, skipped = 0, failed = 0
+    const users = await getUsersSafe()
+    const statusMap = buildStatusImportMap()
+    const total = importData.rows.length
 
-  for (const row of importData.rows) {
-    const getValue = (fieldKey) => {
-      const colIdx = mapping[fieldKey]
-      if (colIdx === undefined || colIdx === null) return ''
-      return String(row[colIdx] || '').trim()
-    }
+    for (let rowIdx = 0; rowIdx < importData.rows.length; rowIdx++) {
+      job.throwIfCancelled()
+      if (rowIdx % 5 === 0 || rowIdx === total - 1) {
+        job.set({ label: 'ذخیره مشتریان…', done: rowIdx, total })
+        await job.paint()
+      }
+      const row = importData.rows[rowIdx]
+      const getValue = (fieldKey) => {
+        const colIdx = mapping[fieldKey]
+        if (colIdx === undefined || colIdx === null) return ''
+        return String(row[colIdx] || '').trim()
+      }
 
-    const phone = toEnDigits(getValue('phone'))
-    const phone2 = toEnDigits(getValue('phone2'))
-    const phone3 = toEnDigits(getValue('phone3'))
-    const phones = normalizeCustomerPhones([phone, phone2, phone3])
-    const primaryPhone = phones[0] || ''
-    const importId = getValue('id')
-    const platformIdRaw = getValue('platformId')
-    const name = getValue('name')
+      const phone = toEnDigits(getValue('phone'))
+      const phone2 = toEnDigits(getValue('phone2'))
+      const phone3 = toEnDigits(getValue('phone3'))
+      const phones = normalizeCustomerPhones([phone, phone2, phone3])
+      const primaryPhone = phones[0] || ''
+      const importId = getValue('id')
+      const platformIdRaw = getValue('platformId')
+      const name = getValue('name')
 
-    // Skip completely empty rows
-    if (!importId && !platformIdRaw && !name && !phones.length) {
-      skipped++
-      continue
-    }
+      // Skip completely empty rows
+      if (!importId && !platformIdRaw && !name && !phones.length) {
+        skipped++
+        continue
+      }
 
-    const platformRaw = getValue('platform').toLowerCase()
-    const platform = buildPlatformImportMap()[platformRaw] || platformRaw || 'instagram'
-    const statusRaw = getValue('status')
-    const status = statusMap[statusRaw] || statusMap[statusRaw.toLowerCase()] || statusRaw || 'new'
+      const platformRaw = getValue('platform').toLowerCase()
+      const platform = buildPlatformImportMap()[platformRaw] || platformRaw || 'instagram'
+      const statusRaw = getValue('status')
+      const status = statusMap[statusRaw] || statusMap[statusRaw.toLowerCase()] || statusRaw || 'new'
 
-    // Match existing: id → phone → platformId (only when provided in file)
-    let existing = null
-    if (importId) existing = data.customers.find(c => c.id === importId) || null
-    if (!existing && phones.length) {
-      for (const p of phones) {
-        existing = findCustomerByPhone(p, data.customers)
-        if (existing) break
+      // Match existing: id → phone → platformId (only when provided in file)
+      let existing = null
+      if (importId) existing = data.customers.find(c => c.id === importId) || null
+      if (!existing && phones.length) {
+        for (const p of phones) {
+          existing = findCustomerByPhone(p, data.customers)
+          if (existing) break
+        }
+      }
+      if (!existing && platformIdRaw) {
+        existing = data.customers.find(c =>
+          (c.platformId || '').toLowerCase() === platformIdRaw.toLowerCase()
+        ) || null
+      }
+
+      let platformId = platformIdRaw
+      if (!platformId) {
+        if (existing?.platformId) {
+          platformId = existing.platformId
+        } else if (primaryPhone) {
+          platformId = `telegram.me/${primaryPhone.replace(/^0/, '+98')}`
+        } else {
+          platformId = `auto_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+        }
+      }
+
+      try {
+        if (existing) {
+          applyMappedCustomerFields(existing, {
+            mapping, getValue, users, phones, primaryPhone, platformId, platform, status, isCreate: false
+          })
+          if (!existing.customerLevelLocked) {
+            syncCustomerLevel(existing, data.customers, data.followups)
+          }
+          await saveCustomerToDB(existing)
+          updated++
+        } else {
+          const type = phones.length ? 'CS' : 'LD'
+          const id = importId || await generateId(type)
+          // Guard against colliding with an id that appeared mid-import
+          if (data.customers.some(c => c.id === id)) {
+            skipped++
+            continue
+          }
+          const newCustomer = {
+            id,
+            products: [],
+            createdAt: new Date().toISOString(),
+            advisor: '',
+            advisorPhone: '',
+            platformId: '',
+            platform: 'instagram',
+            name: '',
+            phone: '',
+            phones: [],
+            status: 'new',
+            notes: '',
+            nextFollowupDate: '',
+            referredByPhone: '',
+            customerLevel: '',
+            customerLevelLocked: false
+          }
+          applyMappedCustomerFields(newCustomer, {
+            mapping, getValue, users, phones, primaryPhone, platformId, platform, status, isCreate: true
+          })
+          if (!newCustomer.customerLevelLocked) {
+            syncCustomerLevel(newCustomer, data.customers, data.followups)
+          }
+          putCustomerInCache(newCustomer)
+          await saveCustomerToDB(newCustomer)
+          created++
+        }
+      } catch (err) {
+        console.error('customer import row failed', err)
+        failed++
       }
     }
-    if (!existing && platformIdRaw) {
-      existing = data.customers.find(c =>
-        (c.platformId || '').toLowerCase() === platformIdRaw.toLowerCase()
-      ) || null
-    }
 
-    let platformId = platformIdRaw
-    if (!platformId) {
-      if (existing?.platformId) {
-        platformId = existing.platformId
-      } else if (primaryPhone) {
-        platformId = `telegram.me/${primaryPhone.replace(/^0/, '+98')}`
-      } else {
-        platformId = `auto_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-      }
-    }
+    job.set({ label: 'ذخیره مشتریان…', done: total, total })
 
+    // Recompute unlocked levels (CIP may unlock after referrals imported)
     try {
-      if (existing) {
-        applyMappedCustomerFields(existing, {
-          mapping, getValue, users, phones, primaryPhone, platformId, platform, status, isCreate: false
-        })
-        if (!existing.customerLevelLocked) {
-          syncCustomerLevel(existing, data.customers, data.followups)
-        }
-        await saveCustomerToDB(existing)
-        updated++
-      } else {
-        const type = phones.length ? 'CS' : 'LD'
-        const id = importId || await generateId(type)
-        // Guard against colliding with an id that appeared mid-import
-        if (data.customers.some(c => c.id === id)) {
-          skipped++
-          continue
-        }
-        const newCustomer = {
-          id,
-          products: [],
-          createdAt: new Date().toISOString(),
-          advisor: '',
-          advisorPhone: '',
-          platformId: '',
-          platform: 'instagram',
-          name: '',
-          phone: '',
-          phones: [],
-          status: 'new',
-          notes: '',
-          nextFollowupDate: '',
-          referredByPhone: '',
-          customerLevel: '',
-          customerLevelLocked: false
-        }
-        applyMappedCustomerFields(newCustomer, {
-          mapping, getValue, users, phones, primaryPhone, platformId, platform, status, isCreate: true
-        })
-        if (!newCustomer.customerLevelLocked) {
-          syncCustomerLevel(newCustomer, data.customers, data.followups)
-        }
-        putCustomerInCache(newCustomer)
-        await saveCustomerToDB(newCustomer)
-        created++
-      }
+      job.set({ label: 'همگام‌سازی سطح مشتریان…' })
+      const { resyncAndPersistCustomerLevels } = await import('./customer-level-sync.js')
+      await resyncAndPersistCustomerLevels()
     } catch (err) {
-      console.error('customer import row failed', err)
-      failed++
+      console.error('customer level resync after import', err)
     }
-  }
 
-  // Recompute unlocked levels (CIP may unlock after referrals imported)
-  try {
-    const { resyncAndPersistCustomerLevels } = await import('./customer-level-sync.js')
-    await resyncAndPersistCustomerLevels()
-  } catch (err) {
-    console.error('customer level resync after import', err)
-  }
+    // Import sheet «پیگیری‌ها» from the same workbook (after customers exist)
+    let fu = { created: 0, updated: 0, skipped: 0, failed: 0, missingCustomer: 0, customersUpdated: 0 }
+    if (importData.followups?.rows?.length) {
+      job.throwIfCancelled()
+      fu = await importFollowupRows(importData.followups, {
+        signal: job.signal,
+        onProgress: ({ done, total: t, label }) => job.set({ done, total: t, label })
+      })
+    }
 
-  // Import sheet «پیگیری‌ها» from the same workbook (after customers exist)
-  let fu = { created: 0, updated: 0, skipped: 0, failed: 0, missingCustomer: 0, customersUpdated: 0 }
-  if (importData.followups?.rows?.length) {
-    fu = await importFollowupRows(importData.followups)
-  }
+    return { created, updated, skipped, failed, fu }
+  })
 
+  if (!importResult) return
+
+  const { created, updated, skipped, failed, fu } = importResult
   closeImportModal()
   await renderCustomers()
   try { await renderFollowups() } catch (_) {}
@@ -1967,6 +2135,10 @@ export function openSalesImportModal() {
 }
 
 export function closeSalesImportModal() {
+  if (isJobProgressActive()) {
+    showToast('تا پایان عملیات صبر کنید یا لغو کنید')
+    return
+  }
   document.getElementById('salesImportModal').classList.remove('active')
 }
 
@@ -1974,6 +2146,18 @@ export function initSalesImportListeners() {
   document.getElementById('salesImportFileInput').addEventListener('change', function (e) {
     const file = e.target.files[0]
     if (!file) return
+    if (isJobProgressActive()) {
+      showToast('عملیات دیگری در حال اجراست')
+      e.target.value = ''
+      return
+    }
+
+    const job = startJobProgress({
+      host: '#salesImportModal .modal-body',
+      title: 'خواندن فایل',
+      lockButtons: ['#salesImportBtn']
+    })
+    if (job) job.set({ label: 'در حال خواندن فایل…' })
 
     const reader = new FileReader()
     reader.onload = async function (ev) {
@@ -2014,7 +2198,13 @@ export function initSalesImportListeners() {
       } catch (err) {
         console.error(err)
         showToast('خطا در خواندن فایل')
+      } finally {
+        job?.end()
       }
+    }
+    reader.onerror = () => {
+      showToast('خطا در خواندن فایل')
+      job?.end()
     }
     reader.readAsArrayBuffer(file)
   })
@@ -2234,6 +2424,7 @@ export async function downloadSalesImportProblems() {
 
 export async function doSalesImport() {
   if (!requirePermission('sales_import')) return
+  if (isJobProgressActive()) return
   const data = getData()
   const mapping = salesImportData.mapping
   const hasPhone = mapping.phone !== undefined && mapping.phone !== null
@@ -2251,6 +2442,14 @@ export async function doSalesImport() {
     return
   }
 
+  const job = startJobProgress({
+    host: '#salesImportModal .modal-body',
+    title: 'ایمپورت فروش',
+    lockButtons: ['#salesImportBtn', '#salesImportProblemsBtn'],
+    cancellable: true
+  })
+  if (!job) return
+
   let imported = 0, skipped = 0, created = 0, failed = 0
   const problemRows = []
   const problemReasons = []
@@ -2259,6 +2458,7 @@ export async function doSalesImport() {
     problemReasons.push(reason)
   }
 
+  try {
   const users = await getUsersSafe()
   const banks = getDestinationBanks()
   const touched = new Set()
@@ -2266,8 +2466,14 @@ export async function doSalesImport() {
   const priceColMapped = isFieldMapped(mapping, 'price')
   const isSite = salesImportData.isSiteFormat
   const hasAdvisorOptions = (salesImportData.advisorOptions || []).length > 0
+  const rowTotal = salesImportData.rows.length
 
-  for (const row of salesImportData.rows) {
+  for (let rowIdx = 0; rowIdx < salesImportData.rows.length; rowIdx++) {
+    job.throwIfCancelled()
+    if (rowIdx % 10 === 0) {
+      job.set({ label: 'پردازش ردیف‌ها…', done: rowIdx, total: rowTotal })
+    }
+    const row = salesImportData.rows[rowIdx]
     const getValue = (fieldKey) => {
       const colIdx = mapping[fieldKey]
       if (colIdx === undefined || colIdx === null) return ''
@@ -2495,7 +2701,12 @@ export async function doSalesImport() {
     touched.add(customer.id)
   }
 
-  for (const id of touched) {
+  const touchedList = [...touched]
+  for (let i = 0; i < touchedList.length; i++) {
+    job.throwIfCancelled()
+    job.set({ label: 'ذخیره مشتریان…', done: i, total: touchedList.length })
+    if (i % 3 === 0) await job.paint()
+    const id = touchedList[i]
     const c = data.customers.find(x => x.id === id)
     if (!c) continue
     try {
@@ -2505,6 +2716,9 @@ export async function doSalesImport() {
       console.error('sales import save failed', id, err)
       failed++
     }
+  }
+  if (touchedList.length) {
+    job.set({ label: 'ذخیره مشتریان…', done: touchedList.length, total: touchedList.length })
   }
 
   salesImportData.problemExport = problemRows.length
@@ -2529,6 +2743,18 @@ export async function doSalesImport() {
     failed,
     problemCount: problemRows.length
   })
+  } catch (err) {
+    if (err?.code === 'CANCELLED' || err?.message === 'CANCELLED') {
+      showToast('عملیات لغو شد — تغییرات اعمال‌شده تا این لحظه حفظ شده‌اند')
+      try { await renderCustomers() } catch (_) {}
+      try { await renderSales() } catch (_) {}
+    } else {
+      console.error('doSalesImport error:', err)
+      showToast(err?.message || 'خطا در ایمپورت فروش')
+    }
+  } finally {
+    job.end()
+  }
 }
 
 // ============================================
@@ -2903,6 +3129,10 @@ export function openMatrixImportModal() {
 }
 
 export function closeMatrixImportModal() {
+  if (isJobProgressActive() || matrixImportData.running) {
+    showToast('تا پایان عملیات صبر کنید یا لغو کنید')
+    return
+  }
   document.getElementById('matrixImportModal')?.classList.remove('active')
 }
 
@@ -2912,6 +3142,17 @@ export function initMatrixImportListeners() {
   input.addEventListener('change', function (e) {
     const file = e.target.files[0]
     if (!file) return
+    if (isJobProgressActive()) {
+      showToast('عملیات دیگری در حال اجراست')
+      e.target.value = ''
+      return
+    }
+    const job = startJobProgress({
+      host: '#matrixImportModal .modal-body',
+      title: 'خواندن فایل',
+      lockButtons: ['#matrixImportBtn', '#matrixImportDryRunBtn']
+    })
+    if (job) job.set({ label: 'در حال خواندن فایل…' })
     const reader = new FileReader()
     reader.onload = async (ev) => {
       try {
@@ -2932,7 +3173,13 @@ export function initMatrixImportListeners() {
       } catch (err) {
         console.error(err)
         showToast('خطا در خواندن فایل')
+      } finally {
+        job?.end()
       }
+    }
+    reader.onerror = () => {
+      showToast('خطا در خواندن فایل')
+      job?.end()
     }
     reader.readAsArrayBuffer(file)
   })
@@ -2944,25 +3191,37 @@ export function dryRunMatrixImport() {
     showToast('ستون شماره موبایل را مپ کنید')
     return
   }
-  const stats = previewMatrixImport()
-  matrixImportData.dryRun = stats
-  const preview = document.getElementById('matrixImportPreview')
-  if (preview) {
-    const totalAmount = Array.from(stats.merged.values()).reduce((sum, rec) => {
-      return sum + Array.from(rec.products.values()).reduce((inner, price) => inner + (parseFloat(price) || 0), 0)
-    }, 0)
-    preview.innerHTML = [
-      `<b>پیش‌نمایش:</b> ${stats.uniquePhones} شماره یکتا`,
-      `${stats.created} مشتری جدید`,
-      `${stats.updated} مشتری موجود`,
-      `${stats.productsAdded} محصول اضافه`,
-      `${stats.skippedProducts} محصول تکراری`,
-      totalAmount > 0 ? `${totalAmount.toLocaleString('en-US')} قیمت کل تاریخی` : '',
-      stats.invalidPhones ? `${stats.invalidPhones} شماره نامعتبر` : '',
-      stats.unmappedMarks ? `${stats.unmappedMarks} علامت روی محصول مپ‌نشده` : ''
-    ].filter(Boolean).join(' — ')
+  if (isJobProgressActive()) return
+  const job = startJobProgress({
+    host: '#matrixImportModal .modal-body',
+    title: 'پیش‌نمایش ماتریس',
+    lockButtons: ['#matrixImportBtn', '#matrixImportDryRunBtn']
+  })
+  if (!job) return
+  try {
+    job.set({ label: 'در حال ساخت پیش‌نمایش…' })
+    const stats = previewMatrixImport()
+    matrixImportData.dryRun = stats
+    const preview = document.getElementById('matrixImportPreview')
+    if (preview) {
+      const totalAmount = Array.from(stats.merged.values()).reduce((sum, rec) => {
+        return sum + Array.from(rec.products.values()).reduce((inner, price) => inner + (parseFloat(price) || 0), 0)
+      }, 0)
+      preview.innerHTML = [
+        `<b>پیش‌نمایش:</b> ${stats.uniquePhones} شماره یکتا`,
+        `${stats.created} مشتری جدید`,
+        `${stats.updated} مشتری موجود`,
+        `${stats.productsAdded} محصول اضافه`,
+        `${stats.skippedProducts} محصول تکراری`,
+        totalAmount > 0 ? `${totalAmount.toLocaleString('en-US')} قیمت کل تاریخی` : '',
+        stats.invalidPhones ? `${stats.invalidPhones} شماره نامعتبر` : '',
+        stats.unmappedMarks ? `${stats.unmappedMarks} علامت روی محصول مپ‌نشده` : ''
+      ].filter(Boolean).join(' — ')
+    }
+    showToast('پیش‌نمایش آماده است — در دیتابیس تغییری ذخیره نشد')
+  } finally {
+    job.end()
   }
-  showToast('پیش‌نمایش آماده است — در دیتابیس تغییری ذخیره نشد')
 }
 
 export async function downloadMatrixImportProblems() {
@@ -2983,7 +3242,7 @@ export async function downloadMatrixImportProblems() {
 
 export async function doMatrixImport() {
   if (!requirePermission('matrix_historical_import')) return
-  if (matrixImportData.running) return
+  if (matrixImportData.running || isJobProgressActive()) return
   if (!isFieldMapped(matrixImportData.mapping, 'phone')) {
     showToast('ستون شماره موبایل را مپ کنید')
     return
@@ -3000,11 +3259,20 @@ export async function doMatrixImport() {
     return
   }
 
+  const job = startJobProgress({
+    host: '#matrixImportModal .modal-body',
+    title: 'ایمپورت تاریخی ماتریس',
+    lockButtons: ['#matrixImportBtn', '#matrixImportDryRunBtn', '#matrixImportProblemsBtn'],
+    cancellable: true
+  })
+  if (!job) return
+
   matrixImportData.running = true
   const previewEl = document.getElementById('matrixImportPreview')
-  const setProgress = (msg) => { if (previewEl) previewEl.textContent = msg }
 
   try {
+    job.set({ label: 'پردازش ردیف‌ها…' })
+    await job.paint()
     const { merged, problems } = mergeMatrixFileRows()
     const data = getData()
     const phoneIndex = buildPhoneIndex(data.customers)
@@ -3013,6 +3281,7 @@ export async function doMatrixImport() {
     const extraProblems = [...problems]
 
     for (const rec of merged.values()) {
+      job.throwIfCancelled()
       if (rec.unmapped.length) {
         extraProblems.push({
           row: [rec.phone, rec.name, rec.unmapped.join('، ')],
@@ -3073,7 +3342,8 @@ export async function doMatrixImport() {
       else toUpdate.push({ customer, backdate })
     }
 
-    setProgress(`در حال ساخت شناسه برای ${toCreate.length} مشتری جدید...`)
+    job.set({ label: `در حال ساخت شناسه برای ${toCreate.length} مشتری جدید…` })
+    await job.paint()
     const ids = await generateIdBatch('CS', toCreate.length)
     toCreate.forEach((c, i) => { c.id = ids[i] })
 
@@ -3082,6 +3352,13 @@ export async function doMatrixImport() {
     let saved = 0
     let failed = 0
     for (let i = 0; i < touched.length; i += BATCH) {
+      job.throwIfCancelled()
+      job.set({
+        label: 'ذخیره مشتریان…',
+        done: Math.min(i, touched.length),
+        total: touched.length
+      })
+      await job.paint()
       const chunk = touched.slice(i, i + BATCH)
       await Promise.all(chunk.map(async (c) => {
         try {
@@ -3101,7 +3378,11 @@ export async function doMatrixImport() {
           extraProblems.push({ row: [c.phone, c.name, c.id], reason: err?.message || 'خطای ذخیره' })
         }
       }))
-      setProgress(`ذخیره ${Math.min(i + BATCH, touched.length)} از ${touched.length} مشتری...`)
+      job.set({
+        label: 'ذخیره مشتریان…',
+        done: Math.min(i + BATCH, touched.length),
+        total: touched.length
+      })
     }
 
     const problemPackRows = extraProblems.map(p => {
@@ -3134,10 +3415,20 @@ export async function doMatrixImport() {
     if (saved) parts.push(`${saved} ذخیره`)
     if (failed) parts.push(`${failed} خطا`)
     if (extraProblems.length) parts.push(`${extraProblems.length} ردیف مشکل‌دار`)
-    setProgress(parts.join(' — ') || 'ایمپورت انجام شد')
+    if (previewEl) previewEl.textContent = parts.join(' — ') || 'ایمپورت انجام شد'
     showToast(parts.length ? parts.join(' — ') : 'هیچ ردیفی ایمپورت نشد')
+  } catch (err) {
+    if (err?.code === 'CANCELLED' || err?.message === 'CANCELLED') {
+      showToast('عملیات لغو شد — تغییرات اعمال‌شده تا این لحظه حفظ شده‌اند')
+      try { await renderCustomers() } catch (_) {}
+      try { await renderProductMatrix() } catch (_) {}
+    } else {
+      console.error('doMatrixImport error:', err)
+      showToast(err?.message || 'خطا در ایمپورت ماتریس')
+    }
   } finally {
     matrixImportData.running = false
+    job.end()
   }
 }
 
@@ -3195,6 +3486,10 @@ export function openEventsImportModal() {
 }
 
 export function closeEventsImportModal() {
+  if (isJobProgressActive()) {
+    showToast('تا پایان عملیات صبر کنید یا لغو کنید')
+    return
+  }
   eventsImportRows = []
   document.getElementById('eventsImportModal')?.classList.remove('active')
 }
@@ -3229,23 +3524,41 @@ function formatEventsImportResult(rowsLen, result) {
 export async function dryRunEventsImport() {
   if (!assertImportExport()) return
   if (!requirePermission('events_import')) return
+  if (isJobProgressActive()) return
   const preview = document.getElementById('eventsImportPreview')
+  const job = startJobProgress({
+    host: '#eventsImportModal .modal-body',
+    title: 'پیش‌نمایش ایمپورت رویداد',
+    lockButtons: []
+  })
+  if (!job) return
   try {
+    job.set({ label: 'در حال خواندن فایل…' })
+    await job.paint()
     const salePrice = readEventsImportSalePrice()
     eventsImportRows = await readEventsImportFile()
-    const result = await applyEventRosterImport(eventsImportRows, { dryRun: true, salePrice })
+    job.set({ label: 'پیش‌نمایش ردیف‌ها…', done: 0, total: eventsImportRows.length })
+    const result = await applyEventRosterImport(eventsImportRows, {
+      dryRun: true,
+      salePrice,
+      signal: job.signal,
+      onProgress: ({ done, total, label }) => job.set({ done, total, label })
+    })
     if (preview) {
       preview.innerHTML = escapeHtml(formatEventsImportResult(eventsImportRows.length, result)).replace(/\n/g, '<br>')
     }
     showToast('پیش‌نمایش آماده است')
   } catch (e) {
-    showToast(e.message || 'خطا در خواندن فایل')
+    if (e?.code !== 'CANCELLED') showToast(e.message || 'خطا در خواندن فایل')
+  } finally {
+    job.end()
   }
 }
 
 export async function doEventsImport() {
   if (!assertImportExport()) return
   if (!requirePermission('events_import')) return
+  if (isJobProgressActive()) return
   try {
     const salePrice = readEventsImportSalePrice()
     if (salePrice === null) {
@@ -3253,10 +3566,33 @@ export async function doEventsImport() {
       document.getElementById('eventsImportSalePrice')?.focus()
       return
     }
-    if (!eventsImportRows.length) {
-      eventsImportRows = await readEventsImportFile()
-    }
-    const result = await applyEventRosterImport(eventsImportRows, { dryRun: false, salePrice })
+  } catch (e) {
+    showToast(e.message || 'قیمت فروش نامعتبر است')
+    return
+  }
+
+  try {
+    const result = await runWithJobProgress({
+      host: '#eventsImportModal .modal-body',
+      title: 'ایمپورت رویدادها',
+      cancellable: true
+    }, async (job) => {
+      const salePrice = readEventsImportSalePrice()
+      if (!eventsImportRows.length) {
+        job.set({ label: 'در حال خواندن فایل…' })
+        await job.paint()
+        eventsImportRows = await readEventsImportFile()
+      }
+      job.set({ label: 'ایمپورت رویدادها…', done: 0, total: eventsImportRows.length })
+      return applyEventRosterImport(eventsImportRows, {
+        dryRun: false,
+        salePrice,
+        signal: job.signal,
+        onProgress: ({ done, total, label }) => job.set({ done, total, label })
+      })
+    })
+
+    if (!result) return
     showToast(`ایمپورت: ${result.customersCreated || 0} مشتری جدید، ${result.updated} نام، ${result.created || 0} فروش جدید، ${result.assigned} تخصیص، ${result.skipped} ردشده`)
     closeEventsImportModal()
     try { await renderEvents() } catch (_) {}

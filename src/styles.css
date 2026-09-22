@@ -8179,6 +8179,116 @@
   font-size: 13px;
 }
 
+/* Shared import/export/backup job progress */
+.job-progress-float {
+  position: fixed;
+  bottom: 24px;
+  inset-inline-start: 24px;
+  z-index: 12000;
+  max-width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.job-progress-float[hidden] {
+  display: none !important;
+}
+
+.job-progress-float .job-progress-panel {
+  pointer-events: auto;
+  box-shadow: var(--shadow-overlay);
+}
+
+.job-progress-panel {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e7e5e4);
+  border-radius: var(--radius, 10px);
+  font-family: 'Vazirmatn', sans-serif;
+}
+
+.job-progress-panel[hidden] {
+  display: none !important;
+}
+
+.job-progress-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.job-progress-spinner.loader {
+  --size: 0.7px;
+  margin-top: 2px;
+}
+
+.job-progress-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.job-progress-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.job-progress-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.job-progress-bar-track {
+  position: relative;
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: var(--border, #e7e5e4);
+  overflow: hidden;
+}
+
+.job-progress-bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: var(--accent, #0d9488);
+  transition: width 0.15s ease-out;
+}
+
+.job-progress-bar-track.is-indeterminate .job-progress-bar-fill {
+  width: 40%;
+  animation: job-progress-indet 1.1s ease-in-out infinite;
+}
+
+@keyframes job-progress-indet {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(280%); }
+}
+
+.job-progress-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.job-progress-cancel {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+@media (max-width: 640px) {
+  .job-progress-float {
+    inset-inline-start: 12px;
+    inset-inline-end: 12px;
+    bottom: 16px;
+    max-width: none;
+  }
+}
+
 .backup-restore-stats {
   list-style: none;
   padding: 0;

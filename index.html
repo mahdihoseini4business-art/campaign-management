@@ -743,12 +743,12 @@
               برای کار آفلاین اضطراری، این فایل را در نسخه آفلاین ایمپورت کنید.
             </div>
             <div class="form-row settings-add-row" style="justify-content:flex-start;gap:8px;flex-wrap:wrap;">
-              <button type="button" class="btn btn-primary" onclick="app.exportFullBackup()">بکاپ کامل (دانلود)</button>
-              <button type="button" class="btn btn-primary" onclick="app.exportSplitDistribution()">بسته توزیع آفلاین</button>
-              <button type="button" class="btn" onclick="app.openBackupRestoreModal()">بازیابی از بکاپ…</button>
+              <button type="button" class="btn btn-primary" id="backupExportFullBtn" onclick="app.exportFullBackup()">بکاپ کامل (دانلود)</button>
+              <button type="button" class="btn btn-primary" id="backupExportSplitBtn" onclick="app.exportSplitDistribution()">بسته توزیع آفلاین</button>
+              <button type="button" class="btn" id="backupOpenRestoreBtn" onclick="app.openBackupRestoreModal()">بازیابی از بکاپ…</button>
             </div>
             <p class="settings-pane-desc" style="margin-top:8px;font-size:12px;">بسته توزیع: یک ZIP شامل بکاپ کامل + یک فایل per user برای import در نسخه آفلاین. بکاپ شخصی قابل merge آنلاین <strong>نیست</strong>.</p>
-            <p id="backupProgress" class="settings-pane-desc backup-progress" hidden></p>
+            <div id="backupProgressHost"></div>
           </div>
         </section>
 
@@ -2632,7 +2632,7 @@
       <button type="button" class="modal-close" onclick="app.closeBackupRestoreModal()">&times;</button>
     </div>
     <div class="modal-body" id="backupRestoreBody"></div>
-    <p id="backupRestoreProgress" class="settings-pane-desc backup-progress" style="padding:0 20px 12px;margin:0;" hidden></p>
+    <div id="backupRestoreProgressHost" style="padding:0 20px 12px;"></div>
     <div class="modal-footer">
       <button type="button" class="btn" onclick="app.closeBackupRestoreModal()">انصراف</button>
       <button type="button" class="btn btn-primary" id="backupRestoreApplyBtn" onclick="app.applyBackupRestore()" style="display:none;">اعمال بازیابی</button>

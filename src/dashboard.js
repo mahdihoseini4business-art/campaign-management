@@ -24,6 +24,7 @@ import {
   backfillFieldFilledAtInMemory,
   normalizeFieldFilledAt
 } from './customer-profile-fields.js'
+import { startJobProgress, isJobProgressActive } from './job-progress.js'
 
 let ChartLib = null
 
@@ -4708,20 +4709,34 @@ function downloadJsonFile(filename, obj) {
 }
 
 export async function exportDashboardForAi() {
+  if (isJobProgressActive()) return
+  const job = startJobProgress({ host: 'float', title: 'خروجی داشبورد برای AI' })
+  if (!job) return
   try {
+    job.set({ label: 'در حال ساخت JSON…' })
+    await job.paint()
     const payload = await buildDashboardExportPayload()
+    job.set({ label: 'دانلود فایل…' })
     const day = new Date().toISOString().slice(0, 10).replace(/-/g, '')
     downloadJsonFile(`dashboard-export-${day}.json`, payload)
     showToast('خروجی JSON داشبورد دانلود شد')
   } catch (e) {
     console.error('exportDashboardForAi error:', e)
     showToast('خطا در ساخت خروجی داشبورد')
+  } finally {
+    job.end()
   }
 }
 
 export async function copyDashboardExport() {
+  if (isJobProgressActive()) return
+  const job = startJobProgress({ host: 'float', title: 'کپی خروجی داشبورد' })
+  if (!job) return
   try {
+    job.set({ label: 'در حال ساخت JSON…' })
+    await job.paint()
     const payload = await buildDashboardExportPayload()
+    job.set({ label: 'کپی به کلیپ‌بورد…' })
     const text = JSON.stringify(payload, null, 2)
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text)
@@ -4739,5 +4754,7 @@ export async function copyDashboardExport() {
   } catch (e) {
     console.error('copyDashboardExport error:', e)
     showToast('خطا در کپی خروجی داشبورد')
+  } finally {
+    job.end()
   }
 }

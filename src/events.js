@@ -784,7 +784,7 @@ function eventDatesEqual(a, b) {
  * @param {{ dryRun?: boolean, salePrice?: number|null }} [opts]
  * @returns {{ updated: number, assigned: number, created: number, customersCreated: number, skipped: number, errors: string[] }}
  */
-export async function applyEventRosterImport(rows, { dryRun = false, salePrice = null } = {}) {
+export async function applyEventRosterImport(rows, { dryRun = false, salePrice = null, onProgress = null, signal = null } = {}) {
   const {
     assignInPersonSessionToSale,
     getActiveInPersonSessions: getSessions,
@@ -812,8 +812,21 @@ export async function applyEventRosterImport(rows, { dryRun = false, salePrice =
   let customersCreated = 0
   let skipped = 0
   const errors = []
+  const total = (rows || []).length
 
-  for (let i = 0; i < (rows || []).length; i++) {
+  for (let i = 0; i < total; i++) {
+    if (signal?.aborted) {
+      const err = new Error('CANCELLED')
+      err.code = 'CANCELLED'
+      throw err
+    }
+    if (typeof onProgress === 'function') {
+      onProgress({
+        done: i,
+        total,
+        label: dryRun ? 'پیش‌نمایش ردیف‌ها…' : 'ایمپورت رویدادها…'
+      })
+    }
     const rowNum = i + 2
     const r = rows[i]
     const phone = normalizePhone(r.phone)
@@ -987,6 +1000,14 @@ export async function applyEventRosterImport(rows, { dryRun = false, salePrice =
     } else if (!didAssign) {
       skipped++
     }
+  }
+
+  if (typeof onProgress === 'function' && total > 0) {
+    onProgress({
+      done: total,
+      total,
+      label: dryRun ? 'پیش‌نمایش ردیف‌ها…' : 'ایمپورت رویدادها…'
+    })
   }
 
   return { updated, assigned, created, customersCreated, skipped, errors }

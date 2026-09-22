@@ -18,6 +18,7 @@ import { diffRowFields, formatDiffValue, listMergeConflicts } from './backup/bac
 import { getStoredTenantId } from './tenant.js'
 import { assertImportExport, assertWritable } from './entitlements.js'
 import { writeAudit } from './subdomain.js'
+import { startJobProgress, isJobProgressActive } from './job-progress.js'
 
 function assertBackupTenantContext() {
   if (!getStoredTenantId()) {
@@ -38,6 +39,10 @@ let _restorePlan = null
 /** @type {Record<string, 'backup'|'online'>} */
 let _restoreResolutions = {}
 let _restoreBusy = false
+/** @type {ReturnType<typeof startJobProgress>} */
+let _backupJob = null
+
+const BACKUP_EXPORT_LOCK = ['#backupExportFullBtn', '#backupExportSplitBtn', '#backupOpenRestoreBtn']
 
 const TABLE_LABELS = {
   customers: 'مشتریان',
@@ -69,28 +74,30 @@ function formatBackupDate(iso) {
   return `${date} ${time}`
 }
 
-function setBackupProgress(text, visible = true) {
-  const el = document.getElementById('backupProgress')
-  if (!el) return
-  el.hidden = !visible
-  el.textContent = text || ''
-}
-
-function setRestoreProgress(text, visible = true) {
-  const el = document.getElementById('backupRestoreProgress')
-  if (!el) return
-  el.hidden = !visible
-  el.textContent = text || ''
+function endBackupJob() {
+  if (_backupJob) {
+    _backupJob.end()
+    _backupJob = null
+  }
 }
 
 export async function exportFullBackup() {
   if (!requireMainAdmin()) return
   if (!assertBackupTenantContext()) return
   if (!assertImportExport()) return
-  if (_restoreBusy) return
+  if (_restoreBusy || isJobProgressActive()) return
 
   _restoreBusy = true
-  setBackupProgress('در حال آماده‌سازی بکاپ…')
+  _backupJob = startJobProgress({
+    host: '#backupProgressHost',
+    title: 'بکاپ کامل',
+    lockButtons: BACKUP_EXPORT_LOCK
+  })
+  if (!_backupJob) {
+    _restoreBusy = false
+    return
+  }
+  _backupJob.set({ label: 'در حال آماده‌سازی بکاپ…' })
 
   try {
     const user = getCurrentUser()
@@ -107,7 +114,7 @@ export async function exportFullBackup() {
       includeDeletions: true,
       onProgress: ({ table, done, total }) => {
         const label = TABLE_LABELS[table] || table
-        setBackupProgress(`خواندن ${label}… (${done}/${total})`)
+        _backupJob?.set({ label: `خواندن ${label}…`, done, total })
       }
     })
 
@@ -125,7 +132,7 @@ export async function exportFullBackup() {
     showToast(e?.message || 'خطا در ایجاد بکاپ', 'error')
   } finally {
     _restoreBusy = false
-    setBackupProgress('', false)
+    endBackupJob()
   }
 }
 
@@ -133,10 +140,19 @@ export async function exportSplitDistribution() {
   if (!requireMainAdmin()) return
   if (!assertBackupTenantContext()) return
   if (!assertImportExport()) return
-  if (_restoreBusy) return
+  if (_restoreBusy || isJobProgressActive()) return
 
   _restoreBusy = true
-  setBackupProgress('در حال آماده‌سازی snapshot…')
+  _backupJob = startJobProgress({
+    host: '#backupProgressHost',
+    title: 'بسته توزیع آفلاین',
+    lockButtons: BACKUP_EXPORT_LOCK
+  })
+  if (!_backupJob) {
+    _restoreBusy = false
+    return
+  }
+  _backupJob.set({ label: 'در حال آماده‌سازی snapshot…' })
 
   try {
     const user = getCurrentUser()
@@ -152,10 +168,10 @@ export async function exportSplitDistribution() {
       source: 'online',
       onProgress: ({ table, done, total }) => {
         const label = TABLE_LABELS[table] || table
-        setBackupProgress(`خواندن ${label}… (${done}/${total})`)
+        _backupJob?.set({ label: `خواندن ${label}…`, done, total })
       },
       onUserProgress: ({ username, done, total }) => {
-        setBackupProgress(`ساخت بکاپ ${username}… (${done}/${total})`)
+        _backupJob?.set({ label: `ساخت بکاپ ${username}…`, done, total })
       }
     })
 
@@ -171,7 +187,7 @@ export async function exportSplitDistribution() {
     showToast(e?.message || 'خطا در ایجاد بسته توزیع', 'error')
   } finally {
     _restoreBusy = false
-    setBackupProgress('', false)
+    endBackupJob()
   }
 }
 
@@ -198,7 +214,7 @@ function resetRestoreState() {
   _restoreOnlineTables = null
   _restorePlan = null
   _restoreResolutions = {}
-  setRestoreProgress('', false)
+  endBackupJob()
 }
 
 export function initBackupRestoreListeners() {
@@ -213,10 +229,19 @@ export function initBackupRestoreListeners() {
 
 async function onBackupRestoreFileSelected(file) {
   if (!requireMainAdmin()) return
-  if (_restoreBusy) return
+  if (_restoreBusy || isJobProgressActive()) return
 
   _restoreBusy = true
-  setRestoreProgress('در حال خواندن فایل بکاپ…')
+  _backupJob = startJobProgress({
+    host: '#backupRestoreProgressHost',
+    title: 'خواندن بکاپ',
+    lockButtons: ['#backupRestoreApplyBtn']
+  })
+  if (!_backupJob) {
+    _restoreBusy = false
+    return
+  }
+  _backupJob.set({ label: 'در حال خواندن فایل بکاپ…' })
   renderRestoreModal()
 
   try {
@@ -230,12 +255,12 @@ async function onBackupRestoreFileSelected(file) {
       return
     }
 
-    setRestoreProgress('در حال مقایسه با داده‌های آنلاین…')
+    _backupJob.set({ label: 'در حال مقایسه با داده‌های آنلاین…' })
     const { tables: onlineTables } = await backup.collectFullBackupFromSupabase({
       source: 'online',
       onProgress: ({ table, done, total }) => {
         const label = TABLE_LABELS[table] || table
-        setRestoreProgress(`مقایسه ${label}… (${done}/${total})`)
+        _backupJob?.set({ label: `مقایسه ${label}…`, done, total })
       }
     })
 
@@ -251,7 +276,7 @@ async function onBackupRestoreFileSelected(file) {
     _restorePlan = plan
     _restoreResolutions = {}
 
-    setRestoreProgress('', false)
+    endBackupJob()
     renderRestoreModal()
   } catch (e) {
     console.error('onBackupRestoreFileSelected error:', e)
@@ -260,6 +285,7 @@ async function onBackupRestoreFileSelected(file) {
     renderRestoreModal()
   } finally {
     _restoreBusy = false
+    endBackupJob()
   }
 }
 
@@ -494,7 +520,16 @@ export async function applyBackupRestore() {
   if (!(await openAppConfirm(confirmMsg, { danger: destructive, confirmLabel: 'ادامه' }))) return
 
   _restoreBusy = true
-  setRestoreProgress('در حال اعمال تغییرات…')
+  _backupJob = startJobProgress({
+    host: '#backupRestoreProgressHost',
+    title: 'اعمال بازیابی',
+    lockButtons: ['#backupRestoreApplyBtn']
+  })
+  if (!_backupJob) {
+    _restoreBusy = false
+    return
+  }
+  _backupJob.set({ label: 'در حال اعمال تغییرات…' })
   const applyBtn = document.getElementById('backupRestoreApplyBtn')
   if (applyBtn) applyBtn.disabled = true
 
@@ -502,7 +537,11 @@ export async function applyBackupRestore() {
     const backup = await import('./backup/index.js')
     await backup.applyMergePlanToSupabase(_restorePlan, _restoreResolutions, ({ phase, done, total, detail }) => {
       const label = detail ? (TABLE_LABELS[detail] || detail) : ''
-      setRestoreProgress(`${phase === 'delete' ? 'حذف' : 'ذخیره'} ${label}… (${done}/${total})`)
+      _backupJob?.set({
+        label: `${phase === 'delete' ? 'حذف' : 'ذخیره'} ${label}…`,
+        done,
+        total
+      })
     })
 
     await writeAudit('backup.restore_applied', {
@@ -534,9 +573,10 @@ export async function applyBackupRestore() {
   } catch (e) {
     console.error('applyBackupRestore error:', e)
     showToast(e?.message || 'خطا در اعمال بازیابی', 'error')
-    setRestoreProgress('', false)
+    endBackupJob()
     renderRestoreModal()
   } finally {
     _restoreBusy = false
+    endBackupJob()
   }
 }
