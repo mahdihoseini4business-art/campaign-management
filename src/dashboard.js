@@ -1,6 +1,11 @@
-import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages, getActiveInPersonSessions, getInPersonSessionById, formatInPersonSessionLabel, saleNeedsInPersonSession, saleHasInPersonSessionId, countSmsLogsByDashCategory, getDashConversionAmountInRange, normalizeCustomerCodeSaleFilters } from './data.js'
+import { getData, getStatuses, getPlatforms, getCustomerCodes, getSalesTargets, getDeadlineUrgency, colorForDeadlineRemaining, coerceProductName, salesTargetShareGoalAndStages, getActiveInPersonSessions, getInPersonSessionById, formatInPersonSessionLabel, saleNeedsInPersonSession, saleHasInPersonSessionId, countSmsLogsByDashCategory, getDashConversionAmountInRange } from './data.js'
 import { getUsersSafe } from './auth.js'
 import { loadGroupsData, organizeUsersByGroup, getGroupById, getMembersOfGroup } from './groups.js'
+import {
+  getCustomerCodeEntryByKey,
+  customerCodeAssignedJalali,
+  paymentMatchesCodeSaleFilters
+} from './customer-code-sales.js'
 import {
   hasPermission, getCurrentUser, formatNumber, jalaliToNum, getTodayJalaliNum,
   jalaliAddDays, getTodayJalaliStr, escapeHtml, escapeAttr, showToast,
@@ -20,9 +25,7 @@ import { shouldSkipTabRender, markTabRendered } from './tab-cache.js'
 import {
   customerMeetsProfileFields,
   completionMomentIso,
-  profileFieldLabels,
-  backfillFieldFilledAtInMemory,
-  normalizeFieldFilledAt
+  profileFieldLabels
 } from './customer-profile-fields.js'
 import { startJobProgress, isJobProgressActive } from './job-progress.js'
 
@@ -2207,56 +2210,10 @@ export function onDashConversionCodeChange() {
   renderDashboard()
 }
 
-/** Jalali YYYY/MM/DD of sticky first-fill for customerCode (legacy → createdAt). */
-function customerCodeAssignedJalali(customer) {
-  if (!customer || !(customer.customerCode || '').trim()) return ''
-  backfillFieldFilledAtInMemory(customer)
-  const iso = normalizeFieldFilledAt(customer.fieldFilledAt).customerCode
-  return iso ? gregorianToJalaliStr(iso) : ''
-}
-
-function getCustomerCodeEntryByKey(key) {
-  const k = String(key || '').trim()
-  if (!k) return null
-  return getCustomerCodes().find(c => c.key === k) || null
-}
-
 /** Code catalog entry whose sale filters apply for this customer / card selection. */
 function codeEntryForConversionCustomer(customer, codeFilter) {
   if (codeFilter) return getCustomerCodeEntryByKey(codeFilter)
   return getCustomerCodeEntryByKey(customer?.customerCode)
-}
-
-function resolveCodeAdvisorPhoneSet(entry) {
-  const f = normalizeCustomerCodeSaleFilters(entry || {})
-  const set = new Set(f.advisorPhones)
-  for (const gid of f.advisorGroupIds) {
-    for (const m of getMembersOfGroup(gid)) {
-      const p = normalizePhone(m.user_phone)
-      if (p) set.add(p)
-    }
-  }
-  return set
-}
-
-/** Advisor (sale registrant) + product filters stored on the customer-code entry (AND). */
-function paymentMatchesCodeSaleFilters(codeEntry, { customer, product, payment }) {
-  if (!codeEntry) return true
-  const f = normalizeCustomerCodeSaleFilters(codeEntry)
-  if (!f.filterAdvisors && !f.filterProducts) return true
-  if (f.filterAdvisors) {
-    const allowed = resolveCodeAdvisorPhoneSet(codeEntry)
-    if (!allowed.size) return false
-    const reg = normalizePhone(getSaleRegistrantPhone(product, payment, customer))
-    if (!reg || !allowed.has(reg)) return false
-  }
-  if (f.filterProducts) {
-    if (!f.productNames.length) return false
-    const name = coerceProductName(product?.name) || String(product?.name || '').trim()
-    const allowed = new Set(f.productNames.map(n => n.toLowerCase()))
-    if (!allowed.has(name.toLowerCase())) return false
-  }
-  return true
 }
 
 /**

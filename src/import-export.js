@@ -11,6 +11,8 @@ import {
   formatNumber, getSaleRegistrantPhone, canSetCustomerCode
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
+import { loadGroupsData } from './groups.js'
+import { canImportReplaceCustomerCode } from './customer-code-sales.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
 import { getFollowupsForExport, hasActiveFollowupExportFilter, renderFollowups } from './followups.js'
 import { renderSales, getFilteredSales, getSalesDateFilter, hasActiveSalesProductFilter } from './sales.js'
@@ -1330,6 +1332,7 @@ function isFieldMapped(mapping, fieldKey) {
 
 function applyMappedCustomerFields(customer, { mapping, getValue, users, phones, primaryPhone, platformId, platform, status, isCreate }) {
   const currentUser = getCurrentUser()
+  let customerCodeLocked = false
   // On update, empty Excel cells mean "leave unchanged" (avoid wiping with defaults like new/instagram)
   const hasVal = (key) => String(getValue(key) || '').trim() !== ''
 
@@ -1399,11 +1402,17 @@ function applyMappedCustomerFields(customer, { mapping, getValue, users, phones,
   }
   if (canSetCustomerCode() && isFieldMapped(mapping, 'customerCode')) {
     if (isCreate || hasVal('customerCode')) {
-      customer.customerCode = resolveCustomerCodeKey(getValue('customerCode'))
+      const nextCode = resolveCustomerCodeKey(getValue('customerCode'))
+      if (isCreate || canImportReplaceCustomerCode(customer, nextCode)) {
+        customer.customerCode = nextCode
+      } else {
+        customerCodeLocked = true
+      }
     }
   } else if (isCreate) {
     customer.customerCode = ''
   }
+  return { customerCodeLocked }
 }
 
 function previewFollowupRows({ headers, rows, mapping }, { syncCustomerNextDate = false, knownCustomerIds = null } = {}) {
@@ -1688,10 +1697,13 @@ export async function doImport() {
     cancellable: true
   }, async (job) => {
     const data = getData()
-    let created = 0, updated = 0, skipped = 0, failed = 0
+    let created = 0, updated = 0, skipped = 0, failed = 0, codeLocked = 0
     const users = await getUsersSafe()
     const statusMap = buildStatusImportMap()
     const total = importData.rows.length
+    if (canSetCustomerCode() && isFieldMapped(mapping, 'customerCode')) {
+      try { await loadGroupsData() } catch (_) { /* optional for advisor-group filters */ }
+    }
 
     for (let rowIdx = 0; rowIdx < importData.rows.length; rowIdx++) {
       job.throwIfCancelled()
@@ -1754,9 +1766,10 @@ export async function doImport() {
 
       try {
         if (existing) {
-          applyMappedCustomerFields(existing, {
+          const applied = applyMappedCustomerFields(existing, {
             mapping, getValue, users, phones, primaryPhone, platformId, platform, status, isCreate: false
           })
+          if (applied?.customerCodeLocked) codeLocked++
           if (!existing.customerLevelLocked) {
             syncCustomerLevel(existing, data.customers, data.followups)
           }
@@ -1825,12 +1838,12 @@ export async function doImport() {
       })
     }
 
-    return { created, updated, skipped, failed, fu }
+    return { created, updated, skipped, failed, codeLocked, fu }
   })
 
   if (!importResult) return
 
-  const { created, updated, skipped, failed, fu } = importResult
+  const { created, updated, skipped, failed, codeLocked, fu } = importResult
   closeImportModal()
   await renderCustomers()
   try { await renderFollowups() } catch (_) {}
@@ -1838,6 +1851,7 @@ export async function doImport() {
   const parts = []
   if (created) parts.push(`${created} مشتری ایجاد`)
   if (updated) parts.push(`${updated} مشتری به‌روزرسانی`)
+  if (codeLocked) parts.push(`${codeLocked} کد مشتری قفل‌شده (فروش ثبت‌شده)`)
   if (skipped) parts.push(`${skipped} رد شده`)
   if (failed) parts.push(`${failed} خطای مشتری`)
   if (fu.created) parts.push(`${fu.created} یادداشت`)
@@ -2460,6 +2474,9 @@ export async function doSalesImport() {
 
   try {
   const users = await getUsersSafe()
+  if (canSetCustomerCode() && isFieldMapped(mapping, 'customerCode')) {
+    try { await loadGroupsData() } catch (_) { /* optional for advisor-group filters */ }
+  }
   const banks = getDestinationBanks()
   const touched = new Set()
   const paymentColMapped = isFieldMapped(mapping, 'paymentAmount')
@@ -2591,7 +2608,7 @@ export async function doSalesImport() {
       touched.add(customer.id)
     } else if (canSetCustomerCode() && isFieldMapped(salesImportData.mapping, 'customerCode') && getValue('customerCode')) {
       const nextCode = resolveCustomerCodeKey(getValue('customerCode'))
-      if (nextCode && customer.customerCode !== nextCode) {
+      if (nextCode && customer.customerCode !== nextCode && canImportReplaceCustomerCode(customer, nextCode)) {
         customer.customerCode = nextCode
         touched.add(customer.id)
       }
