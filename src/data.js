@@ -1332,7 +1332,7 @@ export function normalizeCustomerCodeSaleFilters(raw = {}) {
 export function validateCustomerCodeSaleFilters(raw = {}) {
   const f = normalizeCustomerCodeSaleFilters(raw)
   if (f.filterAdvisors && !f.advisorPhones.length && !f.advisorGroupIds.length) {
-    return { ok: false, message: 'حداقل یک کارشناس یا تیم را برای فیلتر کارشناس انتخاب کنید' }
+    return { ok: false, message: 'حداقل یک ثبت‌کننده فروش یا تیم را برای فیلتر ثبت‌کننده انتخاب کنید' }
   }
   if (f.filterProducts && !f.productNames.length) {
     return { ok: false, message: 'حداقل یک محصول را برای فیلتر محصول انتخاب کنید' }

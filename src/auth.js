@@ -4929,7 +4929,7 @@ function formatCcSaleFilterSummary(entry) {
   const parts = []
   if (f.filterAdvisors) {
     const n = f.advisorPhones.length + f.advisorGroupIds.length
-    parts.push(n ? `${n} کارشناس/تیم` : 'فیلتر کارشناس')
+    parts.push(n ? `${n} ثبت‌کننده/تیم` : 'فیلتر ثبت‌کننده فروش')
   }
   if (f.filterProducts) {
     parts.push(f.productNames.length ? `${f.productNames.length} محصول` : 'فیلتر محصول')
@@ -4963,7 +4963,7 @@ function buildCcSaleFiltersEditHtml() {
       <div class="cc-sale-filters-toggles">
         <label class="settings-pref-row cc-sale-filter-toggle">
           <input type="checkbox" id="editCcFilterAdvisors" onchange="app.toggleCcSaleFilterKind('edit', 'advisors', this.checked)">
-          <span>فیلتر کارشناس / تیم برای مبلغ فروش نرخ تبدیل</span>
+          <span>فیلتر ثبت‌کننده فروش / تیم برای مبلغ فروش نرخ تبدیل</span>
         </label>
         <label class="settings-pref-row cc-sale-filter-toggle">
           <input type="checkbox" id="editCcFilterProducts" onchange="app.toggleCcSaleFilterKind('edit', 'products', this.checked)">
@@ -4974,7 +4974,7 @@ function buildCcSaleFiltersEditHtml() {
         <div class="cc-sale-filter-picker" id="editCcAdvisorPicker" hidden>
           <div class="dash-user-filter product-matrix-advisor-filter cc-sale-filter-dd" id="editCcAdvisorFilter">
             <button type="button" class="btn product-matrix-advisor-btn" id="editCcAdvisorFilterBtn" onclick="app.toggleCcAdvisorDropdown('edit', event)">
-              کارشناسان <span class="product-matrix-advisor-count" id="editCcAdvisorFilterCount"></span>
+              ثبت‌کنندگان فروش <span class="product-matrix-advisor-count" id="editCcAdvisorFilterCount"></span>
             </button>
             <div class="dash-user-dropdown product-matrix-advisor-dropdown" id="editCcAdvisorFilterDropdown" hidden onclick="event.stopPropagation()">
               <div class="dash-user-options" id="editCcAdvisorCheckboxes"></div>

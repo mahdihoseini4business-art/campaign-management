@@ -7,7 +7,6 @@ import { getCustomerCodes, coerceProductName, normalizeCustomerCodeSaleFilters }
 import { getMembersOfGroup } from './groups.js'
 import {
   normalizePhone,
-  getSaleRegistrantPhone,
   gregorianToJalaliStr,
   jalaliDatePart,
   jalaliToNum,
@@ -41,15 +40,23 @@ export function resolveCodeAdvisorPhoneSet(entry) {
   return set
 }
 
-/** Advisor (sale registrant) + product filters stored on the customer-code entry (AND). */
-export function paymentMatchesCodeSaleFilters(codeEntry, { customer, product, payment }) {
+/**
+ * Phone of who registered the sale — payment then product soldByPhone only.
+ * Does NOT fall back to customer.advisorPhone (owner ≠ registrant).
+ */
+export function getCodeFilterSaleRegistrantPhone(product, payment = null) {
+  return normalizePhone(payment?.soldByPhone) || normalizePhone(product?.soldByPhone) || ''
+}
+
+/** Sale registrant + product filters stored on the customer-code entry (AND). */
+export function paymentMatchesCodeSaleFilters(codeEntry, { product, payment }) {
   if (!codeEntry) return true
   const f = normalizeCustomerCodeSaleFilters(codeEntry)
   if (!f.filterAdvisors && !f.filterProducts) return true
   if (f.filterAdvisors) {
     const allowed = resolveCodeAdvisorPhoneSet(codeEntry)
     if (!allowed.size) return false
-    const reg = normalizePhone(getSaleRegistrantPhone(product, payment, customer))
+    const reg = getCodeFilterSaleRegistrantPhone(product, payment)
     if (!reg || !allowed.has(reg)) return false
   }
   if (f.filterProducts) {
