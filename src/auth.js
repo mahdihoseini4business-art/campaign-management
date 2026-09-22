@@ -5442,7 +5442,7 @@ export async function removeCustomerCode(index) {
   const key = String(target?.key || '').trim()
   const label = target?.label || key
   const affected = key
-    ? (await import('./data.js')).getData().customers.filter(c => (c.customerCode || '') === key).length
+    ? getData().customers.filter(c => (c.customerCode || '') === key).length
     : 0
   const warn = affected
     ? ` این کد از ${affected} مشتری هم برداشته می‌شود.`
