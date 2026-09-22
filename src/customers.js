@@ -4113,9 +4113,9 @@ export async function renderProducts(customerId, users = null) {
           ${p.shippingPostalCode ? saleFieldHtml('کد پستی', `<span class="sale-readonly-value">${escapeHtml(p.shippingPostalCode)}</span>`, { optional: true }) : ''}`
     }
 
-    const hasEditablePay = canEdit && pays.some(pay => getPaymentEntryStatus(pay) !== PAYMENT_STATUS.approved)
+    // Visible with draft payments so settlement/shipping/session can save without submitting pay.
     const hasCompletedRefund = getProductRefundRecords(p).length > 0
-    const canSaveProductDetails = canEdit && !closed && !hasEditablePay && !hasCompletedRefund
+    const canSaveProductDetails = canEdit && !closed && !hasCompletedRefund
     const productDetailsBtn = (canSaveProductDetails || canAdminEditPrice)
       ? `<button type="button" class="btn btn-sm btn-primary sale-product-save-btn" onclick="app.commitSaleProductDetails('${escapeAttr(customerId)}', ${i})">ذخیره جزئیات محصول</button>`
       : ''
@@ -4507,6 +4507,8 @@ export function updateSaleGiftMode(blockEl) {
   if (giftActions) giftActions.hidden = !giftOk
   if (paymentsStep) paymentsStep.hidden = giftOk
   if (settlementField) settlementField.hidden = giftOk
+  const productActions = blockEl.querySelector('.sale-product-actions')
+  if (productActions) productActions.hidden = giftOk
   blockEl.querySelectorAll('.sale-summary').forEach(el => { el.hidden = giftOk })
 
   if (errorEl) {
