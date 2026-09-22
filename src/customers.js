@@ -245,17 +245,19 @@ export function getCustomerFilterState() {
   const advisor = document.getElementById('filterAdvisor')?.value || ''
   const platform = document.getElementById('filterPlatform')?.value || ''
   const status = document.getElementById('filterStatus')?.value || ''
+  const code = document.getElementById('filterCustomerCode')?.value || ''
   const level = document.getElementById('filterCustomerLevel')?.value || ''
   const transfer = document.getElementById('filterTransferIn')?.value || ''
   const quick = customerQuickFilter || ''
   const hasSearch = !!search
-  const hasFilters = !!(advisor || platform || status || level || transfer || quick)
+  const hasFilters = !!(advisor || platform || status || code || level || transfer || quick)
   return {
     searchRaw,
     search,
     advisor,
     platform,
     status,
+    code,
     level,
     transfer,
     quick,
@@ -318,7 +320,7 @@ export function clearCustomerFilters() {
   syncCustomerStatCardsActive()
   const search = document.getElementById('searchCustomers')
   if (search) search.value = ''
-  for (const id of ['filterAdvisor', 'filterPlatform', 'filterStatus', 'filterCustomerLevel', 'filterTransferIn']) {
+  for (const id of ['filterAdvisor', 'filterPlatform', 'filterStatus', 'filterCustomerCode', 'filterCustomerLevel', 'filterTransferIn']) {
     const el = document.getElementById(id)
     if (el) el.value = ''
   }
@@ -398,7 +400,16 @@ function syncCustomerFilterSummary(filteredCount) {
 
 export function getFilteredCustomers() {
   const data = getData()
-  const { search, advisor: advisorFilter, platform: platformFilter, status: statusFilter, level: levelFilter, transfer: transferFilter, quick: quickFilter } = getCustomerFilterState()
+  const {
+    search,
+    advisor: advisorFilter,
+    platform: platformFilter,
+    status: statusFilter,
+    code: codeFilter,
+    level: levelFilter,
+    transfer: transferFilter,
+    quick: quickFilter
+  } = getCustomerFilterState()
   const currentUser = getCurrentUser()
   const advisorScopePhones = phonesMatchingAdvisorFilter(advisorFilter, currentUser)
   const myPhone = normalizePhone(currentUser?.phone)
@@ -440,6 +451,7 @@ export function getFilteredCustomers() {
     }
     if (platformFilter && c.platform !== platformFilter) return false
     if (statusFilter && c.status !== statusFilter) return false
+    if (codeFilter && (c.customerCode || '') !== codeFilter) return false
     if (levelFilter) {
       const resolved = resolveCustomerLevel(c)
       if (resolved !== levelFilter) return false
@@ -496,6 +508,13 @@ function populateCustomerFilterDropdowns() {
       Object.values(CUSTOMER_LEVELS).map(l => `<option value="${escapeAttr(l.key)}">${l.emoji} ${escapeHtml(l.label)}</option>`).join('')
     levelSelect.value = val
   }
+  const codeSelect = document.getElementById('filterCustomerCode')
+  if (codeSelect) {
+    const val = codeSelect.value
+    codeSelect.innerHTML = '<option value="">همه کدها</option>' +
+      getCustomerCodes().map(c => `<option value="${escapeAttr(c.key)}">${escapeHtml(c.label)}</option>`).join('')
+    codeSelect.value = val
+  }
 }
 
 export async function renderCustomers() {
@@ -534,8 +553,16 @@ export async function renderCustomers() {
   try {
   const data = getData()
   const filters = getCustomerFilterState()
-  const { search, advisor: advisorFilter, platform: platformFilter, status: statusFilter, level: levelFilter, transfer: transferFilter } = filters
-  const filterSig = `${search}|${advisorFilter}|${platformFilter}|${statusFilter}|${levelFilter}|${transferFilter}|${filters.quick}|${sortSig(customerSortState)}`
+  const {
+    search,
+    advisor: advisorFilter,
+    platform: platformFilter,
+    status: statusFilter,
+    code: codeFilter,
+    level: levelFilter,
+    transfer: transferFilter
+  } = filters
+  const filterSig = `${search}|${advisorFilter}|${platformFilter}|${statusFilter}|${codeFilter}|${levelFilter}|${transferFilter}|${filters.quick}|${sortSig(customerSortState)}`
   const cacheKey = `${filterSig}|${tabPageKey('customers', getPage('customers'))}`
   if (shouldSkipTabRender('customers', cacheKey)) return
 

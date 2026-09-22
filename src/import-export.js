@@ -108,6 +108,7 @@ function hasActiveExportScopeFilter(tab) {
       || document.getElementById('filterAdvisor')?.value
       || document.getElementById('filterPlatform')?.value
       || document.getElementById('filterStatus')?.value
+      || document.getElementById('filterCustomerCode')?.value
       || document.getElementById('filterCustomerLevel')?.value
       || document.getElementById('filterTransferIn')?.value
     )
@@ -736,6 +737,24 @@ export async function exportInPersonSessionXlsx(session, rows) {
   const course = String(session?.courseName || 'حضوری').replace(/[\\/:*?"<>|]/g, '_')
   const date = String(session?.sessionDate || '').replace(/\//g, '-')
   XLSX.writeFile(wb, `سانس_حضوری_${course}_${date || 'export'}.xlsx`)
+}
+
+/** Excel for conversion-card customer code: name, phone, sales amount. */
+export async function exportConversionCodeCustomersXlsx({ codeKey, codeLabel, rows }) {
+  const XLSX = await ensureXLSX()
+  const headers = ['نام', 'شماره', 'مبلغ فروش']
+  const aoaRows = (rows || []).map(r => [
+    r.name || '',
+    r.phone || '',
+    r.amount || 0
+  ])
+  const ws = sheetFromAoa(XLSX, headers, aoaRows)
+  forceSheetTextColumns(XLSX, ws, aoaRows.length, [1])
+  const wb = XLSX.utils.book_new()
+  const label = String(codeLabel || codeKey || 'کد').slice(0, 28) || 'کد'
+  XLSX.utils.book_append_sheet(wb, ws, label)
+  const safe = String(codeLabel || codeKey || 'code').replace(/[\\/:*?"<>|]/g, '_')
+  XLSX.writeFile(wb, `نرخ_تبدیل_${safe}.xlsx`)
 }
 
 export async function exportTabXLSX(tab) {

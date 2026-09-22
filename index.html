@@ -1056,9 +1056,17 @@
       <div class="chart-card" title="نرخ تبدیل پیگیری به فروش برای همه مشتریان؛ قابل فیلتر بر اساس کد مشتری (مستقل از فیلتر کارشناسان). مبلغ = واریزهای تأییدشده از زمان اختصاص کد (سقف بازه در تنظیمات کدهای مشتری).">
         <div class="chart-title-row">
           <div class="chart-title">نرخ تبدیل پیگیری</div>
-          <select class="form-select" id="dashConversionCustomerCode" onchange="app.renderDashboard()">
-            <option value="">همه کدها</option>
-          </select>
+          <div class="dash-conversion-controls">
+            <select class="form-select" id="dashConversionCustomerCode" onchange="app.onDashConversionCodeChange()">
+              <option value="">همه کدها</option>
+            </select>
+            <button type="button" class="btn dash-conversion-export-btn" id="dashConversionExportBtn" onclick="app.exportDashConversionCodeCustomers()" hidden title="خروجی اکسل مشتریان این کد" aria-label="خروجی اکسل مشتریان این کد">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="-5 -10 110 135" aria-hidden="true" focusable="false">
+                <path d="m89 55c3.3125 0 6 2.6875 6 6v18c0 8.8359-7.1641 16-16 16h-58c-8.8359 0-16-7.1641-16-16v-18c0-3.3125 2.6875-6 6-6s6 2.6875 6 6v18c0 2.207 1.7891 4 4 4h58c2.2109 0 4-1.793 4-4v-18c0-3.3125 2.6875-6 6-6z"/>
+                <path d="m45.758 6.7266c2.3633-2.25 6.1289-2.3555 8.4844 0l20 20c2.3438 2.3438 2.3438 6.1406 0 8.4844s-6.1406 2.3438-8.4844 0l-9.7578-9.7578v41.516c0 3.3125-2.6875 6-6 6s-6-2.6875-6-6v-41.516l-9.7578 9.7578c-2.3633 2.2539-6.1289 2.3555-8.4844 0-2.3555-2.3555-2.25-6.1172 0-8.4844z"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="sales-chart-hint" id="dashConversionSalesAmount" style="margin:0 0 8px;">مبلغ فروش: —</div>
         <div class="chart-container chart-container-sm">
@@ -1320,6 +1328,9 @@
         </select>
         <select class="form-select" id="filterStatus" style="width:150px;" onchange="app.renderCustomers()">
           <option value="">همه وضعیت‌ها</option>
+        </select>
+        <select class="form-select" id="filterCustomerCode" style="width:140px;" onchange="app.renderCustomers()">
+          <option value="">همه کدها</option>
         </select>
         <div class="toolbar-actions" id="customersMoreFilters">
           <button type="button" class="btn" id="customersMoreFiltersBtn" onclick="app.toggleToolbarActions(this, event)">فیلترهای بیشتر ▾</button>

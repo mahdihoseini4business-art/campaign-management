@@ -2191,6 +2191,19 @@ function populateDashConversionCodeFilter() {
   sel.innerHTML = '<option value="">همه کدها</option>' +
     getCustomerCodes().map(c => `<option value="${escapeAttr(c.key)}">${escapeHtml(c.label)}</option>`).join('')
   sel.value = val
+  syncDashConversionExportBtn()
+}
+
+function syncDashConversionExportBtn() {
+  const btn = document.getElementById('dashConversionExportBtn')
+  if (!btn) return
+  const code = document.getElementById('dashConversionCustomerCode')?.value || ''
+  btn.hidden = !code
+}
+
+export function onDashConversionCodeChange() {
+  syncDashConversionExportBtn()
+  renderDashboard()
 }
 
 /** Jalali YYYY/MM/DD of sticky first-fill for customerCode (legacy → createdAt). */
@@ -2206,6 +2219,19 @@ function customerCodeAssignedJalali(customer) {
  * from customerCode first-fill onward; optionally capped by dashboard date range.
  */
 function computeFollowupConversionSalesAmount(customersWithActivity, codeFilter, hasDateFilter, inDateRange) {
+  const byCustomer = accumulateFollowupConversionSalesByCustomer(
+    customersWithActivity,
+    codeFilter,
+    hasDateFilter,
+    inDateRange
+  )
+  let total = 0
+  for (const amount of byCustomer.values()) total += amount
+  return total
+}
+
+/** Per-customer approved payment totals under conversion-card rules. */
+function accumulateFollowupConversionSalesByCustomer(customersWithActivity, codeFilter, hasDateFilter, inDateRange) {
   const customersById = getCustomersById()
   const eligibleIds = new Set()
   customersWithActivity.forEach(customerId => {
@@ -2218,13 +2244,16 @@ function computeFollowupConversionSalesAmount(customersWithActivity, codeFilter,
   })
 
   const limitToRange = getDashConversionAmountInRange()
-  let total = 0
+  /** @type {Map<string, number>} */
+  const byCustomer = new Map()
+  for (const id of eligibleIds) byCustomer.set(id, 0)
+
   forEachDashSalePayment(
     ({ customer }) => eligibleIds.has(customer?.id),
     false,
     () => true,
     ({ customer, amount, date }) => {
-      if (!date) return
+      if (!date || !customer?.id) return
       const assigned = customerCodeAssignedJalali(customer)
       if (assigned) {
         const payNum = jalaliToNum(date)
@@ -2232,10 +2261,89 @@ function computeFollowupConversionSalesAmount(customersWithActivity, codeFilter,
         if (payNum < assignedNum) return
       }
       if (limitToRange && hasDateFilter && !inDateRange(date)) return
-      total += amount
+      byCustomer.set(customer.id, (byCustomer.get(customer.id) || 0) + amount)
     }
   )
-  return total
+  return byCustomer
+}
+
+/**
+ * Rows for conversion-code Excel: customers with the selected code in the conversion cohort.
+ * Amount matches the card's «مبلغ فروش» rules, split per customer.
+ */
+function collectDashConversionCodeExportRows(codeFilter) {
+  if (!codeFilter) return { rows: [], codeLabel: '' }
+  const dateFrom = document.getElementById('dashDateFrom')?.value.trim() || ''
+  const dateTo = document.getElementById('dashDateTo')?.value.trim() || ''
+  const dateFromNum = dateFrom ? jalaliToNum(dateFrom) : 0
+  const dateToNum = dateTo ? jalaliToNum(dateTo) : 99999999
+  const hasDateFilter = !!(dateFrom || dateTo)
+
+  function inChartDateRange(dateStr) {
+    if (!dateFromNum && (!dateToNum || dateToNum === 99999999)) return true
+    if (!dateStr) return false
+    const dNum = jalaliToNum(dateStr)
+    return dNum >= (dateFromNum || 0) && dNum <= (dateToNum || 99999999)
+  }
+
+  const data = getData()
+  const customersById = getCustomersById()
+  const customersWithActivity = new Set()
+  data.followups.forEach(f => {
+    const dateStr = jalaliDatePart(f.doneAt || f.date)
+    if (!inChartDateRange(dateStr)) return
+    if (!f.customerId) return
+    customersWithActivity.add(f.customerId)
+  })
+
+  const amounts = accumulateFollowupConversionSalesByCustomer(
+    customersWithActivity,
+    codeFilter,
+    hasDateFilter,
+    inChartDateRange
+  )
+
+  const codeMeta = getCustomerCodes().find(c => c.key === codeFilter)
+  const codeLabel = codeMeta?.label || codeFilter
+
+  const rows = []
+  for (const [customerId, amount] of amounts) {
+    const c = customersById.get(customerId)
+    if (!c) continue
+    rows.push({
+      name: c.name || '',
+      phone: getPrimaryPhone(c) || '',
+      amount,
+      customerId
+    })
+  }
+  rows.sort((a, b) => b.amount - a.amount || String(a.name).localeCompare(String(b.name), 'fa'))
+  return { rows, codeLabel }
+}
+
+export async function exportDashConversionCodeCustomers() {
+  if (!hasPermission('dashboard')) {
+    showToast('دسترسی ندارید')
+    return
+  }
+  const codeFilter = document.getElementById('dashConversionCustomerCode')?.value || ''
+  if (!codeFilter) {
+    showToast('ابتدا یک کد مشتری انتخاب کنید')
+    return
+  }
+  const { rows, codeLabel } = collectDashConversionCodeExportRows(codeFilter)
+  if (!rows.length) {
+    showToast('مشتری‌ای با این کد در بازه تبدیل نیست')
+    return
+  }
+  try {
+    const { exportConversionCodeCustomersXlsx } = await import('./import-export.js')
+    await exportConversionCodeCustomersXlsx({ codeKey: codeFilter, codeLabel, rows })
+    showToast('فایل اکسل دانلود شد')
+  } catch (e) {
+    console.error('exportDashConversionCodeCustomers error:', e)
+    showToast(e.message || 'خطا در خروجی اکسل')
+  }
 }
 
 function paintDashConversionSalesAmount(amount) {

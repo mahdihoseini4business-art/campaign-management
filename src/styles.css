@@ -6440,6 +6440,30 @@
     height: 26px;
   }
 
+  .dash-conversion-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .dash-conversion-export-btn {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .dash-conversion-export-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+    display: block;
+  }
+
   .chart-grid-pies .chart-container-sm {
     height: 140px;
   }
