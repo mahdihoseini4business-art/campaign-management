@@ -17,7 +17,11 @@ import {
   getFollowupsByCustomerId,
   getReferralCountForCustomer
 } from './derived-cache.js'
-import { syncCustomerLevel } from './utils.js'
+import {
+  syncCustomerLevel,
+  getCustomerPhones,
+  normalizePhone
+} from './utils.js'
 
 const CHUNK_SIZE = 40
 /** Debounce coalescing of idle full-scans scheduled from boot/hydrate. */
@@ -106,31 +110,92 @@ async function resyncUnlockedCustomerLevelsChunked(onlyIds = null) {
   return dirty
 }
 
-/** Persist dirty customer_level rows (level columns only, sequential). */
+/** Persist dirty customer_level rows (level columns only, chunked parallel). */
 export async function persistCustomerLevels(dirtyCustomers) {
   const list = (dirtyCustomers || []).filter(c => c?.id)
   if (!list.length) return { updated: 0 }
 
   noteBatchLocalWrite(list.length)
   let updated = 0
-  for (const c of list) {
-    try {
-      await saveCustomerLevelFieldsToDB(c)
-      updated++
-    } catch (e) {
-      console.error('customer level persist failed', c.id, e)
-    }
+  for (let i = 0; i < list.length; i += CHUNK_SIZE) {
+    const slice = list.slice(i, i + CHUNK_SIZE)
+    const results = await Promise.all(slice.map(async c => {
+      try {
+        await saveCustomerLevelFieldsToDB(c)
+        return 1
+      } catch (e) {
+        console.error('customer level persist failed', c.id, e)
+        return 0
+      }
+    }))
+    for (const n of results) updated += n
+    if (i + CHUNK_SIZE < list.length) await yieldToMain()
   }
   if (updated) schedulePersistCoreCache()
   return { updated }
 }
 
-/** In-memory resync + persist (blocking) — import / explicit repair only. */
+/** In-memory resync + persist (blocking) — full scan / explicit repair only. */
 export async function resyncAndPersistCustomerLevels() {
   const dirty = resyncUnlockedCustomerLevelsInMemory()
   if (!dirty.length) return { changed: 0, updated: 0 }
   const { updated } = await persistCustomerLevels(dirty)
   return { changed: dirty.length, updated }
+}
+
+/**
+ * Blocking resync+persist for a subset of customer ids (no full tenant scan).
+ * @param {Iterable<string>} ids
+ */
+export async function resyncAndPersistCustomerLevelsForIds(ids) {
+  const list = [...(ids || [])].map(id => normalizeCustomerId(id)).filter(Boolean)
+  if (!list.length) return { changed: 0, updated: 0 }
+  const dirty = resyncUnlockedCustomerLevelsInMemory(list)
+  if (!dirty.length) return { changed: 0, updated: 0 }
+  const { updated } = await persistCustomerLevels(dirty)
+  return { changed: dirty.length, updated }
+}
+
+/**
+ * Expand seed customers/ids with CIP referrers so referral unlocks update
+ * without a full unlocked-customer scan.
+ * @param {Iterable<string|object>} seeds
+ * @returns {string[]}
+ */
+export function expandCustomerLevelResyncIds(seeds) {
+  const data = getData()
+  const customers = data.customers || []
+  const byPhone = new Map()
+  for (const c of customers) {
+    for (const p of getCustomerPhones(c)) {
+      const n = normalizePhone(p)
+      if (n && !byPhone.has(n)) byPhone.set(n, normalizeCustomerId(c.id))
+    }
+  }
+
+  /** @type {Set<string>} */
+  const ids = new Set()
+  for (const seed of seeds || []) {
+    const customer = seed && typeof seed === 'object'
+      ? seed
+      : customers.find(c => normalizeCustomerId(c.id) === normalizeCustomerId(seed))
+    const id = normalizeCustomerId(customer?.id || seed)
+    if (id) ids.add(id)
+    const refPhone = normalizePhone(customer?.referredByPhone)
+    if (refPhone) {
+      const refId = byPhone.get(refPhone)
+      if (refId) ids.add(refId)
+    }
+  }
+  return [...ids]
+}
+
+/**
+ * After import: queue background level resync for touched customers + referrers.
+ * @param {Iterable<string|object>} touched
+ */
+export function scheduleCustomerLevelResyncAfterImport(touched) {
+  return scheduleCustomerLevelResyncForIds(expandCustomerLevelResyncIds(touched))
 }
 
 async function flushPendingResync() {

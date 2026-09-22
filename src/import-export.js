@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, saveCustomersToDBBatchSafe, generateIdBatch, getStatuses, getCustomerCodes, saveFollowupsToDBBatch, updateFollowupInDB, getDestinationBanks, getSellableNames, putCustomerInCache, getProductCatalogNames, getCustomerOwnedProductNames, getPlatforms, coerceProductName } from './data.js'
+import { getData, saveCustomerToDB, saveCustomersToDBBatchSafe, generateIdBatch, getStatuses, getCustomerCodes, saveFollowupsToDBBatch, updateFollowupInDB, getDestinationBanks, getSellableNames, putCustomerInCache, getProductCatalogNames, getCustomerOwnedProductNames, getPlatforms, coerceProductName, runWithDeferredProductSalesCacheInvalidation } from './data.js'
 import {
   toEnDigits, showToast, showToastWithAction, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
@@ -1738,11 +1738,11 @@ export async function doImport() {
       lockButtons: ['#importBtn', '#importDryRunBtn'],
       cancellable: true
     }, async (job) => {
-      return importFollowupRows(importData.followups, {
+      return runWithDeferredProductSalesCacheInvalidation(() => importFollowupRows(importData.followups, {
         syncCustomerNextDate: true,
         signal: job.signal,
         onProgress: ({ done, total, label }) => job.set({ done, total, label })
-      })
+      }))
     })
     if (!fu) return
     closeImportModal()
@@ -1770,7 +1770,7 @@ export async function doImport() {
     title: 'ایمپورت مشتریان',
     lockButtons: ['#importBtn', '#importDryRunBtn'],
     cancellable: true
-  }, async (job) => {
+  }, async (job) => runWithDeferredProductSalesCacheInvalidation(async () => {
     const data = getData()
     let created = 0, updated = 0, skipped = 0, failed = 0, codeLocked = 0
     const users = await getUsersSafe()
@@ -1937,13 +1937,12 @@ export async function doImport() {
     }
     job.set({ label: 'ذخیره مشتریان…', done: saveList.length, total: saveList.length || total })
 
-    // Recompute unlocked levels (CIP may unlock after referrals imported)
+    // Queue CIP/referral level updates in background (touched + referrers only)
     try {
-      await reportJobPhase(job, 'همگام‌سازی سطح مشتریان…', { paint: true })
-      const { resyncAndPersistCustomerLevels } = await import('./customer-level-sync.js')
-      await resyncAndPersistCustomerLevels()
+      const { scheduleCustomerLevelResyncAfterImport } = await import('./customer-level-sync.js')
+      scheduleCustomerLevelResyncAfterImport(saveList)
     } catch (err) {
-      console.error('customer level resync after import', err)
+      console.error('customer level resync schedule after import', err)
     }
 
     // Import sheet «پیگیری‌ها» from the same workbook (after customers exist)
@@ -1957,7 +1956,7 @@ export async function doImport() {
     }
 
     return { created, updated, skipped, failed, codeLocked, fu }
-  })
+  }))
 
   if (!importResult) return
 
@@ -2591,6 +2590,7 @@ export async function doSalesImport() {
   }
 
   try {
+  await runWithDeferredProductSalesCacheInvalidation(async () => {
   const users = await getUsersSafe()
   if (canSetCustomerCode() && isFieldMapped(mapping, 'customerCode')) {
     try { await loadGroupsData() } catch (_) { /* optional for advisor-group filters */ }
@@ -2869,6 +2869,13 @@ export async function doSalesImport() {
     job.set({ label: 'ذخیره مشتریان…', done: touchedList.length, total: touchedList.length })
   }
 
+  try {
+    const { scheduleCustomerLevelResyncAfterImport } = await import('./customer-level-sync.js')
+    scheduleCustomerLevelResyncAfterImport(touchedList)
+  } catch (err) {
+    console.error('customer level resync schedule after sales import', err)
+  }
+
   salesImportData.problemExport = problemRows.length
     ? { headers: salesImportData.headers.slice(), rows: problemRows, reasons: problemReasons }
     : null
@@ -2890,6 +2897,7 @@ export async function doSalesImport() {
     skipped,
     failed,
     problemCount: problemRows.length
+  })
   })
   } catch (err) {
     if (err?.code === 'CANCELLED' || err?.message === 'CANCELLED') {
@@ -3412,6 +3420,7 @@ export async function doMatrixImport() {
   const previewEl = document.getElementById('matrixImportPreview')
 
   try {
+    await runWithDeferredProductSalesCacheInvalidation(async () => {
     job.set({ label: 'پردازش ردیف‌ها…' })
     await job.paint()
     const { merged, problems } = mergeMatrixFileRows()
@@ -3526,6 +3535,13 @@ export async function doMatrixImport() {
       })
     }
 
+    try {
+      const { scheduleCustomerLevelResyncAfterImport } = await import('./customer-level-sync.js')
+      scheduleCustomerLevelResyncAfterImport(touched)
+    } catch (err) {
+      console.error('customer level resync schedule after matrix import', err)
+    }
+
     const problemPackRows = extraProblems.map(p => {
       if (Array.isArray(p.row) && p.row.length && typeof p.row[0] !== 'object') {
         return padImportRow(p.row, Math.max(matrixImportData.headers.length, p.row.length))
@@ -3558,6 +3574,7 @@ export async function doMatrixImport() {
     if (extraProblems.length) parts.push(`${extraProblems.length} ردیف مشکل‌دار`)
     if (previewEl) previewEl.textContent = parts.join(' — ') || 'ایمپورت انجام شد'
     showToast(parts.length ? parts.join(' — ') : 'هیچ ردیفی ایمپورت نشد')
+    })
   } catch (err) {
     if (err?.code === 'CANCELLED' || err?.message === 'CANCELLED') {
       showToast('عملیات لغو شد — تغییرات اعمال‌شده تا این لحظه حفظ شده‌اند')

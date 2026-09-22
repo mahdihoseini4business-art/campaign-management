@@ -183,11 +183,11 @@
 3. `applyEventRosterImport`: یک persist per customer + batch id + بچ  
 4. `importFollowupRows`: insert بچ + Map مشتری  
 
-### فاز C — جلای بعد از نوشتن
+### فاز C — جلای بعد از نوشتن ✅ پیاده‌سازی‌شده
 
-1. level resync فقط برای touched ids / پس‌زمینه  
-2. کاهش invalidateهای میانی  
-3. (اختیاری) حذف بچ در backup  
+1. level resync فقط برای touched ids + referrerهای CIP / پس‌زمینه (`scheduleCustomerLevelResyncAfterImport`)  
+2. کاهش invalidateهای میانی (`runWithDeferredProductSalesCacheInvalidation`)  
+3. حذف بچ در backup restore (`.in(pk, ids)` برای کلید ساده؛ مرکب یکی‌یکی)  
 
 ### خارج از scope پیشنهادی این بهینه‌سازی
 

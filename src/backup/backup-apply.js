@@ -4,6 +4,7 @@ import { MERGE_ORDER } from './backup-merge.js'
 import { sanitizeTableForBackup } from './backup-format.js'
 
 const UPSERT_CHUNK = 150
+const DELETE_CHUNK = 150
 
 /** @type {Record<string, string>} */
 const UPSERT_ON_CONFLICT = {
@@ -42,18 +43,15 @@ export async function applyMergePlanToSupabase(plan, conflictResolutions = {}, o
   if (!totalSteps) return { appliedDeletes: 0, appliedWrites: 0 }
 
   let done = 0
-  const tick = (phase, detail) => {
-    done += 1
+  const tick = (phase, detail, n = 1) => {
+    done += n
     onProgress?.({ phase, done, total: totalSteps, detail })
   }
 
   for (const table of DELETE_ORDER) {
     const tableDeletes = deletes.filter(d => d.table === table)
-    for (const item of tableDeletes) {
-      const { error } = await deleteBackupRow(table, item.key, item.onlineRow)
-      if (error) throw new Error(`حذف ${tableLabel(table)} (${item.key}): ${error.message}`)
-      tick('delete', table)
-    }
+    if (!tableDeletes.length) continue
+    await deleteBackupRowsBatched(table, tableDeletes, (n, detail) => tick('delete', detail, n))
   }
 
   for (const table of MERGE_ORDER) {
@@ -63,7 +61,7 @@ export async function applyMergePlanToSupabase(plan, conflictResolutions = {}, o
     if (!rows.length) continue
 
     const sanitized = sanitizeTableForBackup(table, rows)
-    await upsertRowsBatched(table, sanitized, (detail) => tick('upsert', detail))
+    await upsertRowsBatched(table, sanitized, (n, detail) => tick('upsert', detail, n))
   }
 
   return { appliedDeletes: deletes.length, appliedWrites: writes.length }
@@ -106,7 +104,7 @@ function collectApplicableItems(plan, conflictResolutions) {
 /**
  * @param {string} table
  * @param {Record<string, unknown>[]} rows
- * @param {(detail: string) => void} [onChunk]
+ * @param {(n: number, detail: string) => void} [onChunk]
  */
 async function upsertRowsBatched(table, rows, onChunk) {
   const onConflict = UPSERT_ON_CONFLICT[table]
@@ -116,7 +114,49 @@ async function upsertRowsBatched(table, rows, onChunk) {
     const chunk = rows.slice(i, i + UPSERT_CHUNK)
     const { error } = await supabase.from(table).upsert(chunk, { onConflict })
     if (error) throw new Error(`ذخیره ${tableLabel(table)}: ${error.message}`)
-    onChunk?.(table)
+    onChunk?.(chunk.length, table)
+  }
+}
+
+/**
+ * Batch-delete by simple primary key via `.in()`; composite keys stay one-by-one.
+ * @param {string} table
+ * @param {Array<{ key: string, onlineRow?: Record<string, unknown> }>} items
+ * @param {(n: number, detail: string) => void} [onProgress]
+ */
+async function deleteBackupRowsBatched(table, items, onProgress) {
+  const cfg = BACKUP_TABLE_CONFIG[table]
+  const pk = cfg?.primaryKey
+
+  if (typeof pk === 'string') {
+    for (let i = 0; i < items.length; i += DELETE_CHUNK) {
+      const chunk = items.slice(i, i + DELETE_CHUNK)
+      const values = chunk.map(item => {
+        let value = item.key
+        if (pk === 'id' && /^\d+$/.test(String(item.key))) value = Number(item.key)
+        return value
+      })
+      const { error } = await supabase.from(table).delete().in(pk, values)
+      if (error) {
+        // Fall back to single deletes for this chunk (partial pk / RLS edge cases)
+        for (const item of chunk) {
+          const one = await deleteBackupRow(table, item.key, item.onlineRow)
+          if (one.error) {
+            throw new Error(`حذف ${tableLabel(table)} (${item.key}): ${one.error.message}`)
+          }
+          onProgress?.(1, table)
+        }
+        continue
+      }
+      onProgress?.(chunk.length, table)
+    }
+    return
+  }
+
+  for (const item of items) {
+    const { error } = await deleteBackupRow(table, item.key, item.onlineRow)
+    if (error) throw new Error(`حذف ${tableLabel(table)} (${item.key}): ${error.message}`)
+    onProgress?.(1, table)
   }
 }
 

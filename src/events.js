@@ -19,6 +19,7 @@ import {
   assertSaleCanUseInPersonSession,
   getEventCourseNamesForSellable,
   invalidateProductSalesCountCache,
+  runWithDeferredProductSalesCacheInvalidation,
   listEventSmsSentLogs
 } from './data.js'
 import {
@@ -790,6 +791,12 @@ function eventDatesEqual(a, b) {
  * @returns {{ updated: number, assigned: number, created: number, customersCreated: number, skipped: number, errors: string[] }}
  */
 export async function applyEventRosterImport(rows, { dryRun = false, salePrice = null, onProgress = null, signal = null } = {}) {
+  return runWithDeferredProductSalesCacheInvalidation(() => applyEventRosterImportInner(rows, {
+    dryRun, salePrice, onProgress, signal
+  }))
+}
+
+async function applyEventRosterImportInner(rows, { dryRun = false, salePrice = null, onProgress = null, signal = null } = {}) {
   const {
     getActiveInPersonSessions: getSessions,
     getEventCourseNamesForSellable

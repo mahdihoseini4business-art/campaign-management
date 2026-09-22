@@ -2183,8 +2183,36 @@ export async function saveProductBundles(bundles) {
  * (completed, deposit, or gift — payment count does not matter).
  */
 let productSalesCountCache = null
+/** Depth of deferred invalidation (imports / batch writes). */
+let productSalesCacheDeferDepth = 0
+let productSalesCacheInvalidatePending = false
+
+/**
+ * Coalesce product-sales / customers derived-cache invalidation while `fn` runs.
+ * One flush when the outermost defer ends (if anything was invalidated).
+ * @template T
+ * @param {() => T | Promise<T>} fn
+ * @returns {Promise<T>}
+ */
+export async function runWithDeferredProductSalesCacheInvalidation(fn) {
+  productSalesCacheDeferDepth++
+  try {
+    return await fn()
+  } finally {
+    productSalesCacheDeferDepth = Math.max(0, productSalesCacheDeferDepth - 1)
+    if (productSalesCacheDeferDepth === 0 && productSalesCacheInvalidatePending) {
+      productSalesCacheInvalidatePending = false
+      productSalesCountCache = null
+      invalidateDerivedCache('customers')
+    }
+  }
+}
 
 export function invalidateProductSalesCountCache() {
+  if (productSalesCacheDeferDepth > 0) {
+    productSalesCacheInvalidatePending = true
+    return
+  }
   productSalesCountCache = null
   invalidateDerivedCache('customers')
 }
