@@ -1243,6 +1243,7 @@ export const ALL_PERMISSIONS = {
   customers_delete: 'حذف مشتری خود',
   customers_transfer: 'انتقال مالکیت مشتری (خود یا زیرمجموعه)',
   customers_merge: 'ادغام مشتریان',
+  customers_set_customer_code: 'تنظیم و تغییر کد مشتری',
   customers_import: 'ایمپورت اکسل مشتریان',
   customers_export: 'خروجی مشتریان',
   followups_view: 'مشاهده پیگیری‌ها',
@@ -1286,7 +1287,7 @@ export const REFUND_PERMISSION_KEYS = ['refunds_view', 'refunds_request', 'refun
 
 export const PERMISSION_GROUPS = [
   { label: 'داشبورد', keys: ['dashboard', 'in_person_sessions'] },
-  { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_edit_others', 'customers_delete', 'customers_transfer', 'customers_merge', 'customers_import', 'customers_export'] },
+  { label: 'مشتریان', keys: ['customers_view', 'customers_ld', 'customers_cs', 'customers_add', 'customers_edit_others', 'customers_delete', 'customers_transfer', 'customers_merge', 'customers_set_customer_code', 'customers_import', 'customers_export'] },
   { label: 'پیگیری‌ها', keys: ['followups_view', 'followups_add', 'followups_add_others', 'followups_delete', 'followups_export'] },
   { label: 'فروش‌ها', keys: ['sales_view', 'sales_add_others', 'sales_import', 'sales_export'] },
   { label: 'رویدادها', keys: ['events_view', 'events_import', 'events_export'] },
@@ -1906,6 +1907,7 @@ export function getDefaultPermissions() {
   p.customers_delete = false
   p.customers_merge = false
   p.customers_transfer = false
+  p.customers_set_customer_code = false
   p.followups_delete = false
   p.followups_add_others = false
   p.customers_edit_others = false
@@ -2248,6 +2250,14 @@ export function canEditCustomerInfo(customer, user = getCurrentUser()) {
   if (hasPermissionForUser(user, 'customers_add') && canManageCustomer(customer, user)) return true
   if (!hasPermissionForUser(user, 'customers_edit_others')) return false
   return isOtherAdvisorsCustomer(customer, user)
+}
+
+/**
+ * Assign or change customerCode on a profile (conversion tracking codes).
+ * Admins always; others only with customers_set_customer_code (grantable to managers).
+ */
+export function canSetCustomerCode(user = getCurrentUser()) {
+  return hasPermissionForUser(user, 'customers_set_customer_code')
 }
 
 /**

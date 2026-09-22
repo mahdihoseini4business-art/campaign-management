@@ -15,7 +15,7 @@ import {
   ensureProductPayments, syncProductStatus, toEnDigits, formatNumber,
   requirePermission, findCustomersByPhonePrefix, matchesTabSearch,
   canViewCustomer, getNowJalaliDateTime, getCurrentUser,
-  MAX_CUSTOMER_PHONES, MAX_CUSTOMER_ADDRESSES
+  MAX_CUSTOMER_PHONES, MAX_CUSTOMER_ADDRESSES, canSetCustomerCode
 } from './utils.js'
 import { renderCustomers, openCustomerDetail, getOpenDetailCustomerId } from './customers.js'
 
@@ -102,6 +102,7 @@ export function detectMergeConflicts(survivor, source) {
   const conflicts = []
 
   for (const field of SCALAR_FIELDS) {
+    if (field.key === 'customerCode' && !canSetCustomerCode()) continue
     const sv = normStr(survivor[field.key])
     const ov = normStr(source[field.key])
     if (!sv || !ov || scalarEqual(field, sv, ov)) continue
@@ -256,7 +257,9 @@ export function buildMergedCustomerProfile(survivor, source, choices = {}) {
     platform: pickScalar({ key: 'platform', display: (v) => v }, survivor, source, choices) || survivor.platform || 'instagram',
     status: pickScalar({ key: 'status', display: (v) => v }, survivor, source, choices) || survivor.status || 'new',
     notes: pickScalar({ key: 'notes' }, survivor, source, choices),
-    customerCode: pickScalar({ key: 'customerCode' }, survivor, source, choices),
+    customerCode: canSetCustomerCode()
+      ? pickScalar({ key: 'customerCode' }, survivor, source, choices)
+      : (survivor.customerCode || ''),
     referredByPhone: pickScalar({ key: 'referredByPhone' }, survivor, source, choices),
     nextFollowupDate: (() => {
       const sv = normStr(survivor.nextFollowupDate)

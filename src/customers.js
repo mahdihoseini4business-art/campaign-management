@@ -7,7 +7,7 @@ import { canViewCustomerSmsHistory, SMS_KIND_LABELS, SMS_STATUS_LABELS } from '.
 import { broadcastSaleToast, buildSaleToastPayload, broadcastAppSetting } from './sale-toasts.js'
 import {
   toEnDigits, escapeHtml, escapeAttr, showToast, hasPermission, requirePermission,
-  canViewCustomer, canManageCustomer, canEditCustomerInfo, canTransferCustomer, getCurrentUser, formatNumber, jalaliToNum,
+  canViewCustomer, canManageCustomer, canEditCustomerInfo, canTransferCustomer, canSetCustomerCode, getCurrentUser, formatNumber, jalaliToNum,
   getTodayJalaliStr, jalaliAddDays, ownsCustomer, isAdmin, canViewOrgWideData,
   canViewScopedCustomer, canAddSaleOnCustomer, canAddNoteOnCustomer, canEditFollowup, canScheduleFollowupOnCustomer, canDeleteFollowupOnCustomer, canDeleteSalePayment, matchesTabSearch, getCustomerSearchExtras,
   canClaimUnassignedCustomer, canRevealUnassignedByPhoneSearch, isHistoricalImportSale,
@@ -1227,6 +1227,9 @@ async function applyCustomerEdit(editId, fields) {
 
   // Profile save never changes ownership — that is customers_transfer only
   // (updateCustomerAdvisor / bulk transfer / claim).
+  const nextCustomerCode = canSetCustomerCode()
+    ? (customerCode || '')
+    : (oldCustomer.customerCode || '')
   const baseFields = {
     platformId,
     platform,
@@ -1238,7 +1241,7 @@ async function applyCustomerEdit(editId, fields) {
     ...addressFields,
     status,
     notes,
-    customerCode: customerCode || '',
+    customerCode: nextCustomerCode,
     advisor: oldCustomer.advisor,
     advisorPhone: oldCustomer.advisorPhone
   }
@@ -2273,13 +2276,16 @@ async function createCustomerFromDetail(fields) {
       const idx = data.customers.findIndex(c => c.id === existById.id)
       if (idx === -1) return null
       const wasLD = existById.id.startsWith('LD')
+      const allowedCode = canSetCustomerCode()
+        ? (customerCode || '')
+        : (existById.customerCode || '')
       const updatedFields = {
         platformId, platform, name,
         nameEn: nameEn || '',
         nationalId: nationalId || '',
         birthDate: birthDate || '',
         ...phoneFields, ...addressFields, status, notes,
-        customerCode: customerCode || '', advisor, advisorPhone
+        customerCode: allowedCode, advisor, advisorPhone
       }
 
       if (wasLD) {
@@ -2308,6 +2314,7 @@ async function createCustomerFromDetail(fields) {
 
   const type = phones.length ? 'CS' : 'LD'
   const id = await generateId(type)
+  const allowedCode = canSetCustomerCode() ? (customerCode || '') : ''
   const newCustomer = {
     id, platformId, platform, name,
     nameEn: nameEn || '',
@@ -2316,7 +2323,7 @@ async function createCustomerFromDetail(fields) {
     ...phoneFields, ...addressFields, status, notes, advisor, advisorPhone,
     nextFollowupDate, products: [], createdAt: new Date().toISOString(),
     customerLevel: '', customerLevelLocked: false, referredByPhone: '',
-    customerCode: customerCode || ''
+    customerCode: allowedCode
   }
   await saveCustomerToDB(newCustomer)
   putCustomerInCache(newCustomer)
@@ -2479,6 +2486,7 @@ export async function openCustomerDetail(id, options = {}) {
     : data.customers.find(x => x.id === id)
 
   const canEdit = isNew || canEditCustomerInfo(c)
+  const canSetCode = canSetCustomerCode()
   const canTransfer = !isNew && canTransferCustomer(c)
   const canDelete = !isNew && hasPermission('customers_delete') && canManageCustomer(c)
   const canClaim = !isNew && canClaimUnassignedCustomer(c)
@@ -2634,7 +2642,9 @@ export async function openCustomerDetail(id, options = {}) {
       </div>
       <div class="detail-field">
         <span class="detail-label">کد مشتری</span>
-        <select class="form-select" id="detailCustomerCode"></select>
+        ${canSetCode
+          ? '<select class="form-select" id="detailCustomerCode"></select>'
+          : `<span class="detail-value">${escapeHtml(customerCodeLabel(c.customerCode))}</span>`}
       </div>
       <div class="detail-field">
         <span class="detail-label">شماره تماس</span>
@@ -3080,7 +3090,8 @@ export async function openCustomerDetail(id, options = {}) {
       : [{ text: '', postalCode: '', isPrimary: true }]
     populatePlatformDropdown(document.getElementById('detailPlatform'))
     populateStatusDropdown(document.getElementById('detailStatus'))
-    populateCustomerCodeDropdown(document.getElementById('detailCustomerCode'), c.customerCode || '')
+    const codeEl = document.getElementById('detailCustomerCode')
+    if (codeEl) populateCustomerCodeDropdown(codeEl, c.customerCode || '')
     const platformEl = document.getElementById('detailPlatform')
     const statusEl = document.getElementById('detailStatus')
     if (platformEl) platformEl.value = c.platform || 'instagram'

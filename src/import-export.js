@@ -8,7 +8,7 @@ import {
   normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone,
   jalaliDatePart, jalaliToNum, escapeHtml, escapeAttr, normalizeTimeTo24h,
   userDisplayName, applyProfitSnapshotToProduct, jalaliDateTimeToIso, jalaliAddDays, getTodayJalaliStr,
-  formatNumber, getSaleRegistrantPhone
+  formatNumber, getSaleRegistrantPhone, canSetCustomerCode
 } from './utils.js'
 import { getUsersSafe } from './auth.js'
 import { renderCustomers, getFilteredCustomers } from './customers.js'
@@ -1262,7 +1262,7 @@ function applyMappedCustomerFields(customer, { mapping, getValue, users, phones,
     customer.customerLevel = ''
     customer.customerLevelLocked = false
   }
-  if (isFieldMapped(mapping, 'customerCode')) {
+  if (canSetCustomerCode() && isFieldMapped(mapping, 'customerCode')) {
     if (isCreate || hasVal('customerCode')) {
       customer.customerCode = resolveCustomerCodeKey(getValue('customerCode'))
     }
@@ -2359,12 +2359,12 @@ export async function doSalesImport() {
         customerLevel: '',
         customerLevelLocked: false,
         referredByPhone: '',
-        customerCode: resolveCustomerCodeKey(getValue('customerCode'))
+        customerCode: canSetCustomerCode() ? resolveCustomerCodeKey(getValue('customerCode')) : ''
       }
       putCustomerInCache(customer)
       created++
       touched.add(customer.id)
-    } else if (isFieldMapped(salesImportData.mapping, 'customerCode') && getValue('customerCode')) {
+    } else if (canSetCustomerCode() && isFieldMapped(salesImportData.mapping, 'customerCode') && getValue('customerCode')) {
       const nextCode = resolveCustomerCodeKey(getValue('customerCode'))
       if (nextCode && customer.customerCode !== nextCode) {
         customer.customerCode = nextCode
