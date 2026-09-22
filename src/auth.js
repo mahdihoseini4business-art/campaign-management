@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { toEnDigits, escapeHtml, escapeAttr, showToast, getCurrentUser, setCurrentUser, clearCurrentUser, restoreSession, hasPermission, hasAnyRefundPermission, requirePermission, getDefaultPermissions, ALL_PERMISSIONS, PERMISSION_GROUPS, normalizePhone, userDisplayName, isMainAdmin, requireMainAdmin, normalizeViewUserPhones, syncToolbarActionsMenus, formatNumber, jalaliToNum, formatInput, toJalali, gregorianToJalaliStr, gregorianToJalaliDateTimeStr, jalaliDateTimeToIso, canOpenSettings, canAccessSettingsSection, listAccessibleSettingsSectionIds, requireSettingsAccess, requireSettingsSection, SETTINGS_SECTION_ACCESS, settingsSectionSupportsScope, readSettingsAccessEntry, normalizeSettingsAccess, canManageSettingsUserRecord, requireManageSettingsUser, isSettingsSectionGroupScoped, getSettingsSectionScopeHint, canGrantPermissionKey } from './utils.js'
 import { openAppConfirm } from './app-confirm.js'
-import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, renameProductAcrossApp, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, syncCustomerCodesFromProfiles, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, buildInPersonAssignmentSnapshots, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions, getEventMessageTypes, upsertEventMessageType, removeEventMessageType, getDashConversionAmountInRange, saveDashConversionAmountInRange, normalizeCustomerCodeSaleFilters, validateCustomerCodeSaleFilters, coerceProductName } from './data.js'
+import { getDestinationBanks, saveDestinationBanks, getProductCatalog, saveProductCatalog, getProductCatalogNames, getProductBundles, saveProductBundles, getSellableNames, getBundlesUsingProduct, validateProductBundle, renameProductInBundles, renameProductAcrossApp, countSalesByProductName, migrateCatalogNameToBundle, getPlatforms, savePlatforms, getStatuses, saveStatuses, getCustomerCodes, saveCustomerCodes, getCustomerCodeExpiryMonths, saveCustomerCodeExpiryMonths, buildCustomerCodeEntry, purgeExpiredCustomerCodes, syncCustomerCodesFromProfiles, clearCustomerCodeKeysFromCustomers, getData, addCalendarMonthsIso, getSalesTargets, saveSalesTargets, getDeadlineUrgency, saveDeadlineUrgency, DEFAULT_DEADLINE_URGENCY, PRODUCT_KIND, normalizeCatalogEntry, getSmsPanel, saveSmsPanel, DEFAULT_SMS_PANEL, getSmsFeatures, saveSmsFeatures, getFollowupSmsDefaultHour, saveFollowupSmsDefaultHour, listSmsTemplates, saveSmsTemplateRow, listSmsLogs, listSmsCampaigns, getShippingSender, saveShippingSender, getDefaultPlatforms, getDefaultStatuses, effectiveSalesTargetBarStages, scaleShareStagesFromValue, getInPersonSessions, getActiveInPersonSessions, getInPersonCourseNames, upsertInPersonSession, countSalesLinkedToInPersonSession, buildInPersonAssignmentSnapshots, assignInPersonSessionToSale, unassignInPersonSessionFromSale, deleteInPersonSessionAndClearAssignments, formatInPersonSessionLabel, getInPersonSessionCapacity, getInPersonSessionRemaining, mapInPersonSessionSelectOptions, getEventMessageTypes, upsertEventMessageType, removeEventMessageType, getDashConversionAmountInRange, saveDashConversionAmountInRange, normalizeCustomerCodeSaleFilters, validateCustomerCodeSaleFilters, coerceProductName } from './data.js'
 import { SMS_FEATURE_KEYS, SMS_FEATURE_LABELS, SMS_TEMPLATE_PLACEHOLDERS } from './sms-features.js'
 import {
   getCustomerProfileFieldCatalog,
@@ -5438,16 +5438,32 @@ export async function removeCustomerCode(index) {
   if (!requireSettingsSection('customer-codes')) return
   const codes = [...getCustomerCodes()]
   if (index < 0 || index >= codes.length) return
-  openSettingsConfirm(`حذف کد «${codes[index].label}»؟`, async () => {
+  const target = codes[index]
+  const key = String(target?.key || '').trim()
+  const label = target?.label || key
+  const affected = key
+    ? (await import('./data.js')).getData().customers.filter(c => (c.customerCode || '') === key).length
+    : 0
+  const warn = affected
+    ? ` این کد از ${affected} مشتری هم برداشته می‌شود.`
+    : ''
+  openSettingsConfirm(`حذف کد «${label}»؟${warn}`, async () => {
     const next = [...getCustomerCodes()]
-    next.splice(index, 1)
+    const stillIdx = next.findIndex(c => c.key === key)
+    if (stillIdx < 0) return
+    next.splice(stillIdx, 1)
     try {
+      let cleared = 0
+      if (key) cleared = await clearCustomerCodeKeysFromCustomers([key])
       await saveCustomerCodes(next)
       _editingCustomerCodeIdx = null
       renderCustomerCodesSettings()
-      showToast('کد مشتری حذف شد')
+      showToast(cleared
+        ? `کد مشتری حذف شد · از ${cleared} مشتری برداشته شد`
+        : 'کد مشتری حذف شد')
     } catch (e) {
-      showToast('خطا در حذف کد مشتری')
+      console.error('removeCustomerCode', e)
+      showToast(e?.message || 'خطا در حذف کد مشتری')
     }
   }, 'حذف')
 }

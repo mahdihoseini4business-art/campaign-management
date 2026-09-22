@@ -1436,7 +1436,7 @@ export async function syncCustomerCodesFromProfiles() {
   return ensureCustomerCodesInCatalog(raw)
 }
 
-async function clearCustomerCodeKeysFromCustomers(keys) {
+export async function clearCustomerCodeKeysFromCustomers(keys) {
   const unique = [...new Set((keys || []).map(k => String(k || '').trim()).filter(Boolean))]
   if (!unique.length) return 0
   const keySet = new Set(unique)
