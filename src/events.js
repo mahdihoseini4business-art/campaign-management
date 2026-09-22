@@ -9,9 +9,12 @@ import {
   formatInPersonSessionLabel,
   getEventMessageTypes,
   saveCustomerToDB,
+  saveCustomersToDBBatchSafe,
   generateId,
+  generateIdBatch,
   putCustomerInCache,
   assignInPersonSessionToSale,
+  assignInPersonSessionToSaleLocal,
   applySaleInPersonSessionMap,
   assertSaleCanUseInPersonSession,
   getEventCourseNamesForSellable,
@@ -34,6 +37,7 @@ import {
   showToast,
   findCustomerByPhone,
   buildCustomerMatchIndexes,
+  upsertCustomerInMatchIndexes,
   normalizeCustomerPhones,
   getCurrentUser,
   userDisplayName,
@@ -787,13 +791,13 @@ function eventDatesEqual(a, b) {
  */
 export async function applyEventRosterImport(rows, { dryRun = false, salePrice = null, onProgress = null, signal = null } = {}) {
   const {
-    assignInPersonSessionToSale,
     getActiveInPersonSessions: getSessions,
     getEventCourseNamesForSellable
   } = await import('./data.js')
   const data = getData()
   const sessions = getSessions()
-  const { byPhone } = buildCustomerMatchIndexes(data.customers)
+  const indexes = buildCustomerMatchIndexes(data.customers)
+  const byPhone = indexes.byPhone
 
   const user = getCurrentUser()
   const priceRaw = salePrice
@@ -809,13 +813,65 @@ export async function applyEventRosterImport(rows, { dryRun = false, salePrice =
   const errors = []
   const total = (rows || []).length
 
+  /** @type {Set<object>} */
+  const dirtyCustomers = new Set()
+  /** @type {Set<object>} */
+  const pendingCreateSet = new Set()
+
+  // Pre-create customers for new phones so capacity checks see them in cache
+  if (!dryRun) {
+    const newPhones = []
+    const seenNew = new Set()
+    for (const r of rows || []) {
+      const phone = normalizePhone(r.phone)
+      if (!phone || byPhone.has(phone) || seenNew.has(phone)) continue
+      if (!hasPermission('customers_add')) continue
+      seenNew.add(phone)
+      newPhones.push(phone)
+    }
+    if (newPhones.length) {
+      if (typeof onProgress === 'function') {
+        onProgress({ done: 0, total, label: `ساخت شناسه برای ${newPhones.length} مشتری جدید…` })
+      }
+      const ids = await generateIdBatch('CS', newPhones.length)
+      const advisor = userDisplayName(user).trim() || ''
+      const advisorPhone = normalizePhone(user?.phone || '')
+      newPhones.forEach((phone, i) => {
+        const phones = normalizeCustomerPhones([phone])
+        const customer = {
+          id: ids[i],
+          platformId: '',
+          platform: 'instagram',
+          name: phone,
+          nameEn: '',
+          phone: phones[0] || phone,
+          phones,
+          status: 'purchased',
+          notes: 'ایجاد شده از ایمپورت رویدادها',
+          advisor,
+          advisorPhone,
+          nextFollowupDate: '',
+          products: [],
+          createdAt: new Date().toISOString(),
+          customerLevel: '',
+          customerLevelLocked: false
+        }
+        putCustomerInCache(customer)
+        upsertCustomerInMatchIndexes(indexes, customer)
+        pendingCreateSet.add(customer)
+        dirtyCustomers.add(customer)
+        customersCreated++
+      })
+    }
+  }
+
   for (let i = 0; i < total; i++) {
     if (signal?.aborted) {
       const err = new Error('CANCELLED')
       err.code = 'CANCELLED'
       throw err
     }
-    if (typeof onProgress === 'function') {
+    if (typeof onProgress === 'function' && (i % 25 === 0 || i === total - 1)) {
       onProgress({
         done: i,
         total,
@@ -864,44 +920,29 @@ export async function applyEventRosterImport(rows, { dryRun = false, salePrice =
           customerLevel: '',
           customerLevelLocked: false
         }
+        byPhone.set(phone, customer)
+        isNewCustomer = true
+        customersCreated++
       } else {
-        const id = await generateId('CS')
-        customer = {
-          id,
-          platformId: '',
-          platform: 'instagram',
-          name: rowName || phone,
-          nameEn: rowNameEn,
-          phone: phones[0] || phone,
-          phones,
-          status: 'purchased',
-          notes: 'ایجاد شده از ایمپورت رویدادها',
-          advisor,
-          advisorPhone,
-          nextFollowupDate: '',
-          products: [],
-          createdAt: new Date().toISOString(),
-          customerLevel: '',
-          customerLevelLocked: false
-        }
-        putCustomerInCache(customer)
+        // Should have been pre-created; if not, skip (no customers_add was false above)
+        skipped++
+        errors.push(`ردیف ${rowNum}: مشتری با شماره ${phone} ایجاد نشد`)
+        continue
       }
-      byPhone.set(phone, customer)
+    } else if (pendingCreateSet.has(customer) && !customer._eventImportNamed) {
       isNewCustomer = true
-      customersCreated++
     }
 
     let dirty = isNewCustomer
-    if (!isNewCustomer) {
-      if (rowName && rowName !== customer.name) {
-        customer.name = rowName
-        dirty = true
-      }
-      if (rowNameEn && rowNameEn !== (customer.nameEn || '')) {
-        customer.nameEn = rowNameEn
-        dirty = true
-      }
+    if (rowName && rowName !== customer.name) {
+      customer.name = rowName
+      dirty = true
     }
+    if (rowNameEn && rowNameEn !== (customer.nameEn || '')) {
+      customer.nameEn = rowNameEn
+      dirty = true
+    }
+    if (isNewCustomer) customer._eventImportNamed = true
 
     const course = String(r.courseName || '').trim()
     const sessionDate = toEnDigits(String(r.sessionDate || '').trim())
@@ -939,9 +980,10 @@ export async function applyEventRosterImport(rows, { dryRun = false, salePrice =
           }
           if (!dryRun) {
             try {
-              await assignInPersonSessionToSale(customer.id, pi, session.id)
+              assignInPersonSessionToSaleLocal(customer.id, pi, session.id)
               didAssign = true
               assigned++
+              dirty = true
             } catch (e) {
               errors.push(`ردیف ${rowNum}: ${e.message || 'خطا در تخصیص سانس'}`)
             }
@@ -985,16 +1027,36 @@ export async function applyEventRosterImport(rows, { dryRun = false, salePrice =
 
     if (dirty) {
       if (!isNewCustomer) updated++
-      if (!dryRun) {
-        try {
-          await saveCustomerToDB(customer)
-        } catch (e) {
-          errors.push(`ردیف ${rowNum}: ${e.message || 'خطا در ذخیره مشتری'}`)
-        }
-      }
+      if (!dryRun) dirtyCustomers.add(customer)
     } else if (!didAssign) {
       skipped++
     }
+  }
+
+  if (!dryRun && dirtyCustomers.size) {
+    if (typeof onProgress === 'function') {
+      onProgress({ done: 0, total: dirtyCustomers.size, label: 'ذخیره مشتریان…' })
+    }
+    const saveList = [...dirtyCustomers]
+    const { failed: saveFailed } = await saveCustomersToDBBatchSafe(saveList, {
+      signal,
+      onChunk: ({ done, total: t }) => {
+        if (typeof onProgress === 'function') {
+          onProgress({ done, total: t, label: 'ذخیره مشتریان…' })
+        }
+      },
+      onRowError: ({ customer, error }) => {
+        errors.push(`${customer?.id || ''}: ${error?.message || 'خطا در ذخیره مشتری'}`)
+      }
+    })
+    if (saveFailed) {
+      // Keep assigned/created counts; surface via errors
+    }
+  }
+
+  // Clean temp flags
+  for (const c of pendingCreateSet) {
+    delete c._eventImportNamed
   }
 
   if (typeof onProgress === 'function' && total > 0) {

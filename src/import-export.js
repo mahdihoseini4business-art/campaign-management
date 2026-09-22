@@ -1,11 +1,12 @@
-import { getData, saveCustomerToDB, generateId, generateIdBatch, getStatuses, getCustomerCodes, saveFollowupToDB, updateFollowupInDB, getDestinationBanks, getSellableNames, putCustomerInCache, getProductCatalogNames, getCustomerOwnedProductNames, getPlatforms, coerceProductName } from './data.js'
+import { getData, saveCustomerToDB, saveCustomersToDBBatchSafe, generateIdBatch, getStatuses, getCustomerCodes, saveFollowupsToDBBatch, updateFollowupInDB, getDestinationBanks, getSellableNames, putCustomerInCache, getProductCatalogNames, getCustomerOwnedProductNames, getPlatforms, coerceProductName } from './data.js'
 import {
   toEnDigits, showToast, showToastWithAction, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
   getProductBalance, getProductPayments, getPaymentEntryStatus,
   PAYMENT_STATUS, PAYMENT_STATUS_LABELS, createPayment, formatSoldAt24h, normalizePhone,
   formatCustomerLevel, parseCustomerLevel, syncCustomerLevel, resolveCustomerLevel,
-  normalizeCustomerPhones, getCustomerPhones, findCustomerByPhone, buildCustomerMatchIndexes,
+  normalizeCustomerPhones, getCustomerPhones, buildCustomerMatchIndexes,
+  matchCustomerFromIndexes, upsertCustomerInMatchIndexes,
   jalaliDatePart, jalaliToNum, escapeHtml, escapeAttr, normalizeTimeTo24h,
   userDisplayName, applyProfitSnapshotToProduct, jalaliDateTimeToIso, jalaliAddDays, getTodayJalaliStr,
   formatNumber, getSaleRegistrantPhone, canSetCustomerCode
@@ -19,7 +20,7 @@ import { renderSales, getFilteredSales, getSalesDateFilter, hasActiveSalesProduc
 import { getFilteredEventRows, renderEvents, applyEventRosterImport } from './events.js'
 import { getProductMatrixExportAoa, hasActiveProductMatrixFilter, renderProductMatrix } from './product-matrix.js'
 import { assertImportExport } from './entitlements.js'
-import { startJobProgress, runWithJobProgress, isJobProgressActive } from './job-progress.js'
+import { startJobProgress, runWithJobProgress, isJobProgressActive, reportJobRowProgress, reportJobPhase } from './job-progress.js'
 
 let xlsxModule = null
 
@@ -1030,9 +1031,17 @@ async function importFollowupRows({ headers, rows, mapping }, { syncCustomerNext
   for (const f of data.followups) {
     byFingerprint.set(followupFingerprint(f), f)
   }
+  const customersById = new Map((data.customers || []).map(c => [c.id, c]))
   const currentUser = getCurrentUser()
   const nextDateMapped = map.nextDate !== undefined && map.nextDate !== null
   const total = rows.length
+
+  /** @type {object[]} */
+  const toInsert = []
+  /** @type {object[]} */
+  const toUpdate = []
+  /** @type {Map<string, object>} */
+  const customersToSave = new Map()
 
   for (let i = 0; i < rows.length; i++) {
     if (signal?.aborted) {
@@ -1041,7 +1050,7 @@ async function importFollowupRows({ headers, rows, mapping }, { syncCustomerNext
       throw err
     }
     if (typeof onProgress === 'function') {
-      onProgress({ done: i, total, label: 'ایمپورت پیگیری‌ها…' })
+      onProgress({ done: i, total, label: 'پردازش پیگیری‌ها…' })
     }
     const row = rows[i]
     const getValue = (fieldKey) => {
@@ -1059,7 +1068,7 @@ async function importFollowupRows({ headers, rows, mapping }, { syncCustomerNext
       continue
     }
 
-    const customer = data.customers.find(c => c.id === customerId)
+    const customer = customersById.get(customerId)
     if (!customer) {
       missingCustomer++
       continue
@@ -1096,50 +1105,116 @@ async function importFollowupRows({ headers, rows, mapping }, { syncCustomerNext
     const fp = followupFingerprint(followup)
     const existing = byFingerprint.get(fp)
 
-    try {
-      let noteTouched = false
-      if (existing) {
-        let noteChanged = false
-        if ((existing.nextDate || '') !== (followup.nextDate || '')) {
-          existing.nextDate = followup.nextDate || ''
-          noteChanged = true
-        }
-        if ((existing.result || '') !== (followup.result || '')) {
-          existing.result = followup.result || ''
-          noteChanged = true
-        }
+    let noteTouched = false
+    if (existing) {
+      let noteChanged = false
+      if ((existing.nextDate || '') !== (followup.nextDate || '')) {
+        existing.nextDate = followup.nextDate || ''
+        noteChanged = true
+      }
+      if ((existing.result || '') !== (followup.result || '')) {
+        existing.result = followup.result || ''
+        noteChanged = true
+      }
+      if (existing.id) {
         if (noteChanged) {
-          await updateFollowupInDB(existing)
+          toUpdate.push(existing)
           updated++
           noteTouched = true
         }
-      } else if (notes || date) {
-        const id = await saveFollowupToDB(followup)
-        followup.id = id
-        data.followups.push(followup)
-        byFingerprint.set(fp, followup)
-        created++
+      } else if (noteChanged) {
+        // Same fingerprint already queued for insert — fields merged on pending object
         noteTouched = true
       }
-
-      // Pending tab reads customer.nextFollowupDate — rewrite from Excel when asked
-      // ارجاع پیگیری: صف مالک را overwrite نکن
-      let customerTouched = false
-      if (syncCustomerNextDate && nextDateMapped && !assignedToPhone) {
-        const normalizedNext = nextDate || ''
-        if ((customer.nextFollowupDate || '') !== normalizedNext) {
-          customer.nextFollowupDate = normalizedNext
-          await saveCustomerToDB(customer)
-          customersUpdated++
-          customerTouched = true
-        }
-      }
-
-      if (!noteTouched && !customerTouched) skipped++
-    } catch (err) {
-      console.error('followup import row failed', err)
-      failed++
+    } else if (notes || date) {
+      toInsert.push(followup)
+      byFingerprint.set(fp, followup)
+      created++
+      noteTouched = true
     }
+
+    // Pending tab reads customer.nextFollowupDate — rewrite from Excel when asked
+    // ارجاع پیگیری: صف مالک را overwrite نکن
+    let customerTouched = false
+    if (syncCustomerNextDate && nextDateMapped && !assignedToPhone) {
+      const normalizedNext = nextDate || ''
+      if ((customer.nextFollowupDate || '') !== normalizedNext) {
+        customer.nextFollowupDate = normalizedNext
+        customersToSave.set(customer.id, customer)
+        customersUpdated++
+        customerTouched = true
+      }
+    }
+
+    if (!noteTouched && !customerTouched) skipped++
+  }
+
+  if (typeof onProgress === 'function') {
+    onProgress({ done: total, total, label: 'ذخیره پیگیری‌ها…' })
+  }
+
+  try {
+    if (toInsert.length) {
+      if (signal?.aborted) {
+        const err = new Error('CANCELLED')
+        err.code = 'CANCELLED'
+        throw err
+      }
+      const ids = await saveFollowupsToDBBatch(toInsert, { signal })
+      for (let i = 0; i < toInsert.length; i++) {
+        const fu = toInsert[i]
+        const id = ids[i]
+        if (id == null) {
+          failed++
+          created = Math.max(0, created - 1)
+          continue
+        }
+        fu.id = id
+        data.followups.push(fu)
+      }
+    }
+
+    for (let i = 0; i < toUpdate.length; i++) {
+      if (signal?.aborted) {
+        const err = new Error('CANCELLED')
+        err.code = 'CANCELLED'
+        throw err
+      }
+      if (typeof onProgress === 'function' && (i % 25 === 0 || i === toUpdate.length - 1)) {
+        onProgress({ done: i + 1, total: toUpdate.length, label: 'به‌روزرسانی پیگیری‌ها…' })
+      }
+      try {
+        await updateFollowupInDB(toUpdate[i])
+      } catch (err) {
+        console.error('followup import update failed', err)
+        failed++
+        updated = Math.max(0, updated - 1)
+      }
+    }
+
+    const customerList = [...customersToSave.values()]
+    if (customerList.length) {
+      if (typeof onProgress === 'function') {
+        onProgress({ done: 0, total: customerList.length, label: 'ذخیره تاریخ پیگیری مشتری…' })
+      }
+      const { failed: custFailed } = await saveCustomersToDBBatchSafe(customerList, {
+        signal,
+        onChunk: ({ done, total: t }) => {
+          if (typeof onProgress === 'function') {
+            onProgress({ done, total: t, label: 'ذخیره تاریخ پیگیری مشتری…' })
+          }
+        },
+        onRowError: ({ error }) => console.error('followup import customer save failed', error)
+      })
+      if (custFailed) {
+        failed += custFailed
+        customersUpdated = Math.max(0, customersUpdated - custFailed)
+      }
+    }
+  } catch (err) {
+    if (err?.code === 'CANCELLED' || err?.message === 'CANCELLED') throw err
+    console.error('followup import batch failed', err)
+    throw err
   }
 
   if (typeof onProgress === 'function' && total > 0) {
@@ -1501,7 +1576,8 @@ function previewFollowupRows({ headers, rows, mapping }, { syncCustomerNextDate 
 
 function analyzeCustomerImportRows(rows, mapping, data) {
   let created = 0, updated = 0, skipped = 0
-  const knownIds = new Set(data.customers.map(c => c.id))
+  const indexes = buildCustomerMatchIndexes(data.customers)
+  const knownIds = new Set(indexes.byId.keys())
 
   for (const row of rows) {
     const getValue = (fieldKey) => {
@@ -1523,19 +1599,11 @@ function analyzeCustomerImportRows(rows, mapping, data) {
       continue
     }
 
-    let existing = null
-    if (importId) existing = data.customers.find(c => c.id === importId) || null
-    if (!existing && phones.length) {
-      for (const p of phones) {
-        existing = findCustomerByPhone(p, data.customers)
-        if (existing) break
-      }
-    }
-    if (!existing && platformIdRaw) {
-      existing = data.customers.find(c =>
-        (c.platformId || '').toLowerCase() === platformIdRaw.toLowerCase()
-      ) || null
-    }
+    const existing = matchCustomerFromIndexes(indexes, {
+      id: importId,
+      phones,
+      platformId: platformIdRaw
+    })
 
     if (existing) {
       updated++
@@ -1546,6 +1614,13 @@ function analyzeCustomerImportRows(rows, mapping, data) {
         continue
       }
       knownIds.add(id)
+      const preview = {
+        id,
+        phones,
+        phone: phones[0] || '',
+        platformId: platformIdRaw || ''
+      }
+      upsertCustomerInMatchIndexes(indexes, preview)
       created++
     }
   }
@@ -1705,12 +1780,19 @@ export async function doImport() {
       try { await loadGroupsData() } catch (_) { /* optional for advisor-group filters */ }
     }
 
+    const indexes = buildCustomerMatchIndexes(data.customers)
+    /** @type {Set<object>} */
+    const toSave = new Set()
+    /** @type {object[]} */
+    const pendingCs = []
+    /** @type {object[]} */
+    const pendingLd = []
+
+    await reportJobPhase(job, 'پردازش ردیف‌ها…', { done: 0, total, paint: true })
+
     for (let rowIdx = 0; rowIdx < importData.rows.length; rowIdx++) {
       job.throwIfCancelled()
-      if (rowIdx % 5 === 0 || rowIdx === total - 1) {
-        job.set({ label: 'ذخیره مشتریان…', done: rowIdx, total })
-        await job.paint()
-      }
+      reportJobRowProgress(job, { done: rowIdx, total, label: 'پردازش ردیف‌ها…' })
       const row = importData.rows[rowIdx]
       const getValue = (fieldKey) => {
         const colIdx = mapping[fieldKey]
@@ -1738,20 +1820,11 @@ export async function doImport() {
       const statusRaw = getValue('status')
       const status = statusMap[statusRaw] || statusMap[statusRaw.toLowerCase()] || statusRaw || 'new'
 
-      // Match existing: id → phone → platformId (only when provided in file)
-      let existing = null
-      if (importId) existing = data.customers.find(c => c.id === importId) || null
-      if (!existing && phones.length) {
-        for (const p of phones) {
-          existing = findCustomerByPhone(p, data.customers)
-          if (existing) break
-        }
-      }
-      if (!existing && platformIdRaw) {
-        existing = data.customers.find(c =>
-          (c.platformId || '').toLowerCase() === platformIdRaw.toLowerCase()
-        ) || null
-      }
+      const existing = matchCustomerFromIndexes(indexes, {
+        id: importId,
+        phones,
+        platformId: platformIdRaw
+      })
 
       let platformId = platformIdRaw
       if (!platformId) {
@@ -1773,18 +1846,16 @@ export async function doImport() {
           if (!existing.customerLevelLocked) {
             syncCustomerLevel(existing, data.customers, data.followups)
           }
-          await saveCustomerToDB(existing)
+          upsertCustomerInMatchIndexes(indexes, existing)
+          toSave.add(existing)
           updated++
         } else {
-          const type = phones.length ? 'CS' : 'LD'
-          const id = importId || await generateId(type)
-          // Guard against colliding with an id that appeared mid-import
-          if (data.customers.some(c => c.id === id)) {
+          if (importId && (indexes.byId.has(importId) || data.customers.some(c => c.id === importId))) {
             skipped++
             continue
           }
           const newCustomer = {
-            id,
+            id: importId || '',
             products: [],
             createdAt: new Date().toISOString(),
             advisor: '',
@@ -1807,8 +1878,16 @@ export async function doImport() {
           if (!newCustomer.customerLevelLocked) {
             syncCustomerLevel(newCustomer, data.customers, data.followups)
           }
-          putCustomerInCache(newCustomer)
-          await saveCustomerToDB(newCustomer)
+          if (importId) {
+            putCustomerInCache(newCustomer)
+            upsertCustomerInMatchIndexes(indexes, newCustomer)
+            toSave.add(newCustomer)
+          } else {
+            upsertCustomerInMatchIndexes(indexes, newCustomer)
+            if (phones.length) pendingCs.push(newCustomer)
+            else pendingLd.push(newCustomer)
+            toSave.add(newCustomer)
+          }
           created++
         }
       } catch (err) {
@@ -1817,11 +1896,50 @@ export async function doImport() {
       }
     }
 
-    job.set({ label: 'ذخیره مشتریان…', done: total, total })
+    job.throwIfCancelled()
+    if (pendingCs.length || pendingLd.length) {
+      await reportJobPhase(job, `در حال ساخت شناسه برای ${pendingCs.length + pendingLd.length} مشتری جدید…`, { paint: true })
+      if (pendingCs.length) {
+        const ids = await generateIdBatch('CS', pendingCs.length)
+        pendingCs.forEach((c, i) => {
+          c.id = ids[i]
+          putCustomerInCache(c)
+          upsertCustomerInMatchIndexes(indexes, c)
+        })
+      }
+      if (pendingLd.length) {
+        const ids = await generateIdBatch('LD', pendingLd.length)
+        pendingLd.forEach((c, i) => {
+          c.id = ids[i]
+          putCustomerInCache(c)
+          upsertCustomerInMatchIndexes(indexes, c)
+        })
+      }
+    }
+
+    const saveList = [...toSave].filter(c => c?.id)
+    await reportJobPhase(job, 'ذخیره مشتریان…', { done: 0, total: saveList.length, paint: true })
+    if (saveList.length) {
+      const { failed: saveFailed } = await saveCustomersToDBBatchSafe(saveList, {
+        signal: job.signal,
+        onChunk: ({ done, total: t }) => job.set({ label: 'ذخیره مشتریان…', done, total: t }),
+        onRowError: ({ customer, error }) => {
+          console.error('customer import save failed', customer?.id, error)
+        }
+      })
+      if (saveFailed) {
+        failed += saveFailed
+        // Approximate: prefer counting against updated then created
+        const reduceUpdated = Math.min(updated, saveFailed)
+        updated -= reduceUpdated
+        created = Math.max(0, created - (saveFailed - reduceUpdated))
+      }
+    }
+    job.set({ label: 'ذخیره مشتریان…', done: saveList.length, total: saveList.length || total })
 
     // Recompute unlocked levels (CIP may unlock after referrals imported)
     try {
-      job.set({ label: 'همگام‌سازی سطح مشتریان…' })
+      await reportJobPhase(job, 'همگام‌سازی سطح مشتریان…', { paint: true })
       const { resyncAndPersistCustomerLevels } = await import('./customer-level-sync.js')
       await resyncAndPersistCustomerLevels()
     } catch (err) {
@@ -2479,6 +2597,9 @@ export async function doSalesImport() {
   }
   const banks = getDestinationBanks()
   const touched = new Set()
+  /** @type {object[]} */
+  const pendingCreates = []
+  const indexes = buildCustomerMatchIndexes(data.customers)
   const paymentColMapped = isFieldMapped(mapping, 'paymentAmount')
   const priceColMapped = isFieldMapped(mapping, 'price')
   const isSite = salesImportData.isSiteFormat
@@ -2487,9 +2608,7 @@ export async function doSalesImport() {
 
   for (let rowIdx = 0; rowIdx < salesImportData.rows.length; rowIdx++) {
     job.throwIfCancelled()
-    if (rowIdx % 10 === 0) {
-      job.set({ label: 'پردازش ردیف‌ها…', done: rowIdx, total: rowTotal })
-    }
+    reportJobRowProgress(job, { done: rowIdx, total: rowTotal, label: 'پردازش ردیف‌ها…' })
     const row = salesImportData.rows[rowIdx]
     const getValue = (fieldKey) => {
       const colIdx = mapping[fieldKey]
@@ -2562,11 +2681,11 @@ export async function doSalesImport() {
       }
     }
 
-    let customer = null
-    if (customerId) customer = data.customers.find(c => c.id === customerId)
-    if (!customer && phone) {
-      customer = findCustomerByPhone(phone, data.customers)
-    }
+    let customer = matchCustomerFromIndexes(indexes, {
+      id: customerId,
+      phones: phone ? [phone] : [],
+      platformId: ''
+    })
 
     if (!customer) {
       if (!phone) {
@@ -2574,7 +2693,6 @@ export async function doSalesImport() {
         continue
       }
       const name = getValue('customerName') || ''
-      const id = await generateId('CS')
       const currentUser = getCurrentUser()
       if (!advisorResolved) {
         const fallback = currentUser ? (currentUser.phone || currentUser.displayName) : ''
@@ -2585,7 +2703,7 @@ export async function doSalesImport() {
       const platform = buildPlatformImportMap()[platformRaw] || platformRaw || defaultPlatform
       const phones = phonesFromCell.length ? phonesFromCell : normalizeCustomerPhones([phone])
       customer = {
-        id,
+        id: '',
         platformId: '',
         platform,
         name,
@@ -2603,14 +2721,15 @@ export async function doSalesImport() {
         referredByPhone: '',
         customerCode: canSetCustomerCode() ? resolveCustomerCodeKey(getValue('customerCode')) : ''
       }
-      putCustomerInCache(customer)
+      upsertCustomerInMatchIndexes(indexes, customer)
+      pendingCreates.push(customer)
       created++
-      touched.add(customer.id)
+      touched.add(customer)
     } else if (canSetCustomerCode() && isFieldMapped(salesImportData.mapping, 'customerCode') && getValue('customerCode')) {
       const nextCode = resolveCustomerCodeKey(getValue('customerCode'))
       if (nextCode && customer.customerCode !== nextCode && canImportReplaceCustomerCode(customer, nextCode)) {
         customer.customerCode = nextCode
-        touched.add(customer.id)
+        touched.add(customer)
       }
     }
 
@@ -2667,7 +2786,7 @@ export async function doSalesImport() {
         if (status) product.status = status
         skipped++
       }
-      touched.add(customer.id)
+      touched.add(customer)
       continue
     }
 
@@ -2698,7 +2817,7 @@ export async function doSalesImport() {
       syncProductStatus(product)
       customer.products.push(product)
       imported++
-      touched.add(customer.id)
+      touched.add(customer)
       continue
     }
 
@@ -2715,24 +2834,36 @@ export async function doSalesImport() {
     product.payments.push(payment)
     syncProductStatus(product)
     imported++
-    touched.add(customer.id)
+    touched.add(customer)
   }
 
-  const touchedList = [...touched]
-  for (let i = 0; i < touchedList.length; i++) {
-    job.throwIfCancelled()
-    job.set({ label: 'ذخیره مشتریان…', done: i, total: touchedList.length })
-    if (i % 3 === 0) await job.paint()
-    const id = touchedList[i]
-    const c = data.customers.find(x => x.id === id)
-    if (!c) continue
-    try {
+  job.throwIfCancelled()
+  if (pendingCreates.length) {
+    await reportJobPhase(job, `در حال ساخت شناسه برای ${pendingCreates.length} مشتری جدید…`, { paint: true })
+    const ids = await generateIdBatch('CS', pendingCreates.length)
+    pendingCreates.forEach((c, i) => {
+      c.id = ids[i]
+      putCustomerInCache(c)
+      upsertCustomerInMatchIndexes(indexes, c)
+    })
+  }
+
+  const touchedList = [...touched].filter(c => c?.id)
+  await reportJobPhase(job, 'ذخیره مشتریان…', { done: 0, total: touchedList.length, paint: true })
+  for (const c of touchedList) {
+    if (!c.customerLevelLocked) {
       syncCustomerLevel(c, data.customers, data.followups)
-      await saveCustomerToDB(c)
-    } catch (err) {
-      console.error('sales import save failed', id, err)
-      failed++
     }
+  }
+  if (touchedList.length) {
+    const { failed: saveFailed } = await saveCustomersToDBBatchSafe(touchedList, {
+      signal: job.signal,
+      onChunk: ({ done, total: t }) => job.set({ label: 'ذخیره مشتریان…', done, total: t }),
+      onRowError: ({ customer, error }) => {
+        console.error('sales import save failed', customer?.id, error)
+      }
+    })
+    failed += saveFailed
   }
   if (touchedList.length) {
     job.set({ label: 'ذخیره مشتریان…', done: touchedList.length, total: touchedList.length })

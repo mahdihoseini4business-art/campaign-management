@@ -1969,7 +1969,7 @@ export function listAssignedInPersonSales(sessionId = '') {
 }
 
 /** Assign an existing sale line to an in-person session (admin settings). */
-export async function assignInPersonSessionToSale(customerId, productIndex, sessionId) {
+export function assignInPersonSessionToSaleLocal(customerId, productIndex, sessionId) {
   const session = getInPersonSessionById(sessionId)
   if (!session || !session.active) throw new Error('سانس معتبر نیست')
   const customer = (data.customers || []).find(c => c.id === customerId)
@@ -1988,7 +1988,14 @@ export async function assignInPersonSessionToSale(customerId, productIndex, sess
   const map = getSaleInPersonSessionMap(product)
   map[courseMatch] = session.id
   applySaleInPersonSessionMap(product, map)
-  await saveCustomerToDB(customer)
+  return product
+}
+
+/** Assign session + persist customer (UI / single edits). */
+export async function assignInPersonSessionToSale(customerId, productIndex, sessionId) {
+  const product = assignInPersonSessionToSaleLocal(customerId, productIndex, sessionId)
+  const customer = (data.customers || []).find(c => c.id === customerId)
+  if (customer) await saveCustomerToDB(customer)
   return product
 }
 
@@ -3218,6 +3225,77 @@ export async function saveCustomersToDBBatch(items, batchOpts = {}) {
 }
 
 /**
+ * Chunked customer upsert with per-chunk fallback to single-row saves.
+ * Use for imports so one bad row does not discard the whole chunk.
+ *
+ * @param {Array<object | { customer: object, options?: object }>} items
+ * @param {{
+ *   chunkSize?: number,
+ *   signal?: AbortSignal,
+ *   onChunk?: (info: { done: number, total: number, chunkIndex: number, chunkCount: number }) => void,
+ *   onRowError?: (info: { customer: object, error: Error }) => void,
+ * }} [batchOpts]
+ * @returns {Promise<{ saved: number, failed: number }>}
+ */
+export async function saveCustomersToDBBatchSafe(items, batchOpts = {}) {
+  const list = Array.isArray(items) ? items.filter(item => {
+    const c = item?.customer != null ? item.customer : item
+    return !!(c && c.id)
+  }) : []
+  if (!list.length) return { saved: 0, failed: 0 }
+
+  const chunkSize = Math.max(1, Math.floor(Number(batchOpts.chunkSize) || CUSTOMER_UPSERT_CHUNK))
+  const signal = batchOpts.signal || null
+  const onChunk = typeof batchOpts.onChunk === 'function' ? batchOpts.onChunk : null
+  const onRowError = typeof batchOpts.onRowError === 'function' ? batchOpts.onRowError : null
+
+  let saved = 0
+  let failed = 0
+  const total = list.length
+  const chunkCount = Math.ceil(total / chunkSize)
+
+  for (let i = 0, chunkIndex = 0; i < total; i += chunkSize, chunkIndex++) {
+    if (signal?.aborted) {
+      const err = new Error('CANCELLED')
+      err.code = 'CANCELLED'
+      throw err
+    }
+    const chunk = list.slice(i, i + chunkSize)
+    try {
+      await saveCustomersToDBBatch(chunk, {
+        chunkSize: chunk.length,
+        signal,
+        skipInvalidate: true,
+        deferInvalidate: true
+      })
+      saved += chunk.length
+    } catch (err) {
+      if (err?.code === 'CANCELLED' || err?.message === 'CANCELLED') throw err
+      for (const item of chunk) {
+        if (signal?.aborted) {
+          const cancelErr = new Error('CANCELLED')
+          cancelErr.code = 'CANCELLED'
+          throw cancelErr
+        }
+        const customer = item?.customer != null ? item.customer : item
+        const options = item?.customer != null ? (item.options || {}) : {}
+        try {
+          await saveCustomerToDB(customer, options)
+          saved++
+        } catch (rowErr) {
+          failed++
+          onRowError?.({ customer, error: rowErr })
+        }
+      }
+    }
+    onChunk?.({ done: Math.min(i + chunk.length, total), total, chunkIndex, chunkCount })
+  }
+
+  if (saved) invalidateProductSalesCountCache()
+  return { saved, failed }
+}
+
+/**
  * Persist only loyalty level columns (avoids full-row upsert + product payload).
  * Used by background customer-level sync so live UI stays responsive.
  */
@@ -4168,6 +4246,96 @@ export async function saveFollowupToDB(followup) {
   }
   bumpLocalWrite()
   return inserted ? inserted.id : null
+}
+
+function buildFollowupInsertRow(followup) {
+  return {
+    customer_id: followup.customerId,
+    date: followup.date,
+    type: followup.type,
+    result: followup.result,
+    next_date: followup.nextDate || '',
+    product_name: followup.productName || '',
+    notes: followup.notes,
+    created_by_phone: followup.createdByPhone || null,
+    assigned_to_phone: followup.assignedToPhone || null,
+    assigned_by_phone: followup.assignedByPhone || null,
+    assigned_at: followup.assignedAt || '',
+    status: followup.status || 'pending',
+    done_at: followup.doneAt || null,
+    done_by_phone: followup.doneByPhone || null,
+    done_note: followup.doneNote || null,
+    was_overdue: !!followup.wasOverdue
+  }
+}
+
+/**
+ * Multi-row followup insert. Returns ids in the same order as `followups`.
+ * @param {object[]} followups
+ * @param {{ chunkSize?: number, signal?: AbortSignal }} [opts]
+ * @returns {Promise<(string|number|null)[]>}
+ */
+export async function saveFollowupsToDBBatch(followups, opts = {}) {
+  const list = Array.isArray(followups) ? followups : []
+  if (!list.length) return []
+
+  const chunkSize = Math.max(1, Math.floor(Number(opts.chunkSize) || CUSTOMER_UPSERT_CHUNK))
+  const signal = opts.signal || null
+  /** @type {(string|number|null)[]} */
+  const ids = new Array(list.length).fill(null)
+
+  for (let i = 0; i < list.length; i += chunkSize) {
+    if (signal?.aborted) {
+      const err = new Error('CANCELLED')
+      err.code = 'CANCELLED'
+      throw err
+    }
+    const slice = list.slice(i, i + chunkSize)
+    const rows = slice.map(buildFollowupInsertRow)
+    let payload = rows
+    let { data: inserted, error } = await supabase.from('followups').insert(payload).select('id')
+
+    if (error) {
+      // Strip status/done columns
+      payload = rows.map(({
+        status: _s, done_at: _da, done_by_phone: _db, done_note: _dn, was_overdue: _wo,
+        ...rest
+      }) => rest)
+      ;({ data: inserted, error } = await supabase.from('followups').insert(payload).select('id'))
+    }
+    if (error) {
+      // Strip assignment columns too
+      payload = payload.map(({
+        assigned_to_phone: _a, assigned_by_phone: _b, assigned_at: _c,
+        ...legacy
+      }) => legacy)
+      ;({ data: inserted, error } = await supabase.from('followups').insert(payload).select('id'))
+    }
+
+    if (error) {
+      // Fall back to single-row inserts for this chunk
+      for (let j = 0; j < slice.length; j++) {
+        if (signal?.aborted) {
+          const cancelErr = new Error('CANCELLED')
+          cancelErr.code = 'CANCELLED'
+          throw cancelErr
+        }
+        try {
+          ids[i + j] = await saveFollowupToDB(slice[j])
+        } catch (rowErr) {
+          throw rowErr
+        }
+      }
+      continue
+    }
+
+    bumpLocalWrite()
+    for (let j = 0; j < (inserted || []).length; j++) {
+      ids[i + j] = inserted[j]?.id ?? null
+    }
+  }
+
+  return ids
 }
 
 export async function updateFollowupInDB(followup) {

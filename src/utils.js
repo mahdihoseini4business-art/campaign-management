@@ -1055,6 +1055,26 @@ export function registerCustomerInMatchIndexes(indexes, customer) {
 }
 
 /**
+ * Overwrite index entries for this customer (after create/update during import).
+ * @param {CustomerMatchIndexes} indexes
+ * @param {object | null | undefined} customer
+ */
+export function upsertCustomerInMatchIndexes(indexes, customer) {
+  if (!indexes || !customer) return
+  const id = String(customer.id || '').trim()
+  if (id) indexes.byId.set(id, customer)
+
+  for (const p of getCustomerPhones(customer)) {
+    const n = normalizePhone(p)
+    if (!n || !/^09\d{9}$/.test(n)) continue
+    indexes.byPhone.set(n, customer)
+  }
+
+  const platformKey = String(customer.platformId || '').trim().toLowerCase()
+  if (platformKey) indexes.byPlatformId.set(platformKey, customer)
+}
+
+/**
  * Match like customer import: id → any phone → platformId (case-insensitive).
  * @param {CustomerMatchIndexes | null | undefined} indexes
  * @param {{ id?: string, phones?: string[], platformId?: string }} query

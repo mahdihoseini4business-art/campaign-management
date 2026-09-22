@@ -176,7 +176,7 @@
 2. هلپر `buildCustomerMatchIndexes` (+ `registerCustomerInMatchIndexes` / `matchCustomerFromIndexes`) در `src/utils.js`
 3. استاندارد پیشرفت: `reportJobRowProgress` / `reportJobPhase` / `JOB_PROGRESS_EVERY_N` در `src/job-progress.js` (بدون paint در حلقهٔ تنگ)
 
-### فاز B — اتصال به جریان‌های کند
+### فاز B — اتصال به جریان‌های کند ✅ پیاده‌سازی‌شده
 
 1. `doImport` + analyze/dry-run: ایندکس + بچ upsert + `generateIdBatch`  
 2. `doSalesImport`: ایندکس + batch id + بچ ذخیره  
