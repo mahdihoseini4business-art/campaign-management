@@ -1,4 +1,4 @@
-import { getData, saveCustomerToDB, saveCustomersToDBBatchSafe, generateIdBatch, getStatuses, getCustomerCodes, saveFollowupsToDBBatch, updateFollowupInDB, getDestinationBanks, getSellableNames, putCustomerInCache, getProductCatalogNames, getCustomerOwnedProductNames, getPlatforms, coerceProductName, runWithDeferredProductSalesCacheInvalidation } from './data.js'
+import { getData, saveCustomerToDB, saveCustomersToDBBatchSafe, generateIdBatch, getStatuses, getCustomerCodes, ensureCustomerCodesInCatalog, syncCustomerCodesFromProfiles, saveFollowupsToDBBatch, updateFollowupInDB, getDestinationBanks, getSellableNames, putCustomerInCache, getProductCatalogNames, getCustomerOwnedProductNames, getPlatforms, coerceProductName, runWithDeferredProductSalesCacheInvalidation } from './data.js'
 import {
   toEnDigits, showToast, showToastWithAction, getCurrentUser, resolveAdvisor, getPlatformLabels, buildPlatformImportMap, getStatusLabels,
   requirePermission, ensureProductPayments, syncProductStatus, getApprovedPaid,
@@ -254,6 +254,18 @@ function resolveCustomerCodeKey(raw) {
   const byLabel = codes.find(c => c.label === v || String(c.label).toLowerCase() === v.toLowerCase())
   if (byLabel) return byLabel.key
   return v
+}
+
+/** Distinct non-empty customerCode cell values from mapped import rows. */
+function collectMappedCustomerCodeValues(rows, mapping) {
+  if (!isFieldMapped(mapping, 'customerCode')) return []
+  const col = mapping.customerCode
+  const out = []
+  for (const row of rows || []) {
+    const v = String(row?.[col] ?? '').trim()
+    if (v) out.push(v)
+  }
+  return out
 }
 
 function renderFieldMappingRows({ fields, headers, mapping, autoMapping = {}, onChangeFn }) {
@@ -1772,12 +1784,20 @@ export async function doImport() {
     cancellable: true
   }, async (job) => runWithDeferredProductSalesCacheInvalidation(async () => {
     const data = getData()
-    let created = 0, updated = 0, skipped = 0, failed = 0, codeLocked = 0
+    let created = 0, updated = 0, skipped = 0, failed = 0, codeLocked = 0, codesAdded = 0
     const users = await getUsersSafe()
     const statusMap = buildStatusImportMap()
     const total = importData.rows.length
     if (canSetCustomerCode() && isFieldMapped(mapping, 'customerCode')) {
       try { await loadGroupsData() } catch (_) { /* optional for advisor-group filters */ }
+      try {
+        const ensured = await ensureCustomerCodesInCatalog(
+          collectMappedCustomerCodeValues(importData.rows, mapping)
+        )
+        codesAdded += ensured.added || 0
+      } catch (err) {
+        console.error('ensureCustomerCodesInCatalog', err)
+      }
     }
 
     const indexes = buildCustomerMatchIndexes(data.customers)
@@ -1955,12 +1975,21 @@ export async function doImport() {
       })
     }
 
-    return { created, updated, skipped, failed, codeLocked, fu }
+    if (canSetCustomerCode()) {
+      try {
+        const synced = await syncCustomerCodesFromProfiles()
+        codesAdded += synced.added || 0
+      } catch (err) {
+        console.error('syncCustomerCodesFromProfiles', err)
+      }
+    }
+
+    return { created, updated, skipped, failed, codeLocked, codesAdded, fu }
   }))
 
   if (!importResult) return
 
-  const { created, updated, skipped, failed, codeLocked, fu } = importResult
+  const { created, updated, skipped, failed, codeLocked, codesAdded, fu } = importResult
   closeImportModal()
   await renderCustomers()
   try { await renderFollowups() } catch (_) {}
@@ -1968,6 +1997,7 @@ export async function doImport() {
   const parts = []
   if (created) parts.push(`${created} مشتری ایجاد`)
   if (updated) parts.push(`${updated} مشتری به‌روزرسانی`)
+  if (codesAdded) parts.push(`${codesAdded} کد به تنظیمات اضافه شد`)
   if (codeLocked) parts.push(`${codeLocked} کد مشتری قفل‌شده (فروش ثبت‌شده)`)
   if (skipped) parts.push(`${skipped} رد شده`)
   if (failed) parts.push(`${failed} خطای مشتری`)
@@ -2592,8 +2622,17 @@ export async function doSalesImport() {
   try {
   await runWithDeferredProductSalesCacheInvalidation(async () => {
   const users = await getUsersSafe()
+  let codesAdded = 0
   if (canSetCustomerCode() && isFieldMapped(mapping, 'customerCode')) {
     try { await loadGroupsData() } catch (_) { /* optional for advisor-group filters */ }
+    try {
+      const ensured = await ensureCustomerCodesInCatalog(
+        collectMappedCustomerCodeValues(salesImportData.rows, mapping)
+      )
+      codesAdded += ensured.added || 0
+    } catch (err) {
+      console.error('ensureCustomerCodesInCatalog', err)
+    }
   }
   const banks = getDestinationBanks()
   const touched = new Set()
@@ -2876,6 +2915,15 @@ export async function doSalesImport() {
     console.error('customer level resync schedule after sales import', err)
   }
 
+  if (canSetCustomerCode()) {
+    try {
+      const synced = await syncCustomerCodesFromProfiles()
+      codesAdded += synced.added || 0
+    } catch (err) {
+      console.error('syncCustomerCodesFromProfiles', err)
+    }
+  }
+
   salesImportData.problemExport = problemRows.length
     ? { headers: salesImportData.headers.slice(), rows: problemRows, reasons: problemReasons }
     : null
@@ -2886,6 +2934,7 @@ export async function doSalesImport() {
   const parts = []
   if (imported) parts.push(`${imported} واریز/محصول ایمپورت شد`)
   if (created) parts.push(`${created} مشتری جدید`)
+  if (codesAdded) parts.push(`${codesAdded} کد به تنظیمات اضافه شد`)
   if (skipped) parts.push(`${skipped} رد/تکراری`)
   if (failed) parts.push(`${failed} خطای ذخیره`)
   if (problemRows.length) parts.push(`${problemRows.length} مشکل‌دار`)

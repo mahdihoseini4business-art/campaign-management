@@ -1387,6 +1387,55 @@ export function buildCustomerCodeEntry({
   return entry
 }
 
+function customerCodeCatalogHasValue(codes, raw) {
+  const v = String(raw || '').trim()
+  if (!v) return true
+  const lower = v.toLowerCase()
+  return codes.some(c =>
+    c.key === v ||
+    String(c.key || '').toLowerCase() === lower ||
+    c.label === v ||
+    String(c.label || '').toLowerCase() === lower
+  )
+}
+
+/**
+ * Register unknown Excel/profile code values into the customer_codes catalog
+ * so filters and settings (incl. advisor/product sale filters) can use them.
+ * New entries: no expiry, no sale filters (editable later in settings).
+ */
+export async function ensureCustomerCodesInCatalog(rawValues = []) {
+  const values = [...new Set((rawValues || []).map(v => String(v || '').trim()).filter(Boolean))]
+  if (!values.length) return { added: 0, keys: [] }
+
+  const codes = [...getCustomerCodes()]
+  const addedKeys = []
+  for (const raw of values) {
+    if (customerCodeCatalogHasValue(codes, raw)) continue
+    const entry = buildCustomerCodeEntry({
+      key: raw,
+      label: raw,
+      order: codes.length,
+      expiresAt: null,
+      filterAdvisors: false,
+      filterProducts: false
+    })
+    codes.push(entry)
+    addedKeys.push(entry.key)
+  }
+  if (!addedKeys.length) return { added: 0, keys: [] }
+  await saveCustomerCodes(codes)
+  return { added: addedKeys.length, keys: addedKeys }
+}
+
+/** Add any customer.customerCode values missing from the settings catalog. */
+export async function syncCustomerCodesFromProfiles() {
+  const raw = (data.customers || [])
+    .map(c => String(c?.customerCode || '').trim())
+    .filter(Boolean)
+  return ensureCustomerCodesInCatalog(raw)
+}
+
 async function clearCustomerCodeKeysFromCustomers(keys) {
   const unique = [...new Set((keys || []).map(k => String(k || '').trim()).filter(Boolean))]
   if (!unique.length) return 0
