@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>گزارش عملکرد کمپین — ارائه به مدیرعامل | snapshot ۱۴۰۵/۰۷/۰۱</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #1a2332;
+      --muted: #5a6577;
+      --line: #d8dee8;
+      --surface: #ffffff;
+      --bg: #eef2f6;
+      --accent: #0b6e4f;
+      --accent-soft: #e6f4ef;
+      --warn: #b45309;
+      --warn-soft: #fff7ed;
+      --danger: #b42318;
+      --danger-soft: #fef3f2;
+      --info: #175cd3;
+      --good: #067647;
+      --shadow: 0 1px 2px rgba(26, 35, 50, 0.06), 0 8px 24px rgba(26, 35, 50, 0.06);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Vazirmatn", Tahoma, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1100px 480px at 100% -8%, #d5e9df 0%, transparent 55%),
+        radial-gradient(900px 420px at -8% 15%, #d9e4f4 0%, transparent 50%),
+        var(--bg);
+      line-height: 1.75;
+      font-size: 15px;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 32px 20px 64px; }
+
+    .cover {
+      background: linear-gradient(145deg, #0f2d24 0%, #1a4d3c 48%, #0b6e4f 100%);
+      color: #f5faf8;
+      border-radius: 18px;
+      padding: 36px 32px;
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .cover::after {
+      content: "";
+      position: absolute;
+      inset: auto -50px -70px auto;
+      width: 240px; height: 240px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.07);
+    }
+    .cover .eyebrow { margin: 0 0 10px; font-size: 12px; opacity: 0.85; font-weight: 500; }
+    .cover h1 {
+      margin: 0 0 12px;
+      font-size: clamp(1.5rem, 3vw, 2rem);
+      font-weight: 800;
+      line-height: 1.35;
+    }
+    .cover .lede { margin: 0; max-width: 52ch; opacity: 0.93; }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+    .chip {
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+
+    nav.toc {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 20px;
+      margin-bottom: 18px;
+      box-shadow: var(--shadow);
+    }
+    nav.toc h2 { margin: 0 0 10px; font-size: 0.95rem; }
+    nav.toc ol { margin: 0; padding-inline-start: 1.3rem; columns: 2; gap: 24px; }
+    nav.toc a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+    nav.toc a:hover { text-decoration: underline; }
+
+    section {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 24px 22px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    section h2 {
+      margin: 0 0 6px;
+      font-size: 1.18rem;
+      border-bottom: 2px solid var(--accent-soft);
+      padding-bottom: 10px;
+    }
+    section h3 { margin: 22px 0 8px; font-size: 1.02rem; }
+    p { margin: 0.55rem 0; }
+    .muted { color: var(--muted); }
+
+    .verdict {
+      background: var(--accent-soft);
+      border: 1px solid #b7ddd0;
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin: 14px 0 18px;
+      font-weight: 600;
+    }
+    .alert {
+      background: var(--danger-soft);
+      border: 1px solid #fecdca;
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin: 12px 0 16px;
+      font-weight: 600;
+      color: #7a271a;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+    .kpi {
+      background: linear-gradient(180deg, #fbfcfe, #f4f7fb);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 14px 12px;
+    }
+    .kpi .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .kpi .value { font-size: 1.22rem; font-weight: 800; line-height: 1.3; }
+    .kpi .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .kpi.good { border-color: #abefc6; background: linear-gradient(180deg, #f6fef9, #ecfdf3); }
+    .kpi.warn { border-color: #f9dbaf; background: linear-gradient(180deg, #fffaf5, var(--warn-soft)); }
+    .kpi.danger { border-color: #fecdca; background: linear-gradient(180deg, #fffbfa, var(--danger-soft)); }
+
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 6px; font-size: 0.92rem; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 8px;
+      text-align: right;
+      vertical-align: top;
+    }
+    th { background: #f5f7fb; font-weight: 700; color: #344054; font-size: 0.84rem; }
+    tr:last-child td { border-bottom: none; }
+    .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+    .tag.good { background: #dcfae6; color: var(--good); }
+    .tag.warn { background: #feefc7; color: var(--warn); }
+    .tag.danger { background: #fee4e2; color: var(--danger); }
+    .tag.info { background: #dbeafe; color: var(--info); }
+
+    .bar {
+      height: 8px;
+      background: #e8edf5;
+      border-radius: 99px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .bar > span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, #0b6e4f, #34b27b);
+      border-radius: inherit;
+    }
+    .bar.warn > span { background: linear-gradient(90deg, #b45309, #f79009); }
+    .bar.danger > span { background: linear-gradient(90deg, #b42318, #f04438); }
+
+    ul.actions { margin: 8px 0 0; padding-inline-start: 1.2rem; }
+    ul.actions li { margin: 6px 0; }
+
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .score {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+    }
+    .score strong { display: block; font-size: 1.35rem; margin-top: 4px; color: var(--accent); }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(15, 1fr);
+      gap: 3px;
+      align-items: end;
+      height: 120px;
+      margin: 16px 0 8px;
+      padding: 8px 4px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .timeline .col {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      height: 100%;
+      min-width: 0;
+    }
+    .timeline .col i {
+      display: block;
+      width: 100%;
+      border-radius: 3px 3px 0 0;
+      background: linear-gradient(180deg, #34b27b, #0b6e4f);
+      min-height: 2px;
+    }
+    .timeline .col.peak i { background: linear-gradient(180deg, #f79009, #b45309); }
+    .timeline .col.low i { background: #98a2b3; }
+    .footnote { font-size: 12px; color: var(--muted); margin-top: 10px; }
+    footer.report-foot {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 8px;
+      padding: 8px;
+    }
+
+    @media (max-width: 720px) {
+      .wrap { padding: 16px 12px 40px; }
+      .cover { padding: 24px 18px; }
+      nav.toc ol { columns: 1; }
+      section { padding: 18px 14px; }
+      .timeline { grid-template-columns: repeat(10, 1fr); height: 100px; }
+    }
+    @media print {
+      body { background: #fff; }
+      .wrap { max-width: none; padding: 0; }
+      .cover, section, nav.toc { box-shadow: none; break-inside: avoid; }
+      nav.toc { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="cover">
+      <p class="eyebrow">گزارش مدیریتی · داشبورد کمپین · محرمانه</p>
+      <h1>گزارش عملکرد کمپین<br />ارائه به مدیرعامل</h1>
+      <p class="lede">
+        فروش و تحقق تارگت‌ها در وضعیت قوی است؛ اما سلامت قیف پیگیری در وضعیت بحرانی قرار دارد و ۹۳٪ پیگیری‌های تنظیم‌شده معوقه‌اند.
+      </p>
+      <div class="meta-row">
+        <span class="chip">صادرات: ۱۴۰۵/۰۷/۰۱ — ۰۹:۵۸</span>
+        <span class="chip">واحد: ریال (IRR)</span>
+        <span class="chip">روند: ۱۴۰۵/۰۶/۰۳ تا ۱۴۰۵/۰۷/۰۱</span>
+        <span class="chip">دامنه: همه کارشناسان (۲۰ نفر)</span>
+        <span class="chip">منبع: dashboard-export-20260923</span>
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="فهرست">
+      <h2>فهرست مطالب</h2>
+      <ol>
+        <li><a href="#exec">خلاصه اجرایی</a></li>
+        <li><a href="#finance">تصویر مالی</a></li>
+        <li><a href="#targets">تارگت‌های کمپین</a></li>
+        <li><a href="#mix">محصول و کانال</a></li>
+        <li><a href="#funnel">قیف مشتری</a></li>
+        <li><a href="#advisors">عملکرد کارشناسان</a></li>
+        <li><a href="#lrfm">LRFM و سبد</a></li>
+        <li><a href="#risks">ریسک‌ها</a></li>
+        <li><a href="#actions">اقدامات پیشنهادی</a></li>
+        <li><a href="#score">امتیاز کلی</a></li>
+      </ol>
+    </nav>
+
+    <!-- 1 -->
+    <section id="exec">
+      <h2>۱) خلاصه اجرایی</h2>
+      <p class="verdict">
+        موتور فروش روشن است (۲۴۵.۴ میلیارد فروش تأییدشده، حاشیه ۶۶.۳٪، تارگت آنلاین ۹۰٪ و آخر فصل ۸۵٪). گلوگاه اصلی عملیات پیگیری است: معوقه از ۱۹۸ به ۲٬۰۴۹ رسیده و ۷۱٪ مشتریان بدون پیگیری مانده‌اند.
+      </p>
+      <p class="alert">
+        هشدار فوری: از ۲٬۲۱۰ پیگیری تنظیم‌شده، ۲٬۰۴۹ مورد (۹۳٪) معوقه است. همزمان کمپین آخر فصل تا پایان امروز (۱۴۰۵/۰۷/۰۱) حدود ۷.۶ میلیارد فاصله دارد و فروش ثبت‌شده امروز تا این لحظه فقط ۰.۴ میلیارد است.
+      </p>
+
+      <div class="kpi-grid">
+        <div class="kpi good">
+          <div class="label">فروش تأییدشده</div>
+          <div class="value">۲۴۵.۴ میلیارد</div>
+          <div class="hint">۲٬۲۸۳ فروش تکمیل‌شده</div>
+        </div>
+        <div class="kpi good">
+          <div class="label">سود ناخالص</div>
+          <div class="value">۱۶۲.۸ میلیارد</div>
+          <div class="hint">حاشیه ۶۶.۳٪</div>
+        </div>
+        <div class="kpi good">
+          <div class="label">روند ۳۰روزه</div>
+          <div class="value">+۵۰.۶٪</div>
+          <div class="hint">نیمه‌دوم قوی‌تر از نیمه‌اول</div>
+        </div>
+        <div class="kpi good">
+          <div class="label">تارگت آنلاین چینی</div>
+          <div class="value">۹۰.۱٪</div>
+          <div class="hint">۱٬۳۰۷ از ۱٬۴۵۰ — ۱۴۳ مانده</div>
+        </div>
+        <div class="kpi warn">
+          <div class="label">تارگت حضوری</div>
+          <div class="value">۷۲٪</div>
+          <div class="hint">۱۸۰ از ۲۵۰ — ۷۰ مانده</div>
+        </div>
+        <div class="kpi warn">
+          <div class="label">کمپین آخر فصل</div>
+          <div class="value">۸۴.۹٪</div>
+          <div class="hint">≈۷.۶ میلیارد تا ۵۰ میلیارد</div>
+        </div>
+        <div class="kpi danger">
+          <div class="label">پیگیری معوقه</div>
+          <div class="value">۲٬۰۴۹</div>
+          <div class="hint">۹۳٪ از پیگیری‌های تنظیم‌شده</div>
+        </div>
+        <div class="kpi danger">
+          <div class="label">بدون پیگیری</div>
+          <div class="value">۷۱٪</div>
+          <div class="hint">۴٬۰۱۵ از ۵٬۶۳۴ مشتری</div>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>موضوع</th><th>وضعیت</th><th>عدد کلیدی</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>فروش و سودآوری</td>
+            <td><span class="tag good">قوی</span></td>
+            <td class="num">۲۴۵.۴ میلیارد فروش · ۱۶۲.۸ میلیارد سود</td>
+          </tr>
+          <tr>
+            <td>شتاب فروش ۳۰روزه</td>
+            <td><span class="tag good">صعودی</span></td>
+            <td>مجموع بازه ۱۳۷.۴ میلیارد · اوج ۱۱.۰ میلیارد در ۳۱ شهریور</td>
+          </tr>
+          <tr>
+            <td>تحقق تارگت‌ها</td>
+            <td><span class="tag warn">نزدیک / فشرده</span></td>
+            <td>آنلاین ۹۰٪ · حضوری ۷۲٪ · آخر فصل ۸۵٪</td>
+          </tr>
+          <tr>
+            <td>سلامت پیگیری</td>
+            <td><span class="tag danger">بحرانی</span></td>
+            <td class="num">معوقه ۲٬۰۴۹ · بدون پیگیری ۴٬۰۱۵</td>
+          </tr>
+          <tr>
+            <td>وصول نقد</td>
+            <td><span class="tag warn">تحت فشار</span></td>
+            <td class="num">مانده ۱۰۶.۳ میلیارد · نسبت نقد ۳۳.۵٪</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 2 -->
+    <section id="finance">
+      <h2>۲) تصویر مالی</h2>
+
+      <h3>۲.۱ درآمد، سود و کیفیت فروش</h3>
+      <table>
+        <thead><tr><th>شاخص</th><th>مقدار</th><th>تفسیر</th></tr></thead>
+        <tbody>
+          <tr><td>فروش تأییدشده (approved)</td><td class="num">۲۴۵.۴ میلیارد</td><td>پایگاه درآمدی قوی</td></tr>
+          <tr><td>سود ناخالص</td><td class="num">۱۶۲.۸ میلیارد</td><td>حاشیه ۶۶.۳٪ — سالم</td></tr>
+          <tr><td>میانگین هر فروش</td><td class="num">≈ ۱۰۷ میلیون</td><td>بالاتر از بازه‌های قبلی گزارش‌شده</td></tr>
+          <tr><td>تعداد فروش تکمیل‌شده</td><td class="num">۲٬۲۸۳</td><td>حجم تبدیل قابل‌توجه</td></tr>
+          <tr><td>در انتظار حسابداری</td><td class="num">۵.۱ میلیارد</td><td>نیاز به تسویه عملیاتی</td></tr>
+          <tr><td>مرجوعی تکمیل‌شده</td><td class="num">۲۶۰ میلیون</td><td>۰.۱۱٪ از فروش — ریسک پایین</td></tr>
+        </tbody>
+      </table>
+
+      <h3>۲.۲ نقد، بیعانه و مانده وصول</h3>
+      <table>
+        <thead><tr><th>شاخص</th><th>مقدار</th><th>تفسیر</th></tr></thead>
+        <tbody>
+          <tr><td>بیعانه / واریزی (deposits)</td><td class="num">۵۳.۵ میلیارد</td><td>نقد نسبی جمع‌شده</td></tr>
+          <tr><td>مانده (balances)</td><td class="num">۱۰۶.۳ میلیارد</td><td>تعهد بزرگ وصول‌نشده</td></tr>
+          <tr><td>نسبت نقد به کل</td><td class="num">۳۳.۵٪</td><td>حدود دو‌سوم ارزش هنوز وصول نشده</td></tr>
+          <tr><td>وضعیت پایپ‌لاین فروش</td><td class="num">۷۸٪ تکمیل / ۲۲٪ بیعانه</td><td>≈ ۵۳.۸ میلیارد در وضعیت بیعانه</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">رشد فروش بدون برنامه aging وصول، کیفیت سود را در عمل تضعیف می‌کند. مانده ۱۰۶.۳ میلیارد باید پروژه جداگانه مدیریتی داشته باشد.</p>
+
+      <h3>۲.۳ روند فروش ۳۰ روز اخیر</h3>
+      <div class="kpi-grid">
+        <div class="kpi"><div class="label">مجموع بازه</div><div class="value">۱۳۷.۴ میلیارد</div></div>
+        <div class="kpi"><div class="label">میانگین روزانه</div><div class="value">۴.۶ میلیارد</div></div>
+        <div class="kpi good"><div class="label">نیمه‌دوم vs نیمه‌اول</div><div class="value">+۵۰.۶٪</div></div>
+        <div class="kpi good"><div class="label">۷ روز اخیر vs قبل</div><div class="value">+۲۴.۲٪</div></div>
+        <div class="kpi"><div class="label">اوج روزانه</div><div class="value">۱۱.۰ میلیارد</div><div class="hint">۱۴۰۵/۰۶/۳۱</div></div>
+        <div class="kpi warn"><div class="label">امروز تا این لحظه</div><div class="value">۰.۴ میلیارد</div><div class="hint">۱۴۰۵/۰۷/۰۱ — روز ناقص</div></div>
+      </div>
+
+      <!-- spark bars: values scaled to max 11.0B -->
+      <div class="timeline" aria-hidden="true" title="روند فروش روزانه">
+        <div class="col"><i style="height:39%"></i></div>
+        <div class="col"><i style="height:45%"></i></div>
+        <div class="col"><i style="height:41%"></i></div>
+        <div class="col low"><i style="height:15%"></i></div>
+        <div class="col"><i style="height:41%"></i></div>
+        <div class="col low"><i style="height:16%"></i></div>
+        <div class="col"><i style="height:23%"></i></div>
+        <div class="col"><i style="height:30%"></i></div>
+        <div class="col"><i style="height:34%"></i></div>
+        <div class="col"><i style="height:31%"></i></div>
+        <div class="col"><i style="height:36%"></i></div>
+        <div class="col"><i style="height:48%"></i></div>
+        <div class="col"><i style="height:31%"></i></div>
+        <div class="col"><i style="height:36%"></i></div>
+        <div class="col"><i style="height:34%"></i></div>
+        <div class="col"><i style="height:55%"></i></div>
+        <div class="col"><i style="height:45%"></i></div>
+        <div class="col low"><i style="height:18%"></i></div>
+        <div class="col"><i style="height:64%"></i></div>
+        <div class="col"><i style="height:37%"></i></div>
+        <div class="col"><i style="height:29%"></i></div>
+        <div class="col"><i style="height:57%"></i></div>
+        <div class="col"><i style="height:61%"></i></div>
+        <div class="col"><i style="height:68%"></i></div>
+        <div class="col"><i style="height:33%"></i></div>
+        <div class="col"><i style="height:44%"></i></div>
+        <div class="col"><i style="height:65%"></i></div>
+        <div class="col"><i style="height:72%"></i></div>
+        <div class="col peak"><i style="height:100%"></i></div>
+        <div class="col low"><i style="height:4%"></i></div>
+      </div>
+      <p class="muted">ستون نارنجی = اوج ۳۱ شهریور (۱۱ میلیارد). ستون خاکستری آخر = ۱ مهر تا لحظه صادرات (روز کاری هنوز کامل نشده).</p>
+    </section>
+
+    <!-- 3 -->
+    <section id="targets">
+      <h2>۳) وضعیت تارگت‌های کمپین</h2>
+      <table>
+        <thead>
+          <tr><th>کمپین</th><th>بازه</th><th>پیشرفت</th><th>فاصله</th><th>ارزیابی</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>سوپر کمپین آنلاین چینی ۱۴۰۵</td>
+            <td class="num">۰۵/۰۱ تا ۰۶/۳۱</td>
+            <td>
+              ۹۰.۱٪ (۱٬۳۰۷ / ۱٬۴۵۰)
+              <div class="bar"><span style="width:90.1%"></span></div>
+            </td>
+            <td class="num">۱۴۳ فروش</td>
+            <td><span class="tag good">نزدیک به هدف</span></td>
+          </tr>
+          <tr>
+            <td>سوپر کمپین حضوری چینی ۱۴۰۵</td>
+            <td class="num">۰۵/۰۱ تا ۰۶/۳۱</td>
+            <td>
+              ۷۲٪ (۱۸۰ / ۲۵۰)
+              <div class="bar warn"><span style="width:72%"></span></div>
+            </td>
+            <td class="num">۷۰ فروش</td>
+            <td><span class="tag warn">عقب‌تر · پایان بازه گذشته</span></td>
+          </tr>
+          <tr>
+            <td>کمپین آخر فصل</td>
+            <td class="num">۰۶/۲۶ تا ۰۷/۰۱</td>
+            <td>
+              ۸۴.۹٪ (۴۲.۴ / ۵۰ میلیارد)
+              <div class="bar warn"><span style="width:84.9%"></span></div>
+            </td>
+            <td class="num">≈ ۷.۶ میلیارد</td>
+            <td><span class="tag danger">مهلت امروز</span></td>
+          </tr>
+          <tr>
+            <td>تکمیل اطلاعات مشتریان</td>
+            <td class="num">۰۷/۰۴ تا ۱۲/۲۹</td>
+            <td>
+              ۰٪ (۰ / ۲۵٬۰۰۰)
+              <div class="bar danger"><span style="width:1%"></span></div>
+            </td>
+            <td class="num">۲۵٬۰۰۰</td>
+            <td><span class="tag info">هنوز شروع نشده</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <p><strong>اولویت امروز:</strong> بستن فاصله ۷.۶ میلیاردی آخر فصل (تکمیل بیعانه + بستن پرزنت‌های آماده). سپس برنامه جبرانی برای ۷۰ فروش حضوریِ جا‌مانده از تارگت سوپر کمپین.</p>
+    </section>
+
+    <!-- 4 -->
+    <section id="mix">
+      <h2>۴) ترکیب محصول و کانال</h2>
+
+      <h3>۴.۱ محصول (بر اساس مبلغ)</h3>
+      <table>
+        <thead><tr><th>محصول</th><th>مبلغ</th><th>سهم تقریبی</th></tr></thead>
+        <tbody>
+          <tr><td>دوره آنلاین چینی</td><td class="num">۱۴۴.۱ میلیارد</td><td>≈ ۵۹٪</td></tr>
+          <tr><td>دوره حضوری چینی</td><td class="num">۱۸.۳ میلیارد</td><td>≈ ۷٪</td></tr>
+          <tr><td>دیاگ کارمن i700</td><td class="num">۱۶.۷ میلیارد</td><td>≈ ۷٪</td></tr>
+          <tr><td>باندل آنلاین داخلی + آنلاین چینی</td><td class="num">۱۴.۴ میلیارد</td><td>≈ ۶٪</td></tr>
+          <tr><td>دیاگ کارمن NewLite</td><td class="num">۹.۱ میلیارد</td><td>≈ ۴٪</td></tr>
+          <tr><td>سایر</td><td class="num">۴۲.۸ میلیارد</td><td>≈ ۱۷٪</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">ریسک تمرکز: نزدیک به ۶۰٪ ارزش روی یک SKU (آنلاین چینی). رشد خوب است، اما حساسیت کمپین به افت همان محصول بالاست.</p>
+
+      <h3>۴.۲ کانال جذب</h3>
+      <table>
+        <thead><tr><th>کانال</th><th>تعداد</th><th>سهم</th></tr></thead>
+        <tbody>
+          <tr><td>پیج سپهر (اینستاگرام)</td><td class="num">۳٬۹۲۵</td><td>۷۰٪</td></tr>
+          <tr><td>سایت</td><td class="num">۹۶۲</td><td>۱۷٪</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">مجموع دو کانال اصلی ۸۷٪؛ حدود ۱۳٪ ورودی خارج از این برچسب‌هاست. اینستاگرام موتور غالب جذب است.</p>
+
+      <h3>۴.۳ سرعت پرزنت → خرید</h3>
+      <table>
+        <thead><tr><th>کانال</th><th>میانگین روز</th><th>نمونه</th></tr></thead>
+        <tbody>
+          <tr><td>حضوری</td><td class="num">۲.۲</td><td class="num">۱۲۳</td></tr>
+          <tr><td>آنلاین</td><td class="num">۱.۹</td><td class="num">۳۵۰</td></tr>
+          <tr><td>سایر</td><td class="num">۰.۸</td><td class="num">۱۲</td></tr>
+          <tr><td><strong>کل</strong></td><td class="num"><strong>۱.۹</strong></td><td class="num">۴۸۵</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">سرعت بستن بعد از پرزنت عالی است. با این حال از ۲٬۲۶۹ فروش قابل‌ردیابی، فقط ۲۱٪ پرزنت ثبت‌شده دارند (۱٬۷۸۴ مورد بدون پرزنت از میانگین حذف شده‌اند).</p>
+    </section>
+
+    <!-- 5 -->
+    <section id="funnel">
+      <h2>۵) قیف مشتری و کیفیت پایگاه</h2>
+
+      <h3>۵.۱ وضعیت مشتریان (۵٬۶۳۴ نفر)</h3>
+      <table>
+        <thead><tr><th>وضعیت</th><th>تعداد</th><th>سهم</th></tr></thead>
+        <tbody>
+          <tr><td>جدید</td><td class="num">۵٬۲۱۲</td><td>۹۳٪</td></tr>
+          <tr><td>خرید کرد</td><td class="num">۲۲۸</td><td>۴٪</td></tr>
+          <tr><td>در حال پیگیری</td><td class="num">۵۹</td><td>۱٪</td></tr>
+          <tr><td>پرزنت شد</td><td class="num">۳۵</td><td>۱٪</td></tr>
+          <tr><td>تماس اولیه</td><td class="num">۳۴</td><td>۱٪</td></tr>
+          <tr><td>پیگیری / علاقه‌مند</td><td class="num">۴۳</td><td>≈ ۱٪</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">۹۳٪ پایگاه در وضعیت «جدید» مانده — نشانه بافر عظیم تبدیل‌نشده و ضعف به‌روزرسانی وضعیت در CRM همزمان با فروش‌های ثبت‌شده.</p>
+
+      <h3>۵.۲ پوشش عملیاتی</h3>
+      <table>
+        <thead><tr><th>شاخص</th><th>مقدار</th><th>هشدار</th></tr></thead>
+        <tbody>
+          <tr><td>دارای شماره تماس</td><td class="num">۳٬۰۶۴ (۵۴٪)</td><td><span class="tag danger">۴۶٪ بدون تلفن</span></td></tr>
+          <tr><td>بدون پیگیری</td><td class="num">۴٬۰۱۵ (۷۱٪)</td><td><span class="tag danger">نشتی اصلی</span></td></tr>
+          <tr><td>پیگیری تنظیم‌شده</td><td class="num">۲٬۲۱۰</td><td>—</td></tr>
+          <tr><td>پیگیری معوقه</td><td class="num">۲٬۰۴۹</td><td><span class="tag danger">۹۳٪ از تنظیم‌شده‌ها</span></td></tr>
+          <tr><td>پیگیری نزدیک / پیش‌رو</td><td class="num">۱۶۱</td><td>صف کوتاه‌مدت کوچک</td></tr>
+          <tr><td>پیگیری انجام‌شده (تجمعی)</td><td class="num">۶٬۲۱۳</td><td>حجم کار بالا، backlog بدتر شده</td></tr>
+          <tr><td>لید / مشتری فعال</td><td class="num">۲٬۵۷۰ / ۱٬۰۱۲</td><td>—</td></tr>
+        </tbody>
+      </table>
+
+      <h3>۵.۳ روند معوقه ۳۰روزه</h3>
+      <div class="kpi-grid">
+        <div class="kpi danger"><div class="label">شروع بازه</div><div class="value">۱۹۸</div></div>
+        <div class="kpi danger"><div class="label">پایان بازه</div><div class="value">۲٬۰۴۹</div></div>
+        <div class="kpi danger"><div class="label">رشد مطلق</div><div class="value">+۱٬۸۵۱</div><div class="hint">≈ ۱۰× در ۳۰ روز</div></div>
+        <div class="kpi warn"><div class="label">میانگین نیمه‌دوم</div><div class="value">۱٬۳۹۹</div><div class="hint">≈ ۳.۴× نیمه‌اول</div></div>
+      </div>
+
+      <h3>۵.۴ تبدیل پیگیری به فروش</h3>
+      <p>از مشتریان در نمای تبدیل پیگیری: <strong>۲۹٪ دارای فروش</strong> / ۷۱٪ بدون فروش (مبلغ مرتبط ≈ ۱۴۲.۴ میلیارد). نرخ تبدیل نسبتاً قابل دفاع است، اما مقیاس معوقه آن را خنثی می‌کند.</p>
+      <p class="muted">از ۲٬۰۴۹ معوقه: ۶۷۵ مورد محصول‌دار (ارزش بالاتر برای نجات) و ۱٬۳۷۴ بدون محصول.</p>
+    </section>
+
+    <!-- 6 -->
+    <section id="advisors">
+      <h2>۶) عملکرد کارشناسان</h2>
+
+      <h3>۶.۱ فروش خالص (رتبه‌بندی)</h3>
+      <table>
+        <thead><tr><th>رتبه</th><th>کارشناس</th><th>فروش خالص</th><th>معوقه باز</th></tr></thead>
+        <tbody>
+          <tr><td>۱</td><td>ملیکا وکیلی</td><td class="num">۵۱.۰ میلیارد</td><td class="num">۶۱۶</td></tr>
+          <tr><td>۲</td><td>محمد کریمی</td><td class="num">۲۹.۸ میلیارد</td><td class="num">۱</td></tr>
+          <tr><td>۳</td><td>مرضیه احمدی</td><td class="num">۲۵.۸ میلیارد</td><td class="num">۳۹۰</td></tr>
+          <tr><td>۴</td><td>احسان محمدی</td><td class="num">۲۳.۲ میلیارد</td><td class="num">۲۰۸</td></tr>
+          <tr><td>۵</td><td>ریحانه هارونی</td><td class="num">۲۲.۵ میلیارد</td><td class="num">۲۹۱</td></tr>
+          <tr><td>۶</td><td>مهسا بابایی</td><td class="num">۲۱.۱ میلیارد</td><td class="num">۲۸۹</td></tr>
+          <tr><td>۷</td><td>ملیکا شاهی</td><td class="num">۱۷.۸ میلیارد</td><td class="num">۱۸۸</td></tr>
+          <tr><td>۸</td><td>گلناز عنایتی</td><td class="num">۱۲.۶ میلیارد</td><td class="num">—</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">تمرکز ریسک نیروی فروش: ۳ نفر اول ≈ ۴۹٪ · ۵ نفر اول ≈ ۷۰٪ · نفر اول ≈ ۲۴٪. پرفروش‌ترین‌ها همزمان بیشترین backlog معوقه را دارند (به‌جز محمد کریمی).</p>
+
+      <h3>۶.۲ میانگین ارزش سفارش (AOV متحرک)</h3>
+      <p>میانگین کل از ≈ ۱۰۰ به ≈ ۱۳۶ میلیون (<strong>+۳۴.۹٪</strong>) — سیگنال مثبت قیمت/سبد.</p>
+      <table>
+        <thead><tr><th>کارشناس</th><th>روند AOV</th></tr></thead>
+        <tbody>
+          <tr><td>مهسا بابایی</td><td class="num">۸۱ → ۱۵۵ میلیون (+۹۲٪)</td></tr>
+          <tr><td>مرضیه احمدی</td><td class="num">۸۸ → ۱۶۵ میلیون (+۸۷٪)</td></tr>
+          <tr><td>ملیکا شاهی</td><td class="num">۸۱ → ۱۴۹ میلیون (+۸۳٪)</td></tr>
+          <tr><td>محمد کریمی</td><td class="num">۶۴ → ۸۸ میلیون (+۳۸٪)</td></tr>
+          <tr><td>ملیکا وکیلی</td><td class="num">۱۱۱ → ۱۵۰ میلیون (+۳۶٪)</td></tr>
+          <tr><td>گلناز عنایتی</td><td class="num">۱۵۹ → ۲۰۷ میلیون (+۳۰٪)</td></tr>
+        </tbody>
+      </table>
+
+      <h3>۶.۳ انتقال مشتری بین کارشناسان</h3>
+      <table>
+        <thead><tr><th>شاخص</th><th>مقدار</th></tr></thead>
+        <tbody>
+          <tr><td>تعداد انتقال</td><td class="num">۱٬۳۸۳</td></tr>
+          <tr><td>میانگین ماندگاری قبل از انتقال</td><td class="num">۴ روز</td></tr>
+          <tr><td>تبدیل ۳۰روزه پس از انتقال</td><td class="num">۲۶٪ (۳۵۴ از ۱٬۳۸۳)</td></tr>
+        </tbody>
+      </table>
+      <p>بیشترین جذب خالص: مهسا بابایی (+۲۵۸)، ریحانه هارونی (+۲۰۵)، مرضیه احمدی (+۱۸۰)، ملیکا شاهی (+۱۵۰)، احسان محمدی (+۱۳۶).</p>
+      <p>خروج خالص قابل توجه: مهدی حسینی (−۶۲)، مبینا سعیدی (−۵۱).</p>
+    </section>
+
+    <!-- 7 -->
+    <section id="lrfm">
+      <h2>۷) ارزش طول عمر و سبد خرید</h2>
+      <div class="kpi-grid">
+        <div class="kpi"><div class="label">خریداران (LRFM)</div><div class="value">۲٬۹۹۶</div></div>
+        <div class="kpi"><div class="label">L — طول عمر</div><div class="value">۱۷۶ روز</div></div>
+        <div class="kpi"><div class="label">R — آخرین خرید</div><div class="value">۱۴۰۵/۰۷/۰۱</div></div>
+        <div class="kpi"><div class="label">F — تکرار</div><div class="value">۷</div></div>
+        <div class="kpi"><div class="label">M — میانگین پولی</div><div class="value">≈ ۱۴۴ م</div></div>
+        <div class="kpi"><div class="label">آیتم / خریدار</div><div class="value">۱.۲۲</div></div>
+        <div class="kpi good"><div class="label">نرخ چندخریدی</div><div class="value">۱۷٪</div><div class="hint">۳۲۰ از ۱٬۸۶۶ خریدار سبد</div></div>
+      </div>
+      <p class="muted">تکرار خرید (F=۷) پایگاه وفادار را نشان می‌دهد. اندازه سبد هنوز کوچک است؛ فرصت upsell دیاگ و باندل‌ها برای بالا بردن آیتم به ازای خریدار وجود دارد.</p>
+    </section>
+
+    <!-- 8 -->
+    <section id="risks">
+      <h2>۸) ریسک‌های کلیدی</h2>
+      <table>
+        <thead><tr><th>#</th><th>ریسک</th><th>شدت</th><th>شرح</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>۱</td>
+            <td>فروپاشی صف پیگیری</td>
+            <td><span class="tag danger">بحرانی</span></td>
+            <td>۹۳٪ پیگیری‌های تنظیم‌شده معوقه‌اند؛ معوقه باز ≈ ۱۰ برابر ابتدای بازه شده است.</td>
+          </tr>
+          <tr>
+            <td>۲</td>
+            <td>نشتی ۷۱٪ بدون پیگیری</td>
+            <td><span class="tag danger">بحرانی</span></td>
+            <td>۴٬۰۱۵ مشتری خارج از صف؛ رشد فروش فعلی روی بخش کوچکی از قیف سوار است.</td>
+          </tr>
+          <tr>
+            <td>۳</td>
+            <td>پوشش تلفن ۵۴٪</td>
+            <td><span class="tag danger">بالا</span></td>
+            <td>نزدیک به نیمی از پایگاه قابل تماس مستقیم نیست؛ کیفیت دیتای ورودی ضعیف است.</td>
+          </tr>
+          <tr>
+            <td>۴</td>
+            <td>فاصله آخر فصل با مهلت امروز</td>
+            <td><span class="tag danger">فوری</span></td>
+            <td>≈۷.۶ میلیارد مانده؛ فروش امروز تا لحظه صادرات فقط ۰.۴ میلیارد.</td>
+          </tr>
+          <tr>
+            <td>۵</td>
+            <td>تمرکز محصول و نیروی فروش</td>
+            <td><span class="tag warn">بالا</span></td>
+            <td>آنلاین چینی ≈۵۹٪ میکس؛ یک کارشناس ≈۲۴٪ فروش و همزمان ۶۱۶ معوقه.</td>
+          </tr>
+          <tr>
+            <td>۶</td>
+            <td>مانده وصول ۱۰۶.۳ میلیارد</td>
+            <td><span class="tag warn">بالا</span></td>
+            <td>نسبت نقد ۳۳.۵٪؛ ریسک تبدیل فروش کاغذی به فشار نقدینگی.</td>
+          </tr>
+          <tr>
+            <td>۷</td>
+            <td>عدم‌همخوانی وضعیت CRM با فروش</td>
+            <td><span class="tag warn">متوسط</span></td>
+            <td>۲٬۲۸۳ فروش تکمیل vs فقط ۲۲۸ وضعیت «خرید کرد» — کیفیت داده وضعیت مشتری مشکوک است.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 9 -->
+    <section id="actions">
+      <h2>۹) اقدامات پیشنهادی</h2>
+
+      <h3>فوری — امروز (مهلت آخر فصل)</h3>
+      <ul class="actions">
+        <li><strong>اتاق جنگ آخر فصل:</strong> لیست بیعانه‌های نزدیک به تکمیل + پرزنت‌های آماده‌خرید را برای بستن فاصله ۷.۶ میلیارد اولویت‌بندی کنید.</li>
+        <li><strong>سهمیه ساعتی بستن:</strong> هدف عملیاتی حداقل چند میلیارد تا پایان روز؛ پایش ساعتی فروش امروز در برابر ۰.۴ میلیارد فعلی.</li>
+        <li><strong>نجات معوقه‌های محصول‌دار:</strong> از ۶۷۵ معوقه دارای محصول، امروز فقط موارد با احتمال بستن بالا را به صف آخر فصل وصل کنید.</li>
+      </ul>
+
+      <h3>۴۸–۷۲ ساعت آینده</h3>
+      <ul class="actions">
+        <li><strong>اتاق جنگ معوقه:</strong> سهمیه روزانه برای ۶ کارشناس با بیشترین backlog (وکیلی، احمدی، هارونی، بابایی، محمدی، شاهی).</li>
+        <li><strong>بازتوزیع بار:</strong> انتقال کنترل‌شده از ستاره‌های overload‌شده به کارشناسان با ظرفیت خالی‌تر، با حفظ نرخ تبدیل انتقال ≥۲۶٪.</li>
+        <li><strong>صف بدون‌پیگیریِ دارای تلفن:</strong> برش روزانه از ۴٬۰۱۵ نفر؛ حداقل تماس اولیه + تعیین next follow-up.</li>
+        <li><strong>جبران حضوری:</strong> برنامه جدا برای ۷۰ فروش جا‌مانده تارگت حضوری پس از جمع‌بندی سوپر کمپین.</li>
+      </ul>
+
+      <h3>ساختاری (۱–۲ هفته)</h3>
+      <ul class="actions">
+        <li>KPI ترکیبی کارشناس: فروش + نرخ معوقه + درصد پیگیری به‌روز (نه فقط مبلغ).</li>
+        <li>پروژه وصول با aging برای مانده ۱۰۶.۳ میلیارد و بیعانه‌های ۲۲٪ پایپ‌لاین.</li>
+        <li>اجباری‌کردن ثبت شماره تماس در لیدهای اینستاگرام برای بالا بردن پوشش از ۵۴٪.</li>
+        <li>افزایش ثبت پرزنت (پوشش فعلی فقط ۲۱٪) برای اندازه‌گیری واقعی سرعت بستن.</li>
+        <li>پاکسازی وضعیت CRM تا فاصله «فروش تکمیل‌شده» و وضعیت «خرید کرد» منطقی شود.</li>
+        <li>آزمایش باندل دیاگ + دوره برای بالا بردن avgItems از ۱.۲۲ و multiBuy از ۱۷٪.</li>
+      </ul>
+    </section>
+
+    <!-- 10 -->
+    <section id="score">
+      <h2>۱۰) امتیاز کلی عملکرد</h2>
+      <div class="score-grid">
+        <div class="score">رشد فروش<strong>۵ / ۵</strong></div>
+        <div class="score">سودآوری<strong>۴.۵ / ۵</strong></div>
+        <div class="score">تحقق تارگت<strong>۴ / ۵</strong></div>
+        <div class="score">سلامت قیف<strong>۱.۵ / ۵</strong></div>
+        <div class="score">تنوع ریسک<strong>۲.۵ / ۵</strong></div>
+        <div class="score">نقدینگی/وصول<strong>۳ / ۵</strong></div>
+      </div>
+      <p class="verdict" style="margin-top:18px">
+        جمع‌بندی هیئت‌مدیره: ≈ ۳.۴ از ۵ — رشد و تارگت خوب؛ عملیات پیگیری و کیفیت داده، مانع تبدیل رشد به پایداری است.
+      </p>
+
+      <h3>پیام یک‌خطی برای مدیرعامل</h3>
+      <p>
+        «اگر همین شتاب فروش حفظ شود ولی معوقه و بدون‌پیگیری کنترل نشود، در هفته‌های بعد هم درآمد لحظه‌ای خوب می‌ماند و هم نرخ از‌دست‌رفتن لید بالا می‌رود؛ اولویت فوری بستن آخر فصل و بازسازی صف پیگیری است.»
+      </p>
+
+      <p class="footnote">
+        تعاریف: <code>presentToPurchaseAvgDays</code> = میانگین روز از پرزنت محصول‌دار تا اولین پرداخت (خرید بدون پرزنت در میانگین نیست).
+        <code>avgItemsPerBuyer</code> / <code>multiBuyRatePct</code> = اندازه سبد تعدادی.
+        <code>avgBuyerLrfm</code> = میانگین L/F/M خریداران؛ R آخرین تاریخ خرید ثبت‌شده.
+        <code>overdueTrend</code> = تعداد پیگیری معوقهٔ باز در هر روز از ۳۰ روز اخیر.
+        فروش تکمیل‌شده بر اساس <code>completionPayment.soldAt</code>؛ اسکوپ مشتری بر اساس <code>customer.advisorPhone</code>.
+      </p>
+    </section>
+
+    <footer class="report-foot">
+      گزارش عملکرد کمپین · snapshot ۱۴۰۵/۰۷/۰۱ · قابل چاپ از مرورگر (Ctrl/Cmd + P)
+    </footer>
+  </div>
+</body>
+</html>
